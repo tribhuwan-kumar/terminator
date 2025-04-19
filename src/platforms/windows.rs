@@ -286,12 +286,12 @@ impl AccessibilityEngine for WindowsEngine {
 
                 return Ok(collected_elements);
             }
-            Selector::Name(_name) => self
+            Selector::Name(name) => self
                 .automation
                 .0
                 .create_property_condition(
-                    UIProperty::ControlType,
-                    Variant::from(ControlType::Window as i32),
+                    UIProperty::Name,
+                    Variant::from(name.as_str()),
                     None,
                 )
                 .unwrap(),
@@ -425,10 +425,10 @@ impl AccessibilityEngine for WindowsEngine {
         let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
 
         match selector {
-            Selector::Role { role, name: _ } => {
+            Selector::Role { role, name } => {
                 let roles = map_generic_role_to_win_roles(role);
                 // use create matcher api
-                let matcher = self
+                let mut matcher = self
                     .automation
                     .0
                     .create_matcher()
@@ -436,7 +436,13 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(roles)
                     .timeout(timeout_ms as u64);
 
-                debug!("searching element by role: {}, from: {:?}", role, root_ele);
+                if let Some(name) = name {
+                    // use contains_name, its undetermined right now
+                    // wheather we should use `name` or `contains_name`
+                    matcher = matcher.contains_name(name);
+                }
+
+                debug!("Searching element by role: '{}', name: '{:?}', from: '{:?}'", role, name, root_ele);
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
                         "Role: '{}', Root: {:?}, Err: {}",
