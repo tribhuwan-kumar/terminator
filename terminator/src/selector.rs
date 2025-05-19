@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Selector {
     /// Select by role and optional name
-    Role { role: String, name: Option<String> },
+    Role { role: String, name: Option<String> }, // TODO: name unused 
     /// Select by accessibility ID
     Id(String),
     /// Select by name/label
@@ -38,9 +38,9 @@ impl From<&str> for Selector {
             },
             "app" | "application" | "window" | "button" | "checkbox" | "menu" | "menuitem" | "menubar" | "textfield"
             | "input" => {
-                let parts: Vec<&str> = s[5..].splitn(2, ':').collect();
+                let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Role {
-                    role: s.to_string(),
+                    role: parts.get(0).unwrap_or(&"").to_string(),
                     name: parts.get(1).map(|name| name.to_string()), // optional
                 }
             },
