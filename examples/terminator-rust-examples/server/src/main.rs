@@ -253,6 +253,31 @@ struct ScrollRequest {
     timeout_ms: Option<u64>,
 }
 
+// Request structure for mouse_click_and_hold
+#[derive(Deserialize)]
+struct MouseClickAndHoldRequest {
+    selector_chain: Vec<String>,
+    x: f64,
+    y: f64,
+    timeout_ms: Option<u64>,
+}
+
+// Request structure for mouse_move
+#[derive(Deserialize)]
+struct MouseMoveRequest {
+    selector_chain: Vec<String>,
+    x: f64,
+    y: f64,
+    timeout_ms: Option<u64>,
+}
+
+// Request structure for mouse_release
+#[derive(Deserialize)]
+struct MouseReleaseRequest {
+    selector_chain: Vec<String>,
+    timeout_ms: Option<u64>,
+}
+
 // Basic response structure
 #[derive(Serialize)]
 struct BasicResponse {
@@ -1086,9 +1111,8 @@ async fn explore_handler(
         let child_text = child.text(1).ok();
 
         let suggested_selector = format!(
-            "role:{} name:'{}'",
-            child_attrs.role,
-            child_attrs.name.clone().unwrap_or_default()
+            "#{}",
+            child_id
         );
 
         children.push(ExploredElementDetail {
@@ -1561,6 +1585,69 @@ async fn scroll_handler(
     }))
 }
 
+// Handler for mouse_click_and_hold
+async fn mouse_click_and_hold_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<MouseClickAndHoldRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, x = payload.x, y = payload.y, timeout = ?payload.timeout_ms, "Attempting to mouse_click_and_hold element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+    let element = locator.wait(timeout).await.map_err(|e| {
+        error!("Failed to find element for mouse_click_and_hold: {}", e);
+        ApiError::from(e)
+    })?;
+    element.mouse_click_and_hold(payload.x, payload.y).map_err(|e| {
+        error!("Failed to mouse_click_and_hold element: {}", e);
+        ApiError::from(e)
+    })?;
+    Ok(Json(BasicResponse {
+        message: "Mouse click and hold performed successfully".to_string(),
+    }))
+}
+
+// Handler for mouse_move
+async fn mouse_move_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<MouseMoveRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, x = payload.x, y = payload.y, timeout = ?payload.timeout_ms, "Attempting to mouse_move element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+    let element = locator.wait(timeout).await.map_err(|e| {
+        error!("Failed to find element for mouse_move: {}", e);
+        ApiError::from(e)
+    })?;
+    element.mouse_move(payload.x, payload.y).map_err(|e| {
+        error!("Failed to mouse_move element: {}", e);
+        ApiError::from(e)
+    })?;
+    Ok(Json(BasicResponse {
+        message: "Mouse move performed successfully".to_string(),
+    }))
+}
+
+// Handler for mouse_release
+async fn mouse_release_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<MouseReleaseRequest>,
+) -> Result<Json<BasicResponse>, ApiError> {
+    info!(chain = ?payload.selector_chain, timeout = ?payload.timeout_ms, "Attempting to mouse_release element");
+    let locator = create_locator_for_chain(&state, &payload.selector_chain)?;
+    let timeout = get_timeout(payload.timeout_ms);
+    let element = locator.wait(timeout).await.map_err(|e| {
+        error!("Failed to find element for mouse_release: {}", e);
+        ApiError::from(e)
+    })?;
+    element.mouse_release().map_err(|e| {
+        error!("Failed to mouse_release element: {}", e);
+        ApiError::from(e)
+    })?;
+    Ok(Json(BasicResponse {
+        message: "Mouse release performed successfully".to_string(),
+    }))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing with timestamps and more detailed formatting
@@ -1624,6 +1711,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         // State and Layers
         .route("/mouse_drag", post(mouse_drag_handler))
+        .route("/mouse_click_and_hold", post(mouse_click_and_hold_handler))
+        .route("/mouse_move", post(mouse_move_handler))
+        .route("/mouse_release", post(mouse_release_handler))
         .route("/scroll", post(scroll_handler))
         .layer(RequestBodyLimitLayer::new(10 * 1024 * 1024)) // Reduced to 10MB
         .layer(

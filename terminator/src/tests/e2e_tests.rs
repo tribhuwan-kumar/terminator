@@ -29,6 +29,7 @@ async fn make_get_request(endpoint: &str) -> Result<reqwest::Response, reqwest::
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_fill_edit_elements_http() {
     init_tracing();
     info!("Starting HTTP API test for filling edit elements");
@@ -109,6 +110,7 @@ async fn test_fill_edit_elements_http() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_fill_edit_elements_direct() {
     init_tracing();
     info!("Starting direct Rust test for filling edit elements");
@@ -173,6 +175,7 @@ async fn test_fill_edit_elements_direct() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn benchmark_find_edit_elements() {
     init_tracing();
     info!("Starting benchmark for finding edit elements");

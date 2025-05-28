@@ -49,8 +49,7 @@ impl From<&str> for Selector {
                 role: s.to_string(),
                 name: None,
             },
-            _ if s.starts_with("Text:") || s.contains("text:") => Selector::Text(s[5..].to_string()),
-            _ if s.contains("Name:") || s.contains("name:") => {
+            _ if s.to_lowercase().starts_with("name:") => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Name(parts[1].to_string())
             }
@@ -68,6 +67,7 @@ impl From<&str> for Selector {
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
+            _ if s.to_lowercase().starts_with("text:") => Selector::Text(s[5..].to_string()),
             _ => Selector::Name(s.to_string()),
         }
     }
