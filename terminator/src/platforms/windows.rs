@@ -24,38 +24,13 @@ use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
+use windows::core::{Error, HSTRING, HRESULT, PWSTR};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoInitializeEx, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Threading::{CREATE_NEW_CONSOLE, CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW};
+use windows::Win32::UI::Shell::{ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager};
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
-};
-
-// Windows API imports
-use windows::core::Error;
-use windows::core::HSTRING;
-use windows::core::HRESULT;
-use windows::core::PWSTR;
-
-use windows::Win32::Foundation::CloseHandle;
-use windows::Win32::Foundation::HANDLE;
-
-use windows::Win32::System::Com::CLSCTX_ALL;
-use windows::Win32::System::Com::CoCreateInstance;
-use windows::Win32::System::Com::CoInitializeEx;
-use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
-
-use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32FirstW;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32NextW;
-use windows::Win32::System::Diagnostics::ToolHelp::PROCESSENTRY32W;
-use windows::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
-
-use windows::Win32::System::Threading::CREATE_NEW_CONSOLE;
-use windows::Win32::System::Threading::CreateProcessW;
-use windows::Win32::System::Threading::PROCESS_INFORMATION;
-use windows::Win32::System::Threading::STARTUPINFOW;
-
-use windows::Win32::UI::Shell::ACTIVATEOPTIONS;
-use windows::Win32::UI::Shell::ApplicationActivationManager;
-use windows::Win32::UI::Shell::IApplicationActivationManager;
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS};
 
 
 // Define a default timeout duration
