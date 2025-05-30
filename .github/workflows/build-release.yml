@@ -23,6 +23,9 @@ jobs:
           toolchain: stable
           target: x86_64-pc-windows-msvc
 
+      - name: Install ARM target
+        run: rustup target add aarch64-pc-windows-msvc
+
       - name: Build server (x86_64)
         run: cargo build --verbose --release --package server --target x86_64-pc-windows-msvc
         env:
