@@ -92,8 +92,9 @@ impl Desktop {
     /// 
     /// Args:
     ///     name (str): The name of the application to open.
-    pub fn open_application(&self, name: &str) -> PyResult<()> {
+    pub fn open_application(&self, name: &str) -> PyResult<UIElement> {
         self.inner.open_application(name)
+            .map(|e| UIElement { inner: e })
             .map_err(|e| automation_error_to_pyerr(e))
     }
 

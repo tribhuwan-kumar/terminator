@@ -173,11 +173,11 @@ impl Desktop {
     }
 
     #[instrument(skip(self, app_name))]
-    pub fn open_application(&self, app_name: &str) -> Result<(), AutomationError> {
+    pub fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
         let start = Instant::now();
         info!(app_name, "Opening application");
         
-        self.engine.open_application(app_name)?;
+        let app = self.engine.open_application(app_name)?;
         
         let duration = start.elapsed();
         info!(
@@ -185,7 +185,7 @@ impl Desktop {
             "Application opened"
         );
         
-        Ok(())
+        Ok(app)
     }
 
     #[instrument(skip(self, app_name))]

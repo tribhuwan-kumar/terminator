@@ -1906,7 +1906,7 @@ impl AccessibilityEngine for MacOSEngine {
         )))
     }
 
-    fn get_application_by_pid(&self, pid: i32) -> Result<UIElement, AutomationError> {
+    fn get_application_by_pid(&self, pid: i32, _timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
         // Create an AXUIElement for the application with the given PID
         let app_element = ThreadSafeAXUIElement::application(pid);
 
@@ -2070,6 +2070,9 @@ impl AccessibilityEngine for MacOSEngine {
             }
             Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
                 "Path selector not yet supported for macOS".to_string(),
+            )),
+            Selector::NativeId(_) => Err(AutomationError::UnsupportedOperation(
+                "NativeId selector not yet supported for macOS".to_string(),
             )),
             Selector::Attributes(_) => Err(AutomationError::UnsupportedOperation(
                 "Attributes selector not yet supported for macOS".to_string(),
@@ -2284,6 +2287,9 @@ impl AccessibilityEngine for MacOSEngine {
             }
             Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
                 "Path selector not yet supported for macOS".to_string(),
+            )),
+            Selector::NativeId(_) => Err(AutomationError::UnsupportedOperation(
+                "NativeId selector not yet supported for macOS".to_string(),
             )),
             Selector::Attributes(_) => Err(AutomationError::UnsupportedOperation(
                 "Attributes selector not yet supported for macOS".to_string(),

@@ -40,7 +40,7 @@ impl AccessibilityEngine for LinuxEngine {
         ))
     }
 
-    fn get_application_by_pid(&self, _pid: i32) -> Result<UIElement, AutomationError> {
+    fn get_application_by_pid(&self, _pid: i32, _timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))

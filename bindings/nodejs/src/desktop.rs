@@ -76,8 +76,9 @@ impl Desktop {
     /// 
     /// @param {string} name - The name of the application to open.
     #[napi]
-    pub fn open_application(&self, name: String) -> napi::Result<()> {
+    pub fn open_application(&self, name: String) -> napi::Result<Element> {
         self.inner.open_application(&name)
+            .map(Element::from)
             .map_err(map_error)
     }
 

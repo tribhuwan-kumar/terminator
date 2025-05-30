@@ -88,7 +88,7 @@ export declare class Desktop {
    *
    * @param {string} name - The name of the application to open.
    */
-  openApplication(name: string): void
+  openApplication(name: string): Element
   /**
    * Activate an application by name.
    *
