@@ -600,108 +600,42 @@ impl MacOSUIElement {
     fn generate_stable_id(&self) -> String {
         let mut hasher = DefaultHasher::new();
 
-        // Collect stable attributes
-        let role = self
-            .element
-            .0
-            .role()
-            .map(|r| r.to_string())
-            .unwrap_or_default();
-        let title = self
-            .element
-            .0
-            .title()
-            .map(|t| t.to_string())
-            .unwrap_or_default();
-        let desc = self
-            .element
-            .0
-            .description()
-            .map(|d| d.to_string())
-            .unwrap_or_default();
+        // Hash the element's role
+        if let Ok(role) = self.element.0.role() {
+            role.to_string().hash(&mut hasher);
+        }
 
-        // Get position if available (as integers to be more stable)
-        let (_, _, w, h) = self
-            .bounds()
-            .map(|(x, y, w, h)| {
-                (
-                    x.round() as i32,
-                    y.round() as i32,
-                    w.round() as i32,
-                    h.round() as i32,
-                )
-            })
-            .unwrap_or((0, 0, 0, 0));
+        // Hash the element's title/name
+        if let Some(title) = self.attributes().name {
+            title.hash(&mut hasher);
+        }
 
-        let count_of_children = self.children().unwrap_or_default().len();
+        // Hash the element's value
+        if let Some(value) = self.attributes().value {
+            value.hash(&mut hasher);
+        }
 
-        // Hash combination of stable attributes
-        role.hash(&mut hasher);
-        title.hash(&mut hasher);
-        desc.hash(&mut hasher);
-        // not using position because things more likely move than change size
-        // x.hash(&mut hasher);
-        // y.hash(&mut hasher);
-        w.hash(&mut hasher);
-        h.hash(&mut hasher);
-        count_of_children.hash(&mut hasher);
-        // Get parent info if available to make ID more unique
+        // Hash the element's position to make it more unique
+        if let Ok((x, y, _, _)) = self.bounds() {
+            (x as i64).hash(&mut hasher);
+            (y as i64).hash(&mut hasher);
+        }
+
+        // Hash parent information to make it more unique
         if let Ok(Some(parent)) = self.parent() {
-            if let Some(parent_role) = parent.attributes().label {
+            if let Some(parent_macos) = parent.as_any().downcast_ref::<MacOSUIElement>() {
+                if let Ok(parent_role) = parent_macos.element.0.role() {
+                    parent_role.to_string().hash(&mut hasher);
+                }
+            }
+
+            // Also hash parent's label if available
+            if let Some(parent_role) = self.attributes().label {
                 parent_role.hash(&mut hasher);
             }
         }
 
         format!("ax_{:x}", hasher.finish())
-    }
-
-    fn application(&self) -> Result<Option<UIElement>, AutomationError> {
-        let mut current_ax_element = (*self.element.0).clone();
-        loop {
-            match current_ax_element.role() {
-                Ok(role) => {
-                    if role.to_string() == "AXApplication" {
-                        return Ok(Some(UIElement::new(Box::new(MacOSUIElement {
-                            element: ThreadSafeAXUIElement::new(current_ax_element),
-                            use_background_apps: self.use_background_apps,
-                            activate_app: self.activate_app,
-                        }))));
-                    }
-                }
-                Err(e) => return Err(AutomationError::PlatformError(format!("Failed to get role: {}", e)))
-            }
-
-            match current_ax_element.parent() {
-                Ok(parent_ax_element) => current_ax_element = parent_ax_element,
-                Err(_) => return Ok(None) // No more parents or error getting parent
-            }
-        }
-    }
-
-    fn window(&self) -> Result<Option<UIElement>, AutomationError> {
-        let mut current_ax_element = (*self.element.0).clone();
-        loop {
-            match current_ax_element.role() {
-                Ok(role_cfstring) => {
-                    let role = role_cfstring.to_string();
-                    // AXWindow is the main window, AXSheet or AXDrawer can be dialogs/sidebars (acting as windows)
-                    // AXWebArea can sometimes be the main content area of a browser tab.
-                    if role == "AXWindow" || role == "AXSheet" || role == "AXDrawer" || role == "AXWebArea" {
-                        return Ok(Some(UIElement::new(Box::new(MacOSUIElement {
-                            element: ThreadSafeAXUIElement::new(current_ax_element),
-                            use_background_apps: self.use_background_apps,
-                            activate_app: self.activate_app,
-                        }))));
-                    }
-                }
-                Err(e) => return Err(AutomationError::PlatformError(format!("Failed to get role: {}", e)))
-            }
-
-            match current_ax_element.parent() {
-                Ok(parent_ax_element) => current_ax_element = parent_ax_element,
-                Err(_) => return Ok(None) // No more parents or error getting parent
-            }
-        }
     }
 }
 
@@ -1511,8 +1445,74 @@ impl UIElementImpl for MacOSUIElement {
         ))
     }
 
-    fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
-        // TODO: Implement highlighting for macOS (could use accessibility highlighting)
+    fn application(&self) -> Result<Option<UIElement>, AutomationError> {
+        let mut current_ax_element = (*self.element.0).clone();
+        loop {
+            match current_ax_element.role() {
+                Ok(role) => {
+                    if role.to_string() == "AXApplication" {
+                        return Ok(Some(UIElement::new(Box::new(MacOSUIElement {
+                            element: ThreadSafeAXUIElement::new(current_ax_element),
+                            use_background_apps: self.use_background_apps,
+                            activate_app: self.activate_app,
+                        }))));
+                    }
+                }
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Failed to get role: {}",
+                        e
+                    )));
+                }
+            }
+
+            match current_ax_element.parent() {
+                Ok(parent_ax_element) => current_ax_element = parent_ax_element,
+                Err(_) => return Ok(None), // No more parents or error getting parent
+            }
+        }
+    }
+
+    fn window(&self) -> Result<Option<UIElement>, AutomationError> {
+        let mut current_ax_element = (*self.element.0).clone();
+        loop {
+            match current_ax_element.role() {
+                Ok(role_cfstring) => {
+                    let role = role_cfstring.to_string();
+                    // AXWindow is the main window, AXSheet or AXDrawer can be dialogs/sidebars (acting as windows)
+                    // AXWebArea can sometimes be the main content area of a browser tab.
+                    if role == "AXWindow"
+                        || role == "AXSheet"
+                        || role == "AXDrawer"
+                        || role == "AXWebArea"
+                    {
+                        return Ok(Some(UIElement::new(Box::new(MacOSUIElement {
+                            element: ThreadSafeAXUIElement::new(current_ax_element),
+                            use_background_apps: self.use_background_apps,
+                            activate_app: self.activate_app,
+                        }))));
+                    }
+                }
+                Err(e) => {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Failed to get role: {}",
+                        e
+                    )));
+                }
+            }
+
+            match current_ax_element.parent() {
+                Ok(parent_ax_element) => current_ax_element = parent_ax_element,
+                Err(_) => return Ok(None), // No more parents or error getting parent
+            }
+        }
+    }
+
+    fn highlight(
+        &self,
+        _color: Option<u32>,
+        _duration: Option<std::time::Duration>,
+    ) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "highlight is not implemented for macOS yet".to_string(),
         ))
@@ -2885,27 +2885,46 @@ impl AccessibilityEngine for MacOSEngine {
     async fn get_current_window(&self) -> Result<UIElement, AutomationError> {
         let focused_element_wrapper = self.get_focused_element()?;
         // Downcast to MacOSUIElement to access the window() method
-        if let Some(macos_focused_element) = focused_element_wrapper.as_any().downcast_ref::<MacOSUIElement>() {
-            macos_focused_element.window()?.ok_or_else(|| AutomationError::ElementNotFound("Could not find a parent window for the focused element.".to_string()))
+        if let Some(macos_focused_element) = focused_element_wrapper
+            .as_any()
+            .downcast_ref::<MacOSUIElement>()
+        {
+            macos_focused_element.window()?.ok_or_else(|| {
+                AutomationError::ElementNotFound(
+                    "Could not find a parent window for the focused element.".to_string(),
+                )
+            })
         } else {
-            Err(AutomationError::PlatformError("Focused element is not a MacOSUIElement.".to_string()))
+            Err(AutomationError::PlatformError(
+                "Focused element is not a MacOSUIElement.".to_string(),
+            ))
         }
     }
 
     async fn get_current_application(&self) -> Result<UIElement, AutomationError> {
         let focused_element_wrapper = self.get_focused_element()?;
         // Downcast to MacOSUIElement to access the application() method
-        if let Some(macos_focused_element) = focused_element_wrapper.as_any().downcast_ref::<MacOSUIElement>() {
-            macos_focused_element.application()?.ok_or_else(|| AutomationError::ElementNotFound("Could not find a parent application for the focused element.".to_string()))
+        if let Some(macos_focused_element) = focused_element_wrapper
+            .as_any()
+            .downcast_ref::<MacOSUIElement>()
+        {
+            macos_focused_element.application()?.ok_or_else(|| {
+                AutomationError::ElementNotFound(
+                    "Could not find a parent application for the focused element.".to_string(),
+                )
+            })
         } else {
-            Err(AutomationError::PlatformError("Focused element is not a MacOSUIElement.".to_string()))
+            Err(AutomationError::PlatformError(
+                "Focused element is not a MacOSUIElement.".to_string(),
+            ))
         }
     }
 
     fn get_window_tree_by_title(&self, title: &str) -> Result<crate::UINode, AutomationError> {
-        Err(AutomationError::UnsupportedOperation(
-            format!("get_window_tree_by_title for '{}' not yet implemented for macOS", title)
-        ))
+        Err(AutomationError::UnsupportedOperation(format!(
+            "get_window_tree_by_title for '{}' not yet implemented for macOS",
+            title
+        )))
     }
 
     fn get_window_tree_by_pid_and_title(&self, pid: u32, title: Option<&str>) -> Result<crate::UINode, AutomationError> {

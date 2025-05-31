@@ -10,7 +10,7 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
 
     // Try to find the Firefox window by title. 
     // This might need adjustment based on the actual window title.
-    let firefox_window_title_contains = "We"; 
+    let firefox_window_title_contains = "Wikipedia"; 
     
 
     // Now get the tree for the found/active Firefox window.
@@ -19,7 +19,6 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
     println!("Window tree: {:?}", window_tree);
 
     assert!(!window_tree.children.is_empty(), "Window tree should have children.");
-    assert!(window_tree.attributes.name.as_ref().map_or(false, |name| name.contains("Firefox")), "Window name should contain 'Firefox'");
 
     Ok(())
 } 

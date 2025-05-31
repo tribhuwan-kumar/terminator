@@ -30,7 +30,7 @@ accessibility = { git = "https://github.com/eiz/accessibility.git", branch = "ma
 objc = "0.2.7"
 objc-foundation = "0.1.1"
 
-core-foundation = "=0.10.0"
+core-foundation = "0.10.1"
 core-graphics = { version = "0.24.0", features = ["highsierra"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -48,10 +48,23 @@ sysinfo = "0.34.2"
 name = "server"
 path = "../examples/terminator-rust-examples/server/src/main.rs"
 
+[[example]]
+name = "benchmark_example"
+path = "examples/benchmark_example.rs"
+
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 axum = "0.8.3"
 tower-http = { version = "0.6.2", features = ["cors", "limit"] }
 reqwest = { version = "0.12.5", features = ["json", "blocking"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[bench]]
+name = "element_tree_benchmarks"
+harness = false
+
+[[bench]]
+name = "tree_performance_benchmarks"
+harness = false
 

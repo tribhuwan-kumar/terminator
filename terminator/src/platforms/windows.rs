@@ -24,38 +24,13 @@ use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
+use windows::core::{Error, HSTRING, HRESULT, PWSTR};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoInitializeEx, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Threading::{CREATE_NEW_CONSOLE, CreateProcessW, PROCESS_INFORMATION, STARTUPINFOW};
+use windows::Win32::UI::Shell::{ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager};
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
-};
-
-// Windows API imports
-use windows::core::Error;
-use windows::core::HSTRING;
-use windows::core::HRESULT;
-use windows::core::PWSTR;
-
-use windows::Win32::Foundation::CloseHandle;
-use windows::Win32::Foundation::HANDLE;
-
-use windows::Win32::System::Com::CLSCTX_ALL;
-use windows::Win32::System::Com::CoCreateInstance;
-use windows::Win32::System::Com::CoInitializeEx;
-use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
-
-use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32FirstW;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32NextW;
-use windows::Win32::System::Diagnostics::ToolHelp::PROCESSENTRY32W;
-use windows::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
-
-use windows::Win32::System::Threading::CREATE_NEW_CONSOLE;
-use windows::Win32::System::Threading::CreateProcessW;
-use windows::Win32::System::Threading::PROCESS_INFORMATION;
-use windows::Win32::System::Threading::STARTUPINFOW;
-
-use windows::Win32::UI::Shell::ACTIVATEOPTIONS;
-use windows::Win32::UI::Shell::ApplicationActivationManager;
-use windows::Win32::UI::Shell::IApplicationActivationManager;
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS};
 
 
 // Define a default timeout duration
@@ -299,8 +274,13 @@ impl AccessibilityEngine for WindowsEngine {
             .0
             .create_matcher()
             .from_ref(&root_ele)
-            .filter(Box::new(ControlTypeFilter {
-                control_type: ControlType::Window,
+            .filter(Box::new(OrFilter {
+                left: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Window,
+                }),
+                right: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Pane,
+                }),
             }))
             .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                 match e.get_process_id() {
@@ -1384,12 +1364,20 @@ impl AccessibilityEngine for WindowsEngine {
         })?;
 
         // Use a more efficient approach: first find windows by control type, then filter by name
+        // Search for both Window and Pane control types since some applications use panes as main containers
         let window_matcher = self
             .automation
             .0
             .create_matcher()
             .from_ref(&root_ele_os)
-            .control_type(ControlType::Window)
+            .filter(Box::new(OrFilter {
+                left: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Window,
+                }),
+                right: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Pane,
+                }),
+            }))
             .depth(3) // Limit search depth for performance
             .timeout(3000); // Reduce timeout to 3 seconds
 
@@ -1454,12 +1442,20 @@ impl AccessibilityEngine for WindowsEngine {
         })?;
 
         // First, find all windows for the given process ID
+        // Search for both Window and Pane control types since some applications use panes as main containers
         let window_matcher = self
             .automation
             .0
             .create_matcher()
             .from_ref(&root_ele_os)
-            .control_type(ControlType::Window)
+            .filter(Box::new(OrFilter {
+                left: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Window,
+                }),
+                right: Box::new(ControlTypeFilter {
+                    control_type: ControlType::Pane,
+                }),
+            }))
             .depth(3)
             .timeout(3000);
 
@@ -2246,7 +2242,7 @@ impl UIElementImpl for WindowsUIElement {
                     cached_children
                 }
                 Err(cache_err) => {
-                    info!(
+                    debug!(
                         "Failed to get cached children for text extraction ({}), falling back to non-cached TreeScope::Children search.",
                         cache_err
                     );
@@ -2264,7 +2260,7 @@ impl UIElementImpl for WindowsUIElement {
                                         &true_condition,
                                     ) {
                                         Ok(found_children) => {
-                                            info!(
+                                            debug!(
                                                 "Found {} non-cached children for text extraction via fallback.",
                                                 found_children.len()
                                             );
@@ -2576,6 +2572,7 @@ impl UIElementImpl for WindowsUIElement {
         }
         Ok(())
     }
+
 
     fn application(&self) -> Result<Option<UIElement>, AutomationError> {
         // Get the process ID of the current element
@@ -4007,5 +4004,496 @@ mod tests {
         // Test opening application that requires specific environment variables
         let result = engine.open_application("powershell.exe -NoProfile -Command \"$env:TEST_VAR='test'; notepad.exe\"");
         assert!(result.is_ok(), "Should handle applications with environment variables");
+    }
+
+    // Tests for the application() method and related functionality
+    #[test]
+    fn test_application_method_from_root_element() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping application test");
+                return;
+            }
+        };
+
+        let root = engine.get_root_element();
+        
+        // Test application method on root element
+        match root.application() {
+            Ok(Some(app)) => {
+                println!("Found application from root element");
+                
+                // Verify it's a valid application element
+                let attrs = app.attributes();
+                println!("Application role: {}", attrs.role);
+                println!("Application name: {:?}", attrs.name);
+                
+                // Should be either Window or Pane
+                assert!(attrs.role == "Window" || attrs.role == "Pane", 
+                       "Application should be Window or Pane, got: {}", attrs.role);
+            }
+            Ok(None) => {
+                println!("No application found from root element");
+            }
+            Err(e) => {
+                println!("Error getting application from root: {}", e);
+                // This might happen in some environments, so don't fail the test
+            }
+        }
+    }
+
+    #[test]
+    fn test_application_method_from_app_element() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping test");
+                return;
+            }
+        };
+
+        let applications = match engine.get_applications() {
+            Ok(apps) => apps,
+            Err(_) => {
+                println!("Cannot get applications, skipping test");
+                return;
+            }
+        };
+
+        if applications.is_empty() {
+            println!("No applications available for testing");
+            return;
+        }
+
+        let app_element = &applications[0];
+        println!("Testing application() method on application element");
+        let app_attrs = app_element.attributes();
+        println!("Original element - Role: {}, Name: {:?}", app_attrs.role, app_attrs.name);
+
+        match app_element.application() {
+            Ok(Some(found_app)) => {
+                let found_attrs = found_app.attributes();
+                println!("Found application - Role: {}, Name: {:?}", found_attrs.role, found_attrs.name);
+                
+                // Should find an application element
+                assert!(found_attrs.role == "Window" || found_attrs.role == "Pane",
+                       "Found application should be Window or Pane, got: {}", found_attrs.role);
+                
+                // Should have some identifiable attributes
+                assert!(found_attrs.name.is_some() || !found_attrs.properties.is_empty(),
+                       "Application should have some identifying attributes");
+            }
+            Ok(None) => {
+                println!("No application found from app element - this might be expected");
+            }
+            Err(e) => {
+                println!("Error getting application from app element: {}", e);
+                // Don't fail test as this might be expected in some cases
+            }
+        }
+    }
+
+    #[test]
+    fn test_application_method_from_child_element() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping test");
+                return;
+            }
+        };
+
+        let applications = match engine.get_applications() {
+            Ok(apps) => apps,
+            Err(_) => {
+                println!("Cannot get applications, skipping test");
+                return;
+            }
+        };
+
+        if applications.is_empty() {
+            println!("No applications available for testing");
+            return;
+        }
+
+        let app_element = &applications[0];
+        let children = match app_element.children() {
+            Ok(children) => children,
+            Err(_) => {
+                println!("Cannot get child elements, skipping test");
+                return;
+            }
+        };
+
+        if children.is_empty() {
+            println!("No child elements available for testing");
+            return;
+        }
+
+        let child_element = &children[0];
+        println!("Testing application() method on child element");
+        let child_attrs = child_element.attributes();
+        println!("Child element - Role: {}, Name: {:?}", child_attrs.role, child_attrs.name);
+
+        match child_element.application() {
+            Ok(Some(found_app)) => {
+                let found_attrs = found_app.attributes();
+                println!("Found application from child - Role: {}, Name: {:?}", found_attrs.role, found_attrs.name);
+                
+                // Should find an application element
+                assert!(found_attrs.role == "Window" || found_attrs.role == "Pane",
+                       "Found application should be Window or Pane, got: {}", found_attrs.role);
+            }
+            Ok(None) => {
+                println!("No application found from child element");
+            }
+            Err(e) => {
+                println!("Error getting application from child element: {}", e);
+                // This is more likely to be a real error for child elements
+            }
+        }
+    }
+
+    #[test]
+    fn test_window_method_from_various_elements() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping window test");
+                return;
+            }
+        };
+
+        // Test window method on root element
+        let root = engine.get_root_element();
+        println!("Testing window() method on root element");
+        
+        match root.window() {
+            Ok(Some(window)) => {
+                let window_attrs = window.attributes();
+                println!("Found window from root - Role: {}, Name: {:?}", 
+                        window_attrs.role, window_attrs.name);
+                
+                // Window should have Window control type
+                assert_eq!(window_attrs.role, "Window",
+                         "Window element should have Window role, got: {}", window_attrs.role);
+            }
+            Ok(None) => {
+                println!("No window found from root element");
+            }
+            Err(e) => {
+                println!("Error getting window from root element: {}", e);
+            }
+        }
+
+        // Test window method on application elements if available
+        if let Ok(applications) = engine.get_applications() {
+            for (index, app) in applications.iter().take(2).enumerate() {
+                println!("Testing window() method on application element {}", index + 1);
+                
+                match app.window() {
+                    Ok(Some(window)) => {
+                        let window_attrs = window.attributes();
+                        println!("Found window from app {} - Role: {}, Name: {:?}", 
+                                index + 1, window_attrs.role, window_attrs.name);
+                        
+                        // Window should have Window control type
+                        assert_eq!(window_attrs.role, "Window",
+                                 "Window element should have Window role, got: {}", window_attrs.role);
+                    }
+                    Ok(None) => {
+                        println!("No window found from application element {}", index + 1);
+                    }
+                    Err(e) => {
+                        println!("Error getting window from application element {}: {}", index + 1, e);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_application_vs_window_comparison() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping comparison test");
+                return;
+            }
+        };
+
+        let applications = match engine.get_applications() {
+            Ok(apps) => apps,
+            Err(_) => {
+                println!("Cannot get applications, skipping comparison test");
+                return;
+            }
+        };
+
+        if applications.is_empty() {
+            println!("No applications available for comparison test");
+            return;
+        }
+
+        let app_element = &applications[0];
+        let children = match app_element.children() {
+            Ok(children) => children,
+            Err(_) => {
+                println!("Cannot get child elements, skipping comparison test");
+                return;
+            }
+        };
+
+        if children.is_empty() {
+            println!("No child elements available for comparison test");
+            return;
+        }
+
+        let child_element = &children[0];
+        println!("Comparing application() vs window() results");
+
+        let application_result = child_element.application();
+        let window_result = child_element.window();
+
+        match (application_result, window_result) {
+            (Ok(Some(app)), Ok(Some(window))) => {
+                let app_attrs = app.attributes();
+                let window_attrs = window.attributes();
+                
+                println!("Application - Role: {}, Name: {:?}", app_attrs.role, app_attrs.name);
+                println!("Window - Role: {}, Name: {:?}", window_attrs.role, window_attrs.name);
+                
+                // Application can be Window or Pane, Window should be Window
+                assert!(app_attrs.role == "Window" || app_attrs.role == "Pane");
+                assert_eq!(window_attrs.role, "Window");
+                
+                // If application is a Window, they might be the same
+                if app_attrs.role == "Window" {
+                    println!("Both application and window are Window type - they might be the same element");
+                }
+            }
+            (Ok(app_opt), Ok(window_opt)) => {
+                println!("Application result: {:?}", app_opt.is_some());
+                println!("Window result: {:?}", window_opt.is_some());
+            }
+            (app_result, window_result) => {
+                println!("Application result: {:?}", app_result.is_ok());
+                println!("Window result: {:?}", window_result.is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn test_application_method_error_handling() {
+        // This test checks error handling in the application method
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping error handling test");
+                return;
+            }
+        };
+
+        let root = engine.get_root_element();
+        
+        // The application method should handle cases gracefully
+        match root.application() {
+            Ok(result) => {
+                println!("Application method succeeded, result present: {}", result.is_some());
+            }
+            Err(e) => {
+                println!("Application method returned error: {}", e);
+                
+                // Should be a PlatformError based on the implementation
+                match e {
+                    AutomationError::PlatformError(msg) => {
+                        assert!(msg.contains("Failed to create UIAutomation") || 
+                               msg.contains("Failed to get children for element"),
+                               "Error message should be specific: {}", msg);
+                    }
+                    _ => {
+                        panic!("Expected PlatformError, got: {:?}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_application_method_performance() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping performance test");
+                return;
+            }
+        };
+
+        let applications = match engine.get_applications() {
+            Ok(apps) => apps,
+            Err(_) => {
+                println!("Cannot get applications, skipping performance test");
+                return;
+            }
+        };
+
+        if applications.is_empty() {
+            println!("No applications available for performance test");
+            return;
+        }
+
+        let app_element = &applications[0];
+        let children = match app_element.children() {
+            Ok(children) => children,
+            Err(_) => {
+                println!("Cannot get child elements, skipping performance test");
+                return;
+            }
+        };
+
+        if children.is_empty() {
+            println!("No child elements available for performance test");
+            return;
+        }
+
+        let child_element = &children[0];
+        println!("Testing application() method performance");
+
+        let start_time = std::time::Instant::now();
+        let mut successful_calls = 0;
+        let mut failed_calls = 0;
+
+        // Test multiple calls to see if performance is reasonable
+        for i in 0..5 {
+            match child_element.application() {
+                Ok(_) => {
+                    successful_calls += 1;
+                    println!("Call {} succeeded", i + 1);
+                }
+                Err(e) => {
+                    failed_calls += 1;
+                    println!("Call {} failed: {}", i + 1, e);
+                }
+            }
+        }
+
+        let total_time = start_time.elapsed();
+        let avg_time = total_time / 5;
+
+        println!("Performance results:");
+        println!("  Total time: {:?}", total_time);
+        println!("  Average time per call: {:?}", avg_time);
+        println!("  Successful calls: {}", successful_calls);
+        println!("  Failed calls: {}", failed_calls);
+
+        // Performance should be reasonable (less than 1 second per call)
+        assert!(avg_time < Duration::from_secs(1), 
+               "Average call time should be under 1 second, got: {:?}", avg_time);
+    }
+
+    #[test]
+    fn test_related_navigation_methods() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping navigation test");
+                return;
+            }
+        };
+
+        let applications = match engine.get_applications() {
+            Ok(apps) => apps,
+            Err(_) => {
+                println!("Cannot get applications, skipping navigation test");
+                return;
+            }
+        };
+
+        if applications.is_empty() {
+            println!("No applications available for navigation test");
+            return;
+        }
+
+        let app_element = &applications[0];
+        let children = match app_element.children() {
+            Ok(children) => children,
+            Err(_) => {
+                println!("Cannot get child elements, skipping navigation test");
+                return;
+            }
+        };
+
+        if children.is_empty() {
+            println!("No child elements available for navigation test");
+            return;
+        }
+
+        let child_element = &children[0];
+        println!("Testing related navigation methods");
+
+        // Test application()
+        let app_result = child_element.application();
+        println!("Application result: {:?}", app_result.is_ok());
+
+        // Test window()
+        let window_result = child_element.window();
+        println!("Window result: {:?}", window_result.is_ok());
+
+        // Test parent()
+        let parent_result = child_element.parent();
+        println!("Parent result: {:?}", parent_result.is_ok());
+
+        // Test children()
+        let children_result = child_element.children();
+        match &children_result {
+            Ok(children) => println!("Children count: {}", children.len()),
+            Err(e) => println!("Children error: {}", e),
+        }
+
+        // At least one navigation method should work
+        assert!(app_result.is_ok() || window_result.is_ok() || parent_result.is_ok() || children_result.is_ok(),
+               "At least one navigation method should work");
+    }
+
+    #[test]
+    fn test_application_method_with_focus() {
+        let engine = match WindowsEngine::new(false, false) {
+            Ok(engine) => engine,
+            Err(_) => {
+                println!("Cannot create WindowsEngine, skipping focus test");
+                return;
+            }
+        };
+
+        // Get focused element and test application method
+        match engine.get_focused_element() {
+            Ok(focused_element) => {
+                println!("Testing application() on focused element");
+                let focused_attrs = focused_element.attributes();
+                println!("Focused element - Role: {}, Name: {:?}", 
+                        focused_attrs.role, focused_attrs.name);
+
+                match focused_element.application() {
+                    Ok(Some(app)) => {
+                        let app_attrs = app.attributes();
+                        println!("Application from focused - Role: {}, Name: {:?}", 
+                                app_attrs.role, app_attrs.name);
+                        
+                        assert!(app_attrs.role == "Window" || app_attrs.role == "Pane",
+                               "Application should be Window or Pane");
+                    }
+                    Ok(None) => {
+                        println!("No application found from focused element");
+                    }
+                    Err(e) => {
+                        println!("Error getting application from focused element: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Cannot get focused element: {}", e);
+            }
+        }
     }
 }

@@ -118,6 +118,11 @@ impl Default for WorkflowRecorderConfig {
             ignore_applications: vec![
                 // Common applications to ignore by default
                 "dwm.exe".to_string(),
+                "taskmgr.exe".to_string(),
+                "powershell.exe".to_string(),
+                "cmd.exe".to_string(),
+                "cursor.exe".to_string(),
+                "code.exe".to_string(),
             ],
         }
     }

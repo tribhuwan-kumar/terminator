@@ -101,7 +101,6 @@ fn test_complex_workflow_scenario() {
         end_position: Position { x: 420, y: 150 },
         selection_method: SelectionMethod::DoubleClick,
         selection_length: 11,
-        is_partial_selection: true,
         metadata: EventMetadata::empty(),
     };
     workflow.add_event(WorkflowEvent::TextSelection(text_selection));
