@@ -9,6 +9,7 @@ members = [
     "bindings/python",
     "bindings/nodejs"
 ]
+exclude = [ "social-scrapper/src-tauri" ]
 
 # Shared metadata for workspace members
 [workspace.package]
