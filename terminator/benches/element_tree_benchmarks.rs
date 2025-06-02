@@ -10,7 +10,7 @@ struct BenchmarkData {
 
 impl BenchmarkData {
     async fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let desktop = Desktop::new(false, false).await?;
+        let desktop = Desktop::new(false, false)?;
         let root_element = desktop.root();
         
         // Collect some sample elements for benchmarking

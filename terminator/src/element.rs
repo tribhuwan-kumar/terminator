@@ -1,10 +1,12 @@
 use crate::errors::AutomationError;
 use crate::selector::Selector;
+use crate::ScreenshotResult;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use serde::ser::SerializeStruct;
 use tracing::{instrument, warn};
+use std::fmt;
 
 use super::{ClickResult, Locator};
 
@@ -65,20 +67,21 @@ pub struct UIElement {
 /// any UI automation actions. To interact with UI elements, you need a live UIElement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableUIElement {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub id: Option<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub role: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bounds: Option<(f64, f64, f64, f64)>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub value: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub application: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
 }
 
@@ -138,171 +141,94 @@ impl SerializableUIElement {
     }
 }
 
-/// Serialize implementation for UIElement
-/// 
-/// This implementation serializes the accessible properties of a UI element to JSON.
-/// The following fields are included in the serialized output:
-/// - `id`: Element identifier (if available)
-/// - `role`: Element role (e.g., "button", "textfield")
-/// - `name`: Element name/label (if available)
-/// - `bounds`: Element position and size as (x, y, width, height)
-/// - `value`: Element value (if available)
-/// - `description`: Element description (if available)
-/// - `application`: Name of the containing application
-/// - `window_title`: Title of the containing window
-/// 
-/// Note: This serializes the element's current state and properties, but does not
-/// serialize the underlying platform-specific implementation or maintain any
-/// interactive capabilities.
-impl Serialize for UIElement {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("UIElement", 8)?;
-        state.serialize_field("id", &self.id())?;
-        state.serialize_field("role", &self.role())?;
-        state.serialize_field("name", &self.name())?;
-        state.serialize_field("bounds", &self.bounds().ok())?;
-        
-        let attrs = self.attributes();
-        state.serialize_field("value", &attrs.value)?;
-        state.serialize_field("description", &attrs.description)?;
-        state.serialize_field("application", &self.application_name())?;
-        state.serialize_field("window_title", &self.window_title())?;
-        
-        state.end()
+/// Helper functions for clean serialization
+fn is_empty_string(opt: &Option<String>) -> bool {
+    match opt {
+        Some(s) => s.is_empty(),
+        None => true,
     }
 }
 
-/// Deserialize implementation for UIElement
-/// 
-/// This implementation attempts to find the actual UI element in the current UI tree
-/// using the deserialized data (ID, role, name, bounds). If the element cannot be found,
-/// deserialization fails with an error.
-/// 
-/// This ensures all UIElement instances are always "live" and can perform UI operations.
-/// There are no more "mock" or "dead" elements - if deserialization succeeds, the element
-/// exists and can be interacted with.
-/// 
-/// Search strategy:
-/// 1. Try to find by ID if available
-/// 2. Try to find by role + name combination
-/// 3. Verify bounds match (with 10px tolerance) if available
-/// 
-/// Note: This approach requires the UI element to actually exist in the current UI tree
-/// at the time of deserialization. If the UI has changed since serialization, 
-/// deserialization will fail.
-impl<'de> Deserialize<'de> for UIElement {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde::de::Error;
-        
-        // First deserialize into our SerializableUIElement
-        let serializable = SerializableUIElement::deserialize(deserializer)?;
-        
-        // Try to find the actual live element
-        find_live_element(&serializable)
-            .ok_or_else(|| Error::custom(format!(
-                "Could not find UI element with role '{}' and name '{:?}' in current UI tree", 
-                serializable.role, 
-                serializable.name
-            )))
+fn is_false_bool(opt: &Option<bool>) -> bool {
+    match opt {
+        Some(false) => true,
+        None => true,
+        _ => false,
     }
 }
 
-/// Attempts to find a live UI element matching the serializable data
-fn find_live_element(serializable: &SerializableUIElement) -> Option<UIElement> {
-    // Try to create a Desktop instance and search the UI tree
-    // If any step fails (runtime creation, Desktop creation, or element search), return None
-    std::panic::catch_unwind(|| {
-        // Try to use current runtime first, fall back to creating new one
-        let result = if tokio::runtime::Handle::try_current().is_ok() {
-            // We're already in a tokio runtime, use spawn_blocking
-            let serializable_clone = serializable.clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Runtime::new().ok()?;
-                let desktop = rt.block_on(async {
-                    crate::Desktop::new(false, false).await.ok()
-                })?;
-                
-                rt.block_on(async {
-                    find_element_in_tree(&desktop, &serializable_clone).await
-                })
-            }).join().ok()?
-        } else {
-            // No current runtime, create one
-            let rt = tokio::runtime::Runtime::new().ok()?;
-            let desktop = rt.block_on(async {
-                crate::Desktop::new(false, false).await.ok()
-            })?;
-            
-            rt.block_on(async {
-                find_element_in_tree(&desktop, serializable).await
-            })
-        };
-        
-        result
-    }).unwrap_or(None)
-}
-
-/// Helper function to search for element in the UI tree
-async fn find_element_in_tree(desktop: &crate::Desktop, serializable: &SerializableUIElement) -> Option<crate::UIElement> {
-    // Try to find by ID first
-    if let Some(ref id) = serializable.id {
-        let id_selector = format!("#{}", id);
-        if let Ok(element) = desktop.locator(id_selector.as_str()).first(Some(std::time::Duration::from_secs(1))).await {
-            return Some(element);
-        }
-    }
-    
-    // Try to find by role and name
-    let mut selector = format!("[role='{}']", serializable.role);
-    if let Some(ref name) = serializable.name {
-        selector = format!("{}[name='{}']", selector, name);
-    }
-    
-    if let Ok(element) = desktop.locator(selector.as_str()).first(Some(std::time::Duration::from_secs(1))).await {
-        // Verify bounds match (with tolerance) if available
-        if let Some((target_x, target_y, target_w, target_h)) = serializable.bounds {
-            if let Ok((fx, fy, fw, fh)) = element.bounds() {
-                let tolerance = 10.0; // 10 pixel tolerance
-                
-                if (fx - target_x).abs() <= tolerance && 
-                   (fy - target_y).abs() <= tolerance &&
-                   (fw - target_w).abs() <= tolerance && 
-                   (fh - target_h).abs() <= tolerance {
-                    return Some(element);
-                }
-            }
-        } else {
-            // If no bounds to check, return the element
-            return Some(element);
-        }
-    }
-    
-    None
+fn is_empty_properties(props: &HashMap<String, Option<serde_json::Value>>) -> bool {
+    props.is_empty() || props.values().all(|v| v.is_none())
 }
 
 /// Attributes associated with a UI element
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct UIElementAttributes {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub role: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "is_empty_string")]
     pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "is_empty_string")]
     pub label: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "is_empty_string")]
     pub value: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "is_empty_string")]
     pub description: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "is_empty_properties")]
     pub properties: HashMap<String, Option<serde_json::Value>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "is_false_bool")]
     pub is_keyboard_focusable: Option<bool>,
+}
+
+impl fmt::Debug for UIElementAttributes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug_struct = f.debug_struct("UIElementAttributes");
+        
+        // Only show non-empty role
+        if !self.role.is_empty() {
+            debug_struct.field("role", &self.role);
+        }
+        
+        // Only show non-empty name
+        if let Some(ref name) = self.name {
+            if !name.is_empty() {
+                debug_struct.field("name", name);
+            }
+        }
+        
+        // Only show non-empty label
+        if let Some(ref label) = self.label {
+            if !label.is_empty() {
+                debug_struct.field("label", label);
+            }
+        }
+        
+        // Only show non-empty value
+        if let Some(ref value) = self.value {
+            if !value.is_empty() {
+                debug_struct.field("value", value);
+            }
+        }
+        
+        // Only show non-empty description
+        if let Some(ref description) = self.description {
+            if !description.is_empty() {
+                debug_struct.field("description", description);
+            }
+        }
+        
+        // Only show non-empty properties
+        if !self.properties.is_empty() && self.properties.values().any(|v| v.is_some()) {
+            debug_struct.field("properties", &self.properties);
+        }
+        
+        // Only show keyboard focusable if true
+        if let Some(true) = self.is_keyboard_focusable {
+            debug_struct.field("is_keyboard_focusable", &true);
+        }
+        
+        debug_struct.finish()
+    }
 }
 
 /// Interface for platform-specific element implementations
@@ -360,6 +286,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
     // New method to get the process ID of the element
     fn process_id(&self) -> Result<u32, AutomationError>;
+
+    // New method to capture a screenshot of the element
+    fn capture(&self) -> Result<ScreenshotResult, AutomationError>;
 }
 
 impl UIElement {
@@ -537,6 +466,11 @@ impl UIElement {
     /// * `duration` - Optional duration for the highlight.
     pub fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
         self.inner.highlight(color, duration)
+    }
+
+    /// Capture a screenshot of the element
+    pub fn capture(&self) -> Result<ScreenshotResult, AutomationError> {
+        self.inner.capture()
     }
 
     /// Convenience methods to reduce verbosity with optional properties
@@ -747,4 +681,167 @@ fn test_uielement_round_trip() {
     let error_msg = result.unwrap_err().to_string();
     assert!(error_msg.contains("TextField") || error_msg.contains("Input Field"), 
            "Error should mention the element role or name");
+}
+
+/// Serialize implementation for UIElement
+/// 
+/// This implementation serializes the accessible properties of a UI element to JSON.
+/// The following fields are included in the serialized output:
+/// - `id`: Element identifier (if available)
+/// - `role`: Element role (e.g., "button", "textfield")
+/// - `name`: Element name/label (if available)
+/// - `bounds`: Element position and size as (x, y, width, height)
+/// - `value`: Element value (if available)
+/// - `description`: Element description (if available)
+/// - `application`: Name of the containing application
+/// - `window_title`: Title of the containing window
+/// 
+/// Note: This serializes the element's current state and properties, but does not
+/// serialize the underlying platform-specific implementation or maintain any
+/// interactive capabilities.
+impl Serialize for UIElement {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("UIElement", 8)?;
+        
+        // Only serialize non-empty fields
+        if let Some(id) = self.id() {
+            if !id.is_empty() {
+                state.serialize_field("id", &id)?;
+            }
+        }
+        
+        let role = self.role();
+        if !role.is_empty() {
+            state.serialize_field("role", &role)?;
+        }
+        
+        if let Some(name) = self.name() {
+            if !name.is_empty() {
+                state.serialize_field("name", &name)?;
+            }
+        }
+        
+        if let Ok(bounds) = self.bounds() {
+            state.serialize_field("bounds", &bounds)?;
+        }
+        
+        let attrs = self.attributes();
+        if let Some(ref value) = attrs.value {
+            if !value.is_empty() {
+                state.serialize_field("value", value)?;
+            }
+        }
+        
+        if let Some(ref description) = attrs.description {
+            if !description.is_empty() {
+                state.serialize_field("description", description)?;
+            }
+        }
+        
+        let app_name = self.application_name();
+        if !app_name.is_empty() {
+            state.serialize_field("application", &app_name)?;
+        }
+        
+        let window_title = self.window_title();
+        if !window_title.is_empty() {
+            state.serialize_field("window_title", &window_title)?;
+        }
+        
+        state.end()
+    }
+}
+
+/// Deserialize implementation for UIElement
+/// 
+/// This implementation attempts to find the actual UI element in the current UI tree
+/// using the deserialized data (ID, role, name, bounds). If the element cannot be found,
+/// deserialization fails with an error.
+/// 
+/// This ensures all UIElement instances are always "live" and can perform UI operations.
+/// There are no more "mock" or "dead" elements - if deserialization succeeds, the element
+/// exists and can be interacted with.
+/// 
+/// Search strategy:
+/// 1. Try to find by ID if available
+/// 2. Try to find by role + name combination
+/// 3. Verify bounds match (with 10px tolerance) if available
+/// 
+/// Note: This approach requires the UI element to actually exist in the current UI tree
+/// at the time of deserialization. If the UI has changed since serialization, 
+/// deserialization will fail.
+impl<'de> Deserialize<'de> for UIElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error;
+        
+        // First deserialize into our SerializableUIElement
+        let serializable = SerializableUIElement::deserialize(deserializer)?;
+        
+        // Try to find the actual live element
+        find_live_element(&serializable)
+            .ok_or_else(|| Error::custom(format!(
+                "Could not find UI element with role '{}' and name '{:?}' in current UI tree", 
+                serializable.role, 
+                serializable.name
+            )))
+    }
+}
+
+/// Attempts to find a live UI element matching the serializable data
+fn find_live_element(serializable: &SerializableUIElement) -> Option<UIElement> {
+    // Try to create a Desktop instance and search the UI tree
+    // If any step fails (Desktop creation or element search), return None
+    std::panic::catch_unwind(|| {
+        // Desktop::new is now synchronous, so we can call it directly
+        let desktop = crate::Desktop::new(false, false).ok()?;
+        // find_element_in_tree is still async, so we need a runtime only for that
+        let rt = tokio::runtime::Runtime::new().ok()?;
+        rt.block_on(async {
+            find_element_in_tree(&desktop, serializable).await
+        })
+    }).unwrap_or(None)
+}
+
+/// Helper function to search for element in the UI tree
+async fn find_element_in_tree(desktop: &crate::Desktop, serializable: &SerializableUIElement) -> Option<crate::UIElement> {
+    // Try to find by ID first
+    if let Some(ref id) = serializable.id {
+        let id_selector = format!("#{}", id);
+        if let Ok(element) = desktop.locator(id_selector.as_str()).first(Some(std::time::Duration::from_secs(1))).await {
+            return Some(element);
+        }
+    }
+    
+    // Try to find by role and name
+    let mut selector = format!("[role='{}']", serializable.role);
+    if let Some(ref name) = serializable.name {
+        selector = format!("{}[name='{}']", selector, name);
+    }
+    
+    if let Ok(element) = desktop.locator(selector.as_str()).first(Some(std::time::Duration::from_secs(1))).await {
+        // Verify bounds match (with tolerance) if available
+        if let Some((target_x, target_y, target_w, target_h)) = serializable.bounds {
+            if let Ok((fx, fy, fw, fh)) = element.bounds() {
+                let tolerance = 10.0; // 10 pixel tolerance
+                
+                if (fx - target_x).abs() <= tolerance && 
+                   (fy - target_y).abs() <= tolerance &&
+                   (fw - target_w).abs() <= tolerance && 
+                   (fh - target_h).abs() <= tolerance {
+                    return Some(element);
+                }
+            }
+        } else {
+            // If no bounds to check, return the element
+            return Some(element);
+        }
+    }
+    
+    None
 }

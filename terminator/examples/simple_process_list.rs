@@ -11,7 +11,7 @@ async fn main() -> Result<(), AutomationError> {
     println!("Starting process and window enumeration...");
     
     // Create desktop automation instance
-    let desktop = Desktop::new(false, false).await?;
+    let desktop = Desktop::new(false, false)?;
     
     // Get all applications
     let applications = desktop.applications()?;

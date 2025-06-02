@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Initialize the desktop automation
     // Parameters: use_background_apps: bool, activate_app: bool
-    let desktop = Desktop::new(false, false).await?;
+    let desktop = Desktop::new(false, false)?;
     
     // Get the root element (desktop)
     let root = desktop.root();

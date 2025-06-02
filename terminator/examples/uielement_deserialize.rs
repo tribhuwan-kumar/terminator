@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=================================");
     
     // Initialize the desktop automation
-    let desktop = Desktop::new(false, false).await?;
+    let desktop = Desktop::new(false, false)?;
     
     // Get the root element and serialize it
     let root_element = desktop.root();

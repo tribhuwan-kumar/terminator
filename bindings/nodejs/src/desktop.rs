@@ -35,9 +35,7 @@ impl Desktop {
                 .with_env_filter(log_level)
                 .try_init();
         });
-        let rt = tokio::runtime::Runtime::new()
-            .expect("Failed to create Tokio runtime");
-        let desktop = rt.block_on(TerminatorDesktop::new(use_background_apps, activate_app))
+        let desktop = TerminatorDesktop::new(use_background_apps, activate_app)
             .expect("Failed to create Desktop instance");
         Desktop { inner: desktop }
     }
@@ -118,6 +116,15 @@ impl Desktop {
                 stdout: r.stdout,
                 stderr: r.stderr,
             })
+            .map_err(map_error)
+    }
+
+    /// (async) Get the name of the currently active monitor.
+    /// 
+    /// @returns {Promise<string>} The name of the active monitor.
+    #[napi]
+    pub async fn get_active_monitor_name(&self) -> napi::Result<String> {
+        self.inner.get_active_monitor_name().await
             .map_err(map_error)
     }
 

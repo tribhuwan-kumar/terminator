@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize desktop automation
     let start = Instant::now();
-    let desktop = Desktop::new(false, false).await?;
+    let desktop = Desktop::new(false, false)?;
     println!("Desktop initialization: {:?}", start.elapsed());
 
     // Get root element

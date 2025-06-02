@@ -126,6 +126,13 @@ class Desktop:
         Returns:
             CommandOutput: The command output.
         """
+    async def get_active_monitor_name(self) -> str:
+        r"""
+        (async) Get the name of the currently active monitor.
+        
+        Returns:
+            str: The name of the active monitor.
+        """
     async def capture_monitor_by_name(self, name:builtins.str) -> ScreenshotResult:
         r"""
         (async) Capture a screenshot of a specific monitor.
@@ -646,6 +653,16 @@ class Locator:
         Returns:
             None
         """
+    async def capture(self, timeout_ms:typing.Optional[builtins.int]=None) -> ScreenshotResult:
+        r"""
+        (async) Capture a screenshot of the first matching element.
+        
+        Args:
+            timeout_ms (Optional[int]): Timeout in milliseconds.
+        
+        Returns:
+            ScreenshotResult: The screenshot result containing the image data.
+        """
 
 class ScreenshotResult:
     r"""
@@ -925,6 +942,13 @@ class UIElement:
         
         Returns:
             None
+        """
+    def capture(self) -> ScreenshotResult:
+        r"""
+        Capture a screenshot of this element.
+        
+        Returns:
+            ScreenshotResult: The screenshot data containing image data and dimensions.
         """
 
 class UIElementAttributes:

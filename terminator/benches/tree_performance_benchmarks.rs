@@ -10,7 +10,7 @@ struct TreeBenchmarkData {
 
 impl TreeBenchmarkData {
     async fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let desktop = Desktop::new(false, false).await?;
+        let desktop = Desktop::new(false, false)?;
         let root_element = desktop.root();
         
         Ok(Self {

@@ -12,7 +12,7 @@ async fn main() -> Result<(), AutomationError> {
     println!("=================================\n");
     
     // Create desktop automation instance
-    let desktop = Desktop::new(false, false).await?;
+    let desktop = Desktop::new(false, false)?;
     
     // Get all applications and organize by PID
     let applications = desktop.applications()?;

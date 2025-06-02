@@ -110,6 +110,12 @@ export declare class Desktop {
    */
   runCommand(windowsCommand?: string | undefined | null, unixCommand?: string | undefined | null): Promise<CommandOutput>
   /**
+   * (async) Get the name of the currently active monitor.
+   *
+   * @returns {Promise<string>} The name of the active monitor.
+   */
+  getActiveMonitorName(): Promise<string>
+  /**
    * (async) Capture a screenshot of a specific monitor.
    *
    * @param {string} name - The name of the monitor to capture.
@@ -374,6 +380,12 @@ export declare class Element {
    * @returns {void}
    */
   highlight(color?: number | undefined | null, durationMs?: number | undefined | null): void
+  /**
+   * Capture a screenshot of this element.
+   *
+   * @returns {ScreenshotResult} The screenshot data containing image data and dimensions.
+   */
+  capture(): ScreenshotResult
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
@@ -663,4 +675,11 @@ export declare class Locator {
    * @returns {Promise<void>}
    */
   highlight(color?: number | undefined | null, durationMs?: number | undefined | null, timeoutMs?: number | undefined | null): Promise<void>
+  /**
+   * (async) Captures a screenshot of the first matching element.
+   *
+   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @returns {Promise<ScreenshotResult>} The screenshot data containing image data and dimensions.
+   */
+  capture(timeoutMs?: number | undefined | null): Promise<ScreenshotResult>
 }

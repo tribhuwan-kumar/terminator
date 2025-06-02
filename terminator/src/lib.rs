@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::fmt;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
@@ -40,11 +41,76 @@ pub struct CommandOutput {
 }
 
 /// Represents a node in the UI tree, containing its attributes and children.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct UINode {
     pub attributes: UIElementAttributes,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UINode>,
+}
+
+impl fmt::Debug for UINode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.debug_with_depth(f, 0, 100)
+    }
+}
+
+impl UINode {
+    /// Helper method for debug formatting with depth control
+    fn debug_with_depth(&self, f: &mut fmt::Formatter<'_>, current_depth: usize, max_depth: usize) -> fmt::Result {
+        let mut debug_struct = f.debug_struct("UINode");
+        debug_struct.field("attributes", &self.attributes);
+        
+        if !self.children.is_empty() {
+            if current_depth < max_depth {
+                debug_struct.field("children", &DebugChildrenWithDepth {
+                    children: &self.children,
+                    current_depth,
+                    max_depth,
+                });
+            } else {
+                debug_struct.field("children", &format!("[{} children (depth limit reached)]", self.children.len()));
+            }
+        }
+        
+        debug_struct.finish()
+    }
+}
+
+/// Helper struct for debug formatting children with depth control
+struct DebugChildrenWithDepth<'a> {
+    children: &'a Vec<UINode>,
+    current_depth: usize,
+    max_depth: usize,
+}
+
+impl<'a> fmt::Debug for DebugChildrenWithDepth<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        
+        // Show ALL children, no limit
+        for child in self.children.iter() {
+            list.entry(&DebugNodeWithDepth {
+                node: child,
+                current_depth: self.current_depth + 1,
+                max_depth: self.max_depth,
+            });
+        }
+        
+        list.finish()
+    }
+}
+
+/// Helper struct for debug formatting a single node with depth control
+struct DebugNodeWithDepth<'a> {
+    node: &'a UINode,
+    current_depth: usize,
+    max_depth: usize,
+}
+
+impl<'a> fmt::Debug for DebugNodeWithDepth<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.node.debug_with_depth(f, self.current_depth, self.max_depth)
+    }
 }
 
 /// Holds the screenshot data
@@ -65,7 +131,7 @@ pub struct Desktop {
 
 impl Desktop {
     #[instrument(skip(use_background_apps, activate_app))]
-    pub async fn new(
+    pub fn new(
         use_background_apps: bool,
         activate_app: bool,
     ) -> Result<Self, AutomationError> {
@@ -275,6 +341,32 @@ impl Desktop {
         );
         
         Ok(screenshot)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
+        // Get all windows
+        let windows = xcap::Window::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get windows: {}", e))
+        })?;
+
+        // Find the focused window
+        let focused_window = windows.iter()
+            .find(|w| w.is_focused().unwrap_or(false))
+            .ok_or_else(|| {
+                AutomationError::ElementNotFound("No focused window found".to_string())
+            })?;
+
+        // Get the monitor name for the focused window
+        let monitor = focused_window.current_monitor().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get current monitor: {}", e))
+        })?;
+
+        let monitor_name = monitor.name().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+        })?;
+
+        Ok(monitor_name)
     }
 
     #[instrument(skip(self, name))]

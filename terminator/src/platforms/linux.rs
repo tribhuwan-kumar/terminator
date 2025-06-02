@@ -151,6 +151,12 @@ impl AccessibilityEngine for LinuxEngine {
             format!("get_window_tree_by_title for '{}' not yet implemented for Linux", title)
         ))
     }
+
+    async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
 }
 
 // Placeholder LinuxUIElement that implements UIElementImpl
@@ -315,6 +321,12 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn highlight(&self, color: Option<u32>, duration: Option<std::time::Duration>) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
+    fn capture(&self) -> Result<ScreenshotResult, AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))

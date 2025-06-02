@@ -278,8 +278,8 @@ impl WindowsRecorder {
                         let mut ui_element = None;
                         if capture_ui_elements {
                             // Use a synchronous approach instead of async to avoid runtime issues
-                            // ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
-                            ui_element = None
+                            ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
+                            // ui_element = None
                         }
 
                         let keyboard_event = KeyboardEvent {
@@ -542,8 +542,8 @@ impl WindowsRecorder {
 
                         // Capture UI element if enabled
                         let ui_element = if capture_ui_elements {
-                            // Self::get_focused_ui_element(&automation)
-                            None
+                            Self::get_focused_ui_element(&automation)
+                            // None
                         } else {
                             None
                         };
