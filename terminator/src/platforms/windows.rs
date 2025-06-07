@@ -342,6 +342,9 @@ impl AccessibilityEngine for WindowsEngine {
 
     fn get_applications(&self) -> Result<Vec<UIElement>, AutomationError> {
         let root = self.automation.0.get_root_element().unwrap();
+        
+        // OPTIMIZATION: Use Children scope instead of Subtree to avoid deep tree traversal
+        // Most applications are direct children of the desktop
         let condition = self
             .automation
             .0
@@ -351,10 +354,27 @@ impl AccessibilityEngine for WindowsEngine {
                 None,
             )
             .unwrap();
+        
         let elements = root
-            .find_all(TreeScope::Subtree, &condition)
+            .find_all(TreeScope::Children, &condition)
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
-        let arc_elements: Vec<UIElement> = elements
+        
+        // OPTIMIZATION: Filter out system/hidden windows early to reduce processing
+        let filtered_elements: Vec<uiautomation::UIElement> = elements
+            .into_iter()
+            .filter(|ele| {
+                // Only include visible windows with actual names
+                if let (Ok(name), Ok(is_offscreen)) = (ele.get_name(), ele.is_offscreen()) {
+                    !name.is_empty() && !is_offscreen
+                } else {
+                    false
+                }
+            })
+            .collect();
+        
+        debug!("Found {} visible application windows", filtered_elements.len());
+        
+        let arc_elements: Vec<UIElement> = filtered_elements
             .into_iter()
             .map(|ele| {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
@@ -375,9 +395,45 @@ impl AccessibilityEngine for WindowsEngine {
             .unwrap_or(name);
         debug!("using search name: {}", search_name);
 
-        // first find element by matcher
+        // OPTIMIZATION: Try PID lookup first as it's much faster than UI tree search
+        if let Some(pid) = get_pid_by_name(search_name) {
+            debug!("Found process PID {} for name {}, trying direct lookup", pid, search_name);
+            let condition = self
+                .automation
+                .0
+                .create_property_condition(
+                    UIProperty::ProcessId,
+                    Variant::from(pid as i32),
+                    None,
+                )
+                .unwrap();
+            let root_ele = self.automation.0.get_root_element().unwrap();
+            
+            // OPTIMIZATION: Use Children scope first, then fallback to Subtree only if needed
+            if let Ok(ele) = root_ele.find_first(TreeScope::Children, &condition) {
+                debug!("Found application via Children scope for PID {}", pid);
+                let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
+                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: arc_ele,
+                })));
+            }
+            
+            // Fallback to Subtree only if Children search failed
+            if let Ok(ele) = root_ele.find_first(TreeScope::Subtree, &condition) {
+                debug!("Found application via Subtree scope for PID {}", pid);
+                let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
+                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: arc_ele,
+                })));
+            }
+        }
+
+        // OPTIMIZATION: Only do expensive UI tree search as last resort
+        debug!("PID lookup failed, falling back to UI tree search for: {}", search_name);
         let root_ele = self.automation.0.get_root_element().unwrap();
         let search_name_norm = normalize(search_name);
+        
+        // OPTIMIZATION: Reduce timeout and depth for faster response
         let matcher = self
             .automation
             .0
@@ -388,41 +444,18 @@ impl AccessibilityEngine for WindowsEngine {
                 Ok(name.contains(&search_name_norm))
             }))
             .from_ref(&root_ele)
-            .depth(7)
-            .timeout(5000);
-        let ele_res = matcher
+            .depth(3) // Reduced from 7 to 3 for faster search
+            .timeout(2000); // Reduced from 5000 to 2000ms
+            
+        let ele = matcher
             .find_first()
-            .map_err(|e| AutomationError::ElementNotFound(e.to_string()));
+            .map_err(|e| {
+                AutomationError::PlatformError(format!(
+                    "no running application found from name: {:?} (searched as: {:?}). Error: {}",
+                    name, search_name, e
+                ))
+            })?;
 
-        // fallback to find by pid
-        let ele = match ele_res {
-            Ok(ele) => ele,
-            Err(_) => {
-                let pid = match get_pid_by_name(search_name) {
-                    // Use stripped name
-                    Some(pid) => pid,
-                    None => {
-                        return Err(AutomationError::PlatformError(format!(
-                            "no running application found from name: {:?} (searched as: {:?})",
-                            name,
-                            search_name // Include original name in error
-                        )));
-                    }
-                };
-                let condition = self
-                    .automation
-                    .0
-                    .create_property_condition(
-                        UIProperty::ProcessId,
-                        Variant::from(pid as i32),
-                        None,
-                    )
-                    .unwrap();
-                root_ele
-                    .find_first(TreeScope::Subtree, &condition)
-                    .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?
-            }
-        };
         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
         return Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_ele,
@@ -1760,32 +1793,35 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn attributes(&self) -> UIElementAttributes {
-        // On-demand property loading: Only load essential properties immediately
-        // This reduces CPU usage and improves speed by avoiding expensive property lookups
+        // OPTIMIZATION: Use cached properties first to avoid expensive UI automation calls
+        // This significantly reduces the number of cross-process calls to the UI automation system
         
         let mut properties = HashMap::new();
-        
-        // Essential properties only - load role and name immediately as they're most commonly needed
-        let role = self.element.0.get_control_type()
-            .map(|ct| ct.to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
         
         // Helper function to filter empty strings
         fn filter_empty_string(s: Option<String>) -> Option<String> {
             s.filter(|s| !s.is_empty())
         }
         
-        // Load name immediately as it's frequently accessed
+        // OPTIMIZATION: Try cached properties first, fallback to live properties only if needed
+        let role = self.element.0.get_cached_control_type()
+            .or_else(|_| self.element.0.get_control_type())
+            .map(|ct| ct.to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+        
+        // OPTIMIZATION: Use cached name first
         let name = filter_empty_string(
-            self.element.0.get_name().ok()
+            self.element.0.get_cached_name()
+                .or_else(|_| self.element.0.get_name())
+                .ok()
         );
         
-        // Defer expensive property loading - only load when really needed
-        // For benchmark purposes, we'll skip most properties to measure impact
-        
-        // Only load automation ID if name is empty (fallback identifier)
+        // OPTIMIZATION: Only load automation ID if name is empty (fallback identifier)
+        // This reduces unnecessary property lookups for most elements
         let automation_id_for_properties = if name.is_none() {
-            self.element.0.get_automation_id().ok()
+            self.element.0.get_cached_automation_id()
+                .or_else(|_| self.element.0.get_automation_id())
+                .ok()
                 .and_then(|aid| if !aid.is_empty() { 
                     Some(serde_json::Value::String(aid.clone()))
                 } else { 
@@ -1799,22 +1835,23 @@ impl UIElementImpl for WindowsUIElement {
             properties.insert("AutomationId".to_string(), Some(aid_value));
         }
         
-        // Defer all other expensive properties:
+        // OPTIMIZATION: Defer all other expensive properties:
         // - Skip label lookup (get_labeled_by + get_name chain)
         // - Skip value lookup (UIProperty::ValueValue)  
         // - Skip description lookup (get_help_text)
         // - Skip keyboard focusable lookup (UIProperty::IsKeyboardFocusable)
         // - Skip additional property enumeration
+        // These can be loaded on-demand when specifically requested
         
-        // Return minimal attribute set for performance
+        // Return minimal attribute set for maximum performance
         UIElementAttributes {
             role,
             name,
-            label: None,           // Deferred
-            value: None,           // Deferred  
-            description: None,     // Deferred
+            label: None,           // Deferred - load on demand
+            value: None,           // Deferred - load on demand
+            description: None,     // Deferred - load on demand
             properties,            // Minimal properties only
-            is_keyboard_focusable: None, // Deferred
+            is_keyboard_focusable: None, // Deferred - load on demand
         }
     }
 
@@ -3189,6 +3226,41 @@ fn map_generic_role_to_win_roles(role: &str) -> ControlType {
 }
 
 fn get_pid_by_name(name: &str) -> Option<i32> {
+    // OPTIMIZATION: Use a static cache to avoid repeated process enumeration
+    use std::sync::Mutex;
+    use std::collections::HashMap;
+    use std::time::{Instant, Duration};
+    
+    struct ProcessCache {
+        processes: HashMap<String, i32>,
+        last_updated: Instant,
+    }
+    
+    static PROCESS_CACHE: Mutex<Option<ProcessCache>> = Mutex::new(None);
+    const CACHE_DURATION: Duration = Duration::from_secs(2); // Cache for 2 seconds
+    
+    let search_name_lower = name.to_lowercase();
+    
+    // Check cache first
+    {
+        let mut cache_guard = PROCESS_CACHE.lock().unwrap();
+        if let Some(ref cache) = *cache_guard {
+            if cache.last_updated.elapsed() < CACHE_DURATION {
+                // Cache is still valid, check if we have the process
+                for (cached_name, &pid) in &cache.processes {
+                    if cached_name.contains(&search_name_lower) {
+                        debug!("Found PID {} for '{}' in cache", pid, name);
+                        return Some(pid);
+                    }
+                }
+                // If we reach here, process not found in valid cache
+                return None;
+            }
+        }
+    }
+    
+    // Cache is stale or doesn't exist, refresh it
+    debug!("Refreshing process cache for PID lookup");
     unsafe {
         // Create a snapshot of all processes
         let snapshot = match CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
@@ -3213,9 +3285,10 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
             return None;
         }
         
-        let search_name_lower = name.to_lowercase();
+        let mut new_processes = HashMap::new();
+        let mut found_pid: Option<i32> = None;
         
-        // Iterate through processes to find one with matching name
+        // Iterate through processes to build cache and find our target
         loop {
             // Convert the process name from wide string to String
             let name_slice = &process_entry.szExeFile;
@@ -3228,12 +3301,15 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
                 .or_else(|| process_name.strip_suffix(".EXE"))
                 .unwrap_or(&process_name);
             
-            // Check if this process name contains our search term
-            if clean_name.to_lowercase().contains(&search_name_lower) {
-                // For processes with windows, we should check if they have a main window
-                // This is a simple heuristic - in a more complete implementation,
-                // you might want to use EnumWindows to check for actual windows
-                return Some(process_entry.th32ProcessID as i32);
+            let clean_name_lower = clean_name.to_lowercase();
+            let pid = process_entry.th32ProcessID as i32;
+            
+            // Add to cache
+            new_processes.insert(clean_name_lower.clone(), pid);
+            
+            // Check if this is our target process
+            if found_pid.is_none() && clean_name_lower.contains(&search_name_lower) {
+                found_pid = Some(pid);
             }
             
             // Get the next process
@@ -3242,7 +3318,20 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
             }
         }
         
-        None
+        // Update cache
+        {
+            let mut cache_guard = PROCESS_CACHE.lock().unwrap();
+            *cache_guard = Some(ProcessCache {
+                processes: new_processes,
+                last_updated: Instant::now(),
+            });
+        }
+        
+        if let Some(pid) = found_pid {
+            debug!("Found PID {} for '{}' via process enumeration", pid, name);
+        }
+        
+        found_pid
     }
 }
 

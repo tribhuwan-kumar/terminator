@@ -16,7 +16,10 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
 
     // Now get the tree for the found/active Firefox window.
     // We'll use a common part of Firefox window titles. This might need to be made more robust.
-    let window_tree = desktop.get_window_tree_by_title(firefox_window_title_contains)?;
+    // Get window tree for Firefox by finding it first
+    let firefox_app = desktop.application("firefox").or_else(|_| desktop.application("Firefox"))?;
+    let pid = firefox_app.process_id()?;
+    let window_tree = desktop.get_window_tree(pid, Some(firefox_window_title_contains), None)?;
     
     // Write the JSON to a file
     let json_output = serde_json::to_string_pretty(&window_tree).unwrap();
