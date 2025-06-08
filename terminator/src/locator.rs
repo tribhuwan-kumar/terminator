@@ -123,4 +123,7 @@ impl Locator {
         }
     }
 
+    pub fn selector_string(&self) -> String {
+        format!("{:?}", self.selector)
+    }
 }

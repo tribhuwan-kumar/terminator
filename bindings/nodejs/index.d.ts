@@ -416,6 +416,7 @@ export declare class Element {
    * @returns {number} The process ID.
    */
   processId(): number
+  toString(): string
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
@@ -461,4 +462,5 @@ export declare class Locator {
    * @returns {Locator} A new locator with the chained selector.
    */
   locator(selector: string): Locator
+  toString(): string
 }

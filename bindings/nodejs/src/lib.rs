@@ -1,12 +1,12 @@
-mod desktop;
-mod element;
-mod locator;
-mod types;
-mod exceptions;
+pub mod desktop;
+pub mod element;
+pub mod locator;
+pub mod types;
+pub mod exceptions;
 
 // Main types first
 pub use desktop::Desktop;
-pub use element::Element;
+pub use element::{Element};
 pub use locator::Locator;
 pub use types::{
     Bounds,
@@ -18,6 +18,8 @@ pub use types::{
     UINode,
     TreeBuildConfig,
     PropertyLoadingMode,
+    ExploreResponse,
+    ExploredElementDetail,
 };
 
 // Error handling - see exceptions.rs for detailed architecture
