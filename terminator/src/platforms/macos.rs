@@ -6,6 +6,7 @@ use crate::{ClickResult, ScreenshotResult};
 
 use accessibility::AXUIElementAttributes;
 use accessibility::{AXAttribute, AXUIElement};
+use accessibility_sys::{error_string, AXError, AXValueType};
 use anyhow::Result;
 use core_foundation::array::{
     __CFArray, CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex,
@@ -151,22 +152,63 @@ impl MacOSEngine {
     }
 
     // Helper to convert ThreadSafeAXUIElement to our UIElement
+    #[instrument(skip(self, ax_element))]
     fn wrap_element(&self, ax_element: ThreadSafeAXUIElement) -> UIElement {
-        // Try to check element validity
-        let is_valid = match ax_element.0.role() {
-            Ok(_) => true,
-            Err(e) => {
-                if let accessibility::Error::Ax(code) = e {
-                    if code != -25204 {
-                        // kAXErrorNoValue
-                        debug!("Warning: Potentially invalid AXUIElement: {:?}", e);
+        // Try to check element validity by first checking if "AXRole" is present in attribute names
+        let mut is_valid = false;
+        // println!("[macOS][wrap_element] ax_element: {:?}", ax_element);
+        // println!("[macOS][wrap_element] ax_element.0: {:?}", ax_element.0);
+        match ax_element.0.attribute_names() {
+            Ok(attr_names) => {
+                // ItemRef<CFString> does not have as_str(), so compare using .to_string()
+                let has_role = attr_names.iter().any(|attr| attr.to_string() == "AXRole");
+                // println!("[macOS][wrap_element] attr_names: {:?}", attr_names);
+                if has_role {
+                    // Try to get the role if the attribute exists
+                    match ax_element.0.role() {
+                        Ok(_) => {
+                            is_valid = true;
+                        }
+                        Err(e) => {
+                            if let accessibility::Error::Ax(code) = e {
+                                if code != -25204 {
+                                    // kAXErrorNoValue
+                                    let err_str = unsafe { error_string(code) };
+                                    debug!(
+                                        "Warning: Potentially invalid AXUIElement: {:?} (error: {})",
+                                        e, err_str
+                                    );
+                                }
+                            } else {
+                                debug!("Warning: Potentially invalid AXUIElement: {:?}", e);
+                            }
+                        }
                     }
                 } else {
-                    debug!("Warning: Potentially invalid AXUIElement: {:?}", e);
+                    debug!(
+                        "AXUIElement does not have 'AXRole' attribute. Attributes: {:?}",
+                        attr_names
+                    );
+                    // If it doesn't have AXRole, we still consider it valid for wrapping,
+                    // but log for debugging.
+                    is_valid = true;
                 }
-                false
             }
-        };
+            Err(e) => {
+                let err_str = if let accessibility::Error::Ax(code) = e {
+                    unsafe { error_string(code) }
+                } else {
+                    "<not an AX error>"
+                };
+                debug!(
+                    "Failed to get attribute names for AXUIElement: {:?} (error: {}). Wrapping anyway.",
+                    e, err_str
+                );
+                // If we can't get attribute names, be conservative and allow wrapping,
+                // but log for debugging.
+                is_valid = true;
+            }
+        }
 
         if !is_valid {
             debug!("Warning: Wrapping possibly invalid AXUIElement");
@@ -703,19 +745,15 @@ impl UIElementImpl for MacOSUIElement {
         let _span = tracing::span!(tracing::Level::DEBUG, "attributes").entered();
         let start = std::time::Instant::now();
 
+        let role = self.element.0.role().map(|r| r.to_string()).unwrap_or_default();
         debug!(
-            "Getting attributes for element: {:?}",
-            self.element.0.role()
+            "Getting attributes for element: {:?}", role
         );
 
         let properties = HashMap::new();
 
         // Check if this is a window element first
-        let is_window = self
-            .element
-            .0
-            .role()
-            .map_or(false, |r| r.to_string() == "AXWindow");
+        let is_window = role == "AXWindow";
 
         debug!("Element is_window: {}", is_window);
 
@@ -921,9 +959,9 @@ impl UIElementImpl for MacOSUIElement {
         debug!("Attribute names for element: {:?}", attr_names_vec);
 
         for (index, name) in attr_names.iter().enumerate() {
-            if index % 10 == 0 {
-                debug!("Processing attribute {} of {}", index + 1, attr_names.len());
-            }
+            // if index % 10 == 0 {
+            debug!("Processing attribute {} of {}", index + 1, attr_names.len());
+            // }
             // Only attempt to fetch attribute if it's in attr_names (guaranteed by loop)
             let attr = AXAttribute::new(&name);
             match self.element.0.attribute(&attr) {
@@ -1991,6 +2029,13 @@ fn macos_role_to_generic_role(role: &str) -> Vec<String> {
     }
 }
 
+// List of application localized names to exclude.
+// These consistently fail to retrieve role and take an unusually long time to do so.
+const EXCLUDED_APPLICATION_NAMES: &[&str] = &[
+    "Raycast Web Content",
+    "superwhisper Web Content",
+];
+
 #[async_trait::async_trait]
 impl AccessibilityEngine for MacOSEngine {
     fn get_root_element(&self) -> UIElement {
@@ -2043,6 +2088,7 @@ impl AccessibilityEngine for MacOSEngine {
         let mut apps = Vec::new();
         unsafe {
             use objc::{class, msg_send, sel, sel_impl};
+            use std::time::Instant;
 
             let workspace_class = class!(NSWorkspace);
             let shared_workspace: *mut objc::runtime::Object =
@@ -2052,10 +2098,165 @@ impl AccessibilityEngine for MacOSEngine {
             let count: usize = msg_send![running_apps, count];
 
             for i in 0..count {
+                debug!("================================");
+                debug!("[macOS][get_applications] i: {}", i);
+                let iter_start = Instant::now();
+
                 let app: *mut objc::runtime::Object = msg_send![running_apps, objectAtIndex:i];
                 let pid: i32 = msg_send![app, processIdentifier];
+                let elapsed_so_far = iter_start.elapsed();
+                debug!(
+                    "[macOS][get_applications] i: {}, pid: {}, elapsed so far: {} ms",
+                    i,
+                    pid,
+                    elapsed_so_far.as_millis()
+                );
+
                 let ax_element = ThreadSafeAXUIElement::application(pid);
-                apps.push(self.wrap_element(ax_element));
+                // Log after creating AXUIElement
+                let elapsed_after_ax = iter_start.elapsed();
+                debug!(
+                    "[macOS][get_applications] i: {}, after AXUIElement::application, elapsed so far: {} ms",
+                    i,
+                    elapsed_after_ax.as_millis()
+                );
+
+                // Get the localized name of the application (for debugging/logging)
+                let localized_name: Option<String> = {
+                    let nsstring: *mut objc::runtime::Object = msg_send![app, localizedName];
+                    if !nsstring.is_null() {
+                        let cstr: *const std::os::raw::c_char = msg_send![nsstring, UTF8String];
+                        if !cstr.is_null() {
+                            let cstr = std::ffi::CStr::from_ptr(cstr);
+                            cstr.to_str().ok().map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                };
+
+                // Skip excluded applications by localized name
+                if let Some(ref name) = localized_name {
+                    if EXCLUDED_APPLICATION_NAMES.iter().any(|&excluded| excluded == name) {
+                        debug!(
+                            "[macOS][get_applications] Skipping excluded application: {:?}",
+                            name
+                        );
+                        continue;
+                    }
+                }
+
+                let elapsed_localized_name = iter_start.elapsed();
+                debug!(
+                    "[macOS][get_applications] i: {}, pid: {}, localized_name: {:?}, elapsed so far: {} ms",
+                    i, pid, localized_name, elapsed_localized_name.as_millis()
+                );
+
+                // Filter: Only include if .role() == "AXApplication"
+                // This is a reliable accessibility filter based on runtime introspection
+                match ax_element.0.role() {
+                    Ok(role_cfstring) => {
+                        let elapsed_after_role = iter_start.elapsed();
+                        debug!(
+                            "[macOS][get_applications] i: {}, after role() fetch, role: {}, elapsed so far: {} ms",
+                            i,
+                            role_cfstring.to_string(),
+                            elapsed_after_role.as_millis()
+                        );
+                        if role_cfstring.to_string() == "AXApplication" {
+                            let elapsed_before_push = iter_start.elapsed();
+                            debug!(
+                                "[macOS][get_applications] i: {}, pushing AXApplication, elapsed so far: {} ms",
+                                i,
+                                elapsed_before_push.as_millis()
+                            );
+
+                            apps.push(self.wrap_element(ax_element));
+
+                            let elapsed_after_push = iter_start.elapsed();
+                            debug!(
+                                "[macOS][get_applications] i: {}, after push, elapsed so far: {} ms",
+                                i,
+                                elapsed_after_push.as_millis()
+                            );
+                        } else {
+                            // did not match AXApplication
+                            let elapsed_non_match = iter_start.elapsed();
+                            debug!(
+                                "[macOS][get_applications] i: {}, did not match AXApplication, elapsed so far: {} ms",
+                                i,
+                                elapsed_non_match.as_millis()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        // failed to get role
+                        let elapsed_error = iter_start.elapsed();
+                        debug!(
+                            "⚠️ [macOS][get_applications] i: {}, failed to get role: {:?}, elapsed so far: {} ms",
+                            i,
+                            e,
+                            elapsed_error.as_millis()
+                        );
+
+                        // Get and print list of attr_names for debugging
+                        // match ax_element.0.attribute_names() {
+                        //     Ok(attr_names) => {
+                        //         debug!(
+                        //             "[macOS][get_applications] i: {}, failed to get role, attribute names: {:?}",
+                        //             i,
+                        //             attr_names.iter().map(|a| a.to_string()).collect::<Vec<_>>()
+                        //         );
+                        //     }
+                        //     Err(attr_err) => {
+                        //         debug!(
+                        //             "[macOS][get_applications] i: {}, failed to get role, and failed to get attribute names: {:?}",
+                        //             i,
+                        //             attr_err
+                        //         );
+                        //     }
+                        // }
+                    }
+                }
+
+                let iter_duration = iter_start.elapsed();
+                debug!(
+                    "[macOS][get_applications] Iteration {} duration: {} ms",
+                    i,
+                    iter_duration.as_millis()
+                );
+                if iter_duration > std::time::Duration::from_millis(100) {
+                    debug!(
+                        "⚠️ [macOS][get_applications] Iteration {} unusually long: took {:?} (>100ms) for pid: {}",
+                        i,
+                        iter_duration,
+                        pid
+                    );
+                    // Get the last application in the apps vector (if any)
+                    // if let Some(last_app) = apps.last() {
+                    //     debug!("[macOS][get_applications] Getting last app attributes...");
+                    //     // Print all attributes of the last application element
+                    //     let attrs = last_app.attributes();
+                    //     debug!("[macOS][get_applications] Last app attributes:");
+                    //     debug!("  role: {:?}", attrs.role);
+                    //     debug!("  name: {:?}", attrs.name);
+                    //     debug!("  label: {:?}", attrs.label);
+                    //     debug!("  value: {:?}", attrs.value);
+                    //     debug!("  description: {:?}", attrs.description);
+                    //     debug!("  properties: {:?}", attrs.properties);
+                    //     debug!("  is_keyboard_focusable: {:?}", attrs.is_keyboard_focusable);
+
+                    //     // Print debug! using .role() too, but handle error carefully
+                    //     // Note: last_app.role() returns a String, not a Result
+                    //     // debug!(
+                    //     //     "[macOS][get_applications] Last app .role(): {:?}",
+                    //     //     last_app.element.0.role()
+                    //     // );
+                    // }
+                }
+                
             }
         }
         Ok(apps)
