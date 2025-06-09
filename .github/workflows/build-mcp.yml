@@ -12,10 +12,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
-        target:
-          - x86_64-pc-windows-msvc
-          - x86_64-apple-darwin
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
 
     permissions:
       contents: write
