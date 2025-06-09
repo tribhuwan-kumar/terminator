@@ -1,10 +1,24 @@
 # Terminator MCP Agent
 
-# Build the MCP agent:
+This directory contains the Model Context Protocol (MCP) agent that allows AI assistants, like Cursor and Claude desktop to interact with your desktop using the Terminator UI automation library.
 
-```
-cargo build -p terminator-mcp-agent --release
-```
+<img width="1512" alt="Screenshot 2025-04-16 at 9 29 42 AM" src="https://github.com/user-attachments/assets/457ebaf2-640c-4f21-a236-fcb2b92748ab" />
+
+MCP is useful to test out the `terminator` lib and see what you can do. You can use any model.
+
+## Installation & Setup
+
+Open a new terminal (like PowerShell or Command Prompt)
+
+1.  **Clone the Terminator locally**
+    If you haven't already, clone the repository:
+    ```bash
+    git clone https://github.com/mediar-ai/terminator
+    ```
+    Then build the terminator-mcp-agent:
+    ```
+    cargo build -p terminator-mcp-agent --release
+    ```
 
 ###  **Configure Cursor:**
     You need to tell Cursor how to run this agent. Create a file named `mcp.json` in your Cursor configuration directory (`~/.cursor` on macOS/Linux, `%USERPROFILE%\.cursor` on Windows).
