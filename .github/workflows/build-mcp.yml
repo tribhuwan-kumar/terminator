@@ -15,8 +15,8 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            target: x86_64-apple-darwin
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
 
     permissions:
       contents: write
@@ -46,15 +46,15 @@ jobs:
           echo "ASSET_PATH=$zipPath" >> $env:GITHUB_ENV
           echo "ASSET_NAME=$zipPath" >> $env:GITHUB_ENV
 
-      - name: Package executable (macOS)
-        if: matrix.os == 'macos-latest'
-        shell: bash
-        run: |
-          exePath="target/x86_64-apple-darwin/release/terminator-mcp-agent"
-          zipPath="terminator-mcp-macos-x86_64.tar.gz"
-          tar -czf $zipPath -C $(dirname $exePath) $(basename $exePath)
-          echo "ASSET_PATH=$zipPath" >> $GITHUB_ENV
-          echo "ASSET_NAME=$zipPath" >> $GITHUB_ENV
+      # - name: Package executable (macOS)
+      #   if: matrix.os == 'macos-latest'
+      #   shell: bash
+      #   run: |
+      #     exePath="target/x86_64-apple-darwin/release/terminator-mcp-agent"
+      #     zipPath="terminator-mcp-macos-x86_64.tar.gz"
+      #     tar -czf $zipPath -C $(dirname $exePath) $(basename $exePath)
+      #     echo "ASSET_PATH=$zipPath" >> $GITHUB_ENV
+      #     echo "ASSET_NAME=$zipPath" >> $GITHUB_ENV
 
       - name: Upload Artifacts (Manual Trigger)
         if: github.event_name == 'workflow_dispatch'
