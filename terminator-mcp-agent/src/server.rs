@@ -41,9 +41,7 @@ impl DesktopWrapper {
         Ok(Self { desktop })
     }
 
-    #[tool(
-        description = "Get the complete UI tree for an application by PID and optional window title."
-    )]
+    #[tool(description = "Get the complete UI tree for an application by PID and optional window title.")]
     async fn get_window_tree(
         &self,
         #[tool(param)] args: GetWindowTreeArgs,
@@ -90,7 +88,7 @@ impl DesktopWrapper {
             })
             .collect();
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "applications": app_info,
             "count": apps.len()
         }))?]))
@@ -127,7 +125,7 @@ impl DesktopWrapper {
             })
             .collect();
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "windows": window_info,
             "count": windows.len(),
             "application": args.app_name
@@ -173,7 +171,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "type",
             "status": "success",
             "text_typed": args.text_to_type,
@@ -221,7 +219,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "click",
             "status": "success",
             "element": element_info,
@@ -268,7 +266,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "press_key",
             "status": "success",
             "key_pressed": args.key,
@@ -385,8 +383,8 @@ impl DesktopWrapper {
                 Some(json!({"reason": e.to_string(), "text": args.text})),
             )
         })?;
-
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "set_clipboard",
             "status": "success",
             "text": args.text,
@@ -416,17 +414,21 @@ impl DesktopWrapper {
         };
 
         match command_result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::json(&json!({
-                "action": "get_clipboard",
-                "status": "success",
-                "text": output.stdout.trim(),
-                "method": "shell_command",
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            }))?])),
-            Err(e) => Err(McpError::internal_error(
-                "Failed to get clipboard text",
-                Some(json!({"reason": e.to_string()})),
-            )),
+            Ok(output) => {
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "get_clipboard", 
+                    "status": "success",
+                    "text": output.stdout.trim(),
+                    "method": "shell_command",
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
+            Err(e) => {
+                Err(McpError::internal_error(
+                    "Failed to get clipboard text",
+                    Some(json!({"reason": e.to_string()})),
+                ))
+            }
         }
     }
 
@@ -472,7 +474,7 @@ impl DesktopWrapper {
                 )
             })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "mouse_drag",
             "status": "success",
             "element": element_info,
@@ -510,7 +512,7 @@ impl DesktopWrapper {
                     "value": element.attributes().value.unwrap_or_default(),
                 });
 
-                Ok(CallToolResult::success(vec![Content::json(&json!({
+                Ok(CallToolResult::success(vec![Content::json(json!({
                     "action": "validate_element",
                     "status": "success",
                     "element": element_info,
@@ -518,14 +520,16 @@ impl DesktopWrapper {
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 }))?]))
             }
-            Err(e) => Ok(CallToolResult::success(vec![Content::json(&json!({
-                "action": "validate_element",
-                "status": "failed",
-                "exists": false,
-                "reason": e.to_string(),
-                "selector_chain": args.selector_chain,
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            }))?])),
+            Err(e) => {
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "validate_element",
+                    "status": "failed",
+                    "exists": false,
+                    "reason": e.to_string(),
+                    "selector_chain": args.selector_chain,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
         }
     }
 
@@ -545,9 +549,7 @@ impl DesktopWrapper {
                 )
             })?;
 
-        let duration = args
-            .duration_ms
-            .map(|ms| std::time::Duration::from_millis(ms));
+        let duration = args.duration_ms.map(std::time::Duration::from_millis);
         element.highlight(args.color, duration).map_err(|e| {
             McpError::internal_error(
                 "Failed to highlight element",
@@ -564,7 +566,7 @@ impl DesktopWrapper {
             })).unwrap_or(json!(null)),
         });
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "highlight_element",
             "status": "success",
             "element": element_info,
@@ -634,16 +636,18 @@ impl DesktopWrapper {
         };
 
         match result {
-            Ok(condition_met) => Ok(CallToolResult::success(vec![Content::json(&json!({
-                "action": "wait_for_element",
-                "status": "success",
-                "condition": args.condition,
-                "condition_met": condition_met,
-                "selector_chain": args.selector_chain,
-                "timeout_ms": args.timeout_ms.unwrap_or(5000),
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            }))?])),
-            Err(e) => Err(e),
+            Ok(condition_met) => {
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "wait_for_element",
+                    "status": "success",
+                    "condition": args.condition,
+                    "condition_met": condition_met,
+                    "selector_chain": args.selector_chain,
+                    "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
+            Err(e) => Err(e)
         }
     }
 
@@ -665,7 +669,7 @@ impl DesktopWrapper {
                 )
             })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "navigate_browser",
             "status": "success",
             "url": args.url,
@@ -693,7 +697,7 @@ impl DesktopWrapper {
             "pid": result.process_id().unwrap_or(0),
         });
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "open_application",
             "status": "success",
             "app_name": args.app_name,
@@ -743,7 +747,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "close_element",
             "status": "success",
             "element": element_info,
@@ -791,7 +795,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&json!({
+        Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "scroll_element",
             "status": "success",
             "element": element_info,
