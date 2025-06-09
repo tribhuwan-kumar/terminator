@@ -1,20 +1,38 @@
 use serde::{Deserialize, Serialize};
-use terminator::UIElement;
-use std::time::SystemTime;
 use std::collections::HashSet;
 use std::sync::LazyLock;
+use std::time::SystemTime;
+use terminator::UIElement;
 
 // Precomputed set of null-like values for efficient O(1) lookups
 static NULL_LIKE_VALUES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     [
         // Standard null representations
-        "null", "nil", "undefined", "(null)", "<null>", "n/a", "na", "",
-        // Windows-specific null patterns  
-        "unknown", "<unknown>", "(unknown)", "none", "<none>", "(none)",
-        "empty", "<empty>", "(empty)",
+        "null",
+        "nil",
+        "undefined",
+        "(null)",
+        "<null>",
+        "n/a",
+        "na",
+        "",
+        // Windows-specific null patterns
+        "unknown",
+        "<unknown>",
+        "(unknown)",
+        "none",
+        "<none>",
+        "(none)",
+        "empty",
+        "<empty>",
+        "(empty)",
         // COM/Windows API specific
-        "bstr()", "variant()", "variant(empty)",
-    ].into_iter().collect()
+        "bstr()",
+        "variant()",
+        "variant(empty)",
+    ]
+    .into_iter()
+    .collect()
 });
 
 // Helper function to filter empty strings and null-like values for serde skip_serializing_if
@@ -25,22 +43,23 @@ fn is_empty_string(s: &Option<String>) -> bool {
             if s.is_empty() {
                 return true;
             }
-            
+
             // Fast path for whitespace-only strings
             let trimmed = s.trim();
             if trimmed.is_empty() {
                 return true;
             }
-            
+
             // Check against precomputed set (case-insensitive)
             // Only allocate lowercase string if we have a reasonable candidate
-            if trimmed.len() <= 20 { // Reasonable max length for null-like values
+            if trimmed.len() <= 20 {
+                // Reasonable max length for null-like values
                 let lower = trimmed.to_lowercase();
                 NULL_LIKE_VALUES.contains(lower.as_str())
             } else {
                 false // Long strings are unlikely to be null-like values
             }
-        },
+        }
         None => true,
     }
 }
@@ -51,7 +70,6 @@ pub struct Position {
     pub x: i32,
     pub y: i32,
 }
-
 
 /// Represents a rectangle
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,30 +108,30 @@ pub enum MouseEventType {
 pub struct KeyboardEvent {
     /// The key code
     pub key_code: u32,
-    
+
     /// Whether the key was pressed or released
     pub is_key_down: bool,
-    
+
     /// Whether the Ctrl key was pressed
     pub ctrl_pressed: bool,
-    
+
     /// Whether the Alt key was pressed
     pub alt_pressed: bool,
-    
+
     /// Whether the Shift key was pressed
     pub shift_pressed: bool,
-    
+
     /// Whether the Win key was pressed
     pub win_pressed: bool,
-    
+
     /// Character representation of the key (if printable)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub character: Option<char>,
-    
+
     /// Raw scan code
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scan_code: Option<u32>,
-    
+
     /// Event metadata (UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -123,21 +141,21 @@ pub struct KeyboardEvent {
 pub struct MouseEvent {
     /// The type of mouse event
     pub event_type: MouseEventType,
-    
+
     /// The mouse button
     pub button: MouseButton,
-    
+
     /// The position of the mouse
     pub position: Position,
-    
+
     /// Scroll delta for wheel events
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scroll_delta: Option<(i32, i32)>,
-    
+
     /// Drag start position (for drag events)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drag_start: Option<Position>,
-    
+
     /// Event metadata (UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -156,22 +174,22 @@ pub enum ClipboardAction {
 pub struct ClipboardEvent {
     /// The clipboard action
     pub action: ClipboardAction,
-    
+
     /// The content that was copied/cut/pasted (truncated if too long)
     #[serde(skip_serializing_if = "is_empty_string")]
     pub content: Option<String>,
-    
+
     /// The size of the content in bytes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_size: Option<usize>,
-    
+
     /// The format of the clipboard data
     #[serde(skip_serializing_if = "is_empty_string")]
     pub format: Option<String>,
-    
+
     /// Whether the content was truncated due to size
     pub truncated: bool,
-    
+
     /// Event metadata (UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -181,19 +199,19 @@ pub struct ClipboardEvent {
 pub struct TextSelectionEvent {
     /// The selected text content
     pub selected_text: String,
-    
+
     /// The start position of the selection (screen coordinates)
     pub start_position: Position,
-    
+
     /// The end position of the selection (screen coordinates)
     pub end_position: Position,
-    
+
     /// The selection method (mouse drag, keyboard shortcuts, etc.)
     pub selection_method: SelectionMethod,
-    
+
     /// The length of the selection in characters
     pub selection_length: usize,
-    
+
     /// Event metadata (UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -202,8 +220,8 @@ pub struct TextSelectionEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SelectionMethod {
     MouseDrag,
-    DoubleClick,    // Word selection
-    TripleClick,    // Line/paragraph selection
+    DoubleClick,      // Word selection
+    TripleClick,      // Line/paragraph selection
     KeyboardShortcut, // Ctrl+A, Shift+arrows, etc.
     ContextMenu,
 }
@@ -213,25 +231,25 @@ pub enum SelectionMethod {
 pub struct DragDropEvent {
     /// The start position of the drag
     pub start_position: Position,
-    
+
     /// The end position of the drop
     pub end_position: Position,
-    
+
     /// The UI element being dragged (source)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_element: Option<UIElement>,
-    
+
     /// The type of data being dragged
     #[serde(skip_serializing_if = "is_empty_string")]
     pub data_type: Option<String>,
-    
+
     /// The dragged content (if text)
     #[serde(skip_serializing_if = "is_empty_string")]
     pub content: Option<String>,
-    
+
     /// Whether the drag was successful
     pub success: bool,
-    
+
     /// Event metadata (target UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -241,14 +259,14 @@ pub struct DragDropEvent {
 pub struct HotkeyEvent {
     /// The key combination (e.g., "Ctrl+C", "Alt+Tab")
     pub combination: String,
-    
+
     /// The action performed by the hotkey
     #[serde(skip_serializing_if = "is_empty_string")]
     pub action: Option<String>,
-    
+
     /// Whether this was a global or application-specific hotkey
     pub is_global: bool,
-    
+
     /// Event metadata (UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -258,25 +276,25 @@ pub struct HotkeyEvent {
 pub enum WorkflowEvent {
     /// A mouse event
     Mouse(MouseEvent),
-    
+
     /// A keyboard event
     Keyboard(KeyboardEvent),
-    
+
     /// A clipboard event
     Clipboard(ClipboardEvent),
-    
+
     /// A text selection event
     TextSelection(TextSelectionEvent),
-    
+
     /// A drag and drop event
     DragDrop(DragDropEvent),
-    
+
     /// A hotkey event
     Hotkey(HotkeyEvent),
-    
+
     /// A UI Automation property change event
     UiPropertyChanged(UiPropertyChangedEvent),
-    
+
     /// A UI Automation focus change event
     UiFocusChanged(UiFocusChangedEvent),
 }
@@ -286,7 +304,7 @@ pub enum WorkflowEvent {
 pub struct RecordedEvent {
     /// The timestamp of the event (milliseconds since epoch)
     pub timestamp: u64,
-    
+
     /// The event
     pub event: WorkflowEvent,
 }
@@ -296,14 +314,14 @@ pub struct RecordedEvent {
 pub struct RecordedWorkflow {
     /// The name of the workflow
     pub name: String,
-    
+
     /// The timestamp when the recording started
     pub start_time: u64,
-    
+
     /// The timestamp when the recording ended
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_time: Option<u64>,
-    
+
     /// The recorded events
     pub events: Vec<RecordedEvent>,
 }
@@ -315,7 +333,7 @@ impl RecordedWorkflow {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        
+
         Self {
             name,
             start_time: now,
@@ -323,27 +341,27 @@ impl RecordedWorkflow {
             events: Vec::new(),
         }
     }
-    
+
     /// Add an event to the workflow
     pub fn add_event(&mut self, event: WorkflowEvent) {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        
+
         self.events.push(RecordedEvent {
             timestamp: now,
             event,
         });
     }
-    
+
     /// Finish the recording
     pub fn finish(&mut self) {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        
+
         self.end_time = Some(now);
     }
 
@@ -371,12 +389,17 @@ impl RecordedWorkflow {
     /// Deserialize a workflow from JSON bytes
     /// Note: This creates a workflow with serializable UI elements,
     /// not the original UIElement instances
-    pub fn from_json_bytes(bytes: &[u8]) -> Result<SerializableRecordedWorkflow, serde_json::Error> {
+    pub fn from_json_bytes(
+        bytes: &[u8],
+    ) -> Result<SerializableRecordedWorkflow, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
 
     /// Save the workflow to a JSON file
-    pub fn save_to_file<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_to_file<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let json = self.to_json()?;
         std::fs::write(path, json)?;
         Ok(())
@@ -385,7 +408,9 @@ impl RecordedWorkflow {
     /// Load a workflow from a JSON file
     /// Note: This creates a workflow with serializable UI elements,
     /// not the original UIElement instances
-    pub fn load_from_file<P: AsRef<std::path::Path>>(path: P) -> Result<SerializableRecordedWorkflow, Box<dyn std::error::Error>> {
+    pub fn load_from_file<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> Result<SerializableRecordedWorkflow, Box<dyn std::error::Error>> {
         let json = std::fs::read_to_string(path)?;
         let workflow = Self::from_json(&json)?;
         Ok(workflow)
@@ -408,19 +433,19 @@ pub enum StructureChangeType {
 pub struct UiStructureChangedEvent {
     /// The type of structure change
     pub change_type: StructureChangeType,
-    
+
     /// The element where the structure change occurred
     #[serde(skip_serializing_if = "Option::is_none")]
     pub element: Option<UIElement>,
-    
+
     /// Runtime IDs of affected children (if applicable)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_ids: Option<Vec<i32>>,
-    
+
     /// The application where the change occurred
     #[serde(skip_serializing_if = "is_empty_string")]
     pub application: Option<String>,
-    
+
     /// Additional details about the change
     #[serde(skip_serializing_if = "is_empty_string")]
     pub details: Option<String>,
@@ -431,15 +456,15 @@ pub struct UiStructureChangedEvent {
 pub struct UiPropertyChangedEvent {
     /// The property that changed (as string for serialization)
     pub property_name: String,
-    
+
     /// The old value (if available)
     #[serde(skip_serializing_if = "is_empty_string")]
     pub old_value: Option<String>,
-    
+
     /// The new value
     #[serde(skip_serializing_if = "is_empty_string")]
     pub new_value: Option<String>,
-    
+
     /// Event metadata (UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -450,7 +475,7 @@ pub struct UiFocusChangedEvent {
     /// The previous element that had focus (if available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_element: Option<UIElement>,
-    
+
     /// Event metadata (current focused UI element, application, etc.)
     pub metadata: EventMetadata,
 }
@@ -463,16 +488,12 @@ pub struct EventMetadata {
     pub ui_element: Option<UIElement>,
 }
 
-
-// implement empty() constructor 
+// implement empty() constructor
 impl EventMetadata {
     pub fn empty() -> Self {
         Self { ui_element: None }
     }
 }
-
-
-
 
 /// Serializable version of UIElement for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -500,12 +521,12 @@ impl From<&UIElement> for SerializableUIElement {
     fn from(element: &UIElement) -> Self {
         let attrs = element.attributes();
         let bounds = element.bounds().ok();
-        
+
         // Helper function to filter empty strings
         fn filter_empty(s: Option<String>) -> Option<String> {
             s.filter(|s| !s.is_empty())
         }
-        
+
         Self {
             id: filter_empty(element.id()),
             role: element.role(),
@@ -756,7 +777,9 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             WorkflowEvent::TextSelection(e) => SerializableWorkflowEvent::TextSelection(e.into()),
             WorkflowEvent::DragDrop(e) => SerializableWorkflowEvent::DragDrop(e.into()),
             WorkflowEvent::Hotkey(e) => SerializableWorkflowEvent::Hotkey(e.into()),
-            WorkflowEvent::UiPropertyChanged(e) => SerializableWorkflowEvent::UiPropertyChanged(e.into()),
+            WorkflowEvent::UiPropertyChanged(e) => {
+                SerializableWorkflowEvent::UiPropertyChanged(e.into())
+            }
             WorkflowEvent::UiFocusChanged(e) => SerializableWorkflowEvent::UiFocusChanged(e.into()),
         }
     }
@@ -803,18 +826,17 @@ impl From<&RecordedWorkflow> for SerializableRecordedWorkflow {
 mod tests {
     use super::*;
 
-  
     #[test]
     fn test_empty_string_helper() {
         // Test None values
         assert!(is_empty_string(&None));
-        
+
         // Test empty strings
         assert!(is_empty_string(&Some("".to_string())));
         assert!(is_empty_string(&Some(" ".to_string())));
         assert!(is_empty_string(&Some("   ".to_string())));
         assert!(is_empty_string(&Some("\t\n".to_string())));
-        
+
         // Test various null representations that might come from Windows APIs
         assert!(is_empty_string(&Some("null".to_string())));
         assert!(is_empty_string(&Some("NULL".to_string())));
@@ -829,7 +851,7 @@ mod tests {
         assert!(is_empty_string(&Some("N/A".to_string())));
         assert!(is_empty_string(&Some("na".to_string())));
         assert!(is_empty_string(&Some("NA".to_string())));
-        
+
         // Test Windows-specific null patterns
         assert!(is_empty_string(&Some("unknown".to_string())));
         assert!(is_empty_string(&Some("UNKNOWN".to_string())));
@@ -843,25 +865,25 @@ mod tests {
         assert!(is_empty_string(&Some("EMPTY".to_string())));
         assert!(is_empty_string(&Some("<empty>".to_string())));
         assert!(is_empty_string(&Some("(empty)".to_string())));
-        
+
         // Test COM/Windows API specific patterns
         assert!(is_empty_string(&Some("BSTR()".to_string())));
         assert!(is_empty_string(&Some("variant()".to_string())));
         assert!(is_empty_string(&Some("VARIANT(EMPTY)".to_string())));
         assert!(is_empty_string(&Some("Variant(Empty)".to_string())));
-        
+
         // Test with surrounding whitespace
         assert!(is_empty_string(&Some(" null ".to_string())));
         assert!(is_empty_string(&Some("\t(null)\n".to_string())));
         assert!(is_empty_string(&Some("  UNKNOWN  ".to_string())));
-        
+
         // Test valid strings that should NOT be filtered
         assert!(!is_empty_string(&Some("test".to_string())));
         assert!(!is_empty_string(&Some("valid content".to_string())));
         assert!(!is_empty_string(&Some("0".to_string())));
         assert!(!is_empty_string(&Some("false".to_string())));
         assert!(!is_empty_string(&Some("Button".to_string())));
-        
+
         // Test edge cases that might look like null but aren't
         assert!(!is_empty_string(&Some("not null".to_string())));
         assert!(!is_empty_string(&Some("nullify".to_string())));
@@ -870,5 +892,4 @@ mod tests {
         assert!(!is_empty_string(&Some("something empty".to_string())));
         assert!(!is_empty_string(&Some("none selected".to_string())));
     }
-
 }

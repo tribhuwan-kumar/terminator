@@ -55,7 +55,11 @@ pub trait AccessibilityEngine: Send + Sync {
     fn get_application_by_name(&self, name: &str) -> Result<UIElement, AutomationError>;
 
     /// Get application by process ID
-    fn get_application_by_pid(&self, pid: i32, timeout: Option<Duration>) -> Result<UIElement, AutomationError>;
+    fn get_application_by_pid(
+        &self,
+        pid: i32,
+        timeout: Option<Duration>,
+    ) -> Result<UIElement, AutomationError>;
 
     /// Find elements using a selector
     fn find_element(
@@ -127,19 +131,19 @@ pub trait AccessibilityEngine: Send + Sync {
 
     /// Get the complete UI tree for a window identified by process ID and optional title
     /// This is the single tree building function - replaces get_window_tree_by_title and get_window_tree_by_pid_and_title
-    /// 
+    ///
     /// # Arguments
     /// * `pid` - Process ID of the target application
     /// * `title` - Optional window title filter (if None, uses any window from the PID)
     /// * `config` - Configuration for tree building performance and completeness
-    /// 
+    ///
     /// # Returns
     /// Complete UI tree starting from the identified window
     fn get_window_tree(
-        &self, 
-        pid: u32, 
-        title: Option<&str>, 
-        config: TreeBuildConfig
+        &self,
+        pid: u32,
+        title: Option<&str>,
+        config: TreeBuildConfig,
     ) -> Result<UINode, AutomationError>;
 
     /// Get the name of the currently active monitor
