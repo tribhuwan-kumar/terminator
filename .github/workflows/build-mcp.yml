@@ -1,4 +1,4 @@
-name: Build & Release Windows MCP
+name: Build & Release MCP
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-release:
-    name: Build & Release Windows MCP
+    name: Build & Release MCP
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
