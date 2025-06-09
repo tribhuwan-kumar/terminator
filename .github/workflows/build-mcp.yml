@@ -35,22 +35,25 @@ jobs:
         env:
           CARGO_TERM_COLOR: always
 
-      - name: Package executable
-        shell: ${{ matrix.os == 'windows-latest' && 'pwsh' || 'bash' }}
+      - name: Package executable (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            $exePath = "target/x86_64-pc-windows-msvc/release/terminator-mcp-agent.exe"
-            $zipPath = "terminator-mcp-windows-x86_64.zip"
-            Compress-Archive -Path $exePath -DestinationPath $zipPath
-            echo "ASSET_PATH=$zipPath" >> $env:GITHUB_ENV
-            echo "ASSET_NAME=$zipPath" >> $env:GITHUB_ENV
-          else
-            exePath="target/x86_64-apple-darwin/release/terminator-mcp-agent"
-            zipPath="terminator-mcp-macos-x86_64.zip"
-            tar -czf $tarPath -C $(dirname $exePath) $(basename $exePath)
-            echo "ASSET_PATH=$tarPath" >> $GITHUB_ENV
-            echo "ASSET_NAME=$tarPath" >> $GITHUB_ENV
-          fi
+          $exePath = "target/x86_64-pc-windows-msvc/release/terminator-mcp-agent.exe"
+          $zipPath = "terminator-mcp-windows-x86_64.zip"
+          Compress-Archive -Path $exePath -DestinationPath $zipPath
+          echo "ASSET_PATH=$zipPath" >> $env:GITHUB_ENV
+          echo "ASSET_NAME=$zipPath" >> $env:GITHUB_ENV
+
+      - name: Package executable (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          exePath="target/x86_64-apple-darwin/release/terminator-mcp-agent"
+          zipPath="terminator-mcp-macos-x86_64.zip"
+          tar -czf $zipPath -C $(dirname $exePath) $(basename $exePath)
+          echo "ASSET_PATH=$zipPath" >> $GITHUB_ENV
+          echo "ASSET_NAME=$zipPath" >> $GITHUB_ENV
 
       - name: Upload Artifacts (Manual Trigger)
         if: github.event_name == 'workflow_dispatch'
