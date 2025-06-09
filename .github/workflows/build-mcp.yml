@@ -53,8 +53,8 @@ jobs:
       #     exePath="target/x86_64-apple-darwin/release/terminator-mcp-agent"
       #     zipPath="terminator-mcp-macos-x86_64.tar.gz"
       #     tar -czf $zipPath -C $(dirname $exePath) $(basename $exePath)
-      #     echo "ASSET_PATH=$zipPath" >> $GITHUB_ENV
-      #     echo "ASSET_NAME=$zipPath" >> $GITHUB_ENV
+      #     echo "ASSET_PATH_X86=$zipPath" >> $GITHUB_ENV
+      #     echo "ASSET_NAME_X86=$zipPath" >> $GITHUB_ENV
 
       - name: Upload Artifacts (Manual Trigger)
         if: github.event_name == 'workflow_dispatch'
