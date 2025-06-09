@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Selector {
     /// Select by role and optional name
-    Role { role: String, name: Option<String> }, // TODO: name unused
+    Role { role: String, name: Option<String> },
     /// Select by accessibility ID
     Id(String),
     /// Select by name/label
@@ -35,10 +35,13 @@ impl From<&str> for Selector {
                 role: s[5..].to_string(),
                 name: None,
             },
-            "app" | "application" | "window" | "button" | "checkbox" | "menu" | "menuitem"
-            | "menubar" | "textfield" | "input" => Selector::Role {
-                role: s.to_string(),
-                name: None,
+            "app" | "application" | "window" | "button" | "checkbox" | "menu" | "menuitem" | "menubar" | "textfield"
+            | "input" => {
+                let parts: Vec<&str> = s.splitn(2, ':').collect();
+                Selector::Role {
+                    role: parts.get(0).unwrap_or(&"").to_string(),
+                    name: parts.get(1).map(|name| name.to_string()), // optional
+                }
             },
             // starts with AX
             _ if s.starts_with("AX") => Selector::Role {
@@ -68,6 +71,7 @@ impl From<&str> for Selector {
             }
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
+            _ if s.to_lowercase().starts_with("text:") => Selector::Text(s[5..].to_string()),
             _ => Selector::Name(s.to_string()),
         }
     }
