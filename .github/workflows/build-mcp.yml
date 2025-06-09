@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           exePath="target/x86_64-apple-darwin/release/terminator-mcp-agent"
-          zipPath="terminator-mcp-macos-x86_64.zip"
+          zipPath="terminator-mcp-macos-x86_64.tar.gz"
           tar -czf $zipPath -C $(dirname $exePath) $(basename $exePath)
           echo "ASSET_PATH=$zipPath" >> $GITHUB_ENV
           echo "ASSET_NAME=$zipPath" >> $GITHUB_ENV
