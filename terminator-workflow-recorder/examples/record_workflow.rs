@@ -152,7 +152,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     println!(
                         "     └─ App: {}, Method: {:?}",
-                        selection_event.metadata.ui_element.as_ref().unwrap().application_name(),
+                        selection_event
+                            .metadata
+                            .ui_element
+                            .as_ref()
+                            .unwrap()
+                            .application_name(),
                         selection_event.selection_method
                     );
                 }

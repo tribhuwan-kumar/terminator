@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Selector {
     /// Select by role and optional name
-    Role { role: String, name: Option<String> }, // TODO: name unused 
+    Role { role: String, name: Option<String> },
     /// Select by accessibility ID
     Id(String),
     /// Select by name/label
@@ -30,7 +30,7 @@ impl From<&str> for Selector {
         // Make common UI roles like "window", "button", etc. default to Role selectors
         // instead of Name selectors
         match s {
-            // if role:button 
+            // if role:button
             _ if s.starts_with("role:") => Selector::Role {
                 role: s[5..].to_string(),
                 name: None,

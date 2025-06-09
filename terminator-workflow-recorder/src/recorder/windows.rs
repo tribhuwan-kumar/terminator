@@ -280,9 +280,7 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character,
                             scan_code: None, // TODO: Get actual scan code
-                            metadata: EventMetadata {
-                                ui_element
-                            },
+                            metadata: EventMetadata { ui_element },
                         };
 
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
@@ -322,9 +320,7 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character: None,
                             scan_code: None,
-                            metadata: EventMetadata {
-                                ui_element
-                            },
+                            metadata: EventMetadata { ui_element },
                         };
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
                     }
@@ -349,9 +345,7 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: None,
                                 drag_start: None,
-                                metadata: EventMetadata {
-                                    ui_element
-                                },
+                                metadata: EventMetadata { ui_element },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -377,9 +371,7 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: None,
                                 drag_start: None,
-                                metadata: EventMetadata {
-                                    ui_element
-                                },
+                                metadata: EventMetadata { ui_element },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -416,9 +408,7 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: None,
                                 drag_start: None,
-                                metadata: EventMetadata {
-                                    ui_element
-                                },
+                                metadata: EventMetadata { ui_element },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -428,7 +418,7 @@ impl WindowsRecorder {
                             let mut ui_element = None;
                             if capture_ui_elements {
                                 ui_element = None
-                                    // Self::get_focused_ui_element(automation.as_ref().unwrap());
+                                // Self::get_focused_ui_element(automation.as_ref().unwrap());
                             }
 
                             let mouse_event = MouseEvent {
@@ -437,9 +427,7 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: Some((delta_x as i32, delta_y as i32)),
                                 drag_start: None,
-                                metadata: EventMetadata {
-                                    ui_element
-                                },
+                                metadata: EventMetadata { ui_element },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -480,9 +468,7 @@ impl WindowsRecorder {
                     combination: format!("{:?}", pattern.keys), // TODO: Format properly
                     action: Some(pattern.action.clone()),
                     is_global: true,
-                    metadata: EventMetadata {
-                        ui_element: None
-                    }, // TODO: Pass UI element context from caller
+                    metadata: EventMetadata { ui_element: None }, // TODO: Pass UI element context from caller
                 });
             }
         }
@@ -543,9 +529,7 @@ impl WindowsRecorder {
                             content_size: Some(content.len()),
                             format: Some("text".to_string()),
                             truncated,
-                            metadata: EventMetadata {
-                                ui_element
-                            },
+                            metadata: EventMetadata { ui_element },
                         };
 
                         let _ = event_tx.send(WorkflowEvent::Clipboard(clipboard_event));
@@ -759,9 +743,7 @@ impl WindowsRecorder {
                         // Create a minimal UI element representation
                         let focus_event = UiFocusChangedEvent {
                             previous_element: None,
-                            metadata: EventMetadata {
-                                ui_element
-                            },
+                            metadata: EventMetadata { ui_element },
                         };
 
                         if let Err(e) =
@@ -919,9 +901,7 @@ impl WindowsRecorder {
                             property_name: property_name.clone(),
                             old_value: None,
                             new_value: Some(value_string),
-                            metadata: EventMetadata {
-                                ui_element
-                            },
+                            metadata: EventMetadata { ui_element },
                         };
 
                         if let Err(e) = property_event_tx_clone
@@ -1014,12 +994,18 @@ impl WindowsRecorder {
         let element_name_lower = element_name.to_lowercase();
 
         // Check against focus-specific ignore patterns
-        if ignore_patterns.iter().any(|pattern| element_name_lower.contains(pattern)) {
+        if ignore_patterns
+            .iter()
+            .any(|pattern| element_name_lower.contains(pattern))
+        {
             return true;
         }
 
         // Check against window title patterns
-        if ignore_window_titles.iter().any(|title| element_name_lower.contains(title)) {
+        if ignore_window_titles
+            .iter()
+            .any(|title| element_name_lower.contains(title))
+        {
             return true;
         }
 
@@ -1028,7 +1014,10 @@ impl WindowsRecorder {
             let app_name = ui_elem.application_name();
             if !app_name.is_empty() {
                 let app_name_lower = app_name.to_lowercase();
-                if ignore_applications.iter().any(|app| app_name_lower.contains(app)) {
+                if ignore_applications
+                    .iter()
+                    .any(|app| app_name_lower.contains(app))
+                {
                     return true;
                 }
             }
@@ -1050,12 +1039,17 @@ impl WindowsRecorder {
         let property_name_lower = property_name.to_lowercase();
 
         // Check against property-specific ignore patterns
-        if ignore_patterns.iter().any(|pattern| element_name_lower.contains(pattern) || property_name_lower.contains(pattern)) {
+        if ignore_patterns.iter().any(|pattern| {
+            element_name_lower.contains(pattern) || property_name_lower.contains(pattern)
+        }) {
             return true;
         }
 
         // Check against window title patterns
-        if ignore_window_titles.iter().any(|title| element_name_lower.contains(title)) {
+        if ignore_window_titles
+            .iter()
+            .any(|title| element_name_lower.contains(title))
+        {
             return true;
         }
 
@@ -1064,7 +1058,10 @@ impl WindowsRecorder {
             let app_name = ui_elem.application_name();
             if !app_name.is_empty() {
                 let app_name_lower = app_name.to_lowercase();
-                if ignore_applications.iter().any(|app| app_name_lower.contains(app)) {
+                if ignore_applications
+                    .iter()
+                    .any(|app| app_name_lower.contains(app))
+                {
                     return true;
                 }
             }
