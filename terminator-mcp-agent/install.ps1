@@ -11,7 +11,7 @@ try {
     # find the Windows asset
     $asset = $latestRelease.assets | Where-Object { $_.name -like "terminator-mcp-windows-x86_64.zip" } | Select-Object -First 1
     if (-not $asset) {
-        throw "no Windows release found in version $($latestRelease.tag_name)"
+        throw "no Terminator MCP release found in version $($latestRelease.tag_name)"
     }
 
     $url = $asset.browser_download_url
