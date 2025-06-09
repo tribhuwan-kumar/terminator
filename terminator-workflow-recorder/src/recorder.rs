@@ -1,15 +1,12 @@
-use crate::{
-    RecordedWorkflow,
-    WorkflowEvent, WorkflowRecorderError, Result
-};
+use crate::{RecordedWorkflow, Result, WorkflowEvent, WorkflowRecorderError};
 use std::{
+    collections::HashSet,
     path::Path,
     sync::{Arc, Mutex},
-    collections::HashSet,
 };
 use tokio::sync::broadcast;
-use tokio_stream::{Stream};
-use tracing::{info};
+use tokio_stream::Stream;
+use tracing::info;
 
 #[cfg(target_os = "windows")]
 mod windows;
@@ -22,61 +19,61 @@ pub use self::windows::*;
 pub struct WorkflowRecorderConfig {
     /// Whether to record mouse events
     pub record_mouse: bool,
-    
+
     /// Whether to record keyboard events
     pub record_keyboard: bool,
-    
+
     /// Whether to record window events
     pub record_window: bool,
-    
+
     /// Whether to capture UI element information
     pub capture_ui_elements: bool,
-    
+
     /// Whether to record clipboard operations
     pub record_clipboard: bool,
-    
+
     /// Whether to record text selection events
     pub record_text_selection: bool,
-    
+
     /// Whether to record drag and drop operations
     pub record_drag_drop: bool,
-    
+
     /// Whether to record hotkey/shortcut events
     pub record_hotkeys: bool,
-    
+
     /// Whether to record UI Automation structure change events
     pub record_ui_structure_changes: bool,
-    
+
     /// Whether to record UI Automation property change events
     pub record_ui_property_changes: bool,
-    
+
     /// Whether to record UI Automation focus change events
     pub record_ui_focus_changes: bool,
-    
+
     /// Maximum clipboard content length to record (longer content will be truncated)
     pub max_clipboard_content_length: usize,
-    
+
     /// Maximum text selection length to record (longer selections will be truncated)
     pub max_text_selection_length: usize,
-    
+
     /// Whether to track modifier key states accurately
     pub track_modifier_states: bool,
-    
+
     /// Minimum time between mouse move events to reduce noise (milliseconds)
     pub mouse_move_throttle_ms: u64,
-    
+
     /// Minimum drag distance to distinguish between click and drag (pixels)
     pub min_drag_distance: f64,
-    
+
     /// Patterns to ignore for UI focus change events (case-insensitive)
     pub ignore_focus_patterns: HashSet<String>,
-    
+
     /// Patterns to ignore for UI property change events (case-insensitive)
     pub ignore_property_patterns: HashSet<String>,
-    
+
     /// Window titles to ignore for UI events (case-insensitive)
     pub ignore_window_titles: HashSet<String>,
-    
+
     /// Application/process names to ignore for UI events (case-insensitive)
     pub ignore_applications: HashSet<String>,
 }
@@ -93,13 +90,13 @@ impl Default for WorkflowRecorderConfig {
             record_drag_drop: true,
             record_hotkeys: true,
             record_ui_structure_changes: false, // Can be very noisy, disabled by default
-            record_ui_property_changes: false, // Can be very noisy, disabled by default
-            record_ui_focus_changes: false, // Can be noisy, disabled by default
+            record_ui_property_changes: false,  // Can be very noisy, disabled by default
+            record_ui_focus_changes: false,     // Can be noisy, disabled by default
             max_clipboard_content_length: 1024, // 1KB max
-            max_text_selection_length: 512, // 512 chars max for selections
+            max_text_selection_length: 512,     // 512 chars max for selections
             track_modifier_states: true,
             mouse_move_throttle_ms: 50, // 20 FPS max for mouse moves
-            min_drag_distance: 5.0, // 5 pixels minimum for drag detection
+            min_drag_distance: 5.0,     // 5 pixels minimum for drag detection
             ignore_focus_patterns: [
                 // Common system UI patterns to ignore by default
                 "notification".to_string(),
@@ -139,7 +136,9 @@ impl Default for WorkflowRecorderConfig {
                 "security".to_string(),
                 "system tray".to_string(),
                 "hidden icons".to_string(),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             ignore_property_patterns: [
                 // Common property change patterns to ignore by default
                 "clock".to_string(),
@@ -175,7 +174,9 @@ impl Default for WorkflowRecorderConfig {
                 "sync".to_string(),
                 "update".to_string(),
                 "version".to_string(),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             ignore_window_titles: [
                 // Common window titles to ignore by default
                 "Windows Security".to_string(),
@@ -232,7 +233,9 @@ impl Default for WorkflowRecorderConfig {
                 "Weather".to_string(),
                 "News and interests".to_string(),
                 "Widgets".to_string(),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             ignore_applications: [
                 // Common applications to ignore by default
                 "dwm.exe".to_string(),
@@ -264,20 +267,20 @@ impl Default for WorkflowRecorderConfig {
                 "microsoftedge.exe".to_string(),
                 "msedgewebview2.exe".to_string(),
                 // Security and system maintenance
-                "msmpeng.exe".to_string(),          // Windows Defender
+                "msmpeng.exe".to_string(), // Windows Defender
                 "antimalware service executable".to_string(),
                 "windows security".to_string(),
-                "mssense.exe".to_string(),          // Windows Defender Advanced Threat Protection
-                "smartscreen.exe".to_string(),      // Windows SmartScreen
+                "mssense.exe".to_string(), // Windows Defender Advanced Threat Protection
+                "smartscreen.exe".to_string(), // Windows SmartScreen
                 // Background services that create noise
-                "audiodg.exe".to_string(),          // Audio Device Graph Isolation
-                "fontdrvhost.exe".to_string(),      // Font Driver Host
-                "lsaiso.exe".to_string(),           // Credential Guard
-                "sgrmbroker.exe".to_string(),       // System Guard Runtime Monitor
-                "unsecapp.exe".to_string(),         // Sink to receive asynchronous callbacks
-                "wmiprvse.exe".to_string(),         // WMI Provider Service
-                "dllhost.exe".to_string(),          // COM Surrogate
-                "msiexec.exe".to_string(),          // Windows Installer
+                "audiodg.exe".to_string(), // Audio Device Graph Isolation
+                "fontdrvhost.exe".to_string(), // Font Driver Host
+                "lsaiso.exe".to_string(),  // Credential Guard
+                "sgrmbroker.exe".to_string(), // System Guard Runtime Monitor
+                "unsecapp.exe".to_string(), // Sink to receive asynchronous callbacks
+                "wmiprvse.exe".to_string(), // WMI Provider Service
+                "dllhost.exe".to_string(), // COM Surrogate
+                "msiexec.exe".to_string(), // Windows Installer
                 "trustedinstaller.exe".to_string(), // Windows Modules Installer
                 // Third-party common background apps
                 // "teams.exe".to_string(),
@@ -297,7 +300,9 @@ impl Default for WorkflowRecorderConfig {
                 "Bitwarden.exe".to_string(),
                 // Snipping Tool application.
                 "SnippingTool.exe".to_string(),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
         }
     }
 }
@@ -306,13 +311,13 @@ impl Default for WorkflowRecorderConfig {
 pub struct WorkflowRecorder {
     /// The recorded workflow
     workflow: Arc<Mutex<RecordedWorkflow>>,
-    
+
     /// The event sender
     event_tx: broadcast::Sender<WorkflowEvent>,
-    
+
     /// The configuration
     config: WorkflowRecorderConfig,
-    
+
     /// The platform-specific recorder
     #[cfg(target_os = "windows")]
     windows_recorder: Option<WindowsRecorder>,
@@ -323,7 +328,7 @@ impl WorkflowRecorder {
     pub fn new(name: String, config: WorkflowRecorderConfig) -> Self {
         let workflow = Arc::new(Mutex::new(RecordedWorkflow::new(name)));
         let (event_tx, _) = broadcast::channel(100); // Buffer size of 100 events
-        
+
         Self {
             workflow,
             event_tx,
@@ -342,29 +347,29 @@ impl WorkflowRecorder {
             }
         })
     }
-    
+
     /// Start recording
     pub async fn start(&mut self) -> Result<()> {
         info!("Starting workflow recording");
-        
+
         #[cfg(target_os = "windows")]
         {
             let workflow = Arc::clone(&self.workflow);
             let event_tx = self.event_tx.clone();
-            
+
             // Start the Windows recorder
             let windows_recorder = WindowsRecorder::new(self.config.clone(), event_tx).await?;
             self.windows_recorder = Some(windows_recorder);
-            
+
             // Start the event processing task
             let event_rx = self.event_tx.subscribe();
             tokio::spawn(async move {
                 Self::process_events(workflow, event_rx).await;
             });
-            
+
             Ok(())
         }
-        
+
         #[cfg(not(target_os = "windows"))]
         {
             Err(WorkflowRecorderError::InitializationError(
@@ -372,41 +377,41 @@ impl WorkflowRecorder {
             ))
         }
     }
-    
+
     /// Stop recording
     pub async fn stop(&mut self) -> Result<()> {
         info!("Stopping workflow recording");
-        
+
         #[cfg(target_os = "windows")]
         {
             if let Some(windows_recorder) = self.windows_recorder.take() {
                 windows_recorder.stop()?;
             }
         }
-        
+
         // Mark the workflow as finished
         if let Ok(mut workflow) = self.workflow.lock() {
             workflow.finish();
         }
-        
+
         Ok(())
     }
-    
+
     /// Save the recorded workflow to a file
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         info!("Saving workflow recording to {:?}", path.as_ref());
-        
+
         let workflow = self.workflow.lock().map_err(|e| {
             WorkflowRecorderError::SaveError(format!("Failed to lock workflow: {}", e))
         })?;
-        
+
         workflow.save_to_file(path).map_err(|e| {
             WorkflowRecorderError::SaveError(format!("Failed to save workflow: {}", e))
         })?;
-        
+
         Ok(())
     }
-    
+
     /// Process events from the event receiver
     async fn process_events(
         workflow: Arc<Mutex<RecordedWorkflow>>,
@@ -418,4 +423,4 @@ impl WorkflowRecorder {
             }
         }
     }
-} 
+}
