@@ -1,0 +1,54 @@
+name: Build & Release Windows Terminator MCP
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Trigger on version tags like v1.0.0
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  build-release:
+    name: Build & Release (Windows)
+    runs-on: windows-latest
+    permissions:
+      contents: write # Needed to create releases
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+
+      - name: Build Terminator MCP (x86_64)
+        run: cargo build --release --target x86_64-pc-windows-msvc
+        env:
+          CARGO_TERM_COLOR: always
+
+      - name: Package executable
+        shell: pwsh
+        run: |
+          $x86ExePath = "target/x86_64-pc-windows-msvc/release/terminator-mcp-agent.exe"
+          $x86ZipPath = "terminator-mcp-windows-x86_64.zip"
+          Compress-Archive -Path $x86ExePath -DestinationPath $x86ZipPath
+          echo "ASSET_PATH_X86=$x86ZipPath" >> $env:GITHUB_ENV
+          echo "ASSET_NAME_X86=$x86ZipPath" >> $env:GITHUB_ENV
+
+      - name: Upload Artifacts (Manual Trigger)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME_X86 }}
+          path: ${{ env.ASSET_PATH_X86 }}
+
+      - name: Create Release and Upload Assets (Tag Trigger)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ASSET_PATH_X86 }}
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
