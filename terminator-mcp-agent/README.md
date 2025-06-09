@@ -20,7 +20,7 @@ Open a new terminal (like PowerShell or Command Prompt)
     cargo build -p terminator-mcp-agent --release
     ```
 
-###  **Configure Cursor:**
+2.  **Configure Cursor:**
     You need to tell Cursor how to run this agent. Create a file named `mcp.json` in your Cursor configuration directory (`~/.cursor` on macOS/Linux, `%USERPROFILE%\.cursor` on Windows).
 
     **macOS / Linux:**
@@ -80,7 +80,7 @@ Open a new terminal (like PowerShell or Command Prompt)
 
 open the claude app and search for developer options then MCP. when you click on configure MCP button it'll open a json file where you have to edit a `claude_desktop_config.json` file
 
-`
+```
 {
   "mcpServers": {
     "terminator-mcp-agent": {
@@ -89,6 +89,6 @@ open the claude app and search for developer options then MCP. when you click on
     }
   }
 }
-`
-remember to replace `path_to_terminator` exe with actual path of terminator-mcp-agent binary
+```
+remember to replace `path_to_terminator` exe with actual path of terminator-mcp-agent binary, you can find the binary of terminator mcp in the target directory where you've build the project!
 
