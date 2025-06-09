@@ -1930,14 +1930,30 @@ impl UIElementImpl for LinuxUIElement {
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let result = rt.block_on(async move {
+                debug!("Performing action: {:?}", action);
                 let action_proxy = ActionProxy::builder(&this.connection)
                     .destination(this.destination.as_str())?
                     .path(this.path.as_str())?
+                    .interface("org.a11y.atspi.Action")?
+                    .cache_properties(CacheProperties::No)
                     .build()
                     .await?;
-                let actions = action_proxy.get_actions().await?;
-                if let Some(action_index) = actions.iter().position(|a| a.name == action) {
-                    action_proxy.do_action(action_index as i32).await?;
+                let mut found = false;
+                let mut i = 0;
+                loop {
+                    match action_proxy.get_name(i).await {
+                        Ok(name) => {
+                            if name.to_lowercase() == action.to_lowercase() {
+                                action_proxy.do_action(i as i32).await?;
+                                found = true;
+                                break;
+                            }
+                        }
+                        Err(_) => break, // No more actions
+                    }
+                    i += 1;
+                }
+                if found {
                     Ok(())
                 } else {
                     Err(AutomationError::UnsupportedOperation(format!(
