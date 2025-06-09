@@ -13,6 +13,8 @@ pub enum Selector {
     Text(String),
     /// Select using XPath-like query
     Path(String),
+    /// Select by using Native Automation id, (eg: `AutomationID` for windows) and for linux it is Id value in Attributes
+    NativeId(String),
     /// Select by multiple attributes (key-value pairs)
     Attributes(BTreeMap<String, String>),
     /// Filter current elements by a predicate
@@ -29,12 +31,9 @@ impl From<&str> for Selector {
         // instead of Name selectors
         match s {
             // if role:button 
-            _ if s.starts_with("role:") => {
-                let parts: Vec<&str> = s[5..].splitn(2, ':').collect();
-                Selector::Role {
-                    role: parts[0].to_string(),
-                    name: parts.get(1).map(|name| name.to_string()), // optional
-                }
+            _ if s.starts_with("role:") => Selector::Role {
+                role: s[5..].to_string(),
+                name: None,
             },
             "app" | "application" | "window" | "button" | "checkbox" | "menu" | "menuitem" | "menubar" | "textfield"
             | "input" => {
@@ -49,7 +48,7 @@ impl From<&str> for Selector {
                 role: s.to_string(),
                 name: None,
             },
-            _ if s.to_lowercase().starts_with("name:") => {
+            _ if s.starts_with("Name:") || s.starts_with("name:") => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Name(parts[1].to_string())
             }
@@ -57,15 +56,20 @@ impl From<&str> for Selector {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::ClassName(parts[1].to_string())
             }
+            _ if s.to_lowercase().starts_with("nativeid:") => {
+                let parts: Vec<&str> = s.splitn(2, ':').collect();
+                Selector::NativeId(parts[1].trim().to_string())
+            }
+            _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
+            _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),
             _ if s.contains(':') => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Role {
                     role: parts[0].to_string(),
-                    name: parts.get(1).map(|name| name.to_string()), // optional
+                    name: Some(parts[1].to_string()),
                 }
             }
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
-            _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
             _ if s.to_lowercase().starts_with("text:") => Selector::Text(s[5..].to_string()),
             _ => Selector::Name(s.to_string()),

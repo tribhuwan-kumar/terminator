@@ -4,9 +4,10 @@
 //! through accessibility APIs, inspired by Playwright's web automation model.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Instant};
+use std::fmt;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 pub mod element;
 pub mod errors;
@@ -17,10 +18,13 @@ pub mod selector;
 mod tests;
 pub mod utils;
 
-pub use element::{UIElement, UIElementAttributes};
+pub use element::{UIElement, UIElementAttributes, SerializableUIElement};
 pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
+
+#[cfg(target_os = "windows")]
+pub use platforms::windows::convert_uiautomation_element_to_terminator;
 
 // Define a new struct to hold click result information - move to module level
 pub struct ClickResult {
@@ -37,10 +41,78 @@ pub struct CommandOutput {
 }
 
 /// Represents a node in the UI tree, containing its attributes and children.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct UINode {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub attributes: UIElementAttributes,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UINode>,
+}
+
+impl fmt::Debug for UINode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.debug_with_depth(f, 0, 100)
+    }
+}
+
+impl UINode {
+    /// Helper method for debug formatting with depth control
+    fn debug_with_depth(&self, f: &mut fmt::Formatter<'_>, current_depth: usize, max_depth: usize) -> fmt::Result {
+        let mut debug_struct = f.debug_struct("UINode");
+        debug_struct.field("attributes", &self.attributes);
+        
+        if !self.children.is_empty() {
+            if current_depth < max_depth {
+                debug_struct.field("children", &DebugChildrenWithDepth {
+                    children: &self.children,
+                    current_depth,
+                    max_depth,
+                });
+            } else {
+                debug_struct.field("children", &format!("[{} children (depth limit reached)]", self.children.len()));
+            }
+        }
+        
+        debug_struct.finish()
+    }
+}
+
+/// Helper struct for debug formatting children with depth control
+struct DebugChildrenWithDepth<'a> {
+    children: &'a Vec<UINode>,
+    current_depth: usize,
+    max_depth: usize,
+}
+
+impl<'a> fmt::Debug for DebugChildrenWithDepth<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        
+        // Show ALL children, no limit
+        for child in self.children.iter() {
+            list.entry(&DebugNodeWithDepth {
+                node: child,
+                current_depth: self.current_depth + 1,
+                max_depth: self.max_depth,
+            });
+        }
+        
+        list.finish()
+    }
+}
+
+/// Helper struct for debug formatting a single node with depth control
+struct DebugNodeWithDepth<'a> {
+    node: &'a UINode,
+    current_depth: usize,
+    max_depth: usize,
+}
+
+impl<'a> fmt::Debug for DebugNodeWithDepth<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.node.debug_with_depth(f, self.current_depth, self.max_depth)
+    }
 }
 
 /// Holds the screenshot data
@@ -61,7 +133,7 @@ pub struct Desktop {
 
 impl Desktop {
     #[instrument(skip(use_background_apps, activate_app))]
-    pub async fn new(
+    pub fn new(
         use_background_apps: bool,
         activate_app: bool,
     ) -> Result<Self, AutomationError> {
@@ -83,7 +155,21 @@ impl Desktop {
         })
     }
 
-    #[instrument(skip(self))]
+    /// Gets the root element representing the entire desktop.
+    ///
+    /// This is the top-level element that contains all applications, windows,
+    /// and UI elements on the desktop. You can use it as a starting point for
+    /// element searches.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new(false, false)?;
+    /// let root = desktop.root();
+    /// println!("Root element ID: {:?}", root.id());
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
     pub fn root(&self) -> UIElement {
         let start = Instant::now();
         info!("Getting root element");
@@ -169,11 +255,11 @@ impl Desktop {
     }
 
     #[instrument(skip(self, app_name))]
-    pub fn open_application(&self, app_name: &str) -> Result<(), AutomationError> {
+    pub fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
         let start = Instant::now();
         info!(app_name, "Opening application");
         
-        self.engine.open_application(app_name)?;
+        let app = self.engine.open_application(app_name)?;
         
         let duration = start.elapsed();
         info!(
@@ -181,7 +267,7 @@ impl Desktop {
             "Application opened"
         );
         
-        Ok(())
+        Ok(app)
     }
 
     #[instrument(skip(self, app_name))]
@@ -273,6 +359,32 @@ impl Desktop {
         Ok(screenshot)
     }
 
+    #[instrument(skip(self))]
+    pub async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
+        // Get all windows
+        let windows = xcap::Window::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get windows: {}", e))
+        })?;
+
+        // Find the focused window
+        let focused_window = windows.iter()
+            .find(|w| w.is_focused().unwrap_or(false))
+            .ok_or_else(|| {
+                AutomationError::ElementNotFound("No focused window found".to_string())
+            })?;
+
+        // Get the monitor name for the focused window
+        let monitor = focused_window.current_monitor().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get current monitor: {}", e))
+        })?;
+
+        let monitor_name = monitor.name().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+        })?;
+
+        Ok(monitor_name)
+    }
+
     #[instrument(skip(self, name))]
     pub async fn capture_monitor_by_name(
         &self,
@@ -351,27 +463,6 @@ impl Desktop {
         Ok(())
     }
 
-    #[instrument(skip(self, title_contains, timeout))]
-    pub async fn find_window_by_criteria(
-        &self,
-        title_contains: Option<&str>,
-        timeout: Option<Duration>,
-    ) -> Result<UIElement, AutomationError> {
-        let start = Instant::now();
-        info!(?title_contains, ?timeout, "Finding window by criteria");
-        
-        let window = self.engine.find_window_by_criteria(title_contains, timeout).await?;
-        
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            window_id = window.id().unwrap_or_default(),
-            "Window found"
-        );
-        
-        Ok(window)
-    }
-
     #[instrument(skip(self))]
     pub async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
         let start = Instant::now();
@@ -423,21 +514,76 @@ impl Desktop {
         Ok(application)
     }
 
-    #[instrument(skip(self, title))]
-    pub fn get_window_tree_by_title(&self, title: &str) -> Result<UINode, AutomationError> {
+    #[instrument(skip(self, pid, title, config))]
+    pub fn get_window_tree(&self, pid: u32, title: Option<&str>, config: Option<crate::platforms::TreeBuildConfig>) -> Result<UINode, AutomationError> {
         let start = Instant::now();
-        info!(title, "Getting window tree by title");
+        info!(pid, ?title, "Getting window tree with config");
 
-        let window_tree_root = self.engine.get_window_tree_by_title(title)?;
+        let tree_config = config.unwrap_or_default();
+        let window_tree_root = self.engine.get_window_tree(pid, title, tree_config)?;
 
         let duration = start.elapsed();
         info!(
             duration_ms = duration.as_millis(),
-            title = title,
+            pid = pid,
+            ?title,
             "Window tree retrieved"
         );
 
         Ok(window_tree_root)
+    }
+
+    /// Get all window elements for a given application by name
+    #[instrument(skip(self, app_name))]
+    pub async fn windows_for_application(&self, app_name: &str) -> Result<Vec<UIElement>, AutomationError> {
+        let start = Instant::now();
+        debug!(app_name, "Getting windows for application");
+
+        // 1. Find the application element
+        let app_element = match self.application(app_name) {
+            Ok(app) => app,
+            Err(e) => {
+                error!("Application '{}' not found: {}", app_name, e);
+                return Err(e);
+            }
+        };
+        debug!("Found application element for '{}'", app_name);
+
+        // 2. Get children of the application element
+        let children = match app_element.children() {
+            Ok(ch) => ch,
+            Err(e) => {
+                error!("Failed to get children for application '{}': {}", app_name, e);
+                return Err(e);
+            }
+        };
+        debug!(child_count = children.len(), "Found children for application '{}" , app_name);
+
+        // 3. Filter children to find windows (cross-platform)
+        let windows: Vec<UIElement> = children
+            .into_iter()
+            .filter(|el| {
+                let role = el.role().to_lowercase();
+                #[cfg(target_os = "macos")]
+                {
+                    role == "axwindow" || role == "window"
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    role == "window"
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                {
+                    // Fallback: just look for 'window' role
+                    role == "window"
+                }
+            })
+            .collect();
+
+            debug!(window_count = windows.len(), "Found windows for application '{}'", app_name);
+        let duration = start.elapsed();
+        debug!(duration_ms = duration.as_millis(), "windows_for_application complete");
+        Ok(windows)
     }
 }
 

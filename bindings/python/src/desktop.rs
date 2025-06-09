@@ -45,9 +45,7 @@ impl Desktop {
         });
         let use_background_apps = use_background_apps.unwrap_or(false);
         let activate_app = activate_app.unwrap_or(false);
-        let desktop = tokio::runtime::Runtime::new()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
-            .block_on(TerminatorDesktop::new(use_background_apps, activate_app))
+        let desktop = TerminatorDesktop::new(use_background_apps, activate_app)
             .map_err(|e| automation_error_to_pyerr(e))?;
         Ok(Desktop { inner: desktop })
     }
@@ -92,8 +90,9 @@ impl Desktop {
     /// 
     /// Args:
     ///     name (str): The name of the application to open.
-    pub fn open_application(&self, name: &str) -> PyResult<()> {
+    pub fn open_application(&self, name: &str) -> PyResult<UIElement> {
         self.inner.open_application(name)
+            .map(|e| UIElement { inner: e })
             .map_err(|e| automation_error_to_pyerr(e))
     }
 
@@ -153,6 +152,19 @@ impl Desktop {
         })
     }
 
+    #[pyo3(name = "get_active_monitor_name", text_signature = "($self)")]
+    /// (async) Get the name of the currently active monitor.
+    /// 
+    /// Returns:
+    ///     str: The name of the active monitor.
+    pub fn get_active_monitor_name<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop.get_active_monitor_name().await.map_err(|e| automation_error_to_pyerr(e))?;
+            Ok(result)
+        })
+    }
+
     #[pyo3(name = "capture_monitor_by_name", text_signature = "($self, name)")]
     /// (async) Capture a screenshot of a specific monitor.
     /// 
@@ -209,27 +221,7 @@ impl Desktop {
         })
     }
 
-    #[pyo3(name = "find_window_by_criteria", signature = (title_contains=None, timeout_ms=None))]
-    #[pyo3(text_signature = "($self, title_contains, timeout_ms)")]
-    /// (async) Find a window by criteria.
-    /// 
-    /// Args:
-    ///     title_contains (Optional[str]): Text that should be in the window title.
-    ///     timeout_ms (Optional[int]): Timeout in milliseconds.
-    /// 
-    /// Returns:
-    ///     UIElement: The found window element.
-    pub fn find_window_by_criteria<'py>(&self, py: Python<'py>, title_contains: Option<&str>, timeout_ms: Option<u64>) -> PyResult<Bound<'py, PyAny>> {
-        let desktop = self.inner.clone();
-        let title_contains = title_contains.map(|s| s.to_string());
-        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
-            let result = desktop.find_window_by_criteria(title_contains.as_deref(), timeout_ms.map(std::time::Duration::from_millis)).await.map_err(|e| automation_error_to_pyerr(e))?;
-            let py_result = UIElement { inner: result };
-            Ok(py_result)
-        })
-    }
-
-    #[pyo3(name = "get_current_browser_window", text_signature = "($self)")]
+    #[pyo3(name = "get_current_browser_window")]
     /// (async) Get the currently focused browser window.
     /// 
     /// Returns:
@@ -311,6 +303,24 @@ impl Desktop {
     pub fn focused_element(&self) -> PyResult<UIElement> {
         self.inner.focused_element()
             .map(|e| UIElement { inner: e })
+            .map_err(|e| automation_error_to_pyerr(e))
+    }
+
+    #[pyo3(name = "get_window_tree", signature = (pid, title=None, config=None))]
+    #[pyo3(text_signature = "($self, pid, title, config)")]
+    /// Get the UI tree for a window identified by process ID and optional title.
+    /// 
+    /// Args:
+    ///     pid (int): Process ID of the target application.
+    ///     title (Optional[str]): Optional window title filter.
+    ///     config (Optional[TreeBuildConfig]): Optional configuration for tree building.
+    /// 
+    /// Returns:
+    ///     UINode: Complete UI tree starting from the identified window.
+    pub fn get_window_tree(&self, pid: u32, title: Option<&str>, config: Option<crate::types::TreeBuildConfig>) -> PyResult<crate::types::UINode> {
+        let rust_config = config.map(|c| c.into());
+        self.inner.get_window_tree(pid, title, rust_config)
+            .map(crate::types::UINode::from)
             .map_err(|e| automation_error_to_pyerr(e))
     }
 } 
