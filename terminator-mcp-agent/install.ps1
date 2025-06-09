@@ -59,17 +59,26 @@ try {
                 New-Item -ItemType Directory -Path $cursorConfigDir | Out-Null
             }
             $cursorConfigFile = Join-Path $cursorConfigDir "mcp.json"
-            $cursorConfigContent = @"
-{
-  "mcpServers": {
-    "terminator-mcp-agent": {
-      "command": "terminator-mcp-agent.exe",
-      "args": []
-    }
-  }
-}
-"@
-            $cursorConfigContent | Set-Content -Path $cursorConfigFile
+
+            if (Test-Path $cursorConfigFile) {
+                $cursorConfigContent = Get-Content -Path $cursorConfigFile -Raw | ConvertFrom-Json
+            } else {
+                $cursorConfigContent = @{
+                    mcpServers = @{}
+                }
+            }
+
+            # ensure mcpServers key exists
+            if (-not $cursorConfigContent.PSObject.Properties["mcpServers"]) {
+                $cursorConfigContent.mcpServers = @{}
+            }
+
+            $cursorConfigContent.mcpServers["terminator-mcp-agent"] = @{
+                command = "terminator-mcp-agent.exe"
+                args = @()
+            }
+
+            $cursorConfigContent | ConvertTo-Json -Depth 10 | Set-Content -Path $cursorConfigFile
             Write-Host "Cursor configuration saved to $cursorConfigFile"
         }
         2 {
@@ -78,17 +87,25 @@ try {
             if (!(Test-Path (Split-Path $claudeConfigFile))) {
                 New-Item -ItemType Directory -Path (Split-Path $claudeConfigFile) | Out-Null
             }
-            $claudeConfigContent = @"
-{
-  "mcpServers": {
-    "terminator-mcp-agent": {
-      "command": "$mcpPath",
-      "args": []
-    }
-  }
-}
-"@
-            $claudeConfigContent | Set-Content -Path $claudeConfigFile
+
+            if (Test-Path $claudeConfigFile) {
+                $claudeConfigContent = Get-Content -Path $claudeConfigFile -Raw | ConvertFrom-Json
+            } else {
+                $claudeConfigContent = @{
+                    mcpServers = @{}
+                }
+            }
+
+            if (-not $claudeConfigContent.PSObject.Properties["mcpServers"]) {
+                $claudeConfigContent.mcpServers = @{}
+            }
+
+            $claudeConfigContent.mcpServers["terminator-mcp-agent"] = @{
+                command = "terminator-mcp-agent.exe"
+                args = @()
+            }
+
+            $claudeConfigContent | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeConfigFile
             Write-Host "Claude configuration saved to $claudeConfigFile"
         }
         Default {
