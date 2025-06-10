@@ -1,5 +1,5 @@
 Get-WmiObject Win32_Process | Where-Object { $_.ExecutablePath -like '*terminator-mcp-agent*' } | ForEach-Object {
-  taskkill.exe /T /F /PID $_.ProcessId
+  taskkill.exe /T /F /PID $_.ProcessId *>$null
 }
 Write-Host "installing Terminator MCP..."
 
