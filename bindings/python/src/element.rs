@@ -483,4 +483,28 @@ impl UIElement {
             })
             .map_err(automation_error_to_pyerr)
     }
+
+    #[pyo3(name = "set_transparency", text_signature = "($self, percentage)")]
+    /// Sets the transparency of the window.
+    ///
+    /// Args:
+    ///     percentage (int): The transparency percentage from 0 (completely transparent) to 100 (completely opaque).
+    ///
+    /// Returns:
+    ///     None
+    pub fn set_transparency(&self, percentage: u8) -> PyResult<()> {
+        self.inner
+            .set_transparency(percentage)
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "close", text_signature = "($self)")]
+    /// Close the element if it's closable (like windows, applications).
+    /// Does nothing for non-closable elements (like buttons, text, etc.).
+    ///
+    /// Returns:
+    ///     None
+    pub fn close(&self) -> PyResult<()> {
+        self.inner.close().map_err(automation_error_to_pyerr)
+    }
 }

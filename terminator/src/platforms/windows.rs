@@ -2974,6 +2974,62 @@ impl UIElementImpl for WindowsUIElement {
             height: rel_height,
         })
     }
+
+    fn set_transparency(&self, percentage: u8) -> Result<(), AutomationError> {
+        // Convert percentage (0-100) to alpha (0-255)
+        let alpha = ((percentage as f32 / 100.0) * 255.0) as u8;
+
+        // Get the window handle
+        let hwnd = self.element.0.get_native_window_handle().map_err(|e| {
+            AutomationError::PlatformError(format!(
+                "Failed to get native window handle of element: {}",
+                e
+            ))
+        })?;
+
+        // Set the window to be layered
+        unsafe {
+            let style = windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(
+                hwnd.into(),
+                windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX(-20), // GWL_EXSTYLE
+            );
+            if style == 0 {
+                return Err(AutomationError::PlatformError(
+                    "Failed to get window style".to_string(),
+                ));
+            }
+            let new_style = style | 0x00080000; // WS_EX_LAYERED
+            if windows::Win32::UI::WindowsAndMessaging::SetWindowLongW(
+                hwnd.into(),
+                windows::Win32::UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX(-20), // GWL_EXSTYLE
+                new_style,
+            ) == 0
+            {
+                return Err(AutomationError::PlatformError(
+                    "Failed to set window style".to_string(),
+                ));
+            }
+        }
+
+        // Set the transparency
+        unsafe {
+            let result = windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes(
+                hwnd.into(),
+                windows::Win32::Foundation::COLORREF(0), // crKey - not used with LWA_ALPHA
+                alpha,
+                windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS(
+                    0x00000002,
+                ), // LWA_ALPHA
+            );
+            if result.is_err() {
+                return Err(AutomationError::PlatformError(
+                    "Failed to set window transparency".to_string(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]

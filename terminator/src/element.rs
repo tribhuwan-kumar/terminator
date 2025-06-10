@@ -302,6 +302,10 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
         duration: Option<std::time::Duration>,
     ) -> Result<(), AutomationError>;
 
+    /// Sets the transparency of the window.
+    /// The percentage value ranges from 0 (completely transparent) to 100 (completely opaque).
+    fn set_transparency(&self, percentage: u8) -> Result<(), AutomationError>;
+
     // New method to get the process ID of the element
     fn process_id(&self) -> Result<u32, AutomationError>;
 
@@ -576,6 +580,12 @@ impl UIElement {
             parent: self.clone(),
             children,
         })
+    }
+
+    /// Sets the transparency of the window.
+    /// The percentage value ranges from 0 (completely transparent) to 100 (completely opaque).
+    pub fn set_transparency(&self, percentage: u8) -> Result<(), AutomationError> {
+        self.inner.set_transparency(percentage)
     }
 
     /// Get the process ID of the application containing this element

@@ -2149,6 +2149,12 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
+    fn set_transparency(&self, percentage: u8) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
     fn close(&self) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),

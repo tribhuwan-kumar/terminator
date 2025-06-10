@@ -536,3 +536,27 @@ fn test_unified_tree_api_with_config() {
     // Clean up
     let _ = app.close();
 }
+
+#[test]
+fn test_window_transparency() {
+    let engine = WindowsEngine::new(false, true).unwrap();
+    let notepad = engine.open_application("notepad.exe").unwrap();
+
+    // Fade out effect
+    for percentage in (100..=0).step_by(5) {
+        notepad.set_transparency(percentage as u8).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+
+    // Fade in effect
+    for percentage in (0..=100).step_by(5) {
+        notepad.set_transparency(percentage as u8).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+
+    // Final fade to fully opaque
+    notepad.set_transparency(100).unwrap();
+
+    // Clean up
+    notepad.close().unwrap();
+}
