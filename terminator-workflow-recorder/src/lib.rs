@@ -10,11 +10,15 @@ pub mod error;
 pub mod events;
 pub mod recorder;
 
+#[cfg(test)]
+pub mod tests;
+
 pub use error::*;
 pub use events::{
     ClipboardAction, ClipboardEvent, DragDropEvent, EventMetadata, HotkeyEvent, KeyboardEvent,
     MouseButton, MouseEvent, MouseEventType, Position, RecordedEvent, RecordedWorkflow, Rect,
-    SelectionMethod, StructureChangeType, TextSelectionEvent, UiFocusChangedEvent,
-    UiPropertyChangedEvent, UiStructureChangedEvent, WorkflowEvent,
+    SelectionMethod, StructureChangeType, TextInputCompletedEvent, TextInputMethod,
+    TextSelectionEvent, UiFocusChangedEvent, UiPropertyChangedEvent, UiStructureChangedEvent,
+    WorkflowEvent,
 };
 pub use recorder::*;

@@ -297,6 +297,9 @@ pub enum WorkflowEvent {
 
     /// A UI Automation focus change event
     UiFocusChanged(UiFocusChangedEvent),
+
+    /// High-level text input completion event
+    TextInputCompleted(TextInputCompletedEvent),
 }
 
 /// Represents a recorded event with timestamp
@@ -477,6 +480,39 @@ pub struct UiFocusChangedEvent {
     pub previous_element: Option<UIElement>,
 
     /// Event metadata (current focused UI element, application, etc.)
+    pub metadata: EventMetadata,
+}
+
+/// Method used to input text
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TextInputMethod {
+    /// Text was typed character by character
+    Typed,
+    /// Text was likely pasted (large amount added quickly)
+    Pasted,
+    /// Text was likely auto-filled or auto-completed
+    AutoFilled,
+    /// Mixed input methods
+    Mixed,
+}
+
+/// High-level text input completion event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextInputCompletedEvent {
+    /// The text that was entered in the field
+    pub text_value: String,
+    /// The name/label of the input field
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub field_name: Option<String>,
+    /// The type of input field (e.g., "TextBox", "PasswordBox", "SearchBox")
+    pub field_type: String,
+    /// Whether the text was likely typed vs pasted/auto-filled
+    pub input_method: TextInputMethod,
+    /// Duration of the typing session in milliseconds
+    pub typing_duration_ms: u64,
+    /// Number of individual keystroke events that contributed to this input
+    pub keystroke_count: u32,
+    /// Event metadata with UI element context
     pub metadata: EventMetadata,
 }
 
@@ -755,6 +791,33 @@ impl From<&UiFocusChangedEvent> for SerializableUiFocusChangedEvent {
     }
 }
 
+/// Serializable version of TextInputCompletedEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableTextInputCompletedEvent {
+    pub text_value: String,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub field_name: Option<String>,
+    pub field_type: String,
+    pub input_method: TextInputMethod,
+    pub typing_duration_ms: u64,
+    pub keystroke_count: u32,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&TextInputCompletedEvent> for SerializableTextInputCompletedEvent {
+    fn from(event: &TextInputCompletedEvent) -> Self {
+        Self {
+            text_value: event.text_value.clone(),
+            field_name: event.field_name.clone(),
+            field_type: event.field_type.clone(),
+            input_method: event.input_method.clone(),
+            typing_duration_ms: event.typing_duration_ms,
+            keystroke_count: event.keystroke_count,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
 /// Serializable version of WorkflowEvent for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SerializableWorkflowEvent {
@@ -766,6 +829,7 @@ pub enum SerializableWorkflowEvent {
     Hotkey(SerializableHotkeyEvent),
     UiPropertyChanged(SerializableUiPropertyChangedEvent),
     UiFocusChanged(SerializableUiFocusChangedEvent),
+    TextInputCompleted(SerializableTextInputCompletedEvent),
 }
 
 impl From<&WorkflowEvent> for SerializableWorkflowEvent {
@@ -781,6 +845,9 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
                 SerializableWorkflowEvent::UiPropertyChanged(e.into())
             }
             WorkflowEvent::UiFocusChanged(e) => SerializableWorkflowEvent::UiFocusChanged(e.into()),
+            WorkflowEvent::TextInputCompleted(e) => {
+                SerializableWorkflowEvent::TextInputCompleted(e.into())
+            }
         }
     }
 }

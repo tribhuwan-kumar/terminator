@@ -50,6 +50,12 @@ pub struct WorkflowRecorderConfig {
     /// Whether to record UI Automation focus change events
     pub record_ui_focus_changes: bool,
 
+    /// Whether to record high-level text input completion events
+    pub record_text_input_completion: bool,
+
+    /// Minimum time between keystrokes to consider a typing session complete (milliseconds)
+    pub text_input_completion_timeout_ms: u64,
+
     /// Maximum clipboard content length to record (longer content will be truncated)
     pub max_clipboard_content_length: usize,
 
@@ -92,6 +98,8 @@ impl Default for WorkflowRecorderConfig {
             record_ui_structure_changes: false, // Can be very noisy, disabled by default
             record_ui_property_changes: false,  // Can be very noisy, disabled by default
             record_ui_focus_changes: false,     // Can be noisy, disabled by default
+            record_text_input_completion: true, // High-level semantic events, enabled by default
+            text_input_completion_timeout_ms: 2000, // 2 second pause indicates typing completion
             max_clipboard_content_length: 1024, // 1KB max
             max_text_selection_length: 512,     // 512 chars max for selections
             track_modifier_states: true,

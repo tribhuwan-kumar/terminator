@@ -35,6 +35,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         record_drag_drop: true,
         record_hotkeys: true,
 
+        // High-level semantic events
+        record_text_input_completion: true, // 🔥 NEW: High-level text input events
+        text_input_completion_timeout_ms: 2000, // Complete typing after 2s pause OR focus change
+
         // UI Automation events
         record_ui_focus_changes: true,
         record_ui_structure_changes: true,
@@ -67,13 +71,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🎯 Recording the following interactions:");
     info!("   • Mouse movements, clicks, and drags");
     info!("   • Keyboard input with modifier key tracking");
+    info!("   • 🔥 HIGH-LEVEL TEXT INPUT COMPLETION (NEW!)");
+    info!("     - Aggregates individual keystrokes into semantic 'text entered' events");
+    info!("     - Captures final text value from UI elements after typing");
+    info!("     - Detects typing vs pasting vs auto-fill methods");
     info!("   • Clipboard operations (copy/paste/cut)");
     info!("   • Text selection with mouse and keyboard");
     info!("   • Window management (focus, move, resize)");
     info!("   • UI element interactions with detailed context");
     info!("   • Hotkey combinations and shortcuts");
     info!("   • Scroll events and directions");
-    info!("   • Text input with UI element context");
     info!("   • Drag and drop operations");
     info!("   • Menu and dialog interactions");
     info!("   • UI focus changes");
@@ -81,6 +88,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("   • UI property changes");
     info!("");
     info!("💡 Interact with your desktop to see comprehensive event capture...");
+    info!("");
+    info!("🔥 TO TEST HIGH-LEVEL TEXT INPUT COMPLETION:");
+    info!("   1. Open Notepad, a browser, or any app with text fields");
+    info!("   2. Click in a text field and type something like 'john'");
+    info!("   3. Click elsewhere or wait 2 seconds - you'll see a TextInputCompleted event!");
+    info!("   4. Try typing vs pasting to see different input methods detected");
+    info!("");
     info!("🛑 Press Ctrl+C to stop recording and save the workflow");
 
     // Process and display events from the stream
@@ -205,6 +219,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .text(1)
                             .unwrap()
                     );
+                }
+                terminator_workflow_recorder::WorkflowEvent::TextInputCompleted(text_input_event) => {
+                    println!(
+                        "🔥 TEXT INPUT COMPLETED {}: \"{}\" ({} keystrokes in {}ms)",
+                        event_count,
+                        text_input_event.text_value,
+                        text_input_event.keystroke_count,
+                        text_input_event.typing_duration_ms
+                    );
+                    
+                    // Show field details
+                    if let Some(ref field_name) = text_input_event.field_name {
+                        println!("     └─ Field: \"{}\" ({})", field_name, text_input_event.field_type);
+                    } else {
+                        println!("     └─ Field Type: {}", text_input_event.field_type);
+                    }
+                    
+                    // Show input method
+                    let method_icon = match text_input_event.input_method {
+                        terminator_workflow_recorder::TextInputMethod::Typed => "⌨️ Typed",
+                        terminator_workflow_recorder::TextInputMethod::Pasted => "📋 Pasted",
+                        terminator_workflow_recorder::TextInputMethod::AutoFilled => "🤖 Auto-filled",
+                        terminator_workflow_recorder::TextInputMethod::Mixed => "🔀 Mixed",
+                    };
+                    println!("     └─ Method: {}", method_icon);
+                    
+                    // Show application context
+                    if let Some(ref ui_element) = text_input_event.metadata.ui_element {
+                        println!("     └─ App: {}", ui_element.application_name());
+                    }
+                    
+                    println!("     └─ 🎯 This is the high-level semantic event you wanted!");
                 }
                 _ => {
                     // Display other event types more briefly

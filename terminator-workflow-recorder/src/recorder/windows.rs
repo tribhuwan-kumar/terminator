@@ -1,7 +1,7 @@
 use crate::{
     ClipboardAction, ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton,
-    MouseEvent, MouseEventType, Position, Result, UiFocusChangedEvent, UiPropertyChangedEvent,
-    WorkflowEvent, WorkflowRecorderConfig,
+    MouseEvent, MouseEventType, Position, Result, TextInputCompletedEvent, TextInputMethod,
+    UiFocusChangedEvent, UiPropertyChangedEvent, WorkflowEvent, WorkflowRecorderConfig,
 };
 use arboard::Clipboard;
 use rdev::{Button, EventType, Key};
@@ -51,6 +51,9 @@ pub struct WindowsRecorder {
 
     /// UI Automation thread ID for proper cleanup
     ui_automation_thread_id: Arc<Mutex<Option<u32>>>,
+
+    /// Current typing session tracking
+    current_typing_session: Arc<Mutex<Option<TypingSession>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -65,6 +68,21 @@ struct ModifierStates {
 struct HotkeyPattern {
     action: String,
     keys: Vec<u32>,
+}
+
+/// Tracks a typing session in progress
+#[derive(Debug, Clone)]
+struct TypingSession {
+    /// The UI element being typed into
+    element: UIElement,
+    /// When the typing session started
+    start_time: Instant,
+    /// When the last keystroke was received
+    last_keystroke_time: Instant,
+    /// Number of keystrokes in this session
+    keystroke_count: u32,
+    /// Whether there were any paste operations during typing
+    had_paste_operations: bool,
 }
 
 impl WindowsRecorder {
@@ -100,6 +118,7 @@ impl WindowsRecorder {
             last_mouse_move_time,
             hotkey_patterns,
             ui_automation_thread_id: Arc::new(Mutex::new(None)),
+            current_typing_session: Arc::new(Mutex::new(None)),
         };
 
         // Set up comprehensive event listeners
@@ -130,6 +149,106 @@ impl WindowsRecorder {
 
         // If we can't get a meaningful string value, skip this property
         None
+    }
+
+    /// Check if this is a text input element
+    fn is_text_input_element(ui_element: &Option<UIElement>) -> bool {
+        if let Some(element) = ui_element {
+            let role = element.role().to_lowercase();
+            matches!(
+                role.as_str(),
+                "edit" | "textbox" | "passwordbox" | "searchbox" | "combobox" | "document"
+            )
+        } else {
+            false
+        }
+    }
+
+    /// Check if this keystroke should count towards typing (printable characters and common editing keys)
+    fn is_typing_keystroke(key_code: u32, character: Option<char>) -> bool {
+        // Printable characters
+        if character.is_some() && character != Some('\0') {
+            return true;
+        }
+
+        // Common editing keys
+        matches!(
+            key_code,
+            0x08 | // Backspace
+            0x2E | // Delete
+            0x20 | // Space
+            0x0D // Enter
+        )
+    }
+
+    /// Determine the likely input method based on session characteristics
+    fn determine_input_method(
+        keystroke_count: u32,
+        duration_ms: u64,
+        had_paste: bool,
+    ) -> TextInputMethod {
+        if had_paste {
+            if keystroke_count > 5 {
+                TextInputMethod::Mixed
+            } else {
+                TextInputMethod::Pasted
+            }
+        } else if duration_ms < 100 && keystroke_count > 10 {
+            // Very fast typing of many characters suggests auto-fill
+            TextInputMethod::AutoFilled
+        } else {
+            TextInputMethod::Typed
+        }
+    }
+
+    /// Process potential typing session completion
+    fn check_and_complete_typing_session(
+        current_session: &Arc<Mutex<Option<TypingSession>>>,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        force_complete: bool,
+        timeout_ms: u64,
+    ) {
+        let mut session_guard = current_session.lock().unwrap();
+
+        if let Some(session) = session_guard.as_ref() {
+            let should_complete = force_complete
+                || session.last_keystroke_time.elapsed().as_millis() as u64 > timeout_ms;
+
+            if should_complete {
+                // Try to get the current text value from the UI element
+                let final_text = session.element.text(1).unwrap_or_else(|_| {
+                    // Fallback: try to get name if text fails
+                    session.element.name().unwrap_or_default()
+                });
+
+                // Only emit event if we got meaningful text
+                if !final_text.trim().is_empty() {
+                    let duration_ms = session.start_time.elapsed().as_millis() as u64;
+                    let input_method = Self::determine_input_method(
+                        session.keystroke_count,
+                        duration_ms,
+                        session.had_paste_operations,
+                    );
+
+                    let text_input_event = TextInputCompletedEvent {
+                        text_value: final_text,
+                        field_name: session.element.name(),
+                        field_type: session.element.role(),
+                        input_method,
+                        typing_duration_ms: duration_ms,
+                        keystroke_count: session.keystroke_count,
+                        metadata: EventMetadata {
+                            ui_element: Some(session.element.clone()),
+                        },
+                    };
+
+                    let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
+                }
+
+                // Clear the completed session
+                *session_guard = None;
+            }
+        }
     }
 
     /// Initialize common hotkey patterns
@@ -202,6 +321,9 @@ impl WindowsRecorder {
         let mouse_move_throttle = self.config.mouse_move_throttle_ms;
         let track_modifiers = self.config.track_modifier_states;
         let record_hotkeys = self.config.record_hotkeys;
+        let record_text_input_completion = self.config.record_text_input_completion;
+        let text_input_timeout_ms = self.config.text_input_completion_timeout_ms;
+        let current_typing_session = Arc::clone(&self.current_typing_session);
 
         thread::spawn(move || {
             // PERFORMANCE: Create UIAutomation instance once outside the event loop
@@ -271,6 +393,75 @@ impl WindowsRecorder {
                             // ui_element = None
                         }
 
+                        // Handle typing session tracking for text input completion
+                        if record_text_input_completion
+                            && Self::is_typing_keystroke(key_code, character)
+                        {
+                            // Check if we're typing in a text input element
+                            if Self::is_text_input_element(&ui_element) {
+                                let mut session_guard = current_typing_session.lock().unwrap();
+                                let now = Instant::now();
+
+                                // Check if this continues an existing session or starts a new one
+                                let should_update_session = if let Some(ref session) =
+                                    *session_guard
+                                {
+                                    // Continue if same element and recent activity
+                                    if let Some(ref current_element) = ui_element {
+                                        // Compare elements by name - simple heuristic
+                                        let same_element = session.element.name()
+                                            == current_element.name()
+                                            && session.element.role() == current_element.role();
+                                        same_element
+                                            && (session.last_keystroke_time.elapsed().as_millis()
+                                                as u64)
+                                                < text_input_timeout_ms
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    // No current session, start a new one
+                                    true
+                                };
+
+                                if should_update_session {
+                                    if let Some(current_element) = ui_element.as_ref() {
+                                        if let Some(ref mut session) = *session_guard {
+                                            // Update existing session
+                                            session.last_keystroke_time = now;
+                                            session.keystroke_count += 1;
+                                        } else {
+                                            // Start new session
+                                            *session_guard = Some(TypingSession {
+                                                element: current_element.clone(),
+                                                start_time: now,
+                                                last_keystroke_time: now,
+                                                keystroke_count: 1,
+                                                had_paste_operations: false,
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    // Complete previous session if it exists
+                                    drop(session_guard);
+                                    Self::check_and_complete_typing_session(
+                                        &current_typing_session,
+                                        &event_tx,
+                                        true, // force complete
+                                        text_input_timeout_ms,
+                                    );
+                                }
+                            } else {
+                                // Not a text input element, complete any active session
+                                Self::check_and_complete_typing_session(
+                                    &current_typing_session,
+                                    &event_tx,
+                                    true, // force complete
+                                    text_input_timeout_ms,
+                                );
+                            }
+                        }
+
                         let keyboard_event = KeyboardEvent {
                             key_code,
                             is_key_down: true,
@@ -332,6 +523,16 @@ impl WindowsRecorder {
                                 Button::Middle => MouseButton::Middle,
                                 _ => return,
                             };
+
+                            // Complete any active typing session on mouse click (likely focus change)
+                            if record_text_input_completion {
+                                Self::check_and_complete_typing_session(
+                                    &current_typing_session,
+                                    &event_tx,
+                                    true, // force complete on click
+                                    text_input_timeout_ms,
+                                );
+                            }
 
                             let mut ui_element = None;
                             if capture_ui_elements {
@@ -579,6 +780,8 @@ impl WindowsRecorder {
         let ignore_property_patterns = self.config.ignore_property_patterns.clone();
         let ignore_window_titles = self.config.ignore_window_titles.clone();
         let ignore_applications = self.config.ignore_applications.clone();
+        let current_typing_session = Arc::clone(&self.current_typing_session);
+        let record_text_input_completion = self.config.record_text_input_completion;
 
         if !record_structure_changes && !record_property_changes && !record_focus_changes {
             debug!("No UI Automation events enabled, skipping setup");
@@ -726,8 +929,48 @@ impl WindowsRecorder {
 
                 // Spawn a thread to process the focus change data safely
                 let focus_event_tx_clone = focus_event_tx.clone();
+                let focus_typing_session = Arc::clone(&current_typing_session);
+                let focus_record_text_input = record_text_input_completion;
                 std::thread::spawn(move || {
                     while let Ok((element_name, ui_element)) = focus_rx.recv() {
+                        // Complete any active typing session on focus change
+                        if focus_record_text_input {
+                            // We don't have access to UIAutomation here, so we'll use a simpler completion
+                            let mut session_guard = focus_typing_session.lock().unwrap();
+                            if let Some(session) = session_guard.take() {
+                                // Get final text from the session element
+                                let final_text = session
+                                    .element
+                                    .text(1)
+                                    .unwrap_or_else(|_| session.element.name().unwrap_or_default());
+
+                                if !final_text.trim().is_empty() {
+                                    let duration_ms =
+                                        session.start_time.elapsed().as_millis() as u64;
+                                    let input_method = WindowsRecorder::determine_input_method(
+                                        session.keystroke_count,
+                                        duration_ms,
+                                        session.had_paste_operations,
+                                    );
+
+                                    let text_input_event = TextInputCompletedEvent {
+                                        text_value: final_text,
+                                        field_name: session.element.name(),
+                                        field_type: session.element.role(),
+                                        input_method,
+                                        typing_duration_ms: duration_ms,
+                                        keystroke_count: session.keystroke_count,
+                                        metadata: EventMetadata {
+                                            ui_element: Some(session.element.clone()),
+                                        },
+                                    };
+
+                                    let _ = focus_event_tx_clone
+                                        .send(WorkflowEvent::TextInputCompleted(text_input_event));
+                                }
+                            }
+                        }
+
                         // Apply filtering
                         if WindowsRecorder::should_ignore_focus_event(
                             &element_name,
