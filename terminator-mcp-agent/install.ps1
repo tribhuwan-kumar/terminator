@@ -85,7 +85,7 @@ try {
 
             # might be cluttered json :(
             $formattedJson = $cursorConfigContent | ConvertTo-Json -Depth 10 -Compress:$true
-            $formattedJson | Out-File -FilePath $cursorConfigFile -Encoding utf8
+            Set-Content -Path $cursorConfigFile -Value $formattedJson -Encoding utf8
             Write-Host "Cursor configuration saved to $cursorConfigFile"
         }
         2 {
@@ -118,7 +118,7 @@ try {
             }
 
             $formattedJson = $claudeConfigContent | ConvertTo-Json -Depth 10 -Compress:$true
-            $formattedJson | Out-File -FilePath $claudeConfigFile -Encoding utf8
+            Set-Content -Path $claudeConfigFile -Value $formattedJson -Encoding utf8
             Write-Host "Claude configuration saved to $claudeConfigFile"
         }
         Default {
