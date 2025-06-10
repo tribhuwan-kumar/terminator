@@ -12,7 +12,7 @@ MCP is useful to test out the `terminator` lib and see what you can do. You can 
 Open terminal and run this command:
 
 ```ps1
-iwr -useb https://raw.githubusercontent.com/tribhuwan-kumar/terminator/refs/heads/mcp/terminator-mcp-agent/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/mediar-ai/terminator/refs/heads/main/terminator-mcp-agent/install.ps1 | iex
 ```
 > it'll guide through the configuration, only for [Cursor](https://www.cursor.com/) and [Claude](https://claude.ai/download) desktop app
 
