@@ -119,8 +119,8 @@ impl Default for WorkflowRecorderConfig {
             max_clipboard_content_length: 1024, // 1KB max
             max_text_selection_length: 512,     // 512 chars max for selections
             track_modifier_states: true,
-            mouse_move_throttle_ms: 50, // 20 FPS max for mouse moves
-            min_drag_distance: 5.0,     // 5 pixels minimum for drag detection
+            mouse_move_throttle_ms: 100, // PERFORMANCE: Increased from 50ms to 100ms (10 FPS max for mouse moves)
+            min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
             ignore_focus_patterns: [
                 // Common system UI patterns to ignore by default
                 "notification".to_string(),

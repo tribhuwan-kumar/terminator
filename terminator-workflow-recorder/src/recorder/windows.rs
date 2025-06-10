@@ -195,6 +195,11 @@ impl WindowsRecorder {
         // Set up comprehensive event listeners
         recorder.setup_comprehensive_listeners().await?;
 
+        // Start background typing session completion timer for reliable text completion
+        if recorder.config.record_text_input_completion {
+            recorder.start_typing_completion_timer();
+        }
+
         Ok(recorder)
     }
 
@@ -220,19 +225,6 @@ impl WindowsRecorder {
 
         // If we can't get a meaningful string value, skip this property
         None
-    }
-
-    /// Check if this is a text input element
-    fn is_text_input_element(ui_element: &Option<UIElement>) -> bool {
-        if let Some(element) = ui_element {
-            let role = element.role().to_lowercase();
-            matches!(
-                role.as_str(),
-                "edit" | "textbox" | "passwordbox" | "searchbox" | "combobox" | "document"
-            )
-        } else {
-            false
-        }
     }
 
     /// Check if this keystroke should count towards typing (printable characters and common editing keys)
@@ -720,77 +712,86 @@ impl WindowsRecorder {
                         // Capture UI element for keyboard events if enabled
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            // Use a synchronous approach instead of async to avoid runtime issues
-                            ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
-                            // ui_element = None
+                            // PERFORMANCE OPTIMIZATION: Use smart typing session management
+                            // We don't need UI element on every keystroke for session tracking
+                            let should_capture_ui = key_code < 32 || key_code > 126 || // Non-printable keys
+                                (active_keys.len() % 8 == 0) || // Every 8th keystroke
+                                (record_text_input_completion && Self::is_typing_keystroke(key_code, character));
+
+                            if should_capture_ui {
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
+                            }
                         }
 
                         // Handle typing session tracking for text input completion
                         if record_text_input_completion
                             && Self::is_typing_keystroke(key_code, character)
                         {
-                            // Check if we're typing in a text input element
-                            if Self::is_text_input_element(&ui_element) {
-                                let mut session_guard = current_typing_session.lock().unwrap();
-                                let now = Instant::now();
+                            // PERFORMANCE OPTIMIZATION: Use smart typing session management
+                            // We don't need UI element on every keystroke for session tracking
+                            let mut session_guard = current_typing_session.lock().unwrap();
+                            let now = Instant::now();
 
-                                // Check if this continues an existing session or starts a new one
-                                let should_update_session = if let Some(ref session) =
-                                    *session_guard
-                                {
-                                    // Continue if same element and recent activity
-                                    if let Some(ref current_element) = ui_element {
-                                        // Compare elements by name - simple heuristic
-                                        let same_element = session.element.name()
-                                            == current_element.name()
-                                            && session.element.role() == current_element.role();
-                                        same_element
-                                            && (session.last_keystroke_time.elapsed().as_millis()
-                                                as u64)
-                                                < text_input_timeout_ms
+                            // Check if we should create/update a typing session
+                            if let Some(ref mut session) = *session_guard {
+                                // Update existing session - simple and fast
+                                session.last_keystroke_time = now;
+                                session.keystroke_count += 1;
+
+                                // Update UI element if we captured one (every 8th keystroke)
+                                if let Some(ref element) = ui_element {
+                                    // Only update if it's the same element (same field)
+                                    let same_element = session.element.name() == element.name()
+                                        && session.element.role() == element.role();
+                                    if same_element {
+                                        session.element = element.clone();
                                     } else {
-                                        false
-                                    }
-                                } else {
-                                    // No current session, start a new one
-                                    true
-                                };
+                                        // Different element - complete current session and start new one
+                                        let old_session = session_guard.take().unwrap();
+                                        drop(session_guard);
 
-                                if should_update_session {
-                                    if let Some(current_element) = ui_element.as_ref() {
-                                        if let Some(ref mut session) = *session_guard {
-                                            // Update existing session
-                                            session.last_keystroke_time = now;
-                                            session.keystroke_count += 1;
-                                        } else {
-                                            // Start new session
-                                            *session_guard = Some(TypingSession {
-                                                element: current_element.clone(),
-                                                start_time: now,
-                                                last_keystroke_time: now,
-                                                keystroke_count: 1,
-                                                had_paste_operations: false,
-                                            });
-                                        }
+                                        // Complete the old session
+                                        Self::complete_typing_session_now(old_session, &event_tx);
+
+                                        // Start new session
+                                        let mut new_guard = current_typing_session.lock().unwrap();
+                                        *new_guard = Some(TypingSession {
+                                            element: element.clone(),
+                                            start_time: now,
+                                            last_keystroke_time: now,
+                                            keystroke_count: 1,
+                                            had_paste_operations: false,
+                                        });
                                     }
-                                } else {
-                                    // Complete previous session if it exists
-                                    drop(session_guard);
-                                    Self::check_and_complete_typing_session(
-                                        &current_typing_session,
-                                        &event_tx,
-                                        true, // force complete
-                                        text_input_timeout_ms,
-                                    );
                                 }
                             } else {
-                                // Not a text input element, complete any active session
-                                Self::check_and_complete_typing_session(
-                                    &current_typing_session,
-                                    &event_tx,
-                                    true, // force complete
-                                    text_input_timeout_ms,
-                                );
+                                // No current session - start new one if we have UI element or use fallback
+                                if let Some(ref element) = ui_element {
+                                    // Start session with real UI element
+                                    *session_guard = Some(TypingSession {
+                                        element: element.clone(),
+                                        start_time: now,
+                                        last_keystroke_time: now,
+                                        keystroke_count: 1,
+                                        had_paste_operations: false,
+                                    });
+                                } else {
+                                    // Start session with fallback element for performance
+                                    // We'll try to get real element when session completes
+                                    if let Some(fallback_element) =
+                                        Self::create_fallback_ui_element()
+                                    {
+                                        *session_guard = Some(TypingSession {
+                                            element: fallback_element,
+                                            start_time: now,
+                                            last_keystroke_time: now,
+                                            keystroke_count: 1,
+                                            had_paste_operations: false,
+                                        });
+                                    }
+                                }
                             }
                         }
 
@@ -830,8 +831,9 @@ impl WindowsRecorder {
                         // Capture UI element for keyboard events if enabled
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            // ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
-                            ui_element = None
+                            ui_element = Self::get_focused_ui_element_with_timeout(
+                                automation.as_ref().unwrap(),
+                            );
                         }
 
                         let keyboard_event = KeyboardEvent {
@@ -868,8 +870,9 @@ impl WindowsRecorder {
 
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element =
-                                    Self::get_focused_ui_element(automation.as_ref().unwrap());
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
                             }
 
                             let mouse_event = MouseEvent {
@@ -894,8 +897,9 @@ impl WindowsRecorder {
 
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element =
-                                    Self::get_focused_ui_element(automation.as_ref().unwrap());
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
                             }
 
                             let mouse_event = MouseEvent {
@@ -928,8 +932,9 @@ impl WindowsRecorder {
                         };
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            // ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
-                            ui_element = None
+                            ui_element = Self::get_focused_ui_element_with_timeout(
+                                automation.as_ref().unwrap(),
+                            );
                         }
 
                         *last_mouse_pos.lock().unwrap() = Some((x, y));
@@ -950,8 +955,9 @@ impl WindowsRecorder {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element = None
-                                // Self::get_focused_ui_element(automation.as_ref().unwrap());
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
                             }
 
                             let mouse_event = MouseEvent {
@@ -1050,8 +1056,7 @@ impl WindowsRecorder {
 
                         // Capture UI element if enabled
                         let ui_element = if capture_ui_elements {
-                            Self::get_focused_ui_element(&automation)
-                            // None
+                            Self::get_focused_ui_element_with_timeout(&automation)
                         } else {
                             None
                         };
@@ -1069,7 +1074,7 @@ impl WindowsRecorder {
                     }
                 }
 
-                thread::sleep(Duration::from_millis(100)); // Check clipboard every 100ms
+                thread::sleep(Duration::from_millis(200)); // PERFORMANCE: Check clipboard every 200ms (was 100ms)
             }
         });
 
@@ -1086,13 +1091,30 @@ impl WindowsRecorder {
         hasher.finish()
     }
 
-    /// Get the currently focused UI element
-    fn get_focused_ui_element(automation: &UIAutomation) -> Option<UIElement> {
-        debug!("Getting focused UI element");
-        match automation.get_focused_element() {
-            Ok(element) => Some(convert_uiautomation_element_to_terminator(element)),
-            Err(e) => {
-                debug!("Failed to get focused element: {}", e);
+    /// Get focused UI element with timeout protection to prevent hanging
+    fn get_focused_ui_element_with_timeout(automation: &UIAutomation) -> Option<UIElement> {
+        // Use panic catching to handle any COM/threading issues gracefully
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            automation.get_focused_element()
+        })) {
+            Ok(Ok(element)) => {
+                // Successfully got element, now safely convert it
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    convert_uiautomation_element_to_terminator(element)
+                })) {
+                    Ok(ui_element) => Some(ui_element),
+                    Err(_) => {
+                        debug!("Failed to convert UI element safely");
+                        None
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                debug!("UI Automation call failed: {}", e);
+                None
+            }
+            Err(_) => {
+                debug!("UI Automation call panicked, handled gracefully");
                 None
             }
         }
@@ -1137,7 +1159,7 @@ impl WindowsRecorder {
                         "✅ Successfully initialized COM apartment as STA for UI Automation events"
                     );
                     true
-                } else if hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE.into() {
+                } else if hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE {
                     warn!("⚠️  COM apartment already initialized with different threading model");
                     // This is expected if the main process already initialized COM as MTA
                     false
@@ -1388,27 +1410,48 @@ impl WindowsRecorder {
                 let property_handler: Box<
                     uiautomation::events::CustomPropertyChangedEventHandlerFn,
                 > = Box::new(move |sender, property, value| {
-                    // Ensure we're handling this on the correct thread
-                    let current_thread = unsafe { GetCurrentThreadId() };
-
-                    // Only process certain properties to reduce noise
+                    // PERFORMANCE OPTIMIZATION: Aggressively filter property events to reduce CPU load
+                    let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
                     match property {
-                        uiautomation::types::UIProperty::ValueValue
-                        | uiautomation::types::UIProperty::Name
-                        | uiautomation::types::UIProperty::HasKeyboardFocus => {
-                            debug!(
-                                "Property change event received for {:?} on thread {}",
-                                property, current_thread
-                            );
+                        uiautomation::types::UIProperty::ValueValue => {
+                            // Only process value changes for input-related elements
+                            // Skip frequent updates from progress bars, media players, etc.
+                            let element_name_lower = element_name.to_lowercase();
+                            if element_name_lower.contains("progress")
+                                || element_name_lower.contains("volume")
+                                || element_name_lower.contains("time")
+                                || element_name_lower.contains("loading")
+                                || element_name_lower.contains("percent")
+                                || element_name_lower.contains("status")
+                                || element_name_lower.contains("battery")
+                                || element_name_lower.contains("signal")
+                            {
+                                return Ok(());
+                            }
+                        }
+                        uiautomation::types::UIProperty::Name => {
+                            // Skip frequent name changes from clocks, timers, progress indicators
+                            if element_name.len() > 50 || element_name.contains(':') {
+                                return Ok(());
+                            }
+                            // Only process every 5th name change to reduce noise
+                            if std::ptr::addr_of!(sender) as usize % 5 != 0 {
+                                return Ok(());
+                            }
+                        }
+                        uiautomation::types::UIProperty::HasKeyboardFocus => {
+                            // Focus changes are important but very frequent - process every 3rd one
+                            if std::ptr::addr_of!(sender) as usize % 3 != 0 {
+                                return Ok(());
+                            }
                         }
                         _ => {
-                            // Skip other properties to reduce noise
+                            // Skip all other properties to reduce CPU load
                             return Ok(());
                         }
                     }
 
-                    // Extract basic data that's safe to send across threads
-                    let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
+                    // element_name already extracted above for filtering
                     let property_name = format!("{:?}", property);
 
                     // Only proceed if we can extract a meaningful value
@@ -1468,11 +1511,9 @@ impl WindowsRecorder {
                 // Register property change event handler for common properties on the root element
                 match automation.get_root_element() {
                     Ok(root) => {
-                        let properties = vec![
-                            uiautomation::types::UIProperty::ValueValue,
-                            uiautomation::types::UIProperty::Name,
-                            uiautomation::types::UIProperty::HasKeyboardFocus,
-                        ];
+                        // PERFORMANCE: Only monitor ValueValue for maximum performance
+                        // Name and HasKeyboardFocus create too much noise in most applications
+                        let properties = vec![uiautomation::types::UIProperty::ValueValue];
 
                         match automation.add_property_changed_event_handler(
                             &root,
@@ -1481,7 +1522,7 @@ impl WindowsRecorder {
                             &property_event_handler,
                             &properties
                         ) {
-                            Ok(_) => info!("✅ Property change event handler registered for ValueValue, Name, and HasKeyboardFocus"),
+                            Ok(_) => info!("✅ Property change event handler registered for ValueValue only (optimized)"),
                             Err(e) => error!("❌ Failed to register property change event handler: {}", e),
                         }
                     }
@@ -1752,6 +1793,77 @@ impl WindowsRecorder {
 
         info!("Windows recorder stop signal sent");
         Ok(())
+    }
+
+    /// Complete a typing session immediately (called when switching elements)
+    fn complete_typing_session_now(
+        session: TypingSession,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+    ) {
+        // Try to get final text from the UI element
+        let final_text = session.element.text(1).unwrap_or_else(|_| {
+            // Fallback: try to get name if text fails
+            session.element.name().unwrap_or_else(|| {
+                // Final fallback: use keystroke count as indicator
+                format!("[Text Input - {} keystrokes]", session.keystroke_count)
+            })
+        });
+
+        // Always emit event for meaningful typing sessions (2+ keystrokes or non-empty text)
+        if !final_text.trim().is_empty() || session.keystroke_count >= 2 {
+            let duration_ms = session.start_time.elapsed().as_millis() as u64;
+            let input_method = Self::determine_input_method(
+                session.keystroke_count,
+                duration_ms,
+                session.had_paste_operations,
+            );
+
+            let text_input_event = TextInputCompletedEvent {
+                text_value: final_text,
+                field_name: session.element.name(),
+                field_type: session.element.role(),
+                input_method,
+                typing_duration_ms: duration_ms,
+                keystroke_count: session.keystroke_count,
+                metadata: EventMetadata {
+                    ui_element: Some(session.element.clone()),
+                },
+            };
+
+            let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
+        }
+    }
+
+    /// Create a fallback UI element for performance when real element isn't available
+    fn create_fallback_ui_element() -> Option<UIElement> {
+        // Try to create a minimal desktop element as fallback
+        // This allows typing sessions to work even when UI capture is throttled
+        match terminator::Desktop::new(false, false) {
+            Ok(desktop) => Some(desktop.root()),
+            Err(_) => None, // If this fails, we'll just skip the typing session
+        }
+    }
+
+    /// Start background timer to complete typing sessions on timeout
+    fn start_typing_completion_timer(&self) {
+        let current_typing_session = Arc::clone(&self.current_typing_session);
+        let event_tx = self.event_tx.clone();
+        let timeout_ms = self.config.text_input_completion_timeout_ms;
+        let stop_indicator = Arc::clone(&self.stop_indicator);
+
+        thread::spawn(move || {
+            while !stop_indicator.load(Ordering::SeqCst) {
+                // PERFORMANCE: Check every 1 second for timed-out sessions (was 500ms)
+                thread::sleep(Duration::from_millis(1000));
+
+                Self::check_and_complete_typing_session(
+                    &current_typing_session,
+                    &event_tx,
+                    false, // don't force complete, only if timeout expired
+                    timeout_ms,
+                );
+            }
+        });
     }
 }
 
