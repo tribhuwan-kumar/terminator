@@ -300,6 +300,12 @@ pub enum WorkflowEvent {
 
     /// High-level text input completion event
     TextInputCompleted(TextInputCompletedEvent),
+
+    /// High-level application switch event
+    ApplicationSwitch(ApplicationSwitchEvent),
+
+    /// High-level browser tab navigation event
+    BrowserTabNavigation(BrowserTabNavigationEvent),
 }
 
 /// Represents a recorded event with timestamp
@@ -513,6 +519,121 @@ pub struct TextInputCompletedEvent {
     /// Number of individual keystroke events that contributed to this input
     pub keystroke_count: u32,
     /// Event metadata with UI element context
+    pub metadata: EventMetadata,
+}
+
+/// Method used to switch applications
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ApplicationSwitchMethod {
+    /// Alt+Tab keyboard shortcut
+    AltTab,
+    /// Clicking on taskbar icon
+    TaskbarClick,
+    /// Windows key + number shortcut
+    WindowsKeyShortcut,
+    /// Start menu or app launcher
+    StartMenu,
+    /// Direct window click
+    WindowClick,
+    /// Other/unknown method
+    Other,
+}
+
+/// High-level application switch event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApplicationSwitchEvent {
+    /// The application being switched from
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub from_application: Option<String>,
+    /// The application being switched to
+    pub to_application: String,
+    /// Process ID of the source application
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_process_id: Option<u32>,
+    /// Process ID of the target application
+    pub to_process_id: u32,
+    /// Method used to switch applications
+    pub switch_method: ApplicationSwitchMethod,
+    /// Time spent in the previous application (milliseconds)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dwell_time_ms: Option<u64>,
+    /// Number of rapid application switches (Alt+Tab cycling)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub switch_count: Option<u32>,
+    /// Event metadata
+    pub metadata: EventMetadata,
+}
+
+/// Browser tab navigation action type
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TabAction {
+    /// New tab created
+    Created,
+    /// Switched to existing tab
+    Switched,
+    /// Tab closed
+    Closed,
+    /// Tab moved/reordered
+    Moved,
+    /// Tab duplicated
+    Duplicated,
+    /// Tab pinned/unpinned
+    Pinned,
+    /// Tab refreshed/reloaded
+    Refreshed,
+}
+
+/// Method used for tab navigation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum TabNavigationMethod {
+    /// Keyboard shortcut (Ctrl+T, Ctrl+W, Ctrl+Tab, etc.)
+    KeyboardShortcut,
+    /// Mouse click on tab
+    TabClick,
+    /// Mouse click on new tab button
+    NewTabButton,
+    /// Mouse click on close button
+    CloseButton,
+    /// Context menu action
+    ContextMenu,
+    /// Address bar navigation
+    AddressBar,
+    /// Link click that opens in new tab
+    LinkNewTab,
+    /// Other/unknown method
+    Other,
+}
+
+/// High-level browser tab navigation event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserTabNavigationEvent {
+    /// The action performed on the tab
+    pub action: TabAction,
+    /// Method used for the navigation
+    pub method: TabNavigationMethod,
+    /// Current URL in the tab (if available)
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub url: Option<String>,
+    /// Previous URL (for navigation events)
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub previous_url: Option<String>,
+    /// Page title (if available)
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub title: Option<String>,
+    /// Browser application (Chrome, Firefox, Edge, etc.)
+    pub browser: String,
+    /// Current tab index in the window
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tab_index: Option<u32>,
+    /// Total number of tabs in the window
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tabs: Option<u32>,
+    /// Time spent on previous URL (for navigation events)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_dwell_time_ms: Option<u64>,
+    /// Whether this was a back/forward navigation
+    pub is_back_forward: bool,
+    /// Event metadata
     pub metadata: EventMetadata,
 }
 
@@ -818,6 +939,78 @@ impl From<&TextInputCompletedEvent> for SerializableTextInputCompletedEvent {
     }
 }
 
+/// Serializable version of ApplicationSwitchEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableApplicationSwitchEvent {
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub from_application: Option<String>,
+    pub to_application: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_process_id: Option<u32>,
+    pub to_process_id: u32,
+    pub switch_method: ApplicationSwitchMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dwell_time_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub switch_count: Option<u32>,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&ApplicationSwitchEvent> for SerializableApplicationSwitchEvent {
+    fn from(event: &ApplicationSwitchEvent) -> Self {
+        Self {
+            from_application: event.from_application.clone(),
+            to_application: event.to_application.clone(),
+            from_process_id: event.from_process_id,
+            to_process_id: event.to_process_id,
+            switch_method: event.switch_method.clone(),
+            dwell_time_ms: event.dwell_time_ms,
+            switch_count: event.switch_count,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of BrowserTabNavigationEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableBrowserTabNavigationEvent {
+    pub action: TabAction,
+    pub method: TabNavigationMethod,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub previous_url: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub title: Option<String>,
+    pub browser: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tab_index: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tabs: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_dwell_time_ms: Option<u64>,
+    pub is_back_forward: bool,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&BrowserTabNavigationEvent> for SerializableBrowserTabNavigationEvent {
+    fn from(event: &BrowserTabNavigationEvent) -> Self {
+        Self {
+            action: event.action.clone(),
+            method: event.method.clone(),
+            url: event.url.clone(),
+            previous_url: event.previous_url.clone(),
+            title: event.title.clone(),
+            browser: event.browser.clone(),
+            tab_index: event.tab_index,
+            total_tabs: event.total_tabs,
+            page_dwell_time_ms: event.page_dwell_time_ms,
+            is_back_forward: event.is_back_forward,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
 /// Serializable version of WorkflowEvent for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SerializableWorkflowEvent {
@@ -830,6 +1023,8 @@ pub enum SerializableWorkflowEvent {
     UiPropertyChanged(SerializableUiPropertyChangedEvent),
     UiFocusChanged(SerializableUiFocusChangedEvent),
     TextInputCompleted(SerializableTextInputCompletedEvent),
+    ApplicationSwitch(SerializableApplicationSwitchEvent),
+    BrowserTabNavigation(SerializableBrowserTabNavigationEvent),
 }
 
 impl From<&WorkflowEvent> for SerializableWorkflowEvent {
@@ -847,6 +1042,12 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             WorkflowEvent::UiFocusChanged(e) => SerializableWorkflowEvent::UiFocusChanged(e.into()),
             WorkflowEvent::TextInputCompleted(e) => {
                 SerializableWorkflowEvent::TextInputCompleted(e.into())
+            }
+            WorkflowEvent::ApplicationSwitch(e) => {
+                SerializableWorkflowEvent::ApplicationSwitch(e.into())
+            }
+            WorkflowEvent::BrowserTabNavigation(e) => {
+                SerializableWorkflowEvent::BrowserTabNavigation(e.into())
             }
         }
     }

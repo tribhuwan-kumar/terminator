@@ -56,6 +56,18 @@ pub struct WorkflowRecorderConfig {
     /// Minimum time between keystrokes to consider a typing session complete (milliseconds)
     pub text_input_completion_timeout_ms: u64,
 
+    /// Whether to record high-level application switch events
+    pub record_application_switches: bool,
+
+    /// Whether to record high-level browser tab navigation events  
+    pub record_browser_tab_navigation: bool,
+
+    /// Minimum time between application switches to consider them separate (milliseconds)
+    pub app_switch_dwell_time_threshold_ms: u64,
+
+    /// Timeout for browser URL/title detection after tab actions (milliseconds)
+    pub browser_detection_timeout_ms: u64,
+
     /// Maximum clipboard content length to record (longer content will be truncated)
     pub max_clipboard_content_length: usize,
 
@@ -100,6 +112,10 @@ impl Default for WorkflowRecorderConfig {
             record_ui_focus_changes: false,     // Can be noisy, disabled by default
             record_text_input_completion: true, // High-level semantic events, enabled by default
             text_input_completion_timeout_ms: 2000, // 2 second pause indicates typing completion
+            record_application_switches: true,  // High-level semantic events, enabled by default
+            record_browser_tab_navigation: true, // High-level semantic events, enabled by default
+            app_switch_dwell_time_threshold_ms: 100, // 100ms minimum dwell time to record
+            browser_detection_timeout_ms: 1000, // 1 second to detect URL/title changes
             max_clipboard_content_length: 1024, // 1KB max
             max_text_selection_length: 512,     // 512 chars max for selections
             track_modifier_states: true,

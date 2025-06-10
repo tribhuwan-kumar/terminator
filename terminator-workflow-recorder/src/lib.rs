@@ -15,9 +15,10 @@ pub mod tests;
 
 pub use error::*;
 pub use events::{
-    ClipboardAction, ClipboardEvent, DragDropEvent, EventMetadata, HotkeyEvent, KeyboardEvent,
-    MouseButton, MouseEvent, MouseEventType, Position, RecordedEvent, RecordedWorkflow, Rect,
-    SelectionMethod, StructureChangeType, TextInputCompletedEvent, TextInputMethod,
+    ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
+    ClipboardEvent, DragDropEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton,
+    MouseEvent, MouseEventType, Position, RecordedEvent, RecordedWorkflow, Rect, SelectionMethod,
+    StructureChangeType, TabAction, TabNavigationMethod, TextInputCompletedEvent, TextInputMethod,
     TextSelectionEvent, UiFocusChangedEvent, UiPropertyChangedEvent, UiStructureChangedEvent,
     WorkflowEvent,
 };
