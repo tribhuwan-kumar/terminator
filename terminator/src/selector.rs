@@ -35,14 +35,14 @@ impl From<&str> for Selector {
                 role: s[5..].to_string(),
                 name: None,
             },
-            "app" | "application" | "window" | "button" | "checkbox" | "menu" | "menuitem" | "menubar" | "textfield"
-            | "input" => {
+            "app" | "application" | "window" | "button" | "checkbox" | "menu" | "menuitem"
+            | "menubar" | "textfield" | "input" => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::Role {
-                    role: parts.get(0).unwrap_or(&"").to_string(),
+                    role: parts.first().unwrap_or(&"").to_string(),
                     name: parts.get(1).map(|name| name.to_string()), // optional
                 }
-            },
+            }
             // starts with AX
             _ if s.starts_with("AX") => Selector::Role {
                 role: s.to_string(),

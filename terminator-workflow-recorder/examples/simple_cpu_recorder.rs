@@ -451,8 +451,8 @@ fn print_instructions() {
     println!("8. 💾 Save the file (Ctrl+S)");
     println!("9. ✨ Try scrolling, clicking, switching apps");
     println!("10. 🔄 Alt+Tab between applications");
-    println!("");
+    println!();
     println!("💡 Watch for CPU/memory spikes - they'll be logged!");
     println!("🛑 Use Ctrl+C anytime to stop and get your performance report");
-    println!("");
+    println!();
 }

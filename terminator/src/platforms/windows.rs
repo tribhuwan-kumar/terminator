@@ -1,3 +1,5 @@
+#![allow(clippy::arc_with_non_send_sync)]
+
 use crate::element::UIElementImpl;
 use crate::platforms::AccessibilityEngine;
 use crate::utils::normalize;
@@ -429,7 +431,7 @@ impl AccessibilityEngine for WindowsEngine {
             let condition = self
                 .automation
                 .0
-                .create_property_condition(UIProperty::ProcessId, Variant::from(pid as i32), None)
+                .create_property_condition(UIProperty::ProcessId, Variant::from(pid), None)
                 .unwrap();
             let root_ele = self.automation.0.get_root_element().unwrap();
 
@@ -482,9 +484,9 @@ impl AccessibilityEngine for WindowsEngine {
         })?;
 
         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-        return Ok(UIElement::new(Box::new(WindowsUIElement {
+        Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_ele,
-        })));
+        })))
     }
 
     fn get_application_by_pid(
@@ -574,13 +576,13 @@ impl AccessibilityEngine for WindowsEngine {
                     .control_type(win_control_type)
                     .depth(actual_depth)
                     .timeout(timeout_ms as u64);
-   
+
                 if let Some(name) = name {
                     // use contains_name, its undetermined right now
                     // wheather we should use `name` or `contains_name`
                     matcher_builder = matcher_builder.contains_name(name);
                 }
-                
+
                 let elements = matcher_builder.find_all().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
                         "Role: '{}' (mapped to {:?}), Name: {:?}, Err: {}",
@@ -596,14 +598,14 @@ impl AccessibilityEngine for WindowsEngine {
                     name
                 );
 
-                return Ok(elements
+                Ok(elements
                     .into_iter()
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
                         }))
                     })
-                    .collect());
+                    .collect())
             }
             Selector::Id(id) => {
                 debug!("Searching for element with ID: {}", id);
@@ -648,7 +650,7 @@ impl AccessibilityEngine for WindowsEngine {
                     })
                     .collect();
 
-                return Ok(collected_elements);
+                Ok(collected_elements)
             }
             Selector::Name(name) => {
                 debug!("searching element by name: {}", name);
@@ -663,21 +665,17 @@ impl AccessibilityEngine for WindowsEngine {
                     .timeout(timeout_ms as u64);
 
                 let elements = matcher.find_all().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Name: '{}', Err: {}",
-                        name,
-                        e.to_string()
-                    ))
+                    AutomationError::ElementNotFound(format!("Name: '{}', Err: {}", name, e))
                 })?;
 
-                return Ok(elements
+                Ok(elements
                     .into_iter()
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
                         }))
                     })
-                    .collect());
+                    .collect())
             }
             Selector::Text(text) => {
                 let filter = OrFilter {
@@ -702,27 +700,21 @@ impl AccessibilityEngine for WindowsEngine {
 
                 // Get the first matching element
                 let elements = matcher.find_all().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Text: '{}', Err: {}",
-                        text,
-                        e.to_string()
-                    ))
+                    AutomationError::ElementNotFound(format!("Text: '{}', Err: {}", text, e))
                 })?;
 
-                return Ok(elements
+                Ok(elements
                     .into_iter()
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
                         }))
                     })
-                    .collect());
+                    .collect())
             }
-            Selector::Path(_) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`Path` selector not supported".to_string(),
-                ));
-            }
+            Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
+                "`Path` selector not supported".to_string(),
+            )),
             Selector::NativeId(automation_id) => {
                 // for windows passing `UIProperty::AutomationID` as `NativeId`
                 debug!(
@@ -778,18 +770,14 @@ impl AccessibilityEngine for WindowsEngine {
                         }))
                     })
                     .collect();
-                return Ok(collected_elements);
+                Ok(collected_elements)
             }
-            Selector::Attributes(_attributes) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`Attributes` selector not supported".to_string(),
-                ));
-            }
-            Selector::Filter(_filter) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`Filter` selector not supported".to_string(),
-                ));
-            }
+            Selector::Attributes(_attributes) => Err(AutomationError::UnsupportedOperation(
+                "`Attributes` selector not supported".to_string(),
+            )),
+            Selector::Filter(_filter) => Err(AutomationError::UnsupportedOperation(
+                "`Filter` selector not supported".to_string(),
+            )),
             Selector::Chain(selectors) => {
                 if selectors.is_empty() {
                     return Err(AutomationError::InvalidArgument(
@@ -839,7 +827,7 @@ impl AccessibilityEngine for WindowsEngine {
                 }
 
                 // Convert Vec<Option<UIElement>> to Vec<UIElement> by filtering out None values
-                return Ok(current_roots.into_iter().filter_map(|x| x).collect());
+                Ok(current_roots.into_iter().flatten().collect())
             }
             Selector::ClassName(classname) => {
                 debug!("searching elements by class name: {}", classname);
@@ -856,20 +844,19 @@ impl AccessibilityEngine for WindowsEngine {
                 let elements = matcher.find_all().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
                         "ClassName: '{}', Err: {}",
-                        classname,
-                        e.to_string()
+                        classname, e
                     ))
                 })?;
-                return Ok(elements
+                Ok(elements
                     .into_iter()
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
                         }))
                     })
-                    .collect());
+                    .collect())
             }
-        };
+        }
     }
 
     fn find_element(
@@ -983,17 +970,13 @@ impl AccessibilityEngine for WindowsEngine {
                     .timeout(timeout_ms as u64);
 
                 let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Name: '{}', Err: {}",
-                        name,
-                        e.to_string()
-                    ))
+                    AutomationError::ElementNotFound(format!("Name: '{}', Err: {}", name, e))
                 })?;
 
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                })));
+                })))
             }
             Selector::Text(text) => {
                 let filter = OrFilter {
@@ -1025,15 +1008,13 @@ impl AccessibilityEngine for WindowsEngine {
                 })?;
 
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                })));
+                })))
             }
-            Selector::Path(_) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`Path` selector not supported".to_string(),
-                ));
-            }
+            Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
+                "`Path` selector not supported".to_string(),
+            )),
             Selector::NativeId(automation_id) => {
                 // for windows passing `UIProperty::AutomationID` as `NativeId`
                 debug!(
@@ -1075,20 +1056,16 @@ impl AccessibilityEngine for WindowsEngine {
                 })?;
 
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                })));
+                })))
             }
-            Selector::Attributes(_attributes) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`Attributes` selector not supported".to_string(),
-                ));
-            }
-            Selector::Filter(_filter) => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "`Filter` selector not supported".to_string(),
-                ));
-            }
+            Selector::Attributes(_attributes) => Err(AutomationError::UnsupportedOperation(
+                "`Attributes` selector not supported".to_string(),
+            )),
+            Selector::Filter(_filter) => Err(AutomationError::UnsupportedOperation(
+                "`Filter` selector not supported".to_string(),
+            )),
             Selector::Chain(selectors) => {
                 if selectors.is_empty() {
                     return Err(AutomationError::InvalidArgument(
@@ -1105,11 +1082,11 @@ impl AccessibilityEngine for WindowsEngine {
                 }
 
                 // Return the final single element found after the full chain traversal.
-                return current_element.ok_or_else(|| {
+                current_element.ok_or_else(|| {
                     AutomationError::ElementNotFound(
                         "Element not found after traversing chain".to_string(),
                     )
-                });
+                })
             }
             Selector::ClassName(classname) => {
                 debug!("searching element by class name: {}", classname);
@@ -1126,14 +1103,13 @@ impl AccessibilityEngine for WindowsEngine {
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
                         "ClassName: '{}', Err: {}",
-                        classname,
-                        e.to_string()
+                        classname, e
                     ))
                 })?;
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                })));
+                })))
             }
         }
     }
@@ -2136,7 +2112,7 @@ impl UIElementImpl for WindowsUIElement {
             });
 
         // If first method fails, try using the bounding rectangle
-        if let Err(_) = click_result {
+        if click_result.is_err() {
             debug!("clickable point unavailable, falling back to bounding rectangle");
             if let Ok(rect) = self.element.0.get_bounding_rectangle() {
                 println!("bounding rectangle: {:?}", rect);
@@ -2203,9 +2179,9 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn hover(&self) -> Result<(), AutomationError> {
-        return Err(AutomationError::UnsupportedOperation(
+        Err(AutomationError::UnsupportedOperation(
             "`hover` doesn't not support".to_string(),
-        ));
+        ))
     }
 
     fn focus(&self) -> Result<(), AutomationError> {
@@ -2924,10 +2900,10 @@ impl UIElementImpl for WindowsUIElement {
         for monitor in monitors {
             let monitor_x = monitor.x().map_err(|e| {
                 AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
-            })? as i32;
+            })?;
             let monitor_y = monitor.y().map_err(|e| {
                 AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
-            })? as i32;
+            })?;
             let monitor_width = monitor.width().map_err(|e| {
                 AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
             })? as i32;
@@ -2937,9 +2913,9 @@ impl UIElementImpl for WindowsUIElement {
 
             // Check if element intersects with this monitor
             if rect.get_left() < monitor_x + monitor_width
-                && rect.get_left() + rect.get_width() as i32 > monitor_x
+                && rect.get_left() + rect.get_width() > monitor_x
                 && rect.get_top() < monitor_y + monitor_height
-                && rect.get_top() + rect.get_height() as i32 > monitor_y
+                && rect.get_top() + rect.get_height() > monitor_y
             {
                 intersected_monitors.push(monitor);
             }
@@ -2966,10 +2942,10 @@ impl UIElementImpl for WindowsUIElement {
         })? as u32;
         let monitor_width = monitor.width().map_err(|e| {
             AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
-        })? as u32;
+        })?;
         let monitor_height = monitor.height().map_err(|e| {
             AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
-        })? as u32;
+        })?;
 
         // Calculate scaled coordinates
         let scaled_x = (rect.get_left() as f64 * scale_factor as f64) as u32;
@@ -2978,16 +2954,8 @@ impl UIElementImpl for WindowsUIElement {
         let scaled_height = (rect.get_height() as f64 * scale_factor as f64) as u32;
 
         // Convert to relative coordinates for capture_region
-        let rel_x = if scaled_x >= monitor_x {
-            scaled_x - monitor_x
-        } else {
-            0
-        };
-        let rel_y = if scaled_y >= monitor_y {
-            scaled_y - monitor_y
-        } else {
-            0
-        };
+        let rel_x = scaled_x.saturating_sub(monitor_x);
+        let rel_y = scaled_y.saturating_sub(monitor_y);
 
         // Ensure width and height don't exceed monitor bounds
         let rel_width = std::cmp::min(scaled_width, monitor_width - rel_x);
@@ -3102,9 +3070,7 @@ fn launch_uwp_app(
 fn get_uwp_app_info_from_startapps(
     uwp_app_name: &str,
 ) -> Result<(String, String), AutomationError> {
-    let command = format!(
-        r#"Get-StartApps | Where-Object {{ $_.AppID -match '^[\w\.]+_[\w]+![\w\.]+$' }} | Select-Object Name, AppID | ConvertTo-Json"#
-    );
+    let command = r#"Get-StartApps | Where-Object { $_.AppID -match '^[\w\.]+_[\w]+![\w\.]+$' } | Select-Object Name, AppID | ConvertTo-Json"#.to_string();
 
     let output = std::process::Command::new("powershell")
         .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
@@ -3399,8 +3365,10 @@ fn launch_regular_application(
             app_name.encode_utf16().chain(std::iter::once(0)).collect();
 
         // Prepare process startup info
-        let mut startup_info = STARTUPINFOW::default();
-        startup_info.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+        let startup_info = STARTUPINFOW {
+            cb: std::mem::size_of::<STARTUPINFOW>() as u32,
+            ..Default::default()
+        };
 
         // Prepare process info
         let mut process_info = PROCESS_INFORMATION::default();
@@ -3509,7 +3477,7 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
 
     // Check cache first
     {
-        let mut cache_guard = PROCESS_CACHE.lock().unwrap();
+        let cache_guard = PROCESS_CACHE.lock().unwrap();
         if let Some(ref cache) = *cache_guard {
             if cache.last_updated.elapsed() < CACHE_DURATION {
                 // Cache is still valid, check if we have the process

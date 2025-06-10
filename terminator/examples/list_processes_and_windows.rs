@@ -45,7 +45,7 @@ async fn main() -> Result<(), AutomationError> {
                 // Add window title to this process
                 process_windows
                     .entry(pid)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(window_title.clone());
 
                 println!(
@@ -64,8 +64,8 @@ async fn main() -> Result<(), AutomationError> {
     // Show summary of processes with multiple windows
     println!("\n=== Process Summary (Processes with Multiple Windows) ===");
     println!(
-        "{:<8} {:<30} {:<10} {}",
-        "PID", "Process Name", "Windows", "Window Titles"
+        "{:<8} {:<30} {:<10} Window Titles",
+        "PID", "Process Name", "Windows"
     );
     println!("{}", "-".repeat(100));
 
@@ -89,7 +89,7 @@ async fn main() -> Result<(), AutomationError> {
 
     // List all window names for each application/process using the new windows_for_application method
     println!("\n=== Windows for Each Application/Process (via windows_for_application) ===");
-    for (_, app) in applications.iter().enumerate() {
+    for app in applications.iter() {
         let pid = match app.process_id() {
             Ok(pid) => pid,
             Err(_) => continue,
@@ -145,7 +145,7 @@ async fn main() -> Result<(), AutomationError> {
                 println!("  {}. {}", i + 1, title);
             }
         }
-        println!("");
+        println!();
     }
 
     Ok(())

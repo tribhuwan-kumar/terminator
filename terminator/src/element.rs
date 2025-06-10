@@ -162,11 +162,7 @@ fn is_empty_string(opt: &Option<String>) -> bool {
 }
 
 fn is_false_bool(opt: &Option<bool>) -> bool {
-    match opt {
-        Some(false) => true,
-        None => true,
-        _ => false,
-    }
+    matches!(opt, Some(false) | None)
 }
 
 fn is_empty_properties(props: &HashMap<String, Option<serde_json::Value>>) -> bool {
@@ -515,7 +511,7 @@ impl UIElement {
         self.inner.close()
     }
 
-    /// Convenience methods to reduce verbosity with optional properties
+    // Convenience methods to reduce verbosity with optional properties
 
     /// Get element ID or empty string if not available
     pub fn id_or_empty(&self) -> String {
@@ -668,7 +664,7 @@ pub mod utils {
     pub fn has_text_content(element: &UIElement) -> bool {
         element.name().is_some()
             || element.attributes().value.is_some()
-            || element.text(1).unwrap_or_default().trim().len() > 0
+            || !element.text(1).unwrap_or_default().trim().is_empty()
     }
 
     /// Get a human-readable identifier for the element
@@ -694,6 +690,7 @@ pub mod utils {
 }
 
 #[test]
+#[allow(clippy::assertions_on_constants)]
 fn test_uielement_serialization() {
     // Note: This test demonstrates the serialization capability
     // In practice, you would create a UIElement from a real platform implementation

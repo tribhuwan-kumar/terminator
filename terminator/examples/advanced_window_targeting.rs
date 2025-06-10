@@ -22,10 +22,7 @@ async fn main() -> Result<(), AutomationError> {
             let attrs = app.attributes();
             let name = attrs.name.unwrap_or_else(|| "Unnamed".to_string());
 
-            apps_by_pid
-                .entry(pid)
-                .or_insert_with(Vec::new)
-                .push(name.clone());
+            apps_by_pid.entry(pid).or_default().push(name.clone());
 
             #[cfg(target_os = "windows")]
             {
@@ -84,7 +81,7 @@ async fn demonstrate_window_targeting(
 
     // Example 1: Get window tree by PID only (no title filter)
     println!("  1. Getting window tree by PID only...");
-    match desktop.get_window_tree_by_pid_and_title(pid, None) {
+    match desktop.get_window_tree(pid, None, None) {
         Ok(tree) => {
             println!(
                 "     ✓ Successfully got window tree ({}+ elements)",
@@ -105,7 +102,7 @@ async fn demonstrate_window_targeting(
             title_part
         );
 
-        match desktop.get_window_tree_by_pid_and_title(pid, Some(&title_part)) {
+        match desktop.get_window_tree(pid, Some(&title_part), None) {
             Ok(tree) => {
                 println!(
                     "     ✓ Successfully got specific window tree ({}+ elements)",
@@ -120,7 +117,7 @@ async fn demonstrate_window_targeting(
 
     // Example 3: Try with non-existent title (should fall back to PID)
     println!("  3. Getting window tree with non-existent title (fallback test)...");
-    match desktop.get_window_tree_by_pid_and_title(pid, Some("NonExistentTitle12345")) {
+    match desktop.get_window_tree(pid, Some("NonExistentTitle12345"), None) {
         Ok(tree) => {
             println!(
                 "     ✓ Successfully fell back to PID-based selection ({}+ elements)",
@@ -137,7 +134,7 @@ async fn demonstrate_window_targeting(
         let title_part = extract_meaningful_title_part(first_window_title);
         println!("  4. Comparing with traditional title-only approach...");
 
-        match desktop.get_window_tree_by_title(&title_part) {
+        match desktop.get_window_tree(0, Some(&title_part), None) {
             Ok(tree) => {
                 println!(
                     "     ✓ Title-only approach worked ({}+ elements)",
@@ -167,7 +164,7 @@ fn extract_meaningful_title_part(title: &str) -> String {
     let words: Vec<&str> = title.split_whitespace().collect();
     if words.len() > 2 {
         words[0..2].join(" ")
-    } else if words.len() > 0 {
+    } else if !words.is_empty() {
         words[0].to_string()
     } else {
         title.chars().take(10).collect()
@@ -197,11 +194,7 @@ fn is_browser_process(pid: u32) -> bool {
 }
 
 fn count_tree_elements(node: &terminator::UINode) -> usize {
-    1 + node
-        .children
-        .iter()
-        .map(|child| count_tree_elements(child))
-        .sum::<usize>()
+    1 + node.children.iter().map(count_tree_elements).sum::<usize>()
 }
 
 fn truncate_string(s: &str, max_len: usize) -> String {

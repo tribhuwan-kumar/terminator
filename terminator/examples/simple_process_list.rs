@@ -37,7 +37,7 @@ async fn main() -> Result<(), AutomationError> {
                 // Add window title to this process
                 process_windows
                     .entry(pid)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(window_title.clone());
 
                 println!(
@@ -56,8 +56,8 @@ async fn main() -> Result<(), AutomationError> {
     // Show summary of processes with multiple windows
     println!("\n=== Processes with Multiple Windows ===");
     println!(
-        "{:<8} {:<30} {:<10} {}",
-        "PID", "Process Name", "Windows", "Titles"
+        "{:<8} {:<30} {:<10} Titles",
+        "PID", "Process Name", "Windows"
     );
     println!("{}", "-".repeat(100));
 

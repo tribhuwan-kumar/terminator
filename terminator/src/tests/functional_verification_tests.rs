@@ -3,8 +3,7 @@
 //! This module contains tests to verify that the performance optimizations
 //! in the Windows platform layer don't break existing functionality.
 
-use crate::{AutomationError, Desktop};
-use std::time::Duration;
+use crate::Desktop;
 
 /// Initialize test environment
 fn init_test_environment() -> Desktop {

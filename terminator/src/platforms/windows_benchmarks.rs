@@ -285,13 +285,13 @@ mod performance_benchmarks {
         // For browsers, try specific close methods
         if app_type == "browser" {
             // Try Ctrl+W (close tab) first
-            if let Ok(_) = app_element.press_key("ctrl+w") {
+            if app_element.press_key("ctrl+w").is_ok() {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 return Ok("Ctrl+W".to_string());
             }
 
             // Try Alt+F4 (close window)
-            if let Ok(_) = app_element.press_key("alt+f4") {
+            if app_element.press_key("alt+f4").is_ok() {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 return Ok("Alt+F4".to_string());
             }
@@ -299,13 +299,13 @@ mod performance_benchmarks {
 
         // For system apps, try Alt+F4
         if app_type == "system" {
-            if let Ok(_) = app_element.press_key("alt+f4") {
+            if app_element.press_key("alt+f4").is_ok() {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 return Ok("Alt+F4".to_string());
             }
 
             // Try Escape for some system dialogs
-            if let Ok(_) = app_element.press_key("escape") {
+            if app_element.press_key("escape").is_ok() {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 return Ok("Escape".to_string());
             }

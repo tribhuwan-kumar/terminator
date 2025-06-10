@@ -1,7 +1,7 @@
 use crate::element::UIElementImpl;
 use crate::platforms::AccessibilityEngine;
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
-use crate::{ClickResult, CommandOutput, ScreenshotResult, UINode};
+use crate::{ClickResult, CommandOutput, ScreenshotResult};
 use atspi::{State, StateSet};
 use std::collections::hash_map::DefaultHasher;
 use std::default::Default;
@@ -14,7 +14,6 @@ use std::sync::Arc;
 use std::sync::{OnceLock, mpsc};
 use std::thread;
 use std::time::Duration;
-use tokio::time::sleep;
 use tracing::debug;
 
 use atspi::{
@@ -211,6 +210,41 @@ pub struct LinuxUIElement {
 }
 
 // --- Background Worker for Async AT-SPI Calls ---
+// Type aliases for complex types to reduce clippy::type_complexity warnings
+
+type StringChannel = (
+    std::sync::mpsc::Sender<Result<String, AutomationError>>,
+    std::sync::mpsc::Receiver<Result<String, AutomationError>>,
+);
+type OptionStringChannel = (
+    std::sync::mpsc::Sender<Result<Option<String>, AutomationError>>,
+    std::sync::mpsc::Receiver<Result<Option<String>, AutomationError>>,
+);
+type OptionUIElementChannel = (
+    std::sync::mpsc::Sender<Result<Option<UIElement>, AutomationError>>,
+    std::sync::mpsc::Receiver<Result<Option<UIElement>, AutomationError>>,
+);
+type BoundsChannel = (
+    std::sync::mpsc::Sender<Result<(f64, f64, f64, f64), AutomationError>>,
+    std::sync::mpsc::Receiver<Result<(f64, f64, f64, f64), AutomationError>>,
+);
+type ClickResultChannel = (
+    std::sync::mpsc::Sender<Result<ClickResult, AutomationError>>,
+    std::sync::mpsc::Receiver<Result<ClickResult, AutomationError>>,
+);
+type UnitChannel = (
+    std::sync::mpsc::Sender<Result<(), AutomationError>>,
+    std::sync::mpsc::Receiver<Result<(), AutomationError>>,
+);
+type BoolChannel = (
+    std::sync::mpsc::Sender<Result<bool, AutomationError>>,
+    std::sync::mpsc::Receiver<Result<bool, AutomationError>>,
+);
+type U32Channel = (
+    std::sync::mpsc::Sender<Result<u32, AutomationError>>,
+    std::sync::mpsc::Receiver<Result<u32, AutomationError>>,
+);
+
 type Request = Box<
     dyn FnOnce() -> std::pin::Pin<
             Box<dyn std::future::Future<Output = Result<Vec<UIElement>, AutomationError>> + Send>,
@@ -219,9 +253,6 @@ type Request = Box<
 >;
 type Response = Result<Vec<UIElement>, AutomationError>;
 
-static WORKER: OnceLock<mpsc::Sender<(Request, mpsc::Sender<Response>)>> = OnceLock::new();
-
-// Worker for usize results
 type UsizeRequest = Box<
     dyn FnOnce() -> std::pin::Pin<
             Box<dyn std::future::Future<Output = Result<usize, AutomationError>> + Send>,
@@ -230,10 +261,18 @@ type UsizeRequest = Box<
 >;
 type UsizeResponse = Result<usize, AutomationError>;
 
-static USIZE_WORKER: OnceLock<mpsc::Sender<(UsizeRequest, mpsc::Sender<UsizeResponse>)>> =
+static WORKER: OnceLock<std::sync::mpsc::Sender<(Request, std::sync::mpsc::Sender<Response>)>> =
     OnceLock::new();
+static USIZE_WORKER: OnceLock<
+    std::sync::mpsc::Sender<(UsizeRequest, std::sync::mpsc::Sender<UsizeResponse>)>,
+> = OnceLock::new();
+type AtSpiInitWorkerSender = std::sync::mpsc::Sender<(
+    (),
+    std::sync::mpsc::Sender<Result<LinuxEngine, AutomationError>>,
+)>;
+static AT_SPI_INIT_WORKER: OnceLock<AtSpiInitWorkerSender> = OnceLock::new();
 
-fn get_worker() -> &'static mpsc::Sender<(Request, mpsc::Sender<Response>)> {
+fn get_worker() -> &'static std::sync::mpsc::Sender<(Request, std::sync::mpsc::Sender<Response>)> {
     WORKER.get_or_init(|| {
         let (tx, rx) = mpsc::channel::<(Request, mpsc::Sender<Response>)>();
         thread::spawn(move || {
@@ -248,7 +287,8 @@ fn get_worker() -> &'static mpsc::Sender<(Request, mpsc::Sender<Response>)> {
     })
 }
 
-fn get_usize_worker() -> &'static mpsc::Sender<(UsizeRequest, mpsc::Sender<UsizeResponse>)> {
+fn get_usize_worker()
+-> &'static std::sync::mpsc::Sender<(UsizeRequest, std::sync::mpsc::Sender<UsizeResponse>)> {
     USIZE_WORKER.get_or_init(|| {
         let (tx, rx) = mpsc::channel::<(UsizeRequest, mpsc::Sender<UsizeResponse>)>();
         thread::spawn(move || {
@@ -370,7 +410,7 @@ pub async fn get_all_elements_from_root(
                     .build();
                 let collection_matches = collection_proxy
                     .get_matches_from(
-                        &collection_proxy.inner().path(),
+                        collection_proxy.inner().path(),
                         match_rule,
                         SortOrder::Canonical,
                         atspi::TreeTraversalType::Inorder,
@@ -431,7 +471,7 @@ pub async fn get_all_elements_from_root(
 
         let collection_matches = collection_proxy
             .get_matches_from(
-                &collection_proxy.inner().path(),
+                collection_proxy.inner().path(),
                 match_rule,
                 SortOrder::Canonical,
                 atspi::TreeTraversalType::Inorder,
@@ -612,10 +652,10 @@ fn find_elements_inner<'a>(
                 .map_err(|e: zbus::Error| AutomationError::PlatformError(e.to_string()))?;
             let role_matches = role_enums
                 .as_ref()
-                .map_or(true, |targets| targets.contains(&role));
+                .is_none_or(|targets| targets.contains(&role));
             let name_matches = name_contains
                 .as_ref()
-                .map_or(true, |target| name.contains(target));
+                .is_none_or(|target| name.contains(target));
             if role_matches && name_matches {
                 results.push(element);
                 if depth == Some(1) {
@@ -702,7 +742,7 @@ async fn find_focused_element_async(elements: &[UIElement]) -> Result<UIElement,
                 .build();
             let matches = collection_proxy
                 .get_matches_from(
-                    &collection_proxy.inner().path(),
+                    collection_proxy.inner().path(),
                     match_rule,
                     SortOrder::Canonical,
                     atspi::TreeTraversalType::Inorder,
@@ -770,7 +810,7 @@ fn generate_element_id(
                 tracing::trace!("ID component - attr: {}={}", k, v);
             }
             if let Some(role) = &role {
-                id_string.push_str(&format!("role:{};", role.to_string()));
+                id_string.push_str(&format!("role:{};", role));
                 tracing::trace!("ID component - role: {}", role.to_string());
             }
             if let Some(desc) = &description {
@@ -825,13 +865,10 @@ fn get_accessible_attributes(
     resp_rx.recv().unwrap()
 }
 
-// Static channel for managing AT-SPI connection initialization
-static AT_SPI_INIT_WORKER: OnceLock<
-    mpsc::Sender<((), mpsc::Sender<Result<LinuxEngine, AutomationError>>)>,
-> = OnceLock::new();
-
-fn get_at_spi_worker()
--> &'static mpsc::Sender<((), mpsc::Sender<Result<LinuxEngine, AutomationError>>)> {
+fn get_at_spi_worker() -> &'static std::sync::mpsc::Sender<(
+    (),
+    std::sync::mpsc::Sender<Result<LinuxEngine, AutomationError>>,
+)> {
     AT_SPI_INIT_WORKER.get_or_init(|| {
         let (tx, rx) = mpsc::channel::<((), mpsc::Sender<Result<LinuxEngine, AutomationError>>)>();
         thread::spawn(move || {
@@ -1119,7 +1156,7 @@ impl AccessibilityEngine for LinuxEngine {
 
     async fn run_command(
         &self,
-        windows_command: Option<&str>,
+        _windows_command: Option<&str>,
         unix_command: Option<&str>,
     ) -> Result<CommandOutput, AutomationError> {
         let command = unix_command.ok_or_else(|| {
@@ -1343,11 +1380,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn role(&self) -> String {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<String, AutomationError>>,
-            mpsc::Receiver<Result<String, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): StringChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1378,12 +1411,13 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn attributes(&self) -> UIElementAttributes {
-        let mut attrs = UIElementAttributes::default();
-        attrs.role = self.role();
-        attrs.name = self.name();
-        attrs.value = Some(self.is_enabled().unwrap_or(false).to_string());
-        attrs.is_keyboard_focusable = Some(self.is_focused().unwrap_or(false));
-
+        let attrs = UIElementAttributes {
+            role: self.role(),
+            name: self.name(),
+            value: Some(self.is_enabled().unwrap_or(false).to_string()),
+            is_keyboard_focusable: Some(self.is_focused().unwrap_or(false)),
+            ..Default::default()
+        };
         // Fetch additional attributes using AccessibleProxy
         if let Ok(attributes) = get_accessible_attributes(self) {
             // Convert HashMap<String, String> to HashMap<String, Option<serde_json::Value>>
@@ -1392,18 +1426,15 @@ impl UIElementImpl for LinuxUIElement {
                     .into_iter()
                     .map(|(k, v)| (k, Some(serde_json::Value::String(v))))
                     .collect();
+            let mut attrs = attrs;
             attrs.properties = converted_attributes;
+            return attrs;
         }
-
         attrs
     }
 
     fn name(&self) -> Option<String> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<Option<String>, AutomationError>>,
-            mpsc::Receiver<Result<Option<String>, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): OptionStringChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1457,11 +1488,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn parent(&self) -> Result<Option<UIElement>, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<Option<UIElement>, AutomationError>>,
-            mpsc::Receiver<Result<Option<UIElement>, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): OptionUIElementChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1491,11 +1518,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn bounds(&self) -> Result<(f64, f64, f64, f64), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(f64, f64, f64, f64), AutomationError>>,
-            mpsc::Receiver<Result<(f64, f64, f64, f64), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): BoundsChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1519,11 +1542,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn click(&self) -> Result<ClickResult, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<ClickResult, AutomationError>>,
-            mpsc::Receiver<Result<ClickResult, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): ClickResultChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1551,11 +1570,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn double_click(&self) -> Result<ClickResult, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<ClickResult, AutomationError>>,
-            mpsc::Receiver<Result<ClickResult, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): ClickResultChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1585,11 +1600,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn right_click(&self) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1613,11 +1624,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn hover(&self) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1640,11 +1647,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn focus(&self) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1679,11 +1682,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn type_text(&self, text: &str, _use_clipboard: bool) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         let text = text.to_string();
         std::thread::spawn(move || {
@@ -1732,17 +1731,13 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn press_key(&self, key: &str) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         let key = key.to_string();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
             let result = rt.block_on(async move {
-                let proxy = AccessibleProxy::builder(&this.connection)
+                let _proxy = AccessibleProxy::builder(&this.connection)
                     .destination(this.destination.as_str())
                     .map_err(|_| AutomationError::PlatformError("No destination".to_string()))?
                     .path(this.path.as_str())
@@ -1777,11 +1772,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn mouse_click_and_hold(&self, x: f64, y: f64) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1806,11 +1797,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn mouse_move(&self, x: f64, y: f64) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1835,11 +1822,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn mouse_release(&self) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1874,11 +1857,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn get_text(&self, _max_depth: usize) -> Result<String, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<String, AutomationError>>,
-            mpsc::Receiver<Result<String, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): StringChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1897,11 +1876,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<bool, AutomationError>>,
-            mpsc::Receiver<Result<bool, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): BoolChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1920,11 +1895,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn perform_action(&self, action: &str) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         let action = action.to_string();
         std::thread::spawn(move || {
@@ -1944,7 +1915,7 @@ impl UIElementImpl for LinuxUIElement {
                     match action_proxy.get_name(i).await {
                         Ok(name) => {
                             if name.to_lowercase() == action.to_lowercase() {
-                                action_proxy.do_action(i as i32).await?;
+                                action_proxy.do_action(i).await?;
                                 found = true;
                                 break;
                             }
@@ -1988,11 +1959,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn application(&self) -> Result<Option<UIElement>, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<Option<UIElement>, AutomationError>>,
-            mpsc::Receiver<Result<Option<UIElement>, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): OptionUIElementChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2040,11 +2007,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn process_id(&self) -> Result<u32, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<u32, AutomationError>>,
-            mpsc::Receiver<Result<u32, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): U32Channel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2086,11 +2049,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn is_enabled(&self) -> Result<bool, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<bool, AutomationError>>,
-            mpsc::Receiver<Result<bool, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): BoolChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2109,11 +2068,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn is_visible(&self) -> Result<bool, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<bool, AutomationError>>,
-            mpsc::Receiver<Result<bool, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): BoolChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2132,11 +2087,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn is_focused(&self) -> Result<bool, AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<bool, AutomationError>>,
-            mpsc::Receiver<Result<bool, AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): BoolChannel = std::sync::mpsc::channel();
         let this = self.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().unwrap();
@@ -2155,11 +2106,7 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn set_value(&self, value: &str) -> Result<(), AutomationError> {
-        use std::sync::mpsc;
-        let (resp_tx, resp_rx): (
-            mpsc::Sender<Result<(), AutomationError>>,
-            mpsc::Receiver<Result<(), AutomationError>>,
-        ) = mpsc::channel();
+        let (resp_tx, resp_rx): UnitChannel = std::sync::mpsc::channel();
         let this = self.clone();
         let value = value.to_string();
         std::thread::spawn(move || {
@@ -2212,7 +2159,6 @@ impl UIElementImpl for LinuxUIElement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn test_linux_engine_creation() {

@@ -1,4 +1,3 @@
-use serde_json;
 use terminator::{Desktop, SerializableUIElement};
 
 #[tokio::main]

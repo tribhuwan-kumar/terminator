@@ -46,7 +46,7 @@ impl Desktop {
         let use_background_apps = use_background_apps.unwrap_or(false);
         let activate_app = activate_app.unwrap_or(false);
         let desktop = TerminatorDesktop::new(use_background_apps, activate_app)
-            .map_err(|e| automation_error_to_pyerr(e))?;
+            .map_err(automation_error_to_pyerr)?;
         Ok(Desktop { inner: desktop })
     }
 
@@ -69,7 +69,7 @@ impl Desktop {
         self.inner
             .applications()
             .map(|apps| apps.into_iter().map(|e| UIElement { inner: e }).collect())
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(text_signature = "($self, name)")]
@@ -84,7 +84,7 @@ impl Desktop {
         self.inner
             .application(name)
             .map(|e| UIElement { inner: e })
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "open_application", text_signature = "($self, name)")]
@@ -96,7 +96,7 @@ impl Desktop {
         self.inner
             .open_application(name)
             .map(|e| UIElement { inner: e })
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "activate_application", text_signature = "($self, name)")]
@@ -107,7 +107,7 @@ impl Desktop {
     pub fn activate_application(&self, name: &str) -> PyResult<()> {
         self.inner
             .activate_application(name)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "locator", text_signature = "($self, selector)")]
@@ -134,7 +134,7 @@ impl Desktop {
             let result = desktop
                 .capture_screen()
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             let py_result = ScreenshotResult::from(result);
             Ok(py_result)
         })
@@ -161,7 +161,7 @@ impl Desktop {
             let result = desktop
                 .run_command(windows_command.as_deref(), unix_command.as_deref())
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             let py_result = CommandOutput::from(result);
             Ok(py_result)
         })
@@ -178,7 +178,7 @@ impl Desktop {
             let result = desktop
                 .get_active_monitor_name()
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             Ok(result)
         })
     }
@@ -202,7 +202,7 @@ impl Desktop {
             let result = desktop
                 .capture_monitor_by_name(&name)
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             let py_result = ScreenshotResult::from(result);
             Ok(py_result)
         })
@@ -227,7 +227,7 @@ impl Desktop {
             let result = desktop
                 .ocr_image_path(&image_path)
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             Ok(result)
         })
     }
@@ -255,7 +255,7 @@ impl Desktop {
             let result = desktop
                 .ocr_screenshot(&core_screenshot)
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             Ok(result)
         })
     }
@@ -271,7 +271,7 @@ impl Desktop {
             let result = desktop
                 .get_current_browser_window()
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             let py_result = UIElement { inner: result };
             Ok(py_result)
         })
@@ -288,7 +288,7 @@ impl Desktop {
             let result = desktop
                 .get_current_window()
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             let py_result = UIElement { inner: result };
             Ok(py_result)
         })
@@ -305,7 +305,7 @@ impl Desktop {
             let result = desktop
                 .get_current_application()
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             let py_result = UIElement { inner: result };
             Ok(py_result)
         })
@@ -321,7 +321,7 @@ impl Desktop {
     pub fn open_url(&self, url: &str, browser: Option<&str>) -> PyResult<()> {
         self.inner
             .open_url(url, browser)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "open_file", text_signature = "($self, file_path)")]
@@ -332,7 +332,7 @@ impl Desktop {
     pub fn open_file(&self, file_path: &str) -> PyResult<()> {
         self.inner
             .open_file(file_path)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(
@@ -346,7 +346,7 @@ impl Desktop {
     pub fn activate_browser_window_by_title(&self, title: &str) -> PyResult<()> {
         self.inner
             .activate_browser_window_by_title(title)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "focused_element", text_signature = "($self)")]
@@ -358,7 +358,7 @@ impl Desktop {
         self.inner
             .focused_element()
             .map(|e| UIElement { inner: e })
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "get_window_tree", signature = (pid, title=None, config=None))]
@@ -382,6 +382,6 @@ impl Desktop {
         self.inner
             .get_window_tree(pid, title, rust_config)
             .map(crate::types::UINode::from)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 }
