@@ -1,3 +1,6 @@
+Get-WmiObject Win32_Process | Where-Object { $_.ExecutablePath -like '*terminator-mcp-agent*' } | ForEach-Object {
+  taskkill.exe /T /F /PID $_.ProcessId *>$null
+}
 Write-Host "installing Terminator MCP..."
 
 try {
@@ -59,53 +62,66 @@ try {
                 New-Item -ItemType Directory -Path $cursorConfigDir | Out-Null
             }
             $cursorConfigFile = Join-Path $cursorConfigDir "mcp.json"
-
-            if (Test-Path $cursorConfigFile) {
-                $cursorConfigContent = Get-Content -Path $cursorConfigFile -Raw | ConvertFrom-Json
-            } else {
-                $cursorConfigContent = @{
+            if (-not (Test-Path $cursorConfigFile)) {
+                New-Item -ItemType File -Path $cursorConfigFile -Force
+            } 
+            $cursorConfigContent = Get-Content -Raw -Path $cursorConfigFile | ConvertFrom-Json
+            if (-not $cursorConfigContent -or $cursorConfigContent.PSObject.Properties.Value.Count -eq 0) {
+                $cursorConfigContent = [PSCustomObject]@{
                     mcpServers = @{}
                 }
             }
-
-            # ensure mcpServers key exists
-            if (-not $cursorConfigContent.PSObject.Properties["mcpServers"]) {
+            if (-not $cursorConfigContent.mcpServers) {
                 $cursorConfigContent.mcpServers = @{}
+            } elseif (-not ($cursorConfigContent.mcpServers -is [hashtable])) {
+                $tempHashtable = @{}
+                foreach ($property in $cursorConfigContent.mcpServers.PSObject.Properties) {
+                    $tempHashtable[$property.Name] = $property.Value
+                }
+                $cursorConfigContent.mcpServers = $tempHashtable
             }
-
+            # add the terminator-mcp-agent key
             $cursorConfigContent.mcpServers["terminator-mcp-agent"] = @{
                 command = "terminator-mcp-agent.exe"
                 args = @()
             }
 
-            $cursorConfigContent | ConvertTo-Json -Depth 10 | Set-Content -Path $cursorConfigFile
+            # might be cluttered json :(
+            $formattedJson = $cursorConfigContent | ConvertTo-Json -Depth 10 -Compress:$true
+            Set-Content -Path $cursorConfigFile -Value $formattedJson
             Write-Host "Cursor configuration saved to $cursorConfigFile"
         }
         2 {
             # Configure for Claude
             $claudeConfigFile = "$env:APPDATA\Claude\claude_desktop_config.json"
             if (!(Test-Path (Split-Path $claudeConfigFile))) {
-                New-Item -ItemType Directory -Path (Split-Path $claudeConfigFile) | Out-Null
+                throw "You've likely not installed the Claude desktop app, please install it!!"
             }
 
-            if (Test-Path $claudeConfigFile) {
-                $claudeConfigContent = Get-Content -Path $claudeConfigFile -Raw | ConvertFrom-Json
-            } else {
-                $claudeConfigContent = @{
+            $claudeConfigContent = Get-Content -Raw -Path $claudeConfigFile | ConvertFrom-Json
+            if (-not $claudeConfigContent -or $claudeConfigContent.PSObject.Properties.Value.Count -eq 0) {
+                $claudeConfigContent = [PSCustomObject]@{
                     mcpServers = @{}
                 }
             }
-
-            if (-not $claudeConfigContent.PSObject.Properties["mcpServers"]) {
+            if (-not $claudeConfigContent.mcpServers) {
                 $claudeConfigContent.mcpServers = @{}
+            } elseif (-not ($claudeConfigContent.mcpServers -is [hashtable])) {
+                $tempHashtable = @{}
+                foreach ($property in $claudeConfigContent.mcpServers.PSObject.Properties) {
+                    $tempHashtable[$property.Name] = $property.Value
+                }
+                $claudeConfigContent.mcpServers = $tempHashtable
             }
 
+            # add the terminator-mcp-agent key
             $claudeConfigContent.mcpServers["terminator-mcp-agent"] = @{
                 command = "terminator-mcp-agent.exe"
                 args = @()
             }
 
-            $claudeConfigContent | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeConfigFile
+            $formattedJson = $claudeConfigContent | ConvertTo-Json -Depth 10 -Compress:$true
+            Set-Content -Path $claudeConfigFile -Value $formattedJson
             Write-Host "Claude configuration saved to $claudeConfigFile"
         }
         Default {
