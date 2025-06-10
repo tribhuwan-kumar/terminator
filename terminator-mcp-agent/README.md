@@ -6,7 +6,26 @@ This directory contains the Model Context Protocol (MCP) agent that allows AI as
 
 MCP is useful to test out the `terminator` lib and see what you can do. You can use any model.
 
-## Installation & Setup
+<br>
+
+## For configuring Terminator MCP in desktop apps like [Cursor](https://www.cursor.com/) and [Claude](https://claude.ai/download):
+Open terminal and run this command:
+
+```ps1
+Invoke-Expression (New-Object Net.WebClient).DownloadString('https://raw.githubusercontent.com/mediar-ai/terminator/refs/heads/main/terminator-mcp-agent/install.ps1')
+```
+> it'll guide through the configuration, only for [Cursor](https://www.cursor.com/) and [Claude](https://claude.ai/download) desktop app
+
+
+<br>
+
+<details>
+
+<summary> 
+
+## Manual Installation & Setup 
+
+</summary>
 
 Open a new terminal (like PowerShell or Command Prompt)
 
@@ -91,4 +110,6 @@ open the claude app and search for developer options then MCP. when you click on
 }
 ```
 remember to replace `path_to_terminator` exe with actual path of terminator-mcp-agent binary, you can find the binary of terminator mcp in the target directory where you've build the project!
+</details>
+
 
