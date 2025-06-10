@@ -385,4 +385,22 @@ impl Element {
     pub fn process_id(&self) -> napi::Result<u32> {
         self.inner.process_id().map_err(map_error)
     }
+
+    /// Sets the transparency of the window.
+    ///
+    /// @param {number} percentage - The transparency percentage from 0 (completely transparent) to 100 (completely opaque).
+    /// @returns {void}
+    #[napi]
+    pub fn set_transparency(&self, percentage: u8) -> napi::Result<()> {
+        self.inner.set_transparency(percentage).map_err(map_error)
+    }
+
+    /// Close the element if it's closable (like windows, applications).
+    /// Does nothing for non-closable elements (like buttons, text, etc.).
+    ///
+    /// @returns {void}
+    #[napi]
+    pub fn close(&self) -> napi::Result<()> {
+        self.inner.close().map_err(map_error)
+    }
 }
