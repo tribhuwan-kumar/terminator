@@ -1,6 +1,5 @@
 use super::init_tracing;
 use crate::Desktop;
-use reqwest;
 use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;

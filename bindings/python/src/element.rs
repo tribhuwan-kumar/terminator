@@ -88,7 +88,7 @@ impl UIElement {
         self.inner
             .children()
             .map(|kids| kids.into_iter().map(|e| UIElement { inner: e }).collect())
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "parent", text_signature = "($self)")]
@@ -100,7 +100,7 @@ impl UIElement {
         self.inner
             .parent()
             .map(|opt| opt.map(|e| UIElement { inner: e }))
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "bounds", text_signature = "($self)")]
@@ -109,10 +109,7 @@ impl UIElement {
     /// Returns:
     ///     Bounds: The element's bounds.
     pub fn bounds(&self) -> PyResult<Bounds> {
-        let (x, y, width, height) = self
-            .inner
-            .bounds()
-            .map_err(|e| automation_error_to_pyerr(e))?;
+        let (x, y, width, height) = self.inner.bounds().map_err(automation_error_to_pyerr)?;
         Ok(Bounds {
             x,
             y,
@@ -130,7 +127,7 @@ impl UIElement {
         self.inner
             .click()
             .map(ClickResult::from)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "double_click", text_signature = "($self)")]
@@ -142,7 +139,7 @@ impl UIElement {
         self.inner
             .double_click()
             .map(ClickResult::from)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "right_click", text_signature = "($self)")]
@@ -151,9 +148,7 @@ impl UIElement {
     /// Returns:
     ///     None
     pub fn right_click(&self) -> PyResult<()> {
-        self.inner
-            .right_click()
-            .map_err(|e| automation_error_to_pyerr(e))
+        self.inner.right_click().map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "hover", text_signature = "($self)")]
@@ -162,7 +157,7 @@ impl UIElement {
     /// Returns:
     ///     None
     pub fn hover(&self) -> PyResult<()> {
-        self.inner.hover().map_err(|e| automation_error_to_pyerr(e))
+        self.inner.hover().map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "is_visible", text_signature = "($self)")]
@@ -171,9 +166,7 @@ impl UIElement {
     /// Returns:
     ///     bool: True if the element is visible.
     pub fn is_visible(&self) -> PyResult<bool> {
-        self.inner
-            .is_visible()
-            .map_err(|e| automation_error_to_pyerr(e))
+        self.inner.is_visible().map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "is_enabled", text_signature = "($self)")]
@@ -182,9 +175,7 @@ impl UIElement {
     /// Returns:
     ///     bool: True if the element is enabled.
     pub fn is_enabled(&self) -> PyResult<bool> {
-        self.inner
-            .is_enabled()
-            .map_err(|e| automation_error_to_pyerr(e))
+        self.inner.is_enabled().map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "focus", text_signature = "($self)")]
@@ -193,7 +184,7 @@ impl UIElement {
     /// Returns:
     ///     None
     pub fn focus(&self) -> PyResult<()> {
-        self.inner.focus().map_err(|e| automation_error_to_pyerr(e))
+        self.inner.focus().map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "text", signature = (max_depth=None))]
@@ -208,7 +199,7 @@ impl UIElement {
     pub fn text(&self, max_depth: Option<usize>) -> PyResult<String> {
         self.inner
             .text(max_depth.unwrap_or(1))
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "type_text", signature = (text, use_clipboard=None))]
@@ -224,7 +215,7 @@ impl UIElement {
     pub fn type_text(&self, text: &str, use_clipboard: Option<bool>) -> PyResult<()> {
         self.inner
             .type_text(text, use_clipboard.unwrap_or(false))
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "press_key", text_signature = "($self, key)")]
@@ -236,9 +227,7 @@ impl UIElement {
     /// Returns:
     ///     None
     pub fn press_key(&self, key: &str) -> PyResult<()> {
-        self.inner
-            .press_key(key)
-            .map_err(|e| automation_error_to_pyerr(e))
+        self.inner.press_key(key).map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "set_value", text_signature = "($self, value)")]
@@ -252,7 +241,7 @@ impl UIElement {
     pub fn set_value(&self, value: &str) -> PyResult<()> {
         self.inner
             .set_value(value)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "perform_action", text_signature = "($self, action)")]
@@ -266,7 +255,7 @@ impl UIElement {
     pub fn perform_action(&self, action: &str) -> PyResult<()> {
         self.inner
             .perform_action(action)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "scroll", text_signature = "($self, direction, amount)")]
@@ -281,7 +270,7 @@ impl UIElement {
     pub fn scroll(&self, direction: &str, amount: f64) -> PyResult<()> {
         self.inner
             .scroll(direction, amount)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "activate_window", text_signature = "($self)")]
@@ -292,7 +281,7 @@ impl UIElement {
     pub fn activate_window(&self) -> PyResult<()> {
         self.inner
             .activate_window()
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "is_focused", text_signature = "($self)")]
@@ -301,9 +290,7 @@ impl UIElement {
     /// Returns:
     ///     bool: True if the element is focused.
     pub fn is_focused(&self) -> PyResult<bool> {
-        self.inner
-            .is_focused()
-            .map_err(|e| automation_error_to_pyerr(e))
+        self.inner.is_focused().map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "is_keyboard_focusable", text_signature = "($self)")]
@@ -314,7 +301,7 @@ impl UIElement {
     pub fn is_keyboard_focusable(&self) -> PyResult<bool> {
         self.inner
             .is_keyboard_focusable()
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(
@@ -334,7 +321,7 @@ impl UIElement {
     pub fn mouse_drag(&self, start_x: f64, start_y: f64, end_x: f64, end_y: f64) -> PyResult<()> {
         self.inner
             .mouse_drag(start_x, start_y, end_x, end_y)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "mouse_click_and_hold", text_signature = "($self, x, y)")]
@@ -349,7 +336,7 @@ impl UIElement {
     pub fn mouse_click_and_hold(&self, x: f64, y: f64) -> PyResult<()> {
         self.inner
             .mouse_click_and_hold(x, y)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "mouse_move", text_signature = "($self, x, y)")]
@@ -364,7 +351,7 @@ impl UIElement {
     pub fn mouse_move(&self, x: f64, y: f64) -> PyResult<()> {
         self.inner
             .mouse_move(x, y)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "mouse_release", text_signature = "($self)")]
@@ -375,7 +362,7 @@ impl UIElement {
     pub fn mouse_release(&self) -> PyResult<()> {
         self.inner
             .mouse_release()
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "application", text_signature = "($self)")]
@@ -387,7 +374,7 @@ impl UIElement {
         self.inner
             .application()
             .map(|opt| opt.map(|e| UIElement { inner: e }))
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "window", text_signature = "($self)")]
@@ -399,7 +386,7 @@ impl UIElement {
         self.inner
             .window()
             .map(|opt| opt.map(|e| UIElement { inner: e }))
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "locator", text_signature = "($self, selector)")]
@@ -414,7 +401,7 @@ impl UIElement {
         let locator = self
             .inner
             .locator(selector)
-            .map_err(|e| automation_error_to_pyerr(e))?;
+            .map_err(automation_error_to_pyerr)?;
         Ok(crate::locator::Locator { inner: locator })
     }
 
@@ -452,7 +439,7 @@ impl UIElement {
                     })
                     .collect(),
             })
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "process_id", text_signature = "($self)")]
@@ -461,9 +448,7 @@ impl UIElement {
     /// Returns:
     ///     int: The process ID.
     pub fn process_id(&self) -> PyResult<u32> {
-        self.inner
-            .process_id()
-            .map_err(|e| automation_error_to_pyerr(e))
+        self.inner.process_id().map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "highlight", signature = (color=None, duration_ms=None))]
@@ -480,7 +465,7 @@ impl UIElement {
         let duration = duration_ms.map(std::time::Duration::from_millis);
         self.inner
             .highlight(color, duration)
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "capture", text_signature = "($self)")]
@@ -496,6 +481,6 @@ impl UIElement {
                 width: result.width,
                 height: result.height,
             })
-            .map_err(|e| automation_error_to_pyerr(e))
+            .map_err(automation_error_to_pyerr)
     }
 }

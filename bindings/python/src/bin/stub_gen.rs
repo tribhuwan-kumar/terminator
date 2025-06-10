@@ -85,8 +85,7 @@ fn fix_async_functions(file_path: &Path) -> Result<()> {
                         let new_return_type = if current_return == "None" {
                             "None".to_string()
                         } else {
-                            let fixed_return_type = fix_type_annotation(&return_type);
-                            fixed_return_type
+                            fix_type_annotation(&return_type)
                         };
 
                         debug!(
@@ -101,8 +100,7 @@ fn fix_async_functions(file_path: &Path) -> Result<()> {
                         let new_return_type = if return_type == "None" {
                             "None".to_string()
                         } else {
-                            let fixed_return_type = fix_type_annotation(&return_type);
-                            fixed_return_type
+                            fix_type_annotation(&return_type)
                         };
 
                         debug!("Adding return type: {}", new_return_type);
@@ -147,7 +145,7 @@ fn main() -> Result<()> {
     info!("Fixing async functions in {}", stub_path.display());
     if let Err(e) = fix_async_functions(stub_path) {
         error!("Failed to fix async functions: {}", e);
-        return Err(e.into());
+        return Err(e);
     }
     info!("Successfully fixed async functions");
 

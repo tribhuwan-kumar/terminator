@@ -96,7 +96,7 @@ struct DebugChildrenWithDepth<'a> {
     max_depth: usize,
 }
 
-impl<'a> fmt::Debug for DebugChildrenWithDepth<'a> {
+impl fmt::Debug for DebugChildrenWithDepth<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut list = f.debug_list();
 
@@ -120,7 +120,7 @@ struct DebugNodeWithDepth<'a> {
     max_depth: usize,
 }
 
-impl<'a> fmt::Debug for DebugNodeWithDepth<'a> {
+impl fmt::Debug for DebugNodeWithDepth<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.node
             .debug_with_depth(f, self.current_depth, self.max_depth)
@@ -157,9 +157,7 @@ impl Desktop {
             use_background_apps, activate_app, "Desktop automation engine initialized"
         );
 
-        Ok(Self {
-            engine: Arc::from(engine),
-        })
+        Ok(Self { engine })
     }
 
     /// Gets the root element representing the entire desktop.

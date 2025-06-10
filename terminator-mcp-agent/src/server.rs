@@ -16,7 +16,7 @@ use terminator::{Desktop, Locator, Selector};
 #[tool(tool_box)]
 impl DesktopWrapper {
     pub async fn new() -> Result<Self, McpError> {
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
         let desktop = match Desktop::new(false, false) {
             Ok(d) => d,
             Err(e) => {
@@ -41,7 +41,9 @@ impl DesktopWrapper {
         Ok(Self { desktop })
     }
 
-    #[tool(description = "Get the complete UI tree for an application by PID and optional window title.")]
+    #[tool(
+        description = "Get the complete UI tree for an application by PID and optional window title."
+    )]
     async fn get_window_tree(
         &self,
         #[tool(param)] args: GetWindowTreeArgs,
@@ -383,7 +385,7 @@ impl DesktopWrapper {
                 Some(json!({"reason": e.to_string(), "text": args.text})),
             )
         })?;
-        
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "set_clipboard",
             "status": "success",
@@ -414,21 +416,17 @@ impl DesktopWrapper {
         };
 
         match command_result {
-            Ok(output) => {
-                Ok(CallToolResult::success(vec![Content::json(json!({
-                    "action": "get_clipboard", 
-                    "status": "success",
-                    "text": output.stdout.trim(),
-                    "method": "shell_command",
-                    "timestamp": chrono::Utc::now().to_rfc3339()
-                }))?]))
-            }
-            Err(e) => {
-                Err(McpError::internal_error(
-                    "Failed to get clipboard text",
-                    Some(json!({"reason": e.to_string()})),
-                ))
-            }
+            Ok(output) => Ok(CallToolResult::success(vec![Content::json(json!({
+                "action": "get_clipboard",
+                "status": "success",
+                "text": output.stdout.trim(),
+                "method": "shell_command",
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            }))?])),
+            Err(e) => Err(McpError::internal_error(
+                "Failed to get clipboard text",
+                Some(json!({"reason": e.to_string()})),
+            )),
         }
     }
 
@@ -520,16 +518,14 @@ impl DesktopWrapper {
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 }))?]))
             }
-            Err(e) => {
-                Ok(CallToolResult::success(vec![Content::json(json!({
-                    "action": "validate_element",
-                    "status": "failed",
-                    "exists": false,
-                    "reason": e.to_string(),
-                    "selector_chain": args.selector_chain,
-                    "timestamp": chrono::Utc::now().to_rfc3339()
-                }))?]))
-            }
+            Err(e) => Ok(CallToolResult::success(vec![Content::json(json!({
+                "action": "validate_element",
+                "status": "failed",
+                "exists": false,
+                "reason": e.to_string(),
+                "selector_chain": args.selector_chain,
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            }))?])),
         }
     }
 
@@ -636,18 +632,16 @@ impl DesktopWrapper {
         };
 
         match result {
-            Ok(condition_met) => {
-                Ok(CallToolResult::success(vec![Content::json(json!({
-                    "action": "wait_for_element",
-                    "status": "success",
-                    "condition": args.condition,
-                    "condition_met": condition_met,
-                    "selector_chain": args.selector_chain,
-                    "timeout_ms": args.timeout_ms.unwrap_or(5000),
-                    "timestamp": chrono::Utc::now().to_rfc3339()
-                }))?]))
-            }
-            Err(e) => Err(e)
+            Ok(condition_met) => Ok(CallToolResult::success(vec![Content::json(json!({
+                "action": "wait_for_element",
+                "status": "success",
+                "condition": args.condition,
+                "condition_met": condition_met,
+                "selector_chain": args.selector_chain,
+                "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            }))?])),
+            Err(e) => Err(e),
         }
     }
 

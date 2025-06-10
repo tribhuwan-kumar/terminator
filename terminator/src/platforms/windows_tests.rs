@@ -395,7 +395,7 @@ fn test_find_best_title_match_browser_scenario() {
 fn test_enhanced_error_messages() {
     // Test that browser error messages provide helpful suggestions
     let target_title = "MailTracker: Email tracker for Gmail - Chrome Web Store - Google Chrome";
-    let available_windows = vec![
+    let available_windows = [
         "Taskbar".to_string(),
         "Chrome Web Store - Google Chrome".to_string(),
         "Firefox - Mozilla Firefox".to_string(),

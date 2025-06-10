@@ -27,7 +27,7 @@ impl Locator {
             let element = locator
                 .first(None)
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             Ok(UIElement { inner: element })
         })
     }
@@ -53,7 +53,7 @@ impl Locator {
             let elements = locator
                 .all(timeout_ms.map(std::time::Duration::from_millis), depth)
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             Ok(elements
                 .into_iter()
                 .map(|e| UIElement { inner: e })
@@ -80,7 +80,7 @@ impl Locator {
             let element = locator
                 .wait(timeout_ms.map(std::time::Duration::from_millis))
                 .await
-                .map_err(|e| automation_error_to_pyerr(e))?;
+                .map_err(automation_error_to_pyerr)?;
             Ok(UIElement { inner: element })
         })
     }

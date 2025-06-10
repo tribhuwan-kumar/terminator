@@ -5,7 +5,6 @@ use ::terminator_core::{
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
 use serde::Serialize;
-use serde_json;
 use std::collections::HashMap;
 
 /// Result of a screenshot operation.

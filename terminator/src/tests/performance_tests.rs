@@ -197,8 +197,7 @@ fn test_ui_tree_performance() {
     // Test tree traversal for first few apps
     let test_count = apps.len().min(3);
 
-    for i in 0..test_count {
-        let app = &apps[i];
+    for app in apps.iter().take(test_count) {
         let app_name = app.name().unwrap_or_else(|| "Unknown".to_string());
 
         println!("\n📱 Testing UI tree for: {}", app_name);

@@ -41,33 +41,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Some(event) = event_stream.next().await {
             event_count += 1;
 
-            match event {
-                WorkflowEvent::Keyboard(kb_event) => {
-                    if kb_event.is_key_down {
-                        println!(
-                            "🔍 Keyboard Event #{}: Key {}",
-                            event_count, kb_event.key_code
-                        );
+            if let WorkflowEvent::Keyboard(kb_event) = event {
+                if kb_event.is_key_down {
+                    println!(
+                        "🔍 Keyboard Event #{}: Key {}",
+                        event_count, kb_event.key_code
+                    );
 
-                        if let Some(ref ui_element) = kb_event.metadata.ui_element {
-                            println!("  ✅ UI Element captured!");
-                            println!("     App: {:?}", ui_element.application_name());
-                            println!("     Window: {:?}", ui_element.window_title());
-                            println!("     Control: {:?}", ui_element.role());
-                            println!("     Name: {:?}", ui_element.name());
-                            println!("     Has Focus: {:?}", ui_element.is_focused());
-                        } else {
-                            println!("  ❌ No UI Element captured");
-                        }
-                        println!();
+                    if let Some(ref ui_element) = kb_event.metadata.ui_element {
+                        println!("  ✅ UI Element captured!");
+                        println!("     App: {:?}", ui_element.application_name());
+                        println!("     Window: {:?}", ui_element.window_title());
+                        println!("     Control: {:?}", ui_element.role());
+                        println!("     Name: {:?}", ui_element.name());
+                        println!("     Has Focus: {:?}", ui_element.is_focused());
+                    } else {
+                        println!("  ❌ No UI Element captured");
+                    }
+                    println!();
 
-                        // Stop after capturing a few events
-                        if event_count >= 5 {
-                            break;
-                        }
+                    // Stop after capturing a few events
+                    if event_count >= 5 {
+                        break;
                     }
                 }
-                _ => {}
             }
         }
     });
