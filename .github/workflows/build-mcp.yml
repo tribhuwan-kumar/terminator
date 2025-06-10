@@ -1,4 +1,4 @@
-name: Build & Release Windows Terminator MCP
+name: Build & Release MCP
 
 on:
   push:
@@ -8,10 +8,18 @@ on:
 
 jobs:
   build-release:
-    name: Build & Release (Windows)
-    runs-on: windows-latest
+    name: Build & Release MCP
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          # - os: macos-latest
+          #   target: x86_64-apple-darwin
+
     permissions:
-      contents: write # Needed to create releases
+      contents: write
 
     steps:
       - name: Checkout code
@@ -21,21 +29,32 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          target: x86_64-pc-windows-msvc
+          target: ${{ matrix.target }}
 
-      - name: Build Terminator MCP (x86_64)
-        run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: Build Terminator MCP
+        run: cargo build -p terminator-mcp-agent --release --target ${{ matrix.target }}
         env:
           CARGO_TERM_COLOR: always
 
-      - name: Package executable
+      - name: Package executable (Windows)
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $x86ExePath = "target/x86_64-pc-windows-msvc/release/terminator-mcp-agent.exe"
-          $x86ZipPath = "terminator-mcp-windows-x86_64.zip"
-          Compress-Archive -Path $x86ExePath -DestinationPath $x86ZipPath
-          echo "ASSET_PATH_X86=$x86ZipPath" >> $env:GITHUB_ENV
-          echo "ASSET_NAME_X86=$x86ZipPath" >> $env:GITHUB_ENV
+          $exePath = "target/x86_64-pc-windows-msvc/release/terminator-mcp-agent.exe"
+          $zipPath = "terminator-mcp-windows-x86_64.zip"
+          Compress-Archive -Path $exePath -DestinationPath $zipPath
+          echo "ASSET_PATH_X86=$zipPath" >> $env:GITHUB_ENV
+          echo "ASSET_NAME_X86=$zipPath" >> $env:GITHUB_ENV
+
+      # - name: Package executable (macOS)
+      #   if: matrix.os == 'macos-latest'
+      #   shell: bash
+      #   run: |
+      #     exePath="target/x86_64-apple-darwin/release/terminator-mcp-agent"
+      #     zipPath="terminator-mcp-macos-x86_64.tar.gz"
+      #     tar -czf $zipPath -C $(dirname $exePath) $(basename $exePath)
+      #     echo "ASSET_PATH_X86=$zipPath" >> $GITHUB_ENV
+      #     echo "ASSET_NAME_X86=$zipPath" >> $GITHUB_ENV
 
       - name: Upload Artifacts (Manual Trigger)
         if: github.event_name == 'workflow_dispatch'
