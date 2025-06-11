@@ -522,7 +522,7 @@ impl WindowsRecorder {
         (url, title)
     }
 
-    /// Process potential typing session completion
+    /// Process potential typing session completion with UI element capture
     fn check_and_complete_typing_session(
         current_session: &Arc<Mutex<Option<TypingSession>>>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
@@ -536,10 +536,19 @@ impl WindowsRecorder {
                 || session.last_keystroke_time.elapsed().as_millis() as u64 > timeout_ms;
 
             if should_complete {
+                // NOW capture the real UI element for the completed typing session (high-level event)
+                let real_ui_element = match UIAutomation::new() {
+                    Ok(automation) => Self::get_focused_ui_element_with_timeout(&automation),
+                    Err(_) => None,
+                };
+
+                // Use real UI element if available, otherwise fall back to session element
+                let ui_element = real_ui_element.as_ref().unwrap_or(&session.element);
+
                 // Try to get the current text value from the UI element
-                let final_text = session.element.text(1).unwrap_or_else(|_| {
+                let final_text = ui_element.text(1).unwrap_or_else(|_| {
                     // Fallback: try to get name if text fails
-                    session.element.name().unwrap_or_default()
+                    ui_element.name().unwrap_or_default()
                 });
 
                 // Only emit event if we got meaningful text
@@ -553,13 +562,13 @@ impl WindowsRecorder {
 
                     let text_input_event = TextInputCompletedEvent {
                         text_value: final_text,
-                        field_name: session.element.name(),
-                        field_type: session.element.role(),
+                        field_name: ui_element.name(),
+                        field_type: ui_element.role(),
                         input_method,
                         typing_duration_ms: duration_ms,
                         keystroke_count: session.keystroke_count,
                         metadata: EventMetadata {
-                            ui_element: Some(session.element.clone()),
+                            ui_element: real_ui_element.or_else(|| Some(session.element.clone())),
                         },
                     };
 
@@ -703,94 +712,57 @@ impl WindowsRecorder {
                             }
                         };
 
-                        let character = if key_code >= 32 && key_code <= 126 {
+                        let character = if (32..=126).contains(&key_code) {
                             Some(key_code as u8 as char)
                         } else {
                             None
                         };
 
-                        // Capture UI element for keyboard events if enabled
+                        // PERFORMANCE OPTIMIZATION: Only capture UI elements for high-level keyboard events
+                        // Skip UI element capture for individual typing keystrokes - only capture for:
+                        // 1. Non-typing keys (function keys, shortcuts, etc.)
+                        // 2. Completed typing sessions (handled in TextInputCompletedEvent)
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            // PERFORMANCE OPTIMIZATION: Use smart typing session management
-                            // We don't need UI element on every keystroke for session tracking
-                            let should_capture_ui = key_code < 32 || key_code > 126 || // Non-printable keys
-                                (active_keys.len() % 8 == 0) || // Every 8th keystroke
-                                (record_text_input_completion && Self::is_typing_keystroke(key_code, character));
+                            let is_typing_keystroke =
+                                Self::is_typing_keystroke(key_code, character);
 
-                            if should_capture_ui {
+                            // Only capture UI element for non-typing keystrokes (shortcuts, function keys, etc.)
+                            if !is_typing_keystroke {
                                 ui_element = Self::get_focused_ui_element_with_timeout(
                                     automation.as_ref().unwrap(),
                                 );
                             }
+                            // For typing keystrokes: UI element will be captured when typing session completes
                         }
 
                         // Handle typing session tracking for text input completion
                         if record_text_input_completion
                             && Self::is_typing_keystroke(key_code, character)
                         {
-                            // PERFORMANCE OPTIMIZATION: Use smart typing session management
-                            // We don't need UI element on every keystroke for session tracking
+                            // PERFORMANCE OPTIMIZATION: Lightweight typing session management
+                            // UI elements will be captured only when typing session completes
                             let mut session_guard = current_typing_session.lock().unwrap();
                             let now = Instant::now();
 
                             // Check if we should create/update a typing session
                             if let Some(ref mut session) = *session_guard {
-                                // Update existing session - simple and fast
+                                // Update existing session - fast and lightweight
                                 session.last_keystroke_time = now;
                                 session.keystroke_count += 1;
 
-                                // Update UI element if we captured one (every 8th keystroke)
-                                if let Some(ref element) = ui_element {
-                                    // Only update if it's the same element (same field)
-                                    let same_element = session.element.name() == element.name()
-                                        && session.element.role() == element.role();
-                                    if same_element {
-                                        session.element = element.clone();
-                                    } else {
-                                        // Different element - complete current session and start new one
-                                        let old_session = session_guard.take().unwrap();
-                                        drop(session_guard);
-
-                                        // Complete the old session
-                                        Self::complete_typing_session_now(old_session, &event_tx);
-
-                                        // Start new session
-                                        let mut new_guard = current_typing_session.lock().unwrap();
-                                        *new_guard = Some(TypingSession {
-                                            element: element.clone(),
-                                            start_time: now,
-                                            last_keystroke_time: now,
-                                            keystroke_count: 1,
-                                            had_paste_operations: false,
-                                        });
-                                    }
-                                }
+                                // No UI element capture during typing - this is the key performance optimization!
                             } else {
-                                // No current session - start new one if we have UI element or use fallback
-                                if let Some(ref element) = ui_element {
-                                    // Start session with real UI element
+                                // No current session - start new one with fallback element
+                                // Real UI element will be captured when session completes
+                                if let Some(fallback_element) = Self::create_fallback_ui_element() {
                                     *session_guard = Some(TypingSession {
-                                        element: element.clone(),
+                                        element: fallback_element,
                                         start_time: now,
                                         last_keystroke_time: now,
                                         keystroke_count: 1,
                                         had_paste_operations: false,
                                     });
-                                } else {
-                                    // Start session with fallback element for performance
-                                    // We'll try to get real element when session completes
-                                    if let Some(fallback_element) =
-                                        Self::create_fallback_ui_element()
-                                    {
-                                        *session_guard = Some(TypingSession {
-                                            element: fallback_element,
-                                            start_time: now,
-                                            last_keystroke_time: now,
-                                            keystroke_count: 1,
-                                            had_paste_operations: false,
-                                        });
-                                    }
                                 }
                             }
                         }
@@ -828,12 +800,24 @@ impl WindowsRecorder {
                             }
                         };
 
-                        // Capture UI element for keyboard events if enabled
+                        // PERFORMANCE OPTIMIZATION: Only capture UI elements for high-level keyboard events
+                        // Skip UI element capture for typing keystrokes during key release
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            ui_element = Self::get_focused_ui_element_with_timeout(
-                                automation.as_ref().unwrap(),
-                            );
+                            let character = if (32..=126).contains(&key_code) {
+                                Some(key_code as u8 as char)
+                            } else {
+                                None
+                            };
+                            let is_typing_keystroke =
+                                Self::is_typing_keystroke(key_code, character);
+
+                            // Only capture UI element for non-typing keystrokes
+                            if !is_typing_keystroke {
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
+                            }
                         }
 
                         let keyboard_event = KeyboardEvent {
@@ -1793,45 +1777,6 @@ impl WindowsRecorder {
 
         info!("Windows recorder stop signal sent");
         Ok(())
-    }
-
-    /// Complete a typing session immediately (called when switching elements)
-    fn complete_typing_session_now(
-        session: TypingSession,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-    ) {
-        // Try to get final text from the UI element
-        let final_text = session.element.text(1).unwrap_or_else(|_| {
-            // Fallback: try to get name if text fails
-            session.element.name().unwrap_or_else(|| {
-                // Final fallback: use keystroke count as indicator
-                format!("[Text Input - {} keystrokes]", session.keystroke_count)
-            })
-        });
-
-        // Always emit event for meaningful typing sessions (2+ keystrokes or non-empty text)
-        if !final_text.trim().is_empty() || session.keystroke_count >= 2 {
-            let duration_ms = session.start_time.elapsed().as_millis() as u64;
-            let input_method = Self::determine_input_method(
-                session.keystroke_count,
-                duration_ms,
-                session.had_paste_operations,
-            );
-
-            let text_input_event = TextInputCompletedEvent {
-                text_value: final_text,
-                field_name: session.element.name(),
-                field_type: session.element.role(),
-                input_method,
-                typing_duration_ms: duration_ms,
-                keystroke_count: session.keystroke_count,
-                metadata: EventMetadata {
-                    ui_element: Some(session.element.clone()),
-                },
-            };
-
-            let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
-        }
     }
 
     /// Create a fallback UI element for performance when real element isn't available

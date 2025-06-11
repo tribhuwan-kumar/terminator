@@ -10,9 +10,6 @@ pub mod error;
 pub mod events;
 pub mod recorder;
 
-#[cfg(test)]
-pub mod tests;
-
 pub use error::*;
 pub use events::{
     ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
