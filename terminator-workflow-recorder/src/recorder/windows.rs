@@ -765,6 +765,19 @@ impl WindowsRecorder {
                                     });
                                 }
                             }
+                            drop(session_guard); // Release the lock before potentially calling completion
+
+                            // Special case: Enter key should immediately complete the typing session
+                            // This captures common form submission patterns
+                            if key_code == 0x0D {
+                                // Enter key
+                                Self::check_and_complete_typing_session(
+                                    &current_typing_session,
+                                    &event_tx,
+                                    true, // force complete on Enter
+                                    text_input_timeout_ms,
+                                );
+                            }
                         }
 
                         let keyboard_event = KeyboardEvent {
