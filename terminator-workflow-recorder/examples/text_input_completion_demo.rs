@@ -1,17 +1,15 @@
 use std::time::Duration;
+use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio_stream::StreamExt;
-use terminator_workflow_recorder::{
-    WorkflowRecorder, WorkflowRecorderConfig, WorkflowEvent
-};
 
 /// Demo of the text input completion feature
-/// 
+///
 /// This example shows how to:
 /// 1. Configure the workflow recorder to capture text input completion events
 /// 2. Start recording
 /// 3. Capture both individual keystrokes AND high-level text input completion events
 /// 4. Analyze the captured events
-/// 
+///
 /// Run with: cargo run --example text_input_completion_demo
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,24 +25,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = WorkflowRecorderConfig {
         // Enable text input completion feature
         record_text_input_completion: true,
-        
+
         // Set timeout for text input completion (2 seconds of inactivity)
         text_input_completion_timeout_ms: 2000,
-        
+
         // Enable UI element capture to identify input fields
         capture_ui_elements: true,
-        
+
         // Enable basic event recording
         record_keyboard: true,
         record_mouse: true,
-        
+
         // Disable noisy events for this demo
         record_clipboard: false,
         record_hotkeys: false,
         record_ui_focus_changes: false,
         record_ui_property_changes: false,
         record_ui_structure_changes: false,
-        
+
         ..Default::default()
     };
 
@@ -60,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 2: Start recording
     println!("🎬 Starting recording...");
     recorder.start().await?;
-    
+
     println!("✅ Recording started!");
     println!();
     println!("💡 INSTRUCTIONS:");
@@ -101,8 +99,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         text_completion_count += 1;
                         println!("\n  🎯 TEXT INPUT COMPLETED:");
                         println!("     📝 Text: \"{}\"", text_event.text_value);
-                        println!("     🏷️  Field: {} ({})", 
-                            text_event.field_name.as_deref().unwrap_or("Unknown"), 
+                        println!("     🏷️  Field: {} ({})",
+                            text_event.field_name.as_deref().unwrap_or("Unknown"),
                             text_event.field_type
                         );
                         println!("     ⚡ Method: {:?}", text_event.input_method);
@@ -128,7 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 4: Stop recording
     recorder.stop().await?;
-    
+
     // Step 5: Display summary
     println!();
     println!("📊 RECORDING SUMMARY");
@@ -137,9 +135,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  🎯 Text completion events: {}", text_completion_count);
     println!("  🖱️  Mouse events: {}", mouse_count);
     println!("  📋 Other events: {}", other_count);
-    println!("  📈 Total events: {}", keyboard_count + text_completion_count + mouse_count + other_count);
+    println!(
+        "  📈 Total events: {}",
+        keyboard_count + text_completion_count + mouse_count + other_count
+    );
     println!();
-    
+
     if text_completion_count > 0 {
         println!("✅ SUCCESS! Text input completion events were captured!");
         println!("   The workflow recorder successfully aggregated individual keystrokes");
@@ -158,9 +159,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("   • Text was typed in unsupported applications");
         println!("   • Try typing in Notepad, browser forms, or VS Code");
     }
-    
+
     println!();
     println!("🎉 Demo completed!");
-    
+
     Ok(())
-} 
+}

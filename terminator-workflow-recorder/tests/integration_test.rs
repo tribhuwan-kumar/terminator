@@ -1,9 +1,7 @@
 use std::time::Duration;
-use tokio_stream::StreamExt;
 use terminator::Desktop;
-use terminator_workflow_recorder::{
-    WorkflowRecorder, WorkflowRecorderConfig, WorkflowEvent
-};
+use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
+use tokio_stream::StreamExt;
 
 /// End-to-end integration test for text input completion feature
 /// This test actually opens Notepad, types text using Terminator SDK,
@@ -23,7 +21,7 @@ async fn test_e2e_text_input_completion() {
         record_keyboard: true,
         record_mouse: true,
         record_clipboard: false, // Disable to reduce noise
-        record_hotkeys: false, // Disable to reduce noise
+        record_hotkeys: false,   // Disable to reduce noise
         track_modifier_states: true,
         ..Default::default()
     };
@@ -36,7 +34,7 @@ async fn test_e2e_text_input_completion() {
     // Step 2: Start recording
     println!("🎬 Starting recording...");
     recorder.start().await.expect("Failed to start recording");
-    
+
     // Give the recorder a moment to start
     tokio::time::sleep(Duration::from_millis(500)).await;
 
@@ -46,7 +44,8 @@ async fn test_e2e_text_input_completion() {
 
     // Step 4: Open Notepad
     println!("📝 Opening Notepad...");
-    let _notepad_app = desktop.open_application("notepad.exe")
+    let _notepad_app = desktop
+        .open_application("notepad.exe")
         .expect("Failed to open Notepad");
 
     // Wait for Notepad to fully load
@@ -55,12 +54,15 @@ async fn test_e2e_text_input_completion() {
     // Step 5: Find the text editor element
     println!("🔍 Finding text editor element...");
     let locator = desktop.locator("role:Edit");
-    let text_editor = locator.first(Some(Duration::from_secs(10))).await
+    let text_editor = locator
+        .first(Some(Duration::from_secs(10)))
+        .await
         .expect("Failed to find text editor in Notepad");
 
     // Step 6: Type some text using Terminator SDK
     println!("⌨️  Typing first text: 'Hello World'");
-    text_editor.type_text("Hello World", false)
+    text_editor
+        .type_text("Hello World", false)
         .expect("Failed to type text");
 
     // Wait a bit for text input completion to trigger
@@ -68,7 +70,8 @@ async fn test_e2e_text_input_completion() {
 
     // Step 7: Type more text after a pause
     println!("⌨️  Typing second text: ' from Terminator!'");
-    text_editor.type_text(" from Terminator!", false)
+    text_editor
+        .type_text(" from Terminator!", false)
         .expect("Failed to type second text");
 
     // Wait for second text input completion
@@ -76,10 +79,12 @@ async fn test_e2e_text_input_completion() {
 
     // Step 8: Press Enter and type another line
     println!("↵ Pressing Enter and typing new line");
-    text_editor.press_key("{Enter}")
+    text_editor
+        .press_key("{Enter}")
         .expect("Failed to press Enter");
-    
-    text_editor.type_text("This is line 2", false)
+
+    text_editor
+        .type_text("This is line 2", false)
         .expect("Failed to type third text");
 
     // Wait for third text input completion
@@ -134,7 +139,10 @@ async fn test_e2e_text_input_completion() {
 
     println!("📊 Event Analysis:");
     println!("   - Keyboard events: {}", keyboard_events);
-    println!("   - Text input completion events: {}", text_input_completion_events.len());
+    println!(
+        "   - Text input completion events: {}",
+        text_input_completion_events.len()
+    );
     println!("   - Mouse events: {}", mouse_events);
 
     // Step 12: Verify text input completion events
@@ -155,27 +163,32 @@ async fn test_e2e_text_input_completion() {
         // Verify the event has meaningful content
         assert!(
             !event.text_value.trim().is_empty(),
-            "❌ Text input completion event {} has empty text", i + 1
+            "❌ Text input completion event {} has empty text",
+            i + 1
         );
 
         // Verify it's identified as a text input field
         assert!(
-            event.field_type.to_lowercase().contains("edit") || 
-            event.field_type.to_lowercase().contains("document") ||
-            event.field_type.to_lowercase().contains("text"),
-            "❌ Event {} has unexpected field type: {}", i + 1, event.field_type
+            event.field_type.to_lowercase().contains("edit")
+                || event.field_type.to_lowercase().contains("document")
+                || event.field_type.to_lowercase().contains("text"),
+            "❌ Event {} has unexpected field type: {}",
+            i + 1,
+            event.field_type
         );
 
         // Verify timing makes sense
         assert!(
             event.typing_duration_ms > 0,
-            "❌ Event {} has zero typing duration", i + 1
+            "❌ Event {} has zero typing duration",
+            i + 1
         );
 
         // Verify keystroke count makes sense
         assert!(
             event.keystroke_count > 0,
-            "❌ Event {} has zero keystroke count", i + 1
+            "❌ Event {} has zero keystroke count",
+            i + 1
         );
     }
 
@@ -190,7 +203,8 @@ async fn test_e2e_text_input_completion() {
     assert!(
         keyboard_events > text_input_completion_events.len(),
         "❌ Expected more keyboard events ({}) than text completion events ({})",
-        keyboard_events, text_input_completion_events.len()
+        keyboard_events,
+        text_input_completion_events.len()
     );
 
     // Step 14: Verify specific text content was captured
@@ -204,32 +218,48 @@ async fn test_e2e_text_input_completion() {
 
     // Should contain some of our typed content
     assert!(
-        all_captured_text.contains("Hello") || 
-        all_captured_text.contains("World") || 
-        all_captured_text.contains("Terminator") ||
-        all_captured_text.contains("line 2"),
-        "❌ Captured text doesn't contain expected content. Got: '{}'", all_captured_text
+        all_captured_text.contains("Hello")
+            || all_captured_text.contains("World")
+            || all_captured_text.contains("Terminator")
+            || all_captured_text.contains("line 2"),
+        "❌ Captured text doesn't contain expected content. Got: '{}'",
+        all_captured_text
     );
 
     // Step 15: Clean up - Close Notepad
     println!("🧹 Cleaning up...");
-    
+
     // Try to close Notepad gracefully
-    if let Ok(notepad_window) = desktop.locator("window:Notepad").first(Some(Duration::from_secs(2))).await {
+    if let Ok(notepad_window) = desktop
+        .locator("window:Notepad")
+        .first(Some(Duration::from_secs(2)))
+        .await
+    {
         if let Err(e) = notepad_window.press_key("{Alt}{F4}") {
             println!("⚠️  Failed to close Notepad gracefully: {}", e);
         }
-        
+
         // If there's a save dialog, click "Don't Save"
         tokio::time::sleep(Duration::from_millis(500)).await;
-        if let Ok(save_dialog) = desktop.locator("window:Notepad").locator("name:Don't Save").first(Some(Duration::from_secs(2))).await {
+        if let Ok(save_dialog) = desktop
+            .locator("window:Notepad")
+            .locator("name:Don't Save")
+            .first(Some(Duration::from_secs(2)))
+            .await
+        {
             let _ = save_dialog.click();
         }
     }
 
     println!("\n✅ End-to-End Text Input Completion Test PASSED!");
-    println!("   - Successfully captured {} text input completion events", text_input_completion_events.len());
-    println!("   - Successfully captured {} individual keyboard events", keyboard_events);
+    println!(
+        "   - Successfully captured {} text input completion events",
+        text_input_completion_events.len()
+    );
+    println!(
+        "   - Successfully captured {} individual keyboard events",
+        keyboard_events
+    );
     println!("   - High-level semantic aggregation is working correctly!");
     println!("   - Text content verification passed");
-} 
+}
