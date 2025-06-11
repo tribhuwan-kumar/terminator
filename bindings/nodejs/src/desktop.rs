@@ -250,9 +250,10 @@ impl Desktop {
     /// @param {string} url - The URL to open.
     /// @param {string} [browser] - The browser to use.
     #[napi]
-    pub fn open_url(&self, url: String, browser: Option<String>) -> napi::Result<()> {
+    pub fn open_url(&self, url: String, browser: Option<String>) -> napi::Result<Element> {
         self.inner
             .open_url(&url, browser.as_deref())
+            .map(Element::from)
             .map_err(map_error)
     }
 

@@ -318,9 +318,10 @@ impl Desktop {
     /// Args:
     ///     url (str): The URL to open.
     ///     browser (Optional[str]): The browser to use.
-    pub fn open_url(&self, url: &str, browser: Option<&str>) -> PyResult<()> {
+    pub fn open_url(&self, url: &str, browser: Option<&str>) -> PyResult<UIElement> {
         self.inner
             .open_url(url, browser)
+            .map(|e| UIElement { inner: e })
             .map_err(automation_error_to_pyerr)
     }
 

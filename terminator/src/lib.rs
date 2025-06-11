@@ -6,8 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
-use std::time::Instant;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, instrument};
 
 pub mod element;
 pub mod errors;
@@ -146,18 +145,23 @@ pub struct Desktop {
 impl Desktop {
     #[instrument(skip(use_background_apps, activate_app))]
     pub fn new(use_background_apps: bool, activate_app: bool) -> Result<Self, AutomationError> {
-        let start = Instant::now();
-        info!("Initializing Desktop automation engine");
-
         let engine = platforms::create_engine(use_background_apps, activate_app)?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            use_background_apps, activate_app, "Desktop automation engine initialized"
-        );
-
         Ok(Self { engine })
+    }
+
+    /// Initializet the desktop without arguments
+    ///
+    /// This is a convenience method that calls `new` with default arguments.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    pub fn new_default() -> Result<Self, AutomationError> {
+        Self::new(false, false)
     }
 
     /// Gets the root element representing the entire desktop.
@@ -176,136 +180,48 @@ impl Desktop {
     /// # Ok::<(), terminator::AutomationError>(())
     /// ```
     pub fn root(&self) -> UIElement {
-        let start = Instant::now();
-        info!("Getting root element");
-
-        let element = self.engine.get_root_element();
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            element_id = element.id().unwrap_or_default(),
-            "Root element retrieved"
-        );
-
-        element
+        self.engine.get_root_element()
     }
 
     #[instrument(skip(self, selector))]
     pub fn locator(&self, selector: impl Into<Selector>) -> Locator {
-        let start = Instant::now();
         let selector = selector.into();
-        info!(?selector, "Creating locator");
-
-        let locator = Locator::new(self.engine.clone(), selector);
-
-        let duration = start.elapsed();
-        info!(duration_ms = duration.as_millis(), "Locator created");
-
-        locator
+        Locator::new(self.engine.clone(), selector)
     }
 
     #[instrument(skip(self))]
     pub fn focused_element(&self) -> Result<UIElement, AutomationError> {
-        let start = Instant::now();
-        info!("Getting focused element");
-
-        let element = self.engine.get_focused_element()?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            element_id = element.id().unwrap_or_default(),
-            "Focused element retrieved"
-        );
-
-        Ok(element)
+        self.engine.get_focused_element()
     }
 
     #[instrument(skip(self))]
     pub fn applications(&self) -> Result<Vec<UIElement>, AutomationError> {
-        let start = Instant::now();
-        info!("Getting all applications");
-
-        let apps = self.engine.get_applications()?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            app_count = apps.len(),
-            "Applications retrieved"
-        );
-
-        Ok(apps)
+        self.engine.get_applications()
     }
 
     #[instrument(skip(self, name))]
     pub fn application(&self, name: &str) -> Result<UIElement, AutomationError> {
-        let start = Instant::now();
-        info!(app_name = name, "Getting application by name");
-
-        let app = self.engine.get_application_by_name(name)?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            app_id = app.id().unwrap_or_default(),
-            "Application retrieved"
-        );
-
-        Ok(app)
+        self.engine.get_application_by_name(name)
     }
 
     #[instrument(skip(self, app_name))]
     pub fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
-        let start = Instant::now();
-        info!(app_name, "Opening application");
-
-        let app = self.engine.open_application(app_name)?;
-
-        let duration = start.elapsed();
-        info!(duration_ms = duration.as_millis(), "Application opened");
-
-        Ok(app)
+        self.engine.open_application(app_name)
     }
 
     #[instrument(skip(self, app_name))]
     pub fn activate_application(&self, app_name: &str) -> Result<(), AutomationError> {
-        let start = Instant::now();
-        info!(app_name, "Activating application");
-
-        self.engine.activate_application(app_name)?;
-
-        let duration = start.elapsed();
-        info!(duration_ms = duration.as_millis(), "Application activated");
-
-        Ok(())
+        self.engine.activate_application(app_name)
     }
 
     #[instrument(skip(self, url, browser))]
-    pub fn open_url(&self, url: &str, browser: Option<&str>) -> Result<(), AutomationError> {
-        let start = Instant::now();
-        info!(url, ?browser, "Opening URL");
-
-        self.engine.open_url(url, browser)?;
-
-        let duration = start.elapsed();
-        info!(duration_ms = duration.as_millis(), "URL opened");
-
-        Ok(())
+    pub fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
+        self.engine.open_url(url, browser)
     }
 
     #[instrument(skip(self, file_path))]
     pub fn open_file(&self, file_path: &str) -> Result<(), AutomationError> {
-        let start = Instant::now();
-        info!(file_path, "Opening file");
-
-        self.engine.open_file(file_path)?;
-
-        let duration = start.elapsed();
-        info!(duration_ms = duration.as_millis(), "File opened");
-
-        Ok(())
+        self.engine.open_file(file_path)
     }
 
     #[instrument(skip(self, windows_command, unix_command))]
@@ -314,42 +230,12 @@ impl Desktop {
         windows_command: Option<&str>,
         unix_command: Option<&str>,
     ) -> Result<CommandOutput, AutomationError> {
-        let start = Instant::now();
-        info!(?windows_command, ?unix_command, "Running command");
-
-        let output = self
-            .engine
-            .run_command(windows_command, unix_command)
-            .await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            exit_code = output.exit_status,
-            stdout_len = output.stdout.len(),
-            stderr_len = output.stderr.len(),
-            "Command completed"
-        );
-
-        Ok(output)
+        self.engine.run_command(windows_command, unix_command).await
     }
 
     #[instrument(skip(self))]
     pub async fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
-        let start = Instant::now();
-        info!("Capturing screen");
-
-        let screenshot = self.engine.capture_screen().await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            width = screenshot.width,
-            height = screenshot.height,
-            "Screen captured"
-        );
-
-        Ok(screenshot)
+        self.engine.capture_screen().await
     }
 
     #[instrument(skip(self))]
@@ -383,37 +269,12 @@ impl Desktop {
         &self,
         name: &str,
     ) -> Result<ScreenshotResult, AutomationError> {
-        let start = Instant::now();
-        info!(monitor_name = name, "Capturing monitor");
-
-        let screenshot = self.engine.capture_monitor_by_name(name).await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            width = screenshot.width,
-            height = screenshot.height,
-            "Monitor captured"
-        );
-
-        Ok(screenshot)
+        self.engine.capture_monitor_by_name(name).await
     }
 
     #[instrument(skip(self, image_path))]
     pub async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError> {
-        let start = Instant::now();
-        info!(image_path, "Performing OCR on image file");
-
-        let text = self.engine.ocr_image_path(image_path).await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            text_length = text.len(),
-            "OCR completed"
-        );
-
-        Ok(text)
+        self.engine.ocr_image_path(image_path).await
     }
 
     #[instrument(skip(self, screenshot))]
@@ -421,90 +282,27 @@ impl Desktop {
         &self,
         screenshot: &ScreenshotResult,
     ) -> Result<String, AutomationError> {
-        let start = Instant::now();
-        info!(
-            width = screenshot.width,
-            height = screenshot.height,
-            "Performing OCR on screenshot"
-        );
-
-        let text = self.engine.ocr_screenshot(screenshot).await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            text_length = text.len(),
-            "OCR completed"
-        );
-
-        Ok(text)
+        self.engine.ocr_screenshot(screenshot).await
     }
 
     #[instrument(skip(self, title))]
     pub fn activate_browser_window_by_title(&self, title: &str) -> Result<(), AutomationError> {
-        let start = Instant::now();
-        info!(title, "Activating browser window");
-
-        self.engine.activate_browser_window_by_title(title)?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            "Browser window activated"
-        );
-
-        Ok(())
+        self.engine.activate_browser_window_by_title(title)
     }
 
     #[instrument(skip(self))]
     pub async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
-        let start = Instant::now();
-        info!("Getting current browser window");
-
-        let window = self.engine.get_current_browser_window().await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            window_id = window.id().unwrap_or_default(),
-            "Current browser window retrieved"
-        );
-
-        Ok(window)
+        self.engine.get_current_browser_window().await
     }
 
     #[instrument(skip(self))]
     pub async fn get_current_window(&self) -> Result<UIElement, AutomationError> {
-        let start = Instant::now();
-        info!("Getting current window");
-
-        let window = self.engine.get_current_window().await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            window_id = window.id().unwrap_or_default(),
-            "Current window retrieved"
-        );
-
-        Ok(window)
+        self.engine.get_current_window().await
     }
 
     #[instrument(skip(self))]
     pub async fn get_current_application(&self) -> Result<UIElement, AutomationError> {
-        let start = Instant::now();
-        info!("Getting current application");
-
-        let application = self.engine.get_current_application().await?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            app_id = application.id().unwrap_or_default(),
-            "Current application retrieved"
-        );
-
-        Ok(application)
+        self.engine.get_current_application().await
     }
 
     #[instrument(skip(self, pid, title, config))]
@@ -514,21 +312,8 @@ impl Desktop {
         title: Option<&str>,
         config: Option<crate::platforms::TreeBuildConfig>,
     ) -> Result<UINode, AutomationError> {
-        let start = Instant::now();
-        info!(pid, ?title, "Getting window tree with config");
-
         let tree_config = config.unwrap_or_default();
-        let window_tree_root = self.engine.get_window_tree(pid, title, tree_config)?;
-
-        let duration = start.elapsed();
-        info!(
-            duration_ms = duration.as_millis(),
-            pid = pid,
-            ?title,
-            "Window tree retrieved"
-        );
-
-        Ok(window_tree_root)
+        self.engine.get_window_tree(pid, title, tree_config)
     }
 
     /// Get all window elements for a given application by name
@@ -537,9 +322,6 @@ impl Desktop {
         &self,
         app_name: &str,
     ) -> Result<Vec<UIElement>, AutomationError> {
-        let start = Instant::now();
-        debug!(app_name, "Getting windows for application");
-
         // 1. Find the application element
         let app_element = match self.application(app_name) {
             Ok(app) => app,
@@ -548,7 +330,6 @@ impl Desktop {
                 return Err(e);
             }
         };
-        debug!("Found application element for '{}'", app_name);
 
         // 2. Get children of the application element
         let children = match app_element.children() {
@@ -561,10 +342,6 @@ impl Desktop {
                 return Err(e);
             }
         };
-        debug!(
-            child_count = children.len(),
-            "Found children for application '{}", app_name
-        );
 
         // 3. Filter children to find windows (cross-platform)
         let windows: Vec<UIElement> = children
@@ -591,11 +368,7 @@ impl Desktop {
             window_count = windows.len(),
             "Found windows for application '{}'", app_name
         );
-        let duration = start.elapsed();
-        debug!(
-            duration_ms = duration.as_millis(),
-            "windows_for_application complete"
-        );
+
         Ok(windows)
     }
 }

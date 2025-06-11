@@ -9,7 +9,7 @@ use arboard::Clipboard;
 use rdev::{Button, EventType, Key};
 use std::{
     collections::HashMap,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
@@ -55,7 +55,7 @@ pub struct WindowsRecorder {
     ui_automation_thread_id: Arc<Mutex<Option<u32>>>,
 
     /// Current typing session tracking
-    current_typing_session: Arc<Mutex<Option<TypingSession>>>,
+    current_typing_session: Arc<AtomicTypingSession>,
 
     /// Current application tracking for switch detection
     current_application: Arc<Mutex<Option<ApplicationState>>>,
@@ -76,21 +76,6 @@ struct ModifierStates {
 struct HotkeyPattern {
     action: String,
     keys: Vec<u32>,
-}
-
-/// Tracks a typing session in progress
-#[derive(Debug, Clone)]
-struct TypingSession {
-    /// The UI element being typed into
-    element: UIElement,
-    /// When the typing session started
-    start_time: Instant,
-    /// When the last keystroke was received
-    last_keystroke_time: Instant,
-    /// Number of keystrokes in this session
-    keystroke_count: u32,
-    /// Whether there were any paste operations during typing
-    had_paste_operations: bool,
 }
 
 /// Tracks the current application state for switch detection
@@ -154,6 +139,91 @@ impl Default for BrowserTabTracker {
     }
 }
 
+/// Simple atomic-based typing session for zero-contention keystroke processing
+struct AtomicTypingSession {
+    /// Whether a typing session is currently active
+    is_active: AtomicBool,
+    /// Number of keystrokes in current session
+    keystroke_count: AtomicU32,
+    /// Start time of session (nanoseconds since epoch)
+    start_time_nanos: AtomicU64,
+    /// Last keystroke time (nanoseconds since epoch)  
+    last_keystroke_nanos: AtomicU64,
+}
+
+impl Default for AtomicTypingSession {
+    fn default() -> Self {
+        Self {
+            is_active: AtomicBool::new(false),
+            keystroke_count: AtomicU32::new(0),
+            start_time_nanos: AtomicU64::new(0),
+            last_keystroke_nanos: AtomicU64::new(0),
+        }
+    }
+}
+
+impl AtomicTypingSession {
+    /// Record a keystroke - completely lock-free and fast
+    fn record_keystroke(&self) {
+        let now_nanos = self.nanos_since_epoch();
+
+        if !self.is_active.load(Ordering::Relaxed) {
+            // Start new session
+            self.start_time_nanos.store(now_nanos, Ordering::Relaxed);
+            self.keystroke_count.store(1, Ordering::Relaxed);
+            self.is_active.store(true, Ordering::Relaxed);
+        } else {
+            // Update existing session
+            self.keystroke_count.fetch_add(1, Ordering::Relaxed);
+        }
+
+        self.last_keystroke_nanos
+            .store(now_nanos, Ordering::Relaxed);
+    }
+
+    /// Check if session should timeout (lock-free read)
+    fn should_timeout(&self, timeout_ms: u64) -> bool {
+        if !self.is_active.load(Ordering::Relaxed) {
+            return false;
+        }
+
+        let last_keystroke = self.last_keystroke_nanos.load(Ordering::Relaxed);
+        let now = self.nanos_since_epoch();
+        let elapsed_ms = (now - last_keystroke) / 1_000_000; // Convert nanos to millis
+
+        elapsed_ms > timeout_ms
+    }
+
+    /// Complete and clear the session atomically
+    fn complete_session(&self, force: bool, timeout_ms: u64) -> Option<(u32, u64)> {
+        if !self.is_active.load(Ordering::Relaxed) {
+            return None;
+        }
+
+        if !force && !self.should_timeout(timeout_ms) {
+            return None;
+        }
+
+        // Atomically extract session data and mark inactive
+        let keystroke_count = self.keystroke_count.load(Ordering::Relaxed);
+        let start_time = self.start_time_nanos.load(Ordering::Relaxed);
+        let end_time = self.last_keystroke_nanos.load(Ordering::Relaxed);
+
+        // Mark session as inactive
+        self.is_active.store(false, Ordering::Relaxed);
+
+        let duration_ms = (end_time - start_time) / 1_000_000;
+        Some((keystroke_count, duration_ms))
+    }
+
+    fn nanos_since_epoch(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64
+    }
+}
+
 impl WindowsRecorder {
     /// Create a new Windows recorder
     pub async fn new(
@@ -187,7 +257,7 @@ impl WindowsRecorder {
             last_mouse_move_time,
             hotkey_patterns,
             ui_automation_thread_id: Arc::new(Mutex::new(None)),
-            current_typing_session: Arc::new(Mutex::new(None)),
+            current_typing_session: Arc::new(AtomicTypingSession::default()),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
         };
@@ -524,59 +594,56 @@ impl WindowsRecorder {
 
     /// Process potential typing session completion with UI element capture
     fn check_and_complete_typing_session(
-        current_session: &Arc<Mutex<Option<TypingSession>>>,
+        current_session: &Arc<AtomicTypingSession>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         force_complete: bool,
         timeout_ms: u64,
     ) {
-        let mut session_guard = current_session.lock().unwrap();
+        let session_data = current_session.complete_session(force_complete, timeout_ms);
 
-        if let Some(session) = session_guard.as_ref() {
-            let should_complete = force_complete
-                || session.last_keystroke_time.elapsed().as_millis() as u64 > timeout_ms;
+        if let Some((keystroke_count, duration_ms)) = session_data {
+            // NOW capture the UI element and text - only when session completes (no contention!)
+            let (ui_element, text_value, field_name, field_type) = match UIAutomation::new() {
+                Ok(automation) => {
+                    if let Some(focused_element) =
+                        Self::get_focused_ui_element_with_timeout(&automation)
+                    {
+                        // Try to get the current text value from the UI element
+                        let text = focused_element.text(1).unwrap_or_else(|_| {
+                            // Fallback: try to get name if text fails
+                            focused_element.name().unwrap_or_default()
+                        });
 
-            if should_complete {
-                // NOW capture the real UI element for the completed typing session (high-level event)
-                let real_ui_element = match UIAutomation::new() {
-                    Ok(automation) => Self::get_focused_ui_element_with_timeout(&automation),
-                    Err(_) => None,
+                        let field_name = focused_element.name().unwrap_or_default();
+                        let field_type = focused_element.role();
+
+                        (Some(focused_element), text, Some(field_name), field_type)
+                    } else {
+                        (None, String::new(), None, "unknown".to_string())
+                    }
+                }
+                Err(_) => (None, String::new(), None, "unknown".to_string()),
+            };
+
+            // Only emit event if we got meaningful text or have multiple keystrokes
+            if !text_value.trim().is_empty() || keystroke_count > 1 {
+                let input_method = Self::determine_input_method(
+                    keystroke_count,
+                    duration_ms,
+                    false, // had_paste is not available in the AtomicTypingSession
+                );
+
+                let text_input_event = TextInputCompletedEvent {
+                    text_value,
+                    field_name,
+                    field_type,
+                    input_method,
+                    typing_duration_ms: duration_ms,
+                    keystroke_count,
+                    metadata: EventMetadata { ui_element },
                 };
 
-                // Use real UI element if available, otherwise fall back to session element
-                let ui_element = real_ui_element.as_ref().unwrap_or(&session.element);
-
-                // Try to get the current text value from the UI element
-                let final_text = ui_element.text(1).unwrap_or_else(|_| {
-                    // Fallback: try to get name if text fails
-                    ui_element.name().unwrap_or_default()
-                });
-
-                // Only emit event if we got meaningful text
-                if !final_text.trim().is_empty() {
-                    let duration_ms = session.start_time.elapsed().as_millis() as u64;
-                    let input_method = Self::determine_input_method(
-                        session.keystroke_count,
-                        duration_ms,
-                        session.had_paste_operations,
-                    );
-
-                    let text_input_event = TextInputCompletedEvent {
-                        text_value: final_text,
-                        field_name: ui_element.name(),
-                        field_type: ui_element.role(),
-                        input_method,
-                        typing_duration_ms: duration_ms,
-                        keystroke_count: session.keystroke_count,
-                        metadata: EventMetadata {
-                            ui_element: real_ui_element.or_else(|| Some(session.element.clone())),
-                        },
-                    };
-
-                    let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
-                }
-
-                // Clear the completed session
-                *session_guard = None;
+                let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
             }
         }
     }
@@ -740,32 +807,9 @@ impl WindowsRecorder {
                         if record_text_input_completion
                             && Self::is_typing_keystroke(key_code, character)
                         {
-                            // PERFORMANCE OPTIMIZATION: Lightweight typing session management
-                            // UI elements will be captured only when typing session completes
-                            let mut session_guard = current_typing_session.lock().unwrap();
-                            let now = Instant::now();
-
-                            // Check if we should create/update a typing session
-                            if let Some(ref mut session) = *session_guard {
-                                // Update existing session - fast and lightweight
-                                session.last_keystroke_time = now;
-                                session.keystroke_count += 1;
-
-                                // No UI element capture during typing - this is the key performance optimization!
-                            } else {
-                                // No current session - start new one with fallback element
-                                // Real UI element will be captured when session completes
-                                if let Some(fallback_element) = Self::create_fallback_ui_element() {
-                                    *session_guard = Some(TypingSession {
-                                        element: fallback_element,
-                                        start_time: now,
-                                        last_keystroke_time: now,
-                                        keystroke_count: 1,
-                                        had_paste_operations: false,
-                                    });
-                                }
-                            }
-                            drop(session_guard); // Release the lock before potentially calling completion
+                            // PERFORMANCE OPTIMIZATION: ZERO-CONTENTION keystroke tracking
+                            // Uses atomic operations instead of mutex - no blocking!
+                            current_typing_session.record_keystroke();
 
                             // Special case: Enter key should immediately complete the typing session
                             // This captures common form submission patterns
@@ -1135,7 +1179,6 @@ impl WindowsRecorder {
         let ignore_property_patterns = self.config.ignore_property_patterns.clone();
         let ignore_window_titles = self.config.ignore_window_titles.clone();
         let ignore_applications = self.config.ignore_applications.clone();
-        let current_typing_session = Arc::clone(&self.current_typing_session);
         let record_text_input_completion = self.config.record_text_input_completion;
         let config_clone = self.config.clone();
 
@@ -1285,49 +1328,18 @@ impl WindowsRecorder {
 
                 // Spawn a thread to process the focus change data safely
                 let focus_event_tx_clone = focus_event_tx.clone();
-                let focus_typing_session = Arc::clone(&current_typing_session);
-                let focus_record_text_input = record_text_input_completion;
                 let focus_current_app = Arc::clone(&current_application);
                 let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
-                let focus_config = config_clone.clone();
+                let focus_record_text_input = record_text_input_completion;
+                let config_clone = config_clone.clone();
                 std::thread::spawn(move || {
                     while let Ok((element_name, ui_element)) = focus_rx.recv() {
                         // Complete any active typing session on focus change
                         if focus_record_text_input {
-                            // We don't have access to UIAutomation here, so we'll use a simpler completion
-                            let mut session_guard = focus_typing_session.lock().unwrap();
-                            if let Some(session) = session_guard.take() {
-                                // Get final text from the session element
-                                let final_text = session
-                                    .element
-                                    .text(1)
-                                    .unwrap_or_else(|_| session.element.name().unwrap_or_default());
-
-                                if !final_text.trim().is_empty() {
-                                    let duration_ms =
-                                        session.start_time.elapsed().as_millis() as u64;
-                                    let input_method = WindowsRecorder::determine_input_method(
-                                        session.keystroke_count,
-                                        duration_ms,
-                                        session.had_paste_operations,
-                                    );
-
-                                    let text_input_event = TextInputCompletedEvent {
-                                        text_value: final_text,
-                                        field_name: session.element.name(),
-                                        field_type: session.element.role(),
-                                        input_method,
-                                        typing_duration_ms: duration_ms,
-                                        keystroke_count: session.keystroke_count,
-                                        metadata: EventMetadata {
-                                            ui_element: Some(session.element.clone()),
-                                        },
-                                    };
-
-                                    let _ = focus_event_tx_clone
-                                        .send(WorkflowEvent::TextInputCompleted(text_input_event));
-                                }
-                            }
+                            // PERFORMANCE: Disabled the old mutex-based typing session completion
+                            // to eliminate contention. The main keystroke processing now uses
+                            // atomic operations for zero-contention performance.
+                            debug!("Focus change detected - typing session completion disabled for performance");
                         }
 
                         // Apply filtering
@@ -1363,7 +1375,7 @@ impl WindowsRecorder {
                             &focus_event_tx_clone,
                             &ui_element,
                             ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
-                            &focus_config,
+                            &config_clone,
                         );
 
                         // Check for browser tab navigation
@@ -1371,7 +1383,7 @@ impl WindowsRecorder {
                         let focus_url = if let Some(ref element) = ui_element {
                             let element_name = element.name_or_empty();
                             if element_name.starts_with("http") && element_name.len() > 10 {
-                                Some(element_name)
+                                Some(element_name.clone())
                             } else {
                                 None
                             }
@@ -1384,7 +1396,7 @@ impl WindowsRecorder {
                             &focus_event_tx_clone,
                             &ui_element,
                             TabNavigationMethod::TabClick, // Focus change in browser could be tab click
-                            &focus_config,
+                            &config_clone,
                             focus_url,
                         );
                     }
@@ -1790,16 +1802,6 @@ impl WindowsRecorder {
 
         info!("Windows recorder stop signal sent");
         Ok(())
-    }
-
-    /// Create a fallback UI element for performance when real element isn't available
-    fn create_fallback_ui_element() -> Option<UIElement> {
-        // Try to create a minimal desktop element as fallback
-        // This allows typing sessions to work even when UI capture is throttled
-        match terminator::Desktop::new(false, false) {
-            Ok(desktop) => Some(desktop.root()),
-            Err(_) => None, // If this fails, we'll just skip the typing session
-        }
     }
 
     /// Start background timer to complete typing sessions on timeout
