@@ -12,7 +12,7 @@ use std::{
     sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 use tokio::sync::broadcast;
@@ -225,6 +225,14 @@ impl AtomicTypingSession {
 }
 
 impl WindowsRecorder {
+    /// Capture the current timestamp in milliseconds since epoch
+    fn capture_timestamp() -> u64 {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+
     /// Create a new Windows recorder
     pub async fn new(
         config: WorkflowRecorderConfig,
@@ -386,9 +394,9 @@ impl WindowsRecorder {
                                 switch_method,
                                 dwell_time_ms: dwell_time,
                                 switch_count: None, // TODO: Track Alt+Tab cycles
-                                metadata: EventMetadata {
-                                    ui_element: Some(element.clone()),
-                                },
+                                metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                    element.clone(),
+                                )),
                             };
 
                             if let Err(e) =
@@ -498,9 +506,7 @@ impl WindowsRecorder {
                         total_tabs: None, // Total tabs detection would require more complex logic
                         page_dwell_time_ms,
                         is_back_forward: false, // Back/forward detection would require more complex logic
-                        metadata: EventMetadata {
-                            ui_element: ui_element.clone(),
-                        },
+                        metadata: EventMetadata::with_ui_element_and_timestamp(ui_element.clone()),
                     };
 
                     // Update tracker state
@@ -640,7 +646,10 @@ impl WindowsRecorder {
                     input_method,
                     typing_duration_ms: duration_ms,
                     keystroke_count,
-                    metadata: EventMetadata { ui_element },
+                    metadata: EventMetadata {
+                        ui_element,
+                        timestamp: Some(Self::capture_timestamp()),
+                    },
                 };
 
                 let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
@@ -833,7 +842,10 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character,
                             scan_code: None, // TODO: Get actual scan code
-                            metadata: EventMetadata { ui_element },
+                            metadata: EventMetadata {
+                                ui_element,
+                                timestamp: Some(Self::capture_timestamp()),
+                            },
                         };
 
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
@@ -886,7 +898,10 @@ impl WindowsRecorder {
                             win_pressed: modifiers.win,
                             character: None,
                             scan_code: None,
-                            metadata: EventMetadata { ui_element },
+                            metadata: EventMetadata {
+                                ui_element,
+                                timestamp: Some(Self::capture_timestamp()),
+                            },
                         };
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
                     }
@@ -922,7 +937,10 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: None,
                                 drag_start: None,
-                                metadata: EventMetadata { ui_element },
+                                metadata: EventMetadata {
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -949,7 +967,10 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: None,
                                 drag_start: None,
-                                metadata: EventMetadata { ui_element },
+                                metadata: EventMetadata {
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -987,7 +1008,10 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: None,
                                 drag_start: None,
-                                metadata: EventMetadata { ui_element },
+                                metadata: EventMetadata {
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -1007,7 +1031,10 @@ impl WindowsRecorder {
                                 position: Position { x, y },
                                 scroll_delta: Some((delta_x as i32, delta_y as i32)),
                                 drag_start: None,
-                                metadata: EventMetadata { ui_element },
+                                metadata: EventMetadata {
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
                         }
@@ -1048,7 +1075,10 @@ impl WindowsRecorder {
                     combination: format!("{:?}", pattern.keys), // TODO: Format properly
                     action: Some(pattern.action.clone()),
                     is_global: true,
-                    metadata: EventMetadata { ui_element: None }, // TODO: Pass UI element context from caller
+                    metadata: EventMetadata {
+                        ui_element: None,
+                        timestamp: Some(Self::capture_timestamp()),
+                    }, // TODO: Pass UI element context from caller
                 });
             }
         }
@@ -1108,7 +1138,10 @@ impl WindowsRecorder {
                             content_size: Some(content.len()),
                             format: Some("text".to_string()),
                             truncated,
-                            metadata: EventMetadata { ui_element },
+                            metadata: EventMetadata {
+                                ui_element,
+                                timestamp: Some(Self::capture_timestamp()),
+                            },
                         };
 
                         let _ = event_tx.send(WorkflowEvent::Clipboard(clipboard_event));
@@ -1359,6 +1392,7 @@ impl WindowsRecorder {
                             previous_element: None,
                             metadata: EventMetadata {
                                 ui_element: ui_element.clone(),
+                                timestamp: Some(Self::capture_timestamp()),
                             },
                         };
 
@@ -1571,6 +1605,7 @@ impl WindowsRecorder {
                             new_value: Some(value_string.clone()),
                             metadata: EventMetadata {
                                 ui_element: ui_element.clone(),
+                                timestamp: Some(Self::capture_timestamp()),
                             },
                         };
 

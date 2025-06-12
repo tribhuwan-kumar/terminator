@@ -353,15 +353,29 @@ impl RecordedWorkflow {
 
     /// Add an event to the workflow
     pub fn add_event(&mut self, event: WorkflowEvent) {
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
-
-        self.events.push(RecordedEvent {
-            timestamp: now,
-            event,
+        // Use the event's timestamp if available in its metadata, otherwise generate current timestamp
+        let timestamp = match &event {
+            WorkflowEvent::Mouse(e) => e.metadata.timestamp,
+            WorkflowEvent::Keyboard(e) => e.metadata.timestamp,
+            WorkflowEvent::Clipboard(e) => e.metadata.timestamp,
+            WorkflowEvent::TextSelection(e) => e.metadata.timestamp,
+            WorkflowEvent::DragDrop(e) => e.metadata.timestamp,
+            WorkflowEvent::Hotkey(e) => e.metadata.timestamp,
+            WorkflowEvent::UiPropertyChanged(e) => e.metadata.timestamp,
+            WorkflowEvent::UiFocusChanged(e) => e.metadata.timestamp,
+            WorkflowEvent::TextInputCompleted(e) => e.metadata.timestamp,
+            WorkflowEvent::ApplicationSwitch(e) => e.metadata.timestamp,
+            WorkflowEvent::BrowserTabNavigation(e) => e.metadata.timestamp,
+        }
+        .unwrap_or_else(|| {
+            // Fallback: generate timestamp now if not present in event metadata
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64
         });
+
+        self.events.push(RecordedEvent { timestamp, event });
     }
 
     /// Finish the recording
@@ -643,12 +657,46 @@ pub struct EventMetadata {
     /// The UI element associated with this event (if available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_element: Option<UIElement>,
+
+    /// The exact timestamp when this event occurred (milliseconds since epoch)
+    /// If None, the timestamp will be generated when the event is recorded
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
 }
 
 // implement empty() constructor
 impl EventMetadata {
     pub fn empty() -> Self {
-        Self { ui_element: None }
+        Self {
+            ui_element: None,
+            timestamp: None,
+        }
+    }
+
+    /// Create EventMetadata with current timestamp
+    pub fn with_timestamp() -> Self {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        Self {
+            ui_element: None,
+            timestamp: Some(now),
+        }
+    }
+
+    /// Create EventMetadata with UI element and current timestamp
+    pub fn with_ui_element_and_timestamp(ui_element: Option<UIElement>) -> Self {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+
+        Self {
+            ui_element,
+            timestamp: Some(now),
+        }
     }
 }
 
@@ -704,12 +752,17 @@ pub struct SerializableEventMetadata {
     /// The UI element associated with this event (if available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui_element: Option<SerializableUIElement>,
+
+    /// The exact timestamp when this event occurred (milliseconds since epoch)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
 }
 
 impl From<&EventMetadata> for SerializableEventMetadata {
     fn from(metadata: &EventMetadata) -> Self {
         Self {
             ui_element: metadata.ui_element.as_ref().map(|elem| elem.into()),
+            timestamp: metadata.timestamp,
         }
     }
 }
