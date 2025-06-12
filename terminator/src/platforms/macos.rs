@@ -154,6 +154,8 @@ impl MacOSEngine {
     // Helper to convert ThreadSafeAXUIElement to our UIElement
     #[instrument(skip(self, ax_element))]
     fn wrap_element(&self, ax_element: ThreadSafeAXUIElement) -> UIElement {
+        debug!("[macOS][wrap_element] ax_element: {:?}", ax_element);
+
         // Try to check element validity by first checking if "AXRole" is present in attribute names
         let mut is_valid = false;
         // println!("[macOS][wrap_element] ax_element: {:?}", ax_element);
@@ -182,6 +184,7 @@ impl MacOSEngine {
                             } else {
                                 debug!("Warning: Potentially invalid AXUIElement: {:?}", e);
                             }
+                            is_valid = false;
                         }
                     }
                 } else {
@@ -191,7 +194,7 @@ impl MacOSEngine {
                     );
                     // If it doesn't have AXRole, we still consider it valid for wrapping,
                     // but log for debugging.
-                    is_valid = true;
+                    is_valid = false;
                 }
             }
             Err(e) => {
@@ -206,7 +209,7 @@ impl MacOSEngine {
                 );
                 // If we can't get attribute names, be conservative and allow wrapping,
                 // but log for debugging.
-                is_valid = true;
+                is_valid = false;
             }
         }
 
@@ -2010,7 +2013,7 @@ fn map_generic_role_to_macos_roles(role: &str) -> Vec<String> {
 fn macos_role_to_generic_role(role: &str) -> Vec<String> {
     match role.to_lowercase().as_str() {
         "AXWindow" => vec!["window".to_string()],
-        "AXButton" | "AXMenuItem" | "AXMenuBarItem" => vec!["button".to_string()],
+        "AXButton" | "AXMenuItem" | "AXMenuBarItem" | "AXPopUpButton" => vec!["button".to_string()],
         "AXTextField" | "AXTextArea" | "AXTextEdit" | "AXSearchField" | "AXURIField"
         | "AXAddressField" => vec![
             "textfield".to_string(),
@@ -2030,7 +2033,8 @@ fn macos_role_to_generic_role(role: &str) -> Vec<String> {
 }
 
 // List of application localized names to exclude.
-// These consistently fail to retrieve role and take an unusually long time to do so.
+// These are known to consistently fail to retrieve role
+// and take an unusually long time to do so.
 const EXCLUDED_APPLICATION_NAMES: &[&str] = &[
     "Raycast Web Content",
     "superwhisper Web Content",
@@ -2276,6 +2280,9 @@ impl AccessibilityEngine for MacOSEngine {
             let apps: *mut objc::runtime::Object = msg_send![shared_workspace, runningApplications];
             let count: usize = msg_send![apps, count];
 
+            // First, collect all (i, pid, localized_name) tuples
+            let mut candidates: Vec<(usize, i32, String)> = Vec::with_capacity(count);
+
             for i in 0..count {
                 let app: *mut objc::runtime::Object = msg_send![apps, objectAtIndex:i];
                 let app_name_obj: *mut objc::runtime::Object = msg_send![app, localizedName];
@@ -2288,20 +2295,41 @@ impl AccessibilityEngine for MacOSEngine {
                         let bytes_slice = std::slice::from_raw_parts(bytes as *const u8, len);
                         std::str::from_utf8_unchecked(bytes_slice)
                     };
-
                     let pid: i32 = msg_send![app, processIdentifier];
-                    let ax_element = ThreadSafeAXUIElement::application(pid);
-                    let ui_element = self.wrap_element(ax_element);
+                    // Print i of total count and localized name while checking
+                    debug!(
+                        "[macOS][get_application_by_name] i: {}/{} localized_name: {:?}",
+                        i + 1,
+                        count,
+                        app_name_str
+                    );
+                    candidates.push((i, pid, app_name_str.to_string()));
+                }
+            }
 
-                    // Try to get the short name from the AX element's attributes
-                    let short_name = ui_element.attributes().name.unwrap_or_default();
+            // Try to match by localized name (case-insensitive)
+            if let Some((_, pid, _)) = candidates
+                .iter()
+                .find(|(_, _, app_name)| app_name.to_lowercase() == name.to_lowercase())
+            {
+                let ax_element = ThreadSafeAXUIElement::application(*pid);
+                let ui_element = self.wrap_element(ax_element);
+                return Ok(ui_element);
+            }
 
-                    // Match if either the display name or the short name matches (case-insensitive)
-                    if app_name_str.to_lowercase() == name.to_lowercase()
-                        || short_name.to_lowercase() == name.to_lowercase()
-                    {
-                        return Ok(ui_element);
-                    }
+            // If no match, try matching by AXUIElement's .name attribute (expensive)
+            for (i, pid, app_name) in &candidates {
+                let ax_element = ThreadSafeAXUIElement::application(*pid);
+                let ui_element = self.wrap_element(ax_element);
+                let short_name = ui_element.attributes().name.unwrap_or_default();
+                debug!(
+                    "[macOS][get_application_by_name] i: {}/{} AXUIElement name: {:?}",
+                    i + 1,
+                    count,
+                    short_name
+                );
+                if short_name.to_lowercase() == name.to_lowercase() {
+                    return Ok(ui_element);
                 }
             }
         }
@@ -2719,8 +2747,18 @@ impl AccessibilityEngine for MacOSEngine {
                         Err(_) => false,
                     }); // Add None for implicit_wait
 
-                // Find all matching elements and return the first one found
-                match collector.find_all().into_iter().next() {
+                // Find all matching elements and print their roles, then return the first one found
+                let found_elements = collector.with_max_results(Some(1)).find_all();
+                // let found_elements = collector.find_all();
+
+                for elem in &found_elements {
+                    match elem.role() {
+                        Ok(r) => println!("Found element with role: {}", r),
+                        Err(e) => println!("Failed to get role for element: {:?}", e),
+                    }
+                }
+
+                match found_elements.into_iter().next() {
                     Some(e) => Ok(self.wrap_element(ThreadSafeAXUIElement::new(e))),
                     None => Err(AutomationError::ElementNotFound(format!(
                         "Element with role '{}'{} not found",

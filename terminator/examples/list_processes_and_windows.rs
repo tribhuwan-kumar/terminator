@@ -149,8 +149,7 @@ fn get_app_info(app: &terminator::UIElement, index: usize) -> Result<(u32, Strin
     let process_name = format!("Process-{}", pid);
     
     // Get window/app title
-    let attributes = app.attributes();
-    let window_title = attributes.name.unwrap_or_else(|| 
+    let window_title = app.name().unwrap_or_else(|| 
         format!("Unnamed-App-{}", index)
     );
     
