@@ -1216,22 +1216,14 @@ impl WindowsRecorder {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let ui_automation_thread_id = Arc::clone(&self.ui_automation_thread_id);
-        let record_structure_changes = self.config.record_ui_structure_changes;
-        let record_property_changes = self.config.record_ui_property_changes;
-        let record_focus_changes = self.config.record_ui_focus_changes;
 
         // Clone filtering configuration
         let ignore_focus_patterns = self.config.ignore_focus_patterns.clone();
         let ignore_property_patterns = self.config.ignore_property_patterns.clone();
         let ignore_window_titles = self.config.ignore_window_titles.clone();
         let ignore_applications = self.config.ignore_applications.clone();
-        let record_text_input_completion = self.config.record_text_input_completion;
         let config_clone = self.config.clone();
-
-        if !record_structure_changes && !record_property_changes && !record_focus_changes {
-            debug!("No UI Automation events enabled, skipping setup");
-            return Ok(());
-        }
+        let property_config = self.config.clone();
 
         thread::spawn(move || {
             info!("Starting UI Automation event monitoring thread");
@@ -1296,176 +1288,166 @@ impl WindowsRecorder {
             info!("UI Automation instance created successfully, setting up event handlers");
 
             // Set up focus change event handler if enabled
-            if record_focus_changes {
-                info!("Setting up focus change event handler");
-                let focus_event_tx = event_tx.clone();
-                let focus_ignore_patterns = ignore_focus_patterns.clone();
-                let focus_ignore_window_titles = ignore_window_titles.clone();
-                let focus_ignore_applications = ignore_applications.clone();
+            info!("Setting up focus change event handler");
+            let focus_event_tx = event_tx.clone();
+            let focus_ignore_patterns = ignore_focus_patterns.clone();
+            let focus_ignore_window_titles = ignore_window_titles.clone();
+            let focus_ignore_applications = ignore_applications.clone();
 
-                // Create a channel for thread-safe communication
-                let (focus_tx, focus_rx) =
-                    std::sync::mpsc::channel::<(String, Option<UIElement>)>();
+            // Create a channel for thread-safe communication
+            let (focus_tx, focus_rx) = std::sync::mpsc::channel::<(String, Option<UIElement>)>();
 
-                // Create a focus changed event handler struct
-                struct FocusHandler {
-                    sender: std::sync::mpsc::Sender<(String, Option<UIElement>)>,
-                }
-
-                impl uiautomation::events::CustomFocusChangedEventHandler for FocusHandler {
-                    fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
-                        // Ensure we're handling this on the correct thread
-                        let current_thread = unsafe { GetCurrentThreadId() };
-                        debug!("Focus change event received on thread {}", current_thread);
-
-                        // Extract basic data that's safe to send across threads
-                        let element_name =
-                            sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
-
-                        // SAFELY extract UI element information while we're on the correct COM thread
-                        let ui_element = match std::panic::catch_unwind(
-                            std::panic::AssertUnwindSafe(|| {
-                                convert_uiautomation_element_to_terminator(sender.clone())
-                            }),
-                        ) {
-                            Ok(element) => {
-                                // Additional safety: verify we can access basic properties
-                                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    let name = element.name_or_empty();
-                                    let role = element.role();
-                                    (name, role)
-                                })) {
-                                    Ok((name, role)) => {
-                                        debug!("Successfully converted focus UI element: name='{}', role='{}'", name, role);
-                                        Some(element)
-                                    }
-                                    Err(e) => {
-                                        debug!("UI element converted but properties inaccessible: {:?}", e);
-                                        // Return the element anyway since basic conversion worked
-                                        Some(element)
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                debug!("Failed to convert UI element safely: {:?}", e);
-                                None
-                            }
-                        };
-
-                        // Send the extracted data through the channel
-                        if let Err(e) = self.sender.send((element_name, ui_element)) {
-                            debug!("Failed to send focus change data through channel: {}", e);
-                        }
-
-                        Ok(())
-                    }
-                }
-
-                let focus_handler = FocusHandler { sender: focus_tx };
-
-                let focus_event_handler =
-                    uiautomation::events::UIFocusChangedEventHandler::from(focus_handler);
-
-                // Register the focus change event handler
-                match automation.add_focus_changed_event_handler(None, &focus_event_handler) {
-                    Ok(_) => info!("✅ Focus change event handler registered successfully"),
-                    Err(e) => error!("❌ Failed to register focus change event handler: {}", e),
-                }
-
-                // Spawn a thread to process the focus change data safely
-                let focus_event_tx_clone = focus_event_tx.clone();
-                let focus_current_app = Arc::clone(&current_application);
-                let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
-                let focus_record_text_input = record_text_input_completion;
-                let config_clone = config_clone.clone();
-                std::thread::spawn(move || {
-                    while let Ok((element_name, ui_element)) = focus_rx.recv() {
-                        // Complete any active typing session on focus change
-                        if focus_record_text_input {
-                            // PERFORMANCE: Disabled the old mutex-based typing session completion
-                            // to eliminate contention. The main keystroke processing now uses
-                            // atomic operations for zero-contention performance.
-                            debug!("Focus change detected - typing session completion disabled for performance");
-                        }
-
-                        // Apply filtering
-                        if WindowsRecorder::should_ignore_focus_event(
-                            &element_name,
-                            &ui_element,
-                            &focus_ignore_patterns,
-                            &focus_ignore_window_titles,
-                            &focus_ignore_applications,
-                        ) {
-                            debug!("Ignoring focus change event for: {}", element_name);
-                            continue;
-                        }
-
-                        // Create a minimal UI element representation
-                        let focus_event = UiFocusChangedEvent {
-                            previous_element: None,
-                            metadata: EventMetadata {
-                                ui_element: ui_element.clone(),
-                                timestamp: Some(Self::capture_timestamp()),
-                            },
-                        };
-
-                        if let Err(e) =
-                            focus_event_tx_clone.send(WorkflowEvent::UiFocusChanged(focus_event))
-                        {
-                            debug!("Failed to send focus change event: {}", e);
-                            break;
-                        }
-
-                        // Check for application switch (focus changes often indicate app switches)
-                        Self::check_and_emit_application_switch(
-                            &focus_current_app,
-                            &focus_event_tx_clone,
-                            &ui_element,
-                            ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
-                            &config_clone,
-                        );
-
-                        // Check for browser tab navigation
-                        // Extract URL from focus text if available
-                        let focus_url = if let Some(ref element) = ui_element {
-                            let element_name = element.name_or_empty();
-                            if element_name.starts_with("http") && element_name.len() > 10 {
-                                Some(element_name.clone())
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-
-                        Self::check_and_emit_browser_navigation_with_url(
-                            &focus_browser_tracker,
-                            &focus_event_tx_clone,
-                            &ui_element,
-                            TabNavigationMethod::TabClick, // Focus change in browser could be tab click
-                            &config_clone,
-                            focus_url,
-                        );
-                    }
-                });
+            // Create a focus changed event handler struct
+            struct FocusHandler {
+                sender: std::sync::mpsc::Sender<(String, Option<UIElement>)>,
             }
 
+            impl uiautomation::events::CustomFocusChangedEventHandler for FocusHandler {
+                fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
+                    // Ensure we're handling this on the correct thread
+                    let current_thread = unsafe { GetCurrentThreadId() };
+                    debug!("Focus change event received on thread {}", current_thread);
+
+                    // Extract basic data that's safe to send across threads
+                    let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
+
+                    // SAFELY extract UI element information while we're on the correct COM thread
+                    let ui_element = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                        || convert_uiautomation_element_to_terminator(sender.clone()),
+                    )) {
+                        Ok(element) => {
+                            // Additional safety: verify we can access basic properties
+                            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                let name = element.name_or_empty();
+                                let role = element.role();
+                                (name, role)
+                            })) {
+                                Ok((name, role)) => {
+                                    debug!("Successfully converted focus UI element: name='{}', role='{}'", name, role);
+                                    Some(element)
+                                }
+                                Err(e) => {
+                                    debug!(
+                                        "UI element converted but properties inaccessible: {:?}",
+                                        e
+                                    );
+                                    // Return the element anyway since basic conversion worked
+                                    Some(element)
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            debug!("Failed to convert UI element safely: {:?}", e);
+                            None
+                        }
+                    };
+
+                    // Send the extracted data through the channel
+                    if let Err(e) = self.sender.send((element_name, ui_element)) {
+                        debug!("Failed to send focus change data through channel: {}", e);
+                    }
+
+                    Ok(())
+                }
+            }
+
+            let focus_handler = FocusHandler { sender: focus_tx };
+
+            let focus_event_handler =
+                uiautomation::events::UIFocusChangedEventHandler::from(focus_handler);
+
+            // Register the focus change event handler
+            match automation.add_focus_changed_event_handler(None, &focus_event_handler) {
+                Ok(_) => info!("✅ Focus change event handler registered successfully"),
+                Err(e) => error!("❌ Failed to register focus change event handler: {}", e),
+            }
+
+            // Spawn a thread to process the focus change data safely
+            let focus_event_tx_clone = focus_event_tx.clone();
+            let focus_current_app = Arc::clone(&current_application);
+            let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
+            let config_clone = config_clone.clone();
+            let config_clone_clone = config_clone.clone();
+
+            std::thread::spawn(move || {
+                let config_clone_clone = config_clone_clone.clone();
+
+                while let Ok((element_name, ui_element)) = focus_rx.recv() {
+                    // Apply filtering
+                    if WindowsRecorder::should_ignore_focus_event(
+                        &element_name,
+                        &ui_element,
+                        &focus_ignore_patterns,
+                        &focus_ignore_window_titles,
+                        &focus_ignore_applications,
+                    ) {
+                        debug!("Ignoring focus change event for: {}", element_name);
+                        continue;
+                    }
+
+                    // Create a minimal UI element representation
+                    let focus_event = UiFocusChangedEvent {
+                        previous_element: None,
+                        metadata: EventMetadata {
+                            ui_element: ui_element.clone(),
+                            timestamp: Some(Self::capture_timestamp()),
+                        },
+                    };
+
+                    if let Err(e) =
+                        focus_event_tx_clone.send(WorkflowEvent::UiFocusChanged(focus_event))
+                    {
+                        debug!("Failed to send focus change event: {}", e);
+                        break;
+                    }
+
+                    // Check for application switch (focus changes often indicate app switches)
+                    Self::check_and_emit_application_switch(
+                        &focus_current_app,
+                        &focus_event_tx_clone,
+                        &ui_element,
+                        ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
+                        &config_clone_clone,
+                    );
+
+                    // Check for browser tab navigation
+                    // Extract URL from focus text if available
+                    let focus_url = if let Some(ref element) = ui_element {
+                        let element_name = element.name_or_empty();
+                        if element_name.starts_with("http") && element_name.len() > 10 {
+                            Some(element_name.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    Self::check_and_emit_browser_navigation_with_url(
+                        &focus_browser_tracker,
+                        &focus_event_tx_clone,
+                        &ui_element,
+                        TabNavigationMethod::TabClick, // Focus change in browser could be tab click
+                        &config_clone,
+                        focus_url,
+                    );
+                }
+            });
+
             // Set up property change event handler if enabled
-            if record_property_changes {
-                info!("Setting up property change event handler");
-                let property_event_tx = event_tx.clone();
-                let property_ignore_patterns = ignore_property_patterns.clone();
-                let property_ignore_window_titles = ignore_window_titles.clone();
-                let property_ignore_applications = ignore_applications.clone();
+            info!("Setting up property change event handler");
+            let property_event_tx = event_tx.clone();
+            let property_ignore_patterns = ignore_property_patterns.clone();
+            let property_ignore_window_titles = ignore_window_titles.clone();
+            let property_ignore_applications = ignore_applications.clone();
 
-                // Create a channel for thread-safe communication
-                let (property_tx, property_rx) =
-                    std::sync::mpsc::channel::<(String, String, String, Option<UIElement>)>();
+            // Create a channel for thread-safe communication
+            let (property_tx, property_rx) =
+                std::sync::mpsc::channel::<(String, String, String, Option<UIElement>)>();
 
-                // Create a property changed event handler using the proper closure type
-                let property_handler: Box<
-                    uiautomation::events::CustomPropertyChangedEventHandlerFn,
-                > = Box::new(move |sender, property, value| {
+            // Create a property changed event handler using the proper closure type
+            let property_handler: Box<uiautomation::events::CustomPropertyChangedEventHandlerFn> =
+                Box::new(move |sender, property, value| {
                     // PERFORMANCE OPTIMIZATION: Aggressively filter property events to reduce CPU load
                     let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
                     match property {
@@ -1561,17 +1543,17 @@ impl WindowsRecorder {
                     Ok(())
                 });
 
-                let property_event_handler =
-                    uiautomation::events::UIPropertyChangedEventHandler::from(property_handler);
+            let property_event_handler =
+                uiautomation::events::UIPropertyChangedEventHandler::from(property_handler);
 
-                // Register property change event handler for common properties on the root element
-                match automation.get_root_element() {
-                    Ok(root) => {
-                        // PERFORMANCE: Only monitor ValueValue for maximum performance
-                        // Name and HasKeyboardFocus create too much noise in most applications
-                        let properties = vec![uiautomation::types::UIProperty::ValueValue];
+            // Register property change event handler for common properties on the root element
+            match automation.get_root_element() {
+                Ok(root) => {
+                    // PERFORMANCE: Only monitor ValueValue for maximum performance
+                    // Name and HasKeyboardFocus create too much noise in most applications
+                    let properties = vec![uiautomation::types::UIProperty::ValueValue];
 
-                        match automation.add_property_changed_event_handler(
+                    match automation.add_property_changed_event_handler(
                             &root,
                             uiautomation::types::TreeScope::Subtree,
                             None,
@@ -1581,90 +1563,79 @@ impl WindowsRecorder {
                             Ok(_) => info!("✅ Property change event handler registered for ValueValue only (optimized)"),
                             Err(e) => error!("❌ Failed to register property change event handler: {}", e),
                         }
-                    }
-                    Err(e) => error!(
-                        "❌ Failed to get root element for property change events: {}",
-                        e
-                    ),
                 }
+                Err(e) => error!(
+                    "❌ Failed to get root element for property change events: {}",
+                    e
+                ),
+            }
 
-                // Spawn a thread to process the property change data safely
-                let property_event_tx_clone = property_event_tx.clone();
-                let property_browser_tracker = Arc::clone(&browser_tab_tracker);
-                let property_config = config_clone.clone();
-                std::thread::spawn(move || {
-                    while let Ok((element_name, property_name, value_string, ui_element)) =
-                        property_rx.recv()
+            // Spawn a thread to process the property change data safely
+            let property_event_tx_clone = property_event_tx.clone();
+            let property_browser_tracker = Arc::clone(&browser_tab_tracker);
+            std::thread::spawn(move || {
+                while let Ok((element_name, property_name, value_string, ui_element)) =
+                    property_rx.recv()
+                {
+                    // Apply filtering
+                    if WindowsRecorder::should_ignore_property_event(
+                        &element_name,
+                        &property_name,
+                        &ui_element,
+                        &property_ignore_patterns,
+                        &property_ignore_window_titles,
+                        &property_ignore_applications,
+                    ) {
+                        debug!(
+                            "Ignoring property change event for: {} ({})",
+                            element_name, property_name
+                        );
+                        continue;
+                    }
+
+                    let property_event = UiPropertyChangedEvent {
+                        property_name: property_name.clone(),
+                        old_value: None,
+                        new_value: Some(value_string.clone()),
+                        metadata: EventMetadata {
+                            ui_element: ui_element.clone(),
+                            timestamp: Some(Self::capture_timestamp()),
+                        },
+                    };
+
+                    if let Err(e) = property_event_tx_clone
+                        .send(WorkflowEvent::UiPropertyChanged(property_event))
                     {
-                        // Apply filtering
-                        if WindowsRecorder::should_ignore_property_event(
-                            &element_name,
-                            &property_name,
-                            &ui_element,
-                            &property_ignore_patterns,
-                            &property_ignore_window_titles,
-                            &property_ignore_applications,
-                        ) {
-                            debug!(
-                                "Ignoring property change event for: {} ({})",
-                                element_name, property_name
-                            );
-                            continue;
-                        }
+                        debug!("Failed to send property change event: {}", e);
+                        break;
+                    }
 
-                        let property_event = UiPropertyChangedEvent {
-                            property_name: property_name.clone(),
-                            old_value: None,
-                            new_value: Some(value_string.clone()),
-                            metadata: EventMetadata {
-                                ui_element: ui_element.clone(),
-                                timestamp: Some(Self::capture_timestamp()),
-                            },
+                    // Check for browser tab navigation (property changes often indicate URL/title changes)
+                    // We look for URL-like strings in ValueValue property changes
+                    if property_name == "ValueValue"
+                        && (value_string.starts_with("http")
+                            || value_string.contains(".com")
+                            || value_string.contains(".org")
+                            || value_string.contains(".net"))
+                    {
+                        // Add http:// prefix if missing for proper URL format
+                        let full_url = if value_string.starts_with("http") {
+                            value_string.clone()
+                        } else {
+                            format!("https://{}", value_string)
                         };
 
-                        if let Err(e) = property_event_tx_clone
-                            .send(WorkflowEvent::UiPropertyChanged(property_event))
-                        {
-                            debug!("Failed to send property change event: {}", e);
-                            break;
-                        }
-
-                        // Check for browser tab navigation (property changes often indicate URL/title changes)
-                        // We look for URL-like strings in ValueValue property changes
-                        if property_name == "ValueValue"
-                            && (value_string.starts_with("http")
-                                || value_string.contains(".com")
-                                || value_string.contains(".org")
-                                || value_string.contains(".net"))
-                        {
-                            // Add http:// prefix if missing for proper URL format
-                            let full_url = if value_string.starts_with("http") {
-                                value_string.clone()
-                            } else {
-                                format!("https://{}", value_string)
-                            };
-
-                            Self::check_and_emit_browser_navigation_with_url(
-                                &property_browser_tracker,
-                                &property_event_tx_clone,
-                                &ui_element,
-                                TabNavigationMethod::AddressBar, // Property change likely means address bar update
-                                &property_config,
-                                Some(full_url), // Pass the detected URL!
-                            );
-                        }
+                        Self::check_and_emit_browser_navigation_with_url(
+                            &property_browser_tracker,
+                            &property_event_tx_clone,
+                            &ui_element,
+                            TabNavigationMethod::AddressBar, // Property change likely means address bar update
+                            &property_config,
+                            Some(full_url), // Pass the detected URL!
+                        );
                     }
-                });
-            }
-
-            // Note: Structure change events are not yet implemented in the current version
-            // of the uiautomation crate, so we'll keep the polling approach for now
-            if record_structure_changes {
-                warn!(
-                    "Structure change events are not yet fully supported, using polling fallback"
-                );
-                // TODO: Implement when structure change events become available
-            }
+                }
+            });
 
             info!("✅ UI Automation event handlers setup complete, starting message pump");
 

@@ -41,16 +41,6 @@ pub struct WorkflowRecorderConfig {
     /// Whether to record hotkey/shortcut events
     pub record_hotkeys: bool,
 
-    /// Whether to record UI Automation structure change events
-    pub record_ui_structure_changes: bool,
-
-    /// Whether to record UI Automation property change events
-    pub record_ui_property_changes: bool,
-
-    /// Whether to record UI Automation focus change events
-    pub record_ui_focus_changes: bool,
-
-    /// Whether to record high-level text input completion events
     pub record_text_input_completion: bool,
 
     /// Minimum time between keystrokes to consider a typing session complete (milliseconds)
@@ -100,24 +90,21 @@ impl Default for WorkflowRecorderConfig {
     fn default() -> Self {
         Self {
             record_mouse: true,
-            record_keyboard: true,
-            record_window: true,
+            record_keyboard: true, // TODO not used
+            record_window: false,  // noise
             capture_ui_elements: true,
             record_clipboard: true,
             record_text_selection: true,
-            record_drag_drop: true,
+            record_drag_drop: false, // noise
             record_hotkeys: true,
-            record_ui_structure_changes: false, // Can be very noisy, disabled by default
-            record_ui_property_changes: false,  // Can be very noisy, disabled by default
-            record_ui_focus_changes: false,     // Can be noisy, disabled by default
-            record_text_input_completion: true, // High-level semantic events, enabled by default
+            record_text_input_completion: true,
             text_input_completion_timeout_ms: 2000, // 2 second pause indicates typing completion
-            record_application_switches: true,  // High-level semantic events, enabled by default
+            record_application_switches: true, // High-level semantic events, enabled by default
             record_browser_tab_navigation: true, // High-level semantic events, enabled by default
             app_switch_dwell_time_threshold_ms: 100, // 100ms minimum dwell time to record
             browser_detection_timeout_ms: 1000, // 1 second to detect URL/title changes
-            max_clipboard_content_length: 1024, // 1KB max
-            max_text_selection_length: 512,     // 512 chars max for selections
+            max_clipboard_content_length: 10240, // 10KB max
+            max_text_selection_length: 5120,   // 5120 chars max for selections
             track_modifier_states: true,
             mouse_move_throttle_ms: 100, // PERFORMANCE: Increased from 50ms to 100ms (10 FPS max for mouse moves)
             min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
