@@ -306,6 +306,7 @@ impl WindowsRecorder {
     }
 
     /// Check if this keystroke should count towards typing (printable characters and common editing keys)
+    /// Note: Tab (0x09) is not included here as it's handled separately as a session completion trigger
     fn is_typing_keystroke(key_code: u32, character: Option<char>) -> bool {
         // Printable characters
         if character.is_some() && character != Some('\0') {
@@ -831,6 +832,18 @@ impl WindowsRecorder {
                                     text_input_timeout_ms,
                                 );
                             }
+                        }
+
+                        // Special case: Tab key should also complete typing session
+                        // This captures text input when user tabs to next field
+                        if record_text_input_completion && key_code == 0x09 {
+                            // Tab key - complete session before focus changes
+                            Self::check_and_complete_typing_session(
+                                &current_typing_session,
+                                &event_tx,
+                                true, // force complete on Tab
+                                text_input_timeout_ms,
+                            );
                         }
 
                         let keyboard_event = KeyboardEvent {
