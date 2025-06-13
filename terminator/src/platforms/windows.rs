@@ -3728,10 +3728,6 @@ fn build_ui_node_tree_configurable(
 
     // Yield CPU periodically to prevent freezing while processing everything
     if context.should_yield() {
-        debug!(
-            "Yielding CPU after processing {} elements at depth {}",
-            context.elements_processed, current_depth
-        );
         thread::sleep(Duration::from_millis(1));
     }
 
@@ -3743,12 +3739,6 @@ fn build_ui_node_tree_configurable(
     // Get children with safe strategy
     match get_element_children_safe(element, context) {
         Ok(children_elements) => {
-            debug!(
-                "Processing {} children at depth {} (using safe strategy)",
-                children_elements.len(),
-                current_depth
-            );
-
             // Process children in efficient batches
             for batch in children_elements.chunks(context.config.batch_size) {
                 for child_element in batch {
