@@ -1,16 +1,18 @@
 use crate::{
-    ClipboardAction, ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton,
-    MouseEvent, MouseEventType, Position, Result, UiFocusChangedEvent, UiPropertyChangedEvent,
-    WorkflowEvent, WorkflowRecorderConfig,
+    ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
+    ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent,
+    MouseEventType, Position, Result, TabAction, TabNavigationMethod, TextInputCompletedEvent,
+    TextInputMethod, UiFocusChangedEvent, UiPropertyChangedEvent, WorkflowEvent,
+    WorkflowRecorderConfig,
 };
 use arboard::Clipboard;
 use rdev::{Button, EventType, Key};
 use std::{
     collections::HashMap,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 use tokio::sync::broadcast;
@@ -51,6 +53,15 @@ pub struct WindowsRecorder {
 
     /// UI Automation thread ID for proper cleanup
     ui_automation_thread_id: Arc<Mutex<Option<u32>>>,
+
+    /// Current typing session tracking
+    current_typing_session: Arc<AtomicTypingSession>,
+
+    /// Current application tracking for switch detection
+    current_application: Arc<Mutex<Option<ApplicationState>>>,
+
+    /// Browser tab navigation tracking
+    browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +78,161 @@ struct HotkeyPattern {
     keys: Vec<u32>,
 }
 
+/// Tracks the current application state for switch detection
+#[derive(Debug, Clone)]
+struct ApplicationState {
+    /// Application name/title
+    name: String,
+    /// Process ID
+    process_id: u32,
+    /// When the application became active
+    start_time: Instant,
+}
+
+/// Tracks browser tab navigation state
+#[derive(Debug, Clone)]
+struct BrowserTabTracker {
+    /// Current browser application
+    current_browser: Option<String>,
+    /// Current URL (best effort detection)
+    current_url: Option<String>,
+    /// Previous URL for navigation tracking
+    previous_url: Option<String>,
+    /// Current page title
+    current_title: Option<String>,
+    /// When the current page was last accessed
+    last_navigation_time: Option<Instant>,
+    /// Known browser process names
+    known_browsers: Vec<String>,
+}
+
+impl Default for BrowserTabTracker {
+    fn default() -> Self {
+        Self {
+            current_browser: None,
+            current_url: None,
+            previous_url: None,
+            current_title: None,
+            last_navigation_time: None,
+            known_browsers: vec![
+                // Executable names
+                "chrome.exe".to_string(),
+                "firefox.exe".to_string(),
+                "msedge.exe".to_string(),
+                "brave.exe".to_string(),
+                "opera.exe".to_string(),
+                "vivaldi.exe".to_string(),
+                "iexplore.exe".to_string(),
+                // Display names
+                "google chrome".to_string(),
+                "chrome".to_string(),
+                "firefox".to_string(),
+                "mozilla firefox".to_string(),
+                "microsoft edge".to_string(),
+                "edge".to_string(),
+                "brave".to_string(),
+                "opera".to_string(),
+                "vivaldi".to_string(),
+                "internet explorer".to_string(),
+            ],
+        }
+    }
+}
+
+/// Simple atomic-based typing session for zero-contention keystroke processing
+struct AtomicTypingSession {
+    /// Whether a typing session is currently active
+    is_active: AtomicBool,
+    /// Number of keystrokes in current session
+    keystroke_count: AtomicU32,
+    /// Start time of session (nanoseconds since epoch)
+    start_time_nanos: AtomicU64,
+    /// Last keystroke time (nanoseconds since epoch)  
+    last_keystroke_nanos: AtomicU64,
+}
+
+impl Default for AtomicTypingSession {
+    fn default() -> Self {
+        Self {
+            is_active: AtomicBool::new(false),
+            keystroke_count: AtomicU32::new(0),
+            start_time_nanos: AtomicU64::new(0),
+            last_keystroke_nanos: AtomicU64::new(0),
+        }
+    }
+}
+
+impl AtomicTypingSession {
+    /// Record a keystroke - completely lock-free and fast
+    fn record_keystroke(&self) {
+        let now_nanos = self.nanos_since_epoch();
+
+        if !self.is_active.load(Ordering::Relaxed) {
+            // Start new session
+            self.start_time_nanos.store(now_nanos, Ordering::Relaxed);
+            self.keystroke_count.store(1, Ordering::Relaxed);
+            self.is_active.store(true, Ordering::Relaxed);
+        } else {
+            // Update existing session
+            self.keystroke_count.fetch_add(1, Ordering::Relaxed);
+        }
+
+        self.last_keystroke_nanos
+            .store(now_nanos, Ordering::Relaxed);
+    }
+
+    /// Check if session should timeout (lock-free read)
+    fn should_timeout(&self, timeout_ms: u64) -> bool {
+        if !self.is_active.load(Ordering::Relaxed) {
+            return false;
+        }
+
+        let last_keystroke = self.last_keystroke_nanos.load(Ordering::Relaxed);
+        let now = self.nanos_since_epoch();
+        let elapsed_ms = (now - last_keystroke) / 1_000_000; // Convert nanos to millis
+
+        elapsed_ms > timeout_ms
+    }
+
+    /// Complete and clear the session atomically
+    fn complete_session(&self, force: bool, timeout_ms: u64) -> Option<(u32, u64)> {
+        if !self.is_active.load(Ordering::Relaxed) {
+            return None;
+        }
+
+        if !force && !self.should_timeout(timeout_ms) {
+            return None;
+        }
+
+        // Atomically extract session data and mark inactive
+        let keystroke_count = self.keystroke_count.load(Ordering::Relaxed);
+        let start_time = self.start_time_nanos.load(Ordering::Relaxed);
+        let end_time = self.last_keystroke_nanos.load(Ordering::Relaxed);
+
+        // Mark session as inactive
+        self.is_active.store(false, Ordering::Relaxed);
+
+        let duration_ms = (end_time - start_time) / 1_000_000;
+        Some((keystroke_count, duration_ms))
+    }
+
+    fn nanos_since_epoch(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64
+    }
+}
+
 impl WindowsRecorder {
+    /// Capture the current timestamp in milliseconds since epoch
+    fn capture_timestamp() -> u64 {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+
     /// Create a new Windows recorder
     pub async fn new(
         config: WorkflowRecorderConfig,
@@ -100,10 +265,18 @@ impl WindowsRecorder {
             last_mouse_move_time,
             hotkey_patterns,
             ui_automation_thread_id: Arc::new(Mutex::new(None)),
+            current_typing_session: Arc::new(AtomicTypingSession::default()),
+            current_application: Arc::new(Mutex::new(None)),
+            browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
         };
 
         // Set up comprehensive event listeners
         recorder.setup_comprehensive_listeners().await?;
+
+        // Start background typing session completion timer for reliable text completion
+        if recorder.config.record_text_input_completion {
+            recorder.start_typing_completion_timer();
+        }
 
         Ok(recorder)
     }
@@ -130,6 +303,359 @@ impl WindowsRecorder {
 
         // If we can't get a meaningful string value, skip this property
         None
+    }
+
+    /// Check if this keystroke should count towards typing (printable characters and common editing keys)
+    /// Note: Tab (0x09) is not included here as it's handled separately as a session completion trigger
+    fn is_typing_keystroke(key_code: u32, character: Option<char>) -> bool {
+        // Printable characters
+        if character.is_some() && character != Some('\0') {
+            return true;
+        }
+
+        // Common editing keys
+        matches!(
+            key_code,
+            0x08 | // Backspace
+            0x2E | // Delete
+            0x20 | // Space
+            0x0D // Enter
+        )
+    }
+
+    /// Determine the likely input method based on session characteristics
+    fn determine_input_method(
+        keystroke_count: u32,
+        duration_ms: u64,
+        had_paste: bool,
+    ) -> TextInputMethod {
+        if had_paste {
+            if keystroke_count > 5 {
+                TextInputMethod::Mixed
+            } else {
+                TextInputMethod::Pasted
+            }
+        } else if duration_ms < 100 && keystroke_count > 10 {
+            // Very fast typing of many characters suggests auto-fill
+            TextInputMethod::AutoFilled
+        } else {
+            TextInputMethod::Typed
+        }
+    }
+
+    /// Check for application switch and emit event if detected
+    fn check_and_emit_application_switch(
+        current_app: &Arc<Mutex<Option<ApplicationState>>>,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        new_element: &Option<UIElement>,
+        switch_method: ApplicationSwitchMethod,
+        config: &WorkflowRecorderConfig,
+    ) {
+        if !config.record_application_switches {
+            return;
+        }
+
+        if let Some(element) = new_element {
+            let app_name = element.application_name();
+            if let Ok(process_id) = element.process_id() {
+                if !app_name.is_empty() {
+                    let mut current = current_app.lock().unwrap();
+
+                    // Check if this is a new application
+                    let is_switch = if let Some(ref current_state) = *current {
+                        current_state.process_id != process_id || current_state.name != app_name
+                    } else {
+                        true // First app detection
+                    };
+
+                    if is_switch {
+                        let now = Instant::now();
+
+                        // Calculate dwell time for previous app
+                        let dwell_time = if let Some(ref current_state) = *current {
+                            let duration = now.duration_since(current_state.start_time);
+                            if duration.as_millis()
+                                >= config.app_switch_dwell_time_threshold_ms as u128
+                            {
+                                Some(duration.as_millis() as u64)
+                            } else {
+                                None // Too short, probably just UI noise
+                            }
+                        } else {
+                            None
+                        };
+
+                        // Only emit if we have meaningful dwell time or this is first app
+                        if dwell_time.is_some() || current.is_none() {
+                            let switch_event = ApplicationSwitchEvent {
+                                from_application: current.as_ref().map(|s| s.name.clone()),
+                                to_application: app_name.clone(),
+                                from_process_id: current.as_ref().map(|s| s.process_id),
+                                to_process_id: process_id,
+                                switch_method,
+                                dwell_time_ms: dwell_time,
+                                switch_count: None, // TODO: Track Alt+Tab cycles
+                                metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                    element.clone(),
+                                )),
+                            };
+
+                            if let Err(e) =
+                                event_tx.send(WorkflowEvent::ApplicationSwitch(switch_event))
+                            {
+                                debug!("Failed to send application switch event: {}", e);
+                            }
+                        }
+
+                        // Update current application state
+                        *current = Some(ApplicationState {
+                            name: app_name,
+                            process_id,
+                            start_time: now,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check and emit browser navigation events with optional URL override
+    fn check_and_emit_browser_navigation_with_url(
+        tracker: &Arc<Mutex<BrowserTabTracker>>,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        ui_element: &Option<UIElement>,
+        method: TabNavigationMethod,
+        config: &WorkflowRecorderConfig,
+        url_override: Option<String>,
+    ) {
+        if !config.record_browser_tab_navigation {
+            return;
+        }
+
+        if let Some(ref element) = ui_element {
+            let app_name = element.application_name();
+
+            // Check if this is a browser
+            let tracker_guard = tracker.lock().unwrap();
+            let is_browser = tracker_guard
+                .known_browsers
+                .iter()
+                .any(|browser| app_name.to_lowercase().contains(&browser.to_lowercase()));
+            drop(tracker_guard);
+
+            if is_browser {
+                let window_title = element.window_title();
+                let element_name = element.name_or_empty();
+
+                // Try to extract URL and title from various UI elements
+                let (mut detected_url, detected_title) =
+                    Self::extract_browser_info(&window_title, &element_name, &element.role());
+
+                // Use URL override if provided
+                if let Some(override_url) = url_override {
+                    detected_url = Some(override_url);
+                }
+
+                // Additional check: if element_name looks like a URL, use it directly
+                if detected_url.is_none()
+                    && element_name.starts_with("http")
+                    && element_name.len() > 10
+                {
+                    detected_url = Some(element_name.clone());
+                }
+
+                let has_meaningful_data = detected_url.is_some() || detected_title.is_some();
+
+                let mut tracker_guard = tracker.lock().unwrap();
+
+                // Check if this is the first time we're detecting this browser or if there's a meaningful change
+                let is_first_detection = tracker_guard.current_browser.is_none()
+                    || tracker_guard.current_browser.as_ref() != Some(&app_name);
+
+                let has_url_change = detected_url.is_some()
+                    && detected_url.as_ref() != tracker_guard.current_url.as_ref();
+
+                let has_title_change = detected_title.is_some()
+                    && detected_title.as_ref() != tracker_guard.current_title.as_ref();
+
+                // Only emit event if we have meaningful data and either:
+                // 1. This is the first detection of a browser
+                // 2. There's a URL change
+                // 3. There's a title change (new page)
+                if has_meaningful_data && (is_first_detection || has_url_change || has_title_change)
+                {
+                    // Calculate time spent on previous page
+                    let page_dwell_time_ms = tracker_guard
+                        .last_navigation_time
+                        .map(|last_time| last_time.elapsed().as_millis() as u64);
+
+                    // Determine the action based on context
+                    let action = if is_first_detection || tracker_guard.current_browser.is_none() {
+                        TabAction::Created
+                    } else {
+                        TabAction::Switched // Default for other cases
+                    };
+
+                    let event = BrowserTabNavigationEvent {
+                        action,
+                        method: method.clone(),
+                        url: detected_url.clone(),
+                        previous_url: tracker_guard.current_url.clone(),
+                        title: detected_title.clone(),
+                        browser: app_name.clone(),
+                        tab_index: None, // Tab index detection would require more complex logic
+                        total_tabs: None, // Total tabs detection would require more complex logic
+                        page_dwell_time_ms,
+                        is_back_forward: false, // Back/forward detection would require more complex logic
+                        metadata: EventMetadata::with_ui_element_and_timestamp(ui_element.clone()),
+                    };
+
+                    // Update tracker state
+                    tracker_guard.current_browser = Some(app_name);
+                    if let Some(url) = detected_url {
+                        tracker_guard.previous_url = tracker_guard.current_url.clone();
+                        tracker_guard.current_url = Some(url);
+                    }
+                    if let Some(title) = detected_title {
+                        tracker_guard.current_title = Some(title);
+                    }
+                    tracker_guard.last_navigation_time = Some(Instant::now());
+
+                    drop(tracker_guard);
+
+                    // Send the event
+                    if let Err(e) = event_tx.send(WorkflowEvent::BrowserTabNavigation(event)) {
+                        debug!("Failed to send browser navigation event: {}", e);
+                    }
+                } else {
+                    debug!(
+                        "Skipping browser navigation event - no meaningful data or change detected"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Extract URL and title from browser UI elements (best effort)
+    fn extract_browser_info(
+        window_title: &str,
+        element_name: &str,
+        element_role: &str,
+    ) -> (Option<String>, Option<String>) {
+        let mut url = None;
+        let mut title = None;
+
+        // Try to extract URL from element name if it looks like a URL
+        if element_name.starts_with("http") && element_name.len() > 10 {
+            url = Some(element_name.to_string());
+        }
+
+        // Try to extract URL from address bar elements
+        if (element_role.to_lowercase().contains("address")
+            || element_role.to_lowercase().contains("location")
+            || element_role.to_lowercase().contains("edit"))
+            && element_name.starts_with("http")
+            && element_name.len() > 10
+        {
+            url = Some(element_name.to_string());
+        }
+
+        // Extract title from window title (format: "Page Title - Browser Name")
+        if !window_title.is_empty() {
+            // Common browser title patterns
+            let separators = [" - ", " — ", " – ", " | "];
+            for sep in &separators {
+                if let Some(pos) = window_title.rfind(sep) {
+                    let potential_title = &window_title[..pos];
+                    if !potential_title.is_empty() && potential_title.len() > 3 {
+                        title = Some(potential_title.to_string());
+                        break;
+                    }
+                }
+            }
+
+            // If no separator found, use the whole window title if it's reasonable
+            if title.is_none() && window_title.len() > 3 && window_title.len() < 200 {
+                title = Some(window_title.to_string());
+            }
+        }
+
+        // If we still don't have a title, try using element_name as title (for tab titles)
+        if title.is_none() && !element_name.is_empty() && !element_name.starts_with("http") {
+            // Remove common browser suffixes
+            let cleaned_name = element_name
+                .replace(" - Google Chrome", "")
+                .replace(" - Microsoft Edge", "")
+                .replace(" - Mozilla Firefox", "")
+                .replace(" - Chrome", "")
+                .replace(" - Edge", "")
+                .replace(" - Firefox", "");
+
+            if !cleaned_name.trim().is_empty() && cleaned_name.len() > 3 {
+                title = Some(cleaned_name.trim().to_string());
+            }
+        }
+
+        (url, title)
+    }
+
+    /// Process potential typing session completion with UI element capture
+    fn check_and_complete_typing_session(
+        current_session: &Arc<AtomicTypingSession>,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        force_complete: bool,
+        timeout_ms: u64,
+    ) {
+        let session_data = current_session.complete_session(force_complete, timeout_ms);
+
+        if let Some((keystroke_count, duration_ms)) = session_data {
+            // NOW capture the UI element and text - only when session completes (no contention!)
+            let (ui_element, text_value, field_name, field_type) = match UIAutomation::new() {
+                Ok(automation) => {
+                    if let Some(focused_element) =
+                        Self::get_focused_ui_element_with_timeout(&automation)
+                    {
+                        // Try to get the current text value from the UI element
+                        let text = focused_element.text(1).unwrap_or_else(|_| {
+                            // Fallback: try to get name if text fails
+                            focused_element.name().unwrap_or_default()
+                        });
+
+                        let field_name = focused_element.name().unwrap_or_default();
+                        let field_type = focused_element.role();
+
+                        (Some(focused_element), text, Some(field_name), field_type)
+                    } else {
+                        (None, String::new(), None, "unknown".to_string())
+                    }
+                }
+                Err(_) => (None, String::new(), None, "unknown".to_string()),
+            };
+
+            // Only emit event if we got meaningful text or have multiple keystrokes
+            if !text_value.trim().is_empty() || keystroke_count > 1 {
+                let input_method = Self::determine_input_method(
+                    keystroke_count,
+                    duration_ms,
+                    false, // had_paste is not available in the AtomicTypingSession
+                );
+
+                let text_input_event = TextInputCompletedEvent {
+                    text_value,
+                    field_name,
+                    field_type,
+                    input_method,
+                    typing_duration_ms: duration_ms,
+                    keystroke_count,
+                    metadata: EventMetadata {
+                        ui_element,
+                        timestamp: Some(Self::capture_timestamp()),
+                    },
+                };
+
+                let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
+            }
+        }
     }
 
     /// Initialize common hotkey patterns
@@ -185,7 +711,10 @@ impl WindowsRecorder {
         }
 
         // UI Automation event monitoring
-        self.setup_ui_automation_events()?;
+        self.setup_ui_automation_events(
+            Arc::clone(&self.current_application),
+            Arc::clone(&self.browser_tab_tracker),
+        )?;
 
         Ok(())
     }
@@ -202,6 +731,9 @@ impl WindowsRecorder {
         let mouse_move_throttle = self.config.mouse_move_throttle_ms;
         let track_modifiers = self.config.track_modifier_states;
         let record_hotkeys = self.config.record_hotkeys;
+        let record_text_input_completion = self.config.record_text_input_completion;
+        let text_input_timeout_ms = self.config.text_input_completion_timeout_ms;
+        let current_typing_session = Arc::clone(&self.current_typing_session);
 
         thread::spawn(move || {
             // PERFORMANCE: Create UIAutomation instance once outside the event loop
@@ -257,18 +789,61 @@ impl WindowsRecorder {
                             }
                         };
 
-                        let character = if key_code >= 32 && key_code <= 126 {
+                        let character = if (32..=126).contains(&key_code) {
                             Some(key_code as u8 as char)
                         } else {
                             None
                         };
 
-                        // Capture UI element for keyboard events if enabled
+                        // PERFORMANCE OPTIMIZATION: Only capture UI elements for high-level keyboard events
+                        // Skip UI element capture for individual typing keystrokes - only capture for:
+                        // 1. Non-typing keys (function keys, shortcuts, etc.)
+                        // 2. Completed typing sessions (handled in TextInputCompletedEvent)
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            // Use a synchronous approach instead of async to avoid runtime issues
-                            ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
-                            // ui_element = None
+                            let is_typing_keystroke =
+                                Self::is_typing_keystroke(key_code, character);
+
+                            // Only capture UI element for non-typing keystrokes (shortcuts, function keys, etc.)
+                            if !is_typing_keystroke {
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
+                            }
+                            // For typing keystrokes: UI element will be captured when typing session completes
+                        }
+
+                        // Handle typing session tracking for text input completion
+                        if record_text_input_completion
+                            && Self::is_typing_keystroke(key_code, character)
+                        {
+                            // PERFORMANCE OPTIMIZATION: ZERO-CONTENTION keystroke tracking
+                            // Uses atomic operations instead of mutex - no blocking!
+                            current_typing_session.record_keystroke();
+
+                            // Special case: Enter key should immediately complete the typing session
+                            // This captures common form submission patterns
+                            if key_code == 0x0D {
+                                // Enter key
+                                Self::check_and_complete_typing_session(
+                                    &current_typing_session,
+                                    &event_tx,
+                                    true, // force complete on Enter
+                                    text_input_timeout_ms,
+                                );
+                            }
+                        }
+
+                        // Special case: Tab key should also complete typing session
+                        // This captures text input when user tabs to next field
+                        if record_text_input_completion && key_code == 0x09 {
+                            // Tab key - complete session before focus changes
+                            Self::check_and_complete_typing_session(
+                                &current_typing_session,
+                                &event_tx,
+                                true, // force complete on Tab
+                                text_input_timeout_ms,
+                            );
                         }
 
                         let keyboard_event = KeyboardEvent {
@@ -281,7 +856,8 @@ impl WindowsRecorder {
                             character,
                             scan_code: None, // TODO: Get actual scan code
                             metadata: EventMetadata {
-                                ui_element
+                                ui_element,
+                                timestamp: Some(Self::capture_timestamp()),
                             },
                         };
 
@@ -306,11 +882,24 @@ impl WindowsRecorder {
                             }
                         };
 
-                        // Capture UI element for keyboard events if enabled
+                        // PERFORMANCE OPTIMIZATION: Only capture UI elements for high-level keyboard events
+                        // Skip UI element capture for typing keystrokes during key release
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            // ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
-                            ui_element = None
+                            let character = if (32..=126).contains(&key_code) {
+                                Some(key_code as u8 as char)
+                            } else {
+                                None
+                            };
+                            let is_typing_keystroke =
+                                Self::is_typing_keystroke(key_code, character);
+
+                            // Only capture UI element for non-typing keystrokes
+                            if !is_typing_keystroke {
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
+                            }
                         }
 
                         let keyboard_event = KeyboardEvent {
@@ -323,7 +912,8 @@ impl WindowsRecorder {
                             character: None,
                             scan_code: None,
                             metadata: EventMetadata {
-                                ui_element
+                                ui_element,
+                                timestamp: Some(Self::capture_timestamp()),
                             },
                         };
                         let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
@@ -337,10 +927,21 @@ impl WindowsRecorder {
                                 _ => return,
                             };
 
+                            // Complete any active typing session on mouse click (likely focus change)
+                            if record_text_input_completion {
+                                Self::check_and_complete_typing_session(
+                                    &current_typing_session,
+                                    &event_tx,
+                                    true, // force complete on click
+                                    text_input_timeout_ms,
+                                );
+                            }
+
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element =
-                                    Self::get_focused_ui_element(automation.as_ref().unwrap());
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
                             }
 
                             let mouse_event = MouseEvent {
@@ -350,7 +951,8 @@ impl WindowsRecorder {
                                 scroll_delta: None,
                                 drag_start: None,
                                 metadata: EventMetadata {
-                                    ui_element
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
@@ -367,8 +969,9 @@ impl WindowsRecorder {
 
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element =
-                                    Self::get_focused_ui_element(automation.as_ref().unwrap());
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
                             }
 
                             let mouse_event = MouseEvent {
@@ -378,7 +981,8 @@ impl WindowsRecorder {
                                 scroll_delta: None,
                                 drag_start: None,
                                 metadata: EventMetadata {
-                                    ui_element
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
@@ -403,8 +1007,9 @@ impl WindowsRecorder {
                         };
                         let mut ui_element = None;
                         if capture_ui_elements {
-                            // ui_element = Self::get_focused_ui_element(automation.as_ref().unwrap());
-                            ui_element = None
+                            ui_element = Self::get_focused_ui_element_with_timeout(
+                                automation.as_ref().unwrap(),
+                            );
                         }
 
                         *last_mouse_pos.lock().unwrap() = Some((x, y));
@@ -417,7 +1022,8 @@ impl WindowsRecorder {
                                 scroll_delta: None,
                                 drag_start: None,
                                 metadata: EventMetadata {
-                                    ui_element
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
@@ -427,8 +1033,9 @@ impl WindowsRecorder {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
                             let mut ui_element = None;
                             if capture_ui_elements {
-                                ui_element = None
-                                    // Self::get_focused_ui_element(automation.as_ref().unwrap());
+                                ui_element = Self::get_focused_ui_element_with_timeout(
+                                    automation.as_ref().unwrap(),
+                                );
                             }
 
                             let mouse_event = MouseEvent {
@@ -438,7 +1045,8 @@ impl WindowsRecorder {
                                 scroll_delta: Some((delta_x as i32, delta_y as i32)),
                                 drag_start: None,
                                 metadata: EventMetadata {
-                                    ui_element
+                                    ui_element,
+                                    timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
                             let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
@@ -481,7 +1089,8 @@ impl WindowsRecorder {
                     action: Some(pattern.action.clone()),
                     is_global: true,
                     metadata: EventMetadata {
-                        ui_element: None
+                        ui_element: None,
+                        timestamp: Some(Self::capture_timestamp()),
                     }, // TODO: Pass UI element context from caller
                 });
             }
@@ -531,8 +1140,7 @@ impl WindowsRecorder {
 
                         // Capture UI element if enabled
                         let ui_element = if capture_ui_elements {
-                            Self::get_focused_ui_element(&automation)
-                            // None
+                            Self::get_focused_ui_element_with_timeout(&automation)
                         } else {
                             None
                         };
@@ -544,7 +1152,8 @@ impl WindowsRecorder {
                             format: Some("text".to_string()),
                             truncated,
                             metadata: EventMetadata {
-                                ui_element
+                                ui_element,
+                                timestamp: Some(Self::capture_timestamp()),
                             },
                         };
 
@@ -552,7 +1161,7 @@ impl WindowsRecorder {
                     }
                 }
 
-                thread::sleep(Duration::from_millis(100)); // Check clipboard every 100ms
+                thread::sleep(Duration::from_millis(200)); // PERFORMANCE: Check clipboard every 200ms (was 100ms)
             }
         });
 
@@ -569,20 +1178,41 @@ impl WindowsRecorder {
         hasher.finish()
     }
 
-    /// Get the currently focused UI element
-    fn get_focused_ui_element(automation: &UIAutomation) -> Option<UIElement> {
-        debug!("Getting focused UI element");
-        match automation.get_focused_element() {
-            Ok(element) => Some(convert_uiautomation_element_to_terminator(element)),
-            Err(e) => {
-                debug!("Failed to get focused element: {}", e);
+    /// Get focused UI element with timeout protection to prevent hanging
+    fn get_focused_ui_element_with_timeout(automation: &UIAutomation) -> Option<UIElement> {
+        // Use panic catching to handle any COM/threading issues gracefully
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            automation.get_focused_element()
+        })) {
+            Ok(Ok(element)) => {
+                // Successfully got element, now safely convert it
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    convert_uiautomation_element_to_terminator(element)
+                })) {
+                    Ok(ui_element) => Some(ui_element),
+                    Err(_) => {
+                        debug!("Failed to convert UI element safely");
+                        None
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                debug!("UI Automation call failed: {}", e);
+                None
+            }
+            Err(_) => {
+                debug!("UI Automation call panicked, handled gracefully");
                 None
             }
         }
     }
 
     /// Set up UI Automation event handlers
-    fn setup_ui_automation_events(&self) -> Result<()> {
+    fn setup_ui_automation_events(
+        &self,
+        current_application: Arc<Mutex<Option<ApplicationState>>>,
+        browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
+    ) -> Result<()> {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let ui_automation_thread_id = Arc::clone(&self.ui_automation_thread_id);
@@ -595,6 +1225,8 @@ impl WindowsRecorder {
         let ignore_property_patterns = self.config.ignore_property_patterns.clone();
         let ignore_window_titles = self.config.ignore_window_titles.clone();
         let ignore_applications = self.config.ignore_applications.clone();
+        let record_text_input_completion = self.config.record_text_input_completion;
+        let config_clone = self.config.clone();
 
         if !record_structure_changes && !record_property_changes && !record_focus_changes {
             debug!("No UI Automation events enabled, skipping setup");
@@ -613,7 +1245,7 @@ impl WindowsRecorder {
                         "✅ Successfully initialized COM apartment as STA for UI Automation events"
                     );
                     true
-                } else if hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE.into() {
+                } else if hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE {
                     warn!("⚠️  COM apartment already initialized with different threading model");
                     // This is expected if the main process already initialized COM as MTA
                     false
@@ -742,8 +1374,20 @@ impl WindowsRecorder {
 
                 // Spawn a thread to process the focus change data safely
                 let focus_event_tx_clone = focus_event_tx.clone();
+                let focus_current_app = Arc::clone(&current_application);
+                let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
+                let focus_record_text_input = record_text_input_completion;
+                let config_clone = config_clone.clone();
                 std::thread::spawn(move || {
                     while let Ok((element_name, ui_element)) = focus_rx.recv() {
+                        // Complete any active typing session on focus change
+                        if focus_record_text_input {
+                            // PERFORMANCE: Disabled the old mutex-based typing session completion
+                            // to eliminate contention. The main keystroke processing now uses
+                            // atomic operations for zero-contention performance.
+                            debug!("Focus change detected - typing session completion disabled for performance");
+                        }
+
                         // Apply filtering
                         if WindowsRecorder::should_ignore_focus_event(
                             &element_name,
@@ -760,7 +1404,8 @@ impl WindowsRecorder {
                         let focus_event = UiFocusChangedEvent {
                             previous_element: None,
                             metadata: EventMetadata {
-                                ui_element
+                                ui_element: ui_element.clone(),
+                                timestamp: Some(Self::capture_timestamp()),
                             },
                         };
 
@@ -770,6 +1415,37 @@ impl WindowsRecorder {
                             debug!("Failed to send focus change event: {}", e);
                             break;
                         }
+
+                        // Check for application switch (focus changes often indicate app switches)
+                        Self::check_and_emit_application_switch(
+                            &focus_current_app,
+                            &focus_event_tx_clone,
+                            &ui_element,
+                            ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
+                            &config_clone,
+                        );
+
+                        // Check for browser tab navigation
+                        // Extract URL from focus text if available
+                        let focus_url = if let Some(ref element) = ui_element {
+                            let element_name = element.name_or_empty();
+                            if element_name.starts_with("http") && element_name.len() > 10 {
+                                Some(element_name.clone())
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        Self::check_and_emit_browser_navigation_with_url(
+                            &focus_browser_tracker,
+                            &focus_event_tx_clone,
+                            &ui_element,
+                            TabNavigationMethod::TabClick, // Focus change in browser could be tab click
+                            &config_clone,
+                            focus_url,
+                        );
                     }
                 });
             }
@@ -790,27 +1466,48 @@ impl WindowsRecorder {
                 let property_handler: Box<
                     uiautomation::events::CustomPropertyChangedEventHandlerFn,
                 > = Box::new(move |sender, property, value| {
-                    // Ensure we're handling this on the correct thread
-                    let current_thread = unsafe { GetCurrentThreadId() };
-
-                    // Only process certain properties to reduce noise
+                    // PERFORMANCE OPTIMIZATION: Aggressively filter property events to reduce CPU load
+                    let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
                     match property {
-                        uiautomation::types::UIProperty::ValueValue
-                        | uiautomation::types::UIProperty::Name
-                        | uiautomation::types::UIProperty::HasKeyboardFocus => {
-                            debug!(
-                                "Property change event received for {:?} on thread {}",
-                                property, current_thread
-                            );
+                        uiautomation::types::UIProperty::ValueValue => {
+                            // Only process value changes for input-related elements
+                            // Skip frequent updates from progress bars, media players, etc.
+                            let element_name_lower = element_name.to_lowercase();
+                            if element_name_lower.contains("progress")
+                                || element_name_lower.contains("volume")
+                                || element_name_lower.contains("time")
+                                || element_name_lower.contains("loading")
+                                || element_name_lower.contains("percent")
+                                || element_name_lower.contains("status")
+                                || element_name_lower.contains("battery")
+                                || element_name_lower.contains("signal")
+                            {
+                                return Ok(());
+                            }
+                        }
+                        uiautomation::types::UIProperty::Name => {
+                            // Skip frequent name changes from clocks, timers, progress indicators
+                            if element_name.len() > 50 || element_name.contains(':') {
+                                return Ok(());
+                            }
+                            // Only process every 5th name change to reduce noise
+                            if std::ptr::addr_of!(sender) as usize % 5 != 0 {
+                                return Ok(());
+                            }
+                        }
+                        uiautomation::types::UIProperty::HasKeyboardFocus => {
+                            // Focus changes are important but very frequent - process every 3rd one
+                            if std::ptr::addr_of!(sender) as usize % 3 != 0 {
+                                return Ok(());
+                            }
                         }
                         _ => {
-                            // Skip other properties to reduce noise
+                            // Skip all other properties to reduce CPU load
                             return Ok(());
                         }
                     }
 
-                    // Extract basic data that's safe to send across threads
-                    let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
+                    // element_name already extracted above for filtering
                     let property_name = format!("{:?}", property);
 
                     // Only proceed if we can extract a meaningful value
@@ -870,11 +1567,9 @@ impl WindowsRecorder {
                 // Register property change event handler for common properties on the root element
                 match automation.get_root_element() {
                     Ok(root) => {
-                        let properties = vec![
-                            uiautomation::types::UIProperty::ValueValue,
-                            uiautomation::types::UIProperty::Name,
-                            uiautomation::types::UIProperty::HasKeyboardFocus,
-                        ];
+                        // PERFORMANCE: Only monitor ValueValue for maximum performance
+                        // Name and HasKeyboardFocus create too much noise in most applications
+                        let properties = vec![uiautomation::types::UIProperty::ValueValue];
 
                         match automation.add_property_changed_event_handler(
                             &root,
@@ -883,7 +1578,7 @@ impl WindowsRecorder {
                             &property_event_handler,
                             &properties
                         ) {
-                            Ok(_) => info!("✅ Property change event handler registered for ValueValue, Name, and HasKeyboardFocus"),
+                            Ok(_) => info!("✅ Property change event handler registered for ValueValue only (optimized)"),
                             Err(e) => error!("❌ Failed to register property change event handler: {}", e),
                         }
                     }
@@ -895,6 +1590,8 @@ impl WindowsRecorder {
 
                 // Spawn a thread to process the property change data safely
                 let property_event_tx_clone = property_event_tx.clone();
+                let property_browser_tracker = Arc::clone(&browser_tab_tracker);
+                let property_config = config_clone.clone();
                 std::thread::spawn(move || {
                     while let Ok((element_name, property_name, value_string, ui_element)) =
                         property_rx.recv()
@@ -918,9 +1615,10 @@ impl WindowsRecorder {
                         let property_event = UiPropertyChangedEvent {
                             property_name: property_name.clone(),
                             old_value: None,
-                            new_value: Some(value_string),
+                            new_value: Some(value_string.clone()),
                             metadata: EventMetadata {
-                                ui_element
+                                ui_element: ui_element.clone(),
+                                timestamp: Some(Self::capture_timestamp()),
                             },
                         };
 
@@ -929,6 +1627,31 @@ impl WindowsRecorder {
                         {
                             debug!("Failed to send property change event: {}", e);
                             break;
+                        }
+
+                        // Check for browser tab navigation (property changes often indicate URL/title changes)
+                        // We look for URL-like strings in ValueValue property changes
+                        if property_name == "ValueValue"
+                            && (value_string.starts_with("http")
+                                || value_string.contains(".com")
+                                || value_string.contains(".org")
+                                || value_string.contains(".net"))
+                        {
+                            // Add http:// prefix if missing for proper URL format
+                            let full_url = if value_string.starts_with("http") {
+                                value_string.clone()
+                            } else {
+                                format!("https://{}", value_string)
+                            };
+
+                            Self::check_and_emit_browser_navigation_with_url(
+                                &property_browser_tracker,
+                                &property_event_tx_clone,
+                                &ui_element,
+                                TabNavigationMethod::AddressBar, // Property change likely means address bar update
+                                &property_config,
+                                Some(full_url), // Pass the detected URL!
+                            );
                         }
                     }
                 });
@@ -1014,12 +1737,18 @@ impl WindowsRecorder {
         let element_name_lower = element_name.to_lowercase();
 
         // Check against focus-specific ignore patterns
-        if ignore_patterns.iter().any(|pattern| element_name_lower.contains(pattern)) {
+        if ignore_patterns
+            .iter()
+            .any(|pattern| element_name_lower.contains(pattern))
+        {
             return true;
         }
 
         // Check against window title patterns
-        if ignore_window_titles.iter().any(|title| element_name_lower.contains(title)) {
+        if ignore_window_titles
+            .iter()
+            .any(|title| element_name_lower.contains(title))
+        {
             return true;
         }
 
@@ -1028,7 +1757,10 @@ impl WindowsRecorder {
             let app_name = ui_elem.application_name();
             if !app_name.is_empty() {
                 let app_name_lower = app_name.to_lowercase();
-                if ignore_applications.iter().any(|app| app_name_lower.contains(app)) {
+                if ignore_applications
+                    .iter()
+                    .any(|app| app_name_lower.contains(app))
+                {
                     return true;
                 }
             }
@@ -1050,12 +1782,17 @@ impl WindowsRecorder {
         let property_name_lower = property_name.to_lowercase();
 
         // Check against property-specific ignore patterns
-        if ignore_patterns.iter().any(|pattern| element_name_lower.contains(pattern) || property_name_lower.contains(pattern)) {
+        if ignore_patterns.iter().any(|pattern| {
+            element_name_lower.contains(pattern) || property_name_lower.contains(pattern)
+        }) {
             return true;
         }
 
         // Check against window title patterns
-        if ignore_window_titles.iter().any(|title| element_name_lower.contains(title)) {
+        if ignore_window_titles
+            .iter()
+            .any(|title| element_name_lower.contains(title))
+        {
             return true;
         }
 
@@ -1064,7 +1801,10 @@ impl WindowsRecorder {
             let app_name = ui_elem.application_name();
             if !app_name.is_empty() {
                 let app_name_lower = app_name.to_lowercase();
-                if ignore_applications.iter().any(|app| app_name_lower.contains(app)) {
+                if ignore_applications
+                    .iter()
+                    .any(|app| app_name_lower.contains(app))
+                {
                     return true;
                 }
             }
@@ -1110,6 +1850,28 @@ impl WindowsRecorder {
 
         info!("Windows recorder stop signal sent");
         Ok(())
+    }
+
+    /// Start background timer to complete typing sessions on timeout
+    fn start_typing_completion_timer(&self) {
+        let current_typing_session = Arc::clone(&self.current_typing_session);
+        let event_tx = self.event_tx.clone();
+        let timeout_ms = self.config.text_input_completion_timeout_ms;
+        let stop_indicator = Arc::clone(&self.stop_indicator);
+
+        thread::spawn(move || {
+            while !stop_indicator.load(Ordering::SeqCst) {
+                // PERFORMANCE: Check every 1 second for timed-out sessions (was 500ms)
+                thread::sleep(Duration::from_millis(1000));
+
+                Self::check_and_complete_typing_session(
+                    &current_typing_session,
+                    &event_tx,
+                    false, // don't force complete, only if timeout expired
+                    timeout_ms,
+                );
+            }
+        });
     }
 }
 

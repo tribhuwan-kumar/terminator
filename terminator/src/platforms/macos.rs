@@ -1688,6 +1688,12 @@ impl UIElementImpl for MacOSUIElement {
         ))
     }
 
+    fn set_transparency(&self, percentage: u8) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_transparency is not implemented for macOS yet".to_string(),
+        ))
+    }
+
     fn process_id(&self) -> Result<u32, AutomationError> {
         let pid = get_pid_for_element(&self.element);
         if pid != -1 {

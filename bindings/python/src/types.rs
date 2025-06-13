@@ -1,13 +1,11 @@
+use ::terminator_core::{
+    ClickResult as CoreClickResult, CommandOutput as CoreCommandOutput,
+    ScreenshotResult as CoreScreenshotResult,
+};
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::*;
-use std::collections::HashMap;
-use ::terminator_core::{
-    ScreenshotResult as CoreScreenshotResult,
-    ClickResult as CoreClickResult,
-    CommandOutput as CoreCommandOutput,
-};
-use serde_json;
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// Result of a screenshot operation.
 #[gen_stub_pyclass]
@@ -157,15 +155,21 @@ pub struct PropertyLoadingMode {
 
 impl PropertyLoadingMode {
     pub fn fast() -> Self {
-        PropertyLoadingMode { mode: "Fast".to_string() }
+        PropertyLoadingMode {
+            mode: "Fast".to_string(),
+        }
     }
-    
+
     pub fn complete() -> Self {
-        PropertyLoadingMode { mode: "Complete".to_string() }
+        PropertyLoadingMode {
+            mode: "Complete".to_string(),
+        }
     }
-    
+
     pub fn smart() -> Self {
-        PropertyLoadingMode { mode: "Smart".to_string() }
+        PropertyLoadingMode {
+            mode: "Smart".to_string(),
+        }
     }
 }
 
@@ -227,7 +231,9 @@ impl From<::terminator_core::UINode> for UINode {
 impl From<::terminator_core::UIElementAttributes> for UIElementAttributes {
     fn from(attrs: ::terminator_core::UIElementAttributes) -> Self {
         // Convert HashMap<String, Option<serde_json::Value>> to HashMap<String, Option<String>>
-        let properties = attrs.properties.into_iter()
+        let properties = attrs
+            .properties
+            .into_iter()
             .map(|(k, v)| (k, v.map(|val| val.to_string())))
             .collect();
 
@@ -251,7 +257,7 @@ impl From<TreeBuildConfig> for ::terminator_core::platforms::TreeBuildConfig {
             "Smart" => ::terminator_core::platforms::PropertyLoadingMode::Smart,
             _ => ::terminator_core::platforms::PropertyLoadingMode::Fast, // default
         };
-        
+
         ::terminator_core::platforms::TreeBuildConfig {
             property_mode,
             timeout_per_operation_ms: config.timeout_per_operation_ms,
@@ -402,4 +408,4 @@ impl TreeBuildConfig {
         serde_json::to_string_pretty(self)
             .map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()))
     }
-} 
+}
