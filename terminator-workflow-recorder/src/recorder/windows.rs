@@ -1442,47 +1442,7 @@ impl WindowsRecorder {
             // Create a property changed event handler using the proper closure type
             let property_handler: Box<uiautomation::events::CustomPropertyChangedEventHandlerFn> =
                 Box::new(move |sender, property, value| {
-                    // PERFORMANCE OPTIMIZATION: Aggressively filter property events to reduce CPU load
-                    // TODO double check if this is actually valuable or harmful
                     let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
-                    // match property {
-                    //     uiautomation::types::UIProperty::ValueValue => {
-                    //         // Only process value changes for input-related elements
-                    //         // Skip frequent updates from progress bars, media players, etc.
-                    //         let element_name_lower = element_name.to_lowercase();
-                    //         if element_name_lower.contains("progress")
-                    //             || element_name_lower.contains("volume")
-                    //             || element_name_lower.contains("time")
-                    //             || element_name_lower.contains("loading")
-                    //             || element_name_lower.contains("percent")
-                    //             || element_name_lower.contains("status")
-                    //             || element_name_lower.contains("battery")
-                    //             || element_name_lower.contains("signal")
-                    //         {
-                    //             return Ok(());
-                    //         }
-                    //     }
-                    //     uiautomation::types::UIProperty::Name => {
-                    //         // Skip frequent name changes from clocks, timers, progress indicators
-                    //         if element_name.len() > 50 || element_name.contains(':') {
-                    //             return Ok(());
-                    //         }
-                    //         // Only process every 5th name change to reduce noise
-                    //         if std::ptr::addr_of!(sender) as usize % 5 != 0 {
-                    //             return Ok(());
-                    //         }
-                    //     }
-                    //     uiautomation::types::UIProperty::HasKeyboardFocus => {
-                    //         // Focus changes are important but very frequent - process every 3rd one
-                    //         if std::ptr::addr_of!(sender) as usize % 3 != 0 {
-                    //             return Ok(());
-                    //         }
-                    //     }
-                    //     _ => {
-                    //         // Skip all other properties to reduce CPU load
-                    //         return Ok(());
-                    //     }
-                    // }
 
                     // element_name already extracted above for filtering
                     let property_name = format!("{:?}", property);
@@ -1525,11 +1485,6 @@ impl WindowsRecorder {
                         )) {
                             debug!("Failed to send property change data through channel: {}", e);
                         }
-                    } else {
-                        debug!(
-                            "Skipping property change with empty/null value: {} on {}",
-                            property_name, element_name
-                        );
                     }
 
                     Ok(())
