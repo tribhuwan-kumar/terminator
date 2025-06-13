@@ -841,12 +841,13 @@ impl UIElementImpl for MacOSUIElement {
                 if attr_names.iter().any(|n| n.to_string() == attr_name) {
                     let attr = AXAttribute::new(&CFString::new(attr_name));
                     if let Ok(value) = self.element.0.attribute(&attr) {
+                        let attr_name_str = attr_name.to_string();
                         if let Some(cf_bool) = value.downcast_into::<CFBoolean>() {
-                            attrs.properties.insert(
-                                attr_name.to_string(),
-                                Some(Value::String(format!("{:?}", cf_bool))),
-                            );
-                            debug!("Added window attribute {}: {:?}", attr_name, cf_bool);
+                            let bool_val = cf_bool == CFBoolean::true_value();
+                            attrs
+                                .properties
+                                .insert(attr_name_str.clone(), Some(Value::Bool(bool_val)));
+                            debug!("Added window attribute {}: {:?}", attr_name_str, bool_val);
                         }
                     }
                 }
