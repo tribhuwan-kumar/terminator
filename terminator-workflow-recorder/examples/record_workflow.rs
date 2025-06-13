@@ -223,39 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
                 }
-                terminator_workflow_recorder::WorkflowEvent::UiFocusChanged(focus_event) => {
-                    if let Some(ref ui_element) = focus_event.metadata.ui_element {
-                        // Highlight the newly focused element in green
-                        // if let Err(e) = ui_element.highlight(Some(0x00FF00), None) {
-                        //     debug!("Error highlighting focused UI element: {:?}", e);
-                        // }
 
-                        if let Ok(text) = ui_element.text(1) {
-                            println!("🎯 Focus changed to: {:?} 🎯", text);
-                        } else {
-                            println!(
-                                "🎯 Focus changed to: {} in {} 🎯",
-                                ui_element.role(),
-                                ui_element.application_name()
-                            );
-                        }
-                    }
-                }
-                terminator_workflow_recorder::WorkflowEvent::UiPropertyChanged(property_event) => {
-                    if let Some(ref ui_element) = property_event.metadata.ui_element {
-                        // Highlight the property-changed element in orange
-                        // if let Err(e) = ui_element.highlight(Some(0x0080FF), None) {
-                        //     debug!("Error highlighting property-changed UI element: {:?}", e);
-                        // }
-
-                        // skip printing if text is none or empty
-                        if let Ok(text) = ui_element.text(1) {
-                            if !text.is_empty() {
-                                println!("🔧 Property changed text: {:?} 🎯", text);
-                            }
-                        }
-                    }
-                }
                 terminator_workflow_recorder::WorkflowEvent::TextInputCompleted(
                     text_input_event,
                 ) => {

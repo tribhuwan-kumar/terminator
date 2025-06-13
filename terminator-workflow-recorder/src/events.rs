@@ -443,29 +443,6 @@ pub enum StructureChangeType {
     ChildrenReordered,
 }
 
-/// Represents a UI Automation structure change event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiStructureChangedEvent {
-    /// The type of structure change
-    pub change_type: StructureChangeType,
-
-    /// The element where the structure change occurred
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub element: Option<UIElement>,
-
-    /// Runtime IDs of affected children (if applicable)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub runtime_ids: Option<Vec<i32>>,
-
-    /// The application where the change occurred
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub application: Option<String>,
-
-    /// Additional details about the change
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub details: Option<String>,
-}
-
 /// Method used to input text
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TextInputMethod {

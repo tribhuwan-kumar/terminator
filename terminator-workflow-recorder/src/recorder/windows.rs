@@ -17,7 +17,7 @@ use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use uiautomation::UIAutomation;
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
@@ -1376,7 +1376,8 @@ impl WindowsRecorder {
 
                 while let Ok((element_name, ui_element)) = focus_rx.recv() {
                     // Apply filtering
-                    if WindowsRecorder::should_ignore_focus_event( // TODO double click it does not badly affect he app switch event
+                    if WindowsRecorder::should_ignore_focus_event(
+                        // TODO double click it does not badly affect he app switch event
                         &element_name,
                         &ui_element,
                         &focus_ignore_patterns,
@@ -1435,46 +1436,46 @@ impl WindowsRecorder {
             let property_handler: Box<uiautomation::events::CustomPropertyChangedEventHandlerFn> =
                 Box::new(move |sender, property, value| {
                     // PERFORMANCE OPTIMIZATION: Aggressively filter property events to reduce CPU load
-                    // TODO double check if this is actually valuable or harmful 
+                    // TODO double check if this is actually valuable or harmful
                     let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
-                    match property {
-                        uiautomation::types::UIProperty::ValueValue => {
-                            // Only process value changes for input-related elements
-                            // Skip frequent updates from progress bars, media players, etc.
-                            let element_name_lower = element_name.to_lowercase();
-                            if element_name_lower.contains("progress")
-                                || element_name_lower.contains("volume")
-                                || element_name_lower.contains("time")
-                                || element_name_lower.contains("loading")
-                                || element_name_lower.contains("percent")
-                                || element_name_lower.contains("status")
-                                || element_name_lower.contains("battery")
-                                || element_name_lower.contains("signal")
-                            {
-                                return Ok(());
-                            }
-                        }
-                        uiautomation::types::UIProperty::Name => {
-                            // Skip frequent name changes from clocks, timers, progress indicators
-                            if element_name.len() > 50 || element_name.contains(':') {
-                                return Ok(());
-                            }
-                            // Only process every 5th name change to reduce noise
-                            if std::ptr::addr_of!(sender) as usize % 5 != 0 {
-                                return Ok(());
-                            }
-                        }
-                        uiautomation::types::UIProperty::HasKeyboardFocus => {
-                            // Focus changes are important but very frequent - process every 3rd one
-                            if std::ptr::addr_of!(sender) as usize % 3 != 0 {
-                                return Ok(());
-                            }
-                        }
-                        _ => {
-                            // Skip all other properties to reduce CPU load
-                            return Ok(());
-                        }
-                    }
+                    // match property {
+                    //     uiautomation::types::UIProperty::ValueValue => {
+                    //         // Only process value changes for input-related elements
+                    //         // Skip frequent updates from progress bars, media players, etc.
+                    //         let element_name_lower = element_name.to_lowercase();
+                    //         if element_name_lower.contains("progress")
+                    //             || element_name_lower.contains("volume")
+                    //             || element_name_lower.contains("time")
+                    //             || element_name_lower.contains("loading")
+                    //             || element_name_lower.contains("percent")
+                    //             || element_name_lower.contains("status")
+                    //             || element_name_lower.contains("battery")
+                    //             || element_name_lower.contains("signal")
+                    //         {
+                    //             return Ok(());
+                    //         }
+                    //     }
+                    //     uiautomation::types::UIProperty::Name => {
+                    //         // Skip frequent name changes from clocks, timers, progress indicators
+                    //         if element_name.len() > 50 || element_name.contains(':') {
+                    //             return Ok(());
+                    //         }
+                    //         // Only process every 5th name change to reduce noise
+                    //         if std::ptr::addr_of!(sender) as usize % 5 != 0 {
+                    //             return Ok(());
+                    //         }
+                    //     }
+                    //     uiautomation::types::UIProperty::HasKeyboardFocus => {
+                    //         // Focus changes are important but very frequent - process every 3rd one
+                    //         if std::ptr::addr_of!(sender) as usize % 3 != 0 {
+                    //             return Ok(());
+                    //         }
+                    //     }
+                    //     _ => {
+                    //         // Skip all other properties to reduce CPU load
+                    //         return Ok(());
+                    //     }
+                    // }
 
                     // element_name already extracted above for filtering
                     let property_name = format!("{:?}", property);
