@@ -6,7 +6,7 @@ use crate::{ClickResult, ScreenshotResult};
 
 use accessibility::AXUIElementAttributes;
 use accessibility::{AXAttribute, AXUIElement};
-use accessibility_sys::{error_string, AXError, AXValueType};
+use accessibility_sys::{AXError, AXValueType, error_string};
 use anyhow::Result;
 use core_foundation::array::{
     __CFArray, CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex,
@@ -748,10 +748,13 @@ impl UIElementImpl for MacOSUIElement {
         let _span = tracing::span!(tracing::Level::DEBUG, "attributes").entered();
         let start = std::time::Instant::now();
 
-        let role = self.element.0.role().map(|r| r.to_string()).unwrap_or_default();
-        debug!(
-            "Getting attributes for element: {:?}", role
-        );
+        let role = self
+            .element
+            .0
+            .role()
+            .map(|r| r.to_string())
+            .unwrap_or_default();
+        debug!("Getting attributes for element: {:?}", role);
 
         let properties = HashMap::new();
 
@@ -2041,10 +2044,7 @@ fn macos_role_to_generic_role(role: &str) -> Vec<String> {
 // List of application localized names to exclude.
 // These are known to consistently fail to retrieve role
 // and take an unusually long time to do so.
-const EXCLUDED_APPLICATION_NAMES: &[&str] = &[
-    "Raycast Web Content",
-    "superwhisper Web Content",
-];
+const EXCLUDED_APPLICATION_NAMES: &[&str] = &["Raycast Web Content", "superwhisper Web Content"];
 
 #[async_trait::async_trait]
 impl AccessibilityEngine for MacOSEngine {
@@ -2149,7 +2149,10 @@ impl AccessibilityEngine for MacOSEngine {
 
                 // Skip excluded applications by localized name
                 if let Some(ref name) = localized_name {
-                    if EXCLUDED_APPLICATION_NAMES.iter().any(|&excluded| excluded == name) {
+                    if EXCLUDED_APPLICATION_NAMES
+                        .iter()
+                        .any(|&excluded| excluded == name)
+                    {
                         debug!(
                             "[macOS][get_applications] Skipping excluded application: {:?}",
                             name
@@ -2161,7 +2164,10 @@ impl AccessibilityEngine for MacOSEngine {
                 let elapsed_localized_name = iter_start.elapsed();
                 debug!(
                     "[macOS][get_applications] i: {}, pid: {}, localized_name: {:?}, elapsed so far: {} ms",
-                    i, pid, localized_name, elapsed_localized_name.as_millis()
+                    i,
+                    pid,
+                    localized_name,
+                    elapsed_localized_name.as_millis()
                 );
 
                 // Filter: Only include if .role() == "AXApplication"
@@ -2240,9 +2246,7 @@ impl AccessibilityEngine for MacOSEngine {
                 if iter_duration > std::time::Duration::from_millis(100) {
                     debug!(
                         "⚠️ [macOS][get_applications] Iteration {} unusually long: took {:?} (>100ms) for pid: {}",
-                        i,
-                        iter_duration,
-                        pid
+                        i, iter_duration, pid
                     );
                     // Get the last application in the apps vector (if any)
                     // if let Some(last_app) = apps.last() {
@@ -2266,7 +2270,6 @@ impl AccessibilityEngine for MacOSEngine {
                     //     // );
                     // }
                 }
-                
             }
         }
         Ok(apps)
@@ -3439,12 +3442,156 @@ impl AccessibilityEngine for MacOSEngine {
         &self,
         pid: u32,
         title: Option<&str>,
-        _config: crate::platforms::TreeBuildConfig,
+        config: crate::platforms::TreeBuildConfig,
     ) -> Result<crate::UINode, AutomationError> {
-        Err(AutomationError::UnsupportedOperation(format!(
-            "get_window_tree for PID {} and title {:?} not yet implemented for macOS",
-            pid, title
-        )))
+        use crate::UINode;
+        use crate::platforms::{PropertyLoadingMode, TreeBuildConfig};
+        use std::time::Instant;
+        use tracing::{debug, info, warn};
+
+        info!(
+            "[macOS] get_window_tree: pid={}, title={:?}, config={:?}",
+            pid, title, config
+        );
+
+        // 1. Get the application element by PID
+        let app_element = self.get_application_by_pid(pid as i32, None)?;
+        let app_ax_element =
+            if let Some(macos_el) = app_element.as_any().downcast_ref::<MacOSUIElement>() {
+                macos_el.element.0.clone()
+            } else {
+                return Err(AutomationError::PlatformError(
+                    "Failed to downcast to MacOSUIElement".to_string(),
+                ));
+            };
+
+        // 2. Collect all AXWindow elements for this application
+        let windows_collector = ElementsCollectorWithWindows::new(&app_ax_element, |e| {
+            e.role().map_or(false, |r| r.to_string() == "AXWindow")
+        });
+        let mut windows = windows_collector.find_all();
+        debug!(
+            "[macOS] Found {} AXWindow elements for PID {}",
+            windows.len(),
+            pid
+        );
+        if windows.is_empty() {
+            return Err(AutomationError::ElementNotFound(format!(
+                "No windows found for process ID {}.",
+                pid
+            )));
+        }
+
+        // 3. Filter by title if provided
+        let mut window_candidates: Vec<(AXUIElement, String)> = Vec::new();
+        for win in &windows {
+            let title_str = win.title().ok().map(|t| t.to_string()).unwrap_or_default();
+            window_candidates.push((win.clone(), title_str));
+        }
+
+        let selected_window = if let Some(title_filter) = title {
+            let title_filter = title_filter.to_lowercase();
+            // Try to find the best match (case-insensitive substring)
+            let mut best: Option<(AXUIElement, String)> = None;
+            for (win, win_title) in &window_candidates {
+                if win_title.to_lowercase().contains(&title_filter) {
+                    best = Some((win.clone(), win_title.clone()));
+                    break;
+                }
+            }
+            if let Some((win, _)) = best {
+                win
+            } else {
+                warn!(
+                    "[macOS] No window title matched '{}', falling back to first window.",
+                    title_filter
+                );
+                window_candidates[0].0.clone()
+            }
+        } else {
+            // No title filter, use the first window
+            window_candidates[0].0.clone()
+        };
+
+        let window_element = self.wrap_element(ThreadSafeAXUIElement::new(selected_window));
+
+        // 4. Build the UI tree recursively using the config
+        struct TreeBuildingContext {
+            config: TreeBuildConfig,
+            property_mode: PropertyLoadingMode,
+            elements_processed: usize,
+            max_depth_reached: usize,
+            errors_encountered: usize,
+        }
+
+        fn build_ui_node_tree_configurable(
+            element: &UIElement,
+            current_depth: usize,
+            context: &mut TreeBuildingContext,
+        ) -> Result<UINode, AutomationError> {
+            context.elements_processed += 1;
+            context.max_depth_reached = context.max_depth_reached.max(current_depth);
+            if context.elements_processed % context.config.yield_every_n_elements.unwrap_or(50) == 0
+            {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            // Get attributes based on property mode
+            let attributes = match &context.property_mode {
+                PropertyLoadingMode::Fast => element.attributes(),
+                PropertyLoadingMode::Complete => element.attributes(), // TODO: implement full
+                PropertyLoadingMode::Smart => element.attributes(),    // TODO: implement smart
+            };
+            let mut children_nodes = Vec::new();
+            match element.children() {
+                Ok(children) => {
+                    for batch in children.chunks(context.config.batch_size.unwrap_or(50)) {
+                        for child in batch {
+                            match build_ui_node_tree_configurable(child, current_depth + 1, context)
+                            {
+                                Ok(child_node) => children_nodes.push(child_node),
+                                Err(e) => {
+                                    context.errors_encountered += 1;
+                                    debug!("[macOS] Failed to process child: {}", e);
+                                }
+                            }
+                        }
+                        if batch.len() == context.config.batch_size.unwrap_or(50)
+                            && children.len() > context.config.batch_size.unwrap_or(50)
+                        {
+                            std::thread::sleep(std::time::Duration::from_millis(1));
+                        }
+                    }
+                }
+                Err(e) => {
+                    context.errors_encountered += 1;
+                    debug!("[macOS] Failed to get children: {}", e);
+                }
+            }
+            Ok(UINode {
+                id: element.id(),
+                attributes,
+                children: children_nodes,
+            })
+        }
+
+        let mut context = TreeBuildingContext {
+            config: config.clone(),
+            property_mode: config.property_mode.clone(),
+            elements_processed: 0,
+            max_depth_reached: 0,
+            errors_encountered: 0,
+        };
+        let start = Instant::now();
+        let result = build_ui_node_tree_configurable(&window_element, 0, &mut context)?;
+        let elapsed = start.elapsed();
+        info!(
+            "[macOS] Tree built: elements={}, depth={}, errors={}, elapsed_ms={}",
+            context.elements_processed,
+            context.max_depth_reached,
+            context.errors_encountered,
+            elapsed.as_millis()
+        );
+        Ok(result)
     }
 
     async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
