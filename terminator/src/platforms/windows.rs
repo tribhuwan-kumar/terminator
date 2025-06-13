@@ -2455,11 +2455,7 @@ impl UIElementImpl for WindowsUIElement {
                     );
                     cached_children
                 }
-                Err(cache_err) => {
-                    debug!(
-                        "Failed to get cached children for text extraction ({}), falling back to non-cached TreeScope::Children search.",
-                        cache_err
-                    );
+                Err(_) => {
                     // Need a UIAutomation instance to create conditions for find_all
                     // Create a temporary instance here for the fallback.
                     // Note: Creating a new UIAutomation instance here might be inefficient.
