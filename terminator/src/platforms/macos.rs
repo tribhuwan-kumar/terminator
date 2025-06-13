@@ -3053,9 +3053,195 @@ impl AccessibilityEngine for MacOSEngine {
             image_data: image.to_vec(),
             width: image.width(),
             height: image.height(),
+            monitor: None,
         })
     }
 
+    // ============== NEW MONITOR ABSTRACTIONS ==============
+
+    async fn list_monitors(&self) -> Result<Vec<crate::Monitor>, AutomationError> {
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
+        })?;
+
+        let mut result = Vec::new();
+        for (index, monitor) in monitors.iter().enumerate() {
+            let name = monitor.name().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+            })?;
+
+            let is_primary = monitor.is_primary().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to check primary status: {}", e))
+            })?;
+
+            let width = monitor.width().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+            })?;
+
+            let height = monitor.height().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+            })?;
+
+            let x = monitor.x().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor x position: {}", e))
+            })?;
+
+            let y = monitor.y().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor y position: {}", e))
+            })?;
+
+            let scale_factor = monitor.scale_factor().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
+            })? as f64;
+
+            result.push(crate::Monitor {
+                id: format!("monitor_{}", index),
+                name,
+                is_primary,
+                width,
+                height,
+                x,
+                y,
+                scale_factor,
+            });
+        }
+
+        Ok(result)
+    }
+
+    async fn get_primary_monitor(&self) -> Result<crate::Monitor, AutomationError> {
+        let monitors = self.list_monitors().await?;
+        monitors
+            .into_iter()
+            .find(|m| m.is_primary)
+            .ok_or_else(|| AutomationError::PlatformError("No primary monitor found".to_string()))
+    }
+
+    async fn get_active_monitor(&self) -> Result<crate::Monitor, AutomationError> {
+        // Get all windows
+        let windows = xcap::Window::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get windows: {}", e)))?;
+
+        // Find the focused window
+        let focused_window = windows
+            .iter()
+            .find(|w| w.is_focused().unwrap_or(false))
+            .ok_or_else(|| {
+                AutomationError::ElementNotFound("No focused window found".to_string())
+            })?;
+
+        // Get the monitor for the focused window
+        let xcap_monitor = focused_window.current_monitor().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get current monitor: {}", e))
+        })?;
+
+        // Convert to our Monitor struct
+        let name = xcap_monitor.name().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+        })?;
+
+        let is_primary = xcap_monitor.is_primary().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to check primary status: {}", e))
+        })?;
+
+        // Find the monitor index for ID generation
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
+        })?;
+
+        let monitor_index = monitors
+            .iter()
+            .position(|m| m.name().map(|n| n == name).unwrap_or(false))
+            .unwrap_or(0);
+
+        let width = xcap_monitor.width().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+        })?;
+
+        let height = xcap_monitor.height().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+        })?;
+
+        let x = xcap_monitor.x().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor x position: {}", e))
+        })?;
+
+        let y = xcap_monitor.y().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor y position: {}", e))
+        })?;
+
+        let scale_factor = xcap_monitor.scale_factor().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
+        })? as f64;
+
+        Ok(crate::Monitor {
+            id: format!("monitor_{}", monitor_index),
+            name,
+            is_primary,
+            width,
+            height,
+            x,
+            y,
+            scale_factor,
+        })
+    }
+
+    async fn get_monitor_by_id(&self, id: &str) -> Result<crate::Monitor, AutomationError> {
+        let monitors = self.list_monitors().await?;
+        monitors.into_iter().find(|m| m.id == id).ok_or_else(|| {
+            AutomationError::ElementNotFound(format!("Monitor with ID '{}' not found", id))
+        })
+    }
+
+    async fn get_monitor_by_name(&self, name: &str) -> Result<crate::Monitor, AutomationError> {
+        let monitors = self.list_monitors().await?;
+        monitors
+            .into_iter()
+            .find(|m| m.name == name)
+            .ok_or_else(|| {
+                AutomationError::ElementNotFound(format!("Monitor '{}' not found", name))
+            })
+    }
+
+    async fn capture_monitor_by_id(
+        &self,
+        id: &str,
+    ) -> Result<crate::ScreenshotResult, AutomationError> {
+        let monitor = self.get_monitor_by_id(id).await?;
+
+        // Find the xcap monitor by name
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
+        })?;
+
+        let xcap_monitor = monitors
+            .into_iter()
+            .find(|m| m.name().map(|n| n == monitor.name).unwrap_or(false))
+            .ok_or_else(|| {
+                AutomationError::ElementNotFound(format!("Monitor '{}' not found", monitor.name))
+            })?;
+
+        let image = xcap_monitor.capture_image().map_err(|e| {
+            AutomationError::PlatformError(format!(
+                "Failed to capture monitor '{}': {}",
+                monitor.name, e
+            ))
+        })?;
+
+        Ok(ScreenshotResult {
+            image_data: image.to_vec(),
+            width: image.width(),
+            height: image.height(),
+            monitor: Some(monitor),
+        })
+    }
+
+    // ============== DEPRECATED METHODS ==============
+
+    #[deprecated(
+        since = "0.4.9",
+        note = "Use get_monitor_by_name() and capture_monitor_by_id() instead"
+    )]
     async fn capture_monitor_by_name(
         &self,
         name: &str,
@@ -3092,6 +3278,7 @@ impl AccessibilityEngine for MacOSEngine {
             image_data: image.to_vec(),
             width: image.width(),
             height: image.height(),
+            monitor: None,
         })
     }
 
@@ -3595,29 +3782,10 @@ impl AccessibilityEngine for MacOSEngine {
         Ok(result)
     }
 
+    #[deprecated(since = "0.4.9", note = "Use get_active_monitor() instead")]
     async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
-        // Get all windows
-        let windows = xcap::Window::all()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get windows: {}", e)))?;
-
-        // Find the focused window
-        let focused_window = windows
-            .iter()
-            .find(|w| w.is_focused().unwrap_or(false))
-            .ok_or_else(|| {
-                AutomationError::ElementNotFound("No focused window found".to_string())
-            })?;
-
-        // Get the monitor name for the focused window
-        let monitor = focused_window.current_monitor().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get current monitor: {}", e))
-        })?;
-
-        let monitor_name = monitor.name().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
-        })?;
-
-        Ok(monitor_name)
+        let monitor = self.get_active_monitor().await?;
+        Ok(monitor.name)
     }
 
     /// Enable downcasting to concrete engine types

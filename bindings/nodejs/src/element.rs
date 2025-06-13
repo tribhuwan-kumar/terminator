@@ -1,8 +1,6 @@
 use napi::bindgen_prelude::FromNapiValue;
 use napi::{self};
 use napi_derive::napi;
-use serde::Serialize;
-use serde_json;
 use terminator::{
     UIElement as TerminatorUIElement, UIElementAttributes as TerminatorUIElementAttributes,
 };
@@ -376,6 +374,7 @@ impl Element {
                 image_data: result.image_data,
                 width: result.width,
                 height: result.height,
+                monitor: result.monitor.map(crate::types::Monitor::from),
             })
             .map_err(map_error)
     }

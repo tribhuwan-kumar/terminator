@@ -250,6 +250,19 @@ impl Desktop {
             image_data: screenshot.image_data.clone(),
             width: screenshot.width,
             height: screenshot.height,
+            monitor: screenshot
+                .monitor
+                .as_ref()
+                .map(|m| ::terminator_core::Monitor {
+                    id: m.id.clone(),
+                    name: m.name.clone(),
+                    is_primary: m.is_primary,
+                    width: m.width,
+                    height: m.height,
+                    x: m.x,
+                    y: m.y,
+                    scale_factor: m.scale_factor,
+                }),
         };
         pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop
@@ -384,5 +397,166 @@ impl Desktop {
             .get_window_tree(pid, title, rust_config)
             .map(crate::types::UINode::from)
             .map_err(automation_error_to_pyerr)
+    }
+
+    // ============== NEW MONITOR METHODS ==============
+
+    #[pyo3(name = "list_monitors", text_signature = "($self)")]
+    /// (async) List all available monitors/displays.
+    ///
+    /// Returns:
+    ///     List[Monitor]: List of monitor information.
+    pub fn list_monitors<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .list_monitors()
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result: Vec<crate::types::Monitor> = result
+                .into_iter()
+                .map(crate::types::Monitor::from)
+                .collect();
+            Ok(py_result)
+        })
+    }
+
+    #[pyo3(name = "get_primary_monitor", text_signature = "($self)")]
+    /// (async) Get the primary monitor.
+    ///
+    /// Returns:
+    ///     Monitor: Primary monitor information.
+    pub fn get_primary_monitor<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .get_primary_monitor()
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result = crate::types::Monitor::from(result);
+            Ok(py_result)
+        })
+    }
+
+    #[pyo3(name = "get_active_monitor", text_signature = "($self)")]
+    /// (async) Get the monitor containing the currently focused window.
+    ///
+    /// Returns:
+    ///     Monitor: Active monitor information.
+    pub fn get_active_monitor<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .get_active_monitor()
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result = crate::types::Monitor::from(result);
+            Ok(py_result)
+        })
+    }
+
+    #[pyo3(name = "get_monitor_by_id", text_signature = "($self, id)")]
+    /// (async) Get a monitor by its ID.
+    ///
+    /// Args:
+    ///     id (str): The monitor ID to find.
+    ///
+    /// Returns:
+    ///     Monitor: Monitor information.
+    pub fn get_monitor_by_id<'py>(&self, py: Python<'py>, id: &str) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        let id = id.to_string();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .get_monitor_by_id(&id)
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result = crate::types::Monitor::from(result);
+            Ok(py_result)
+        })
+    }
+
+    #[pyo3(name = "get_monitor_by_name", text_signature = "($self, name)")]
+    /// (async) Get a monitor by its name.
+    ///
+    /// Args:
+    ///     name (str): The monitor name to find.
+    ///
+    /// Returns:
+    ///     Monitor: Monitor information.
+    pub fn get_monitor_by_name<'py>(
+        &self,
+        py: Python<'py>,
+        name: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        let name = name.to_string();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .get_monitor_by_name(&name)
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result = crate::types::Monitor::from(result);
+            Ok(py_result)
+        })
+    }
+
+    #[pyo3(name = "capture_monitor", text_signature = "($self, monitor)")]
+    /// (async) Capture a screenshot of a specific monitor.
+    ///
+    /// Args:
+    ///     monitor (Monitor): The monitor to capture.
+    ///
+    /// Returns:
+    ///     ScreenshotResult: The screenshot data.
+    pub fn capture_monitor<'py>(
+        &self,
+        py: Python<'py>,
+        monitor: &crate::types::Monitor,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        let rust_monitor = ::terminator_core::Monitor {
+            id: monitor.id.clone(),
+            name: monitor.name.clone(),
+            is_primary: monitor.is_primary,
+            width: monitor.width,
+            height: monitor.height,
+            x: monitor.x,
+            y: monitor.y,
+            scale_factor: monitor.scale_factor,
+        };
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .capture_monitor(&rust_monitor)
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result = crate::types::ScreenshotResult::from(result);
+            Ok(py_result)
+        })
+    }
+
+    #[pyo3(name = "capture_all_monitors", text_signature = "($self)")]
+    /// (async) Capture screenshots of all monitors.
+    ///
+    /// Returns:
+    ///     List[Tuple[Monitor, ScreenshotResult]]: List of monitor and screenshot pairs.
+    pub fn capture_all_monitors<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .capture_all_monitors()
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result: Vec<(crate::types::Monitor, crate::types::ScreenshotResult)> = result
+                .into_iter()
+                .map(|(monitor, screenshot)| {
+                    (
+                        crate::types::Monitor::from(monitor),
+                        crate::types::ScreenshotResult::from(screenshot),
+                    )
+                })
+                .collect();
+            Ok(py_result)
+        })
     }
 }

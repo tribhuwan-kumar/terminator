@@ -1,5 +1,4 @@
 use napi_derive::napi;
-use serde_json;
 use terminator::Locator as TerminatorLocator;
 
 use crate::map_error;

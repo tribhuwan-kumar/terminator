@@ -39,6 +39,49 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
+/// Represents a monitor/display device
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Monitor {
+    /// Unique identifier for the monitor
+    pub id: String,
+    /// Human-readable name of the monitor
+    pub name: String,
+    /// Whether this is the primary monitor
+    pub is_primary: bool,
+    /// Monitor dimensions
+    pub width: u32,
+    pub height: u32,
+    /// Monitor position (top-left corner)
+    pub x: i32,
+    pub y: i32,
+    /// Scale factor (e.g., 1.0 for 100%, 1.25 for 125%)
+    pub scale_factor: f64,
+}
+
+impl Monitor {
+    /// Capture a screenshot of this monitor
+    #[instrument(skip(self, desktop))]
+    pub async fn capture(&self, desktop: &Desktop) -> Result<ScreenshotResult, AutomationError> {
+        desktop.engine.capture_monitor_by_id(&self.id).await
+    }
+
+    /// Check if this monitor contains the given coordinates
+    pub fn contains_point(&self, x: i32, y: i32) -> bool {
+        x >= self.x
+            && x < self.x + self.width as i32
+            && y >= self.y
+            && y < self.y + self.height as i32
+    }
+
+    /// Get the center point of this monitor
+    pub fn center(&self) -> (i32, i32) {
+        (
+            self.x + self.width as i32 / 2,
+            self.y + self.height as i32 / 2,
+        )
+    }
+}
+
 /// Represents a node in the UI tree, containing its attributes and children.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UINode {
@@ -135,6 +178,8 @@ pub struct ScreenshotResult {
     pub width: u32,
     /// Height of the image
     pub height: u32,
+    /// Monitor information if captured from a specific monitor
+    pub monitor: Option<Monitor>,
 }
 
 /// The main entry point for UI automation
@@ -233,44 +278,229 @@ impl Desktop {
         self.engine.run_command(windows_command, unix_command).await
     }
 
+    // ============== NEW MONITOR ABSTRACTIONS ==============
+
+    /// List all available monitors/displays
+    ///
+    /// Returns a vector of Monitor structs containing information about each display,
+    /// including dimensions, position, scale factor, and whether it's the primary monitor.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let monitors = desktop.list_monitors().await?;
+    /// for monitor in monitors {
+    ///     println!("Monitor: {} ({}x{})", monitor.name, monitor.width, monitor.height);
+    /// }
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn list_monitors(&self) -> Result<Vec<Monitor>, AutomationError> {
+        self.engine.list_monitors().await
+    }
+
+    /// Get the primary monitor
+    ///
+    /// Returns the monitor marked as primary in the system settings.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let primary = desktop.get_primary_monitor().await?;
+    /// println!("Primary monitor: {}", primary.name);
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_primary_monitor(&self) -> Result<Monitor, AutomationError> {
+        self.engine.get_primary_monitor().await
+    }
+
+    /// Get the monitor containing the currently focused window
+    ///
+    /// Returns the monitor that contains the currently active/focused window.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let active = desktop.get_active_monitor().await?;
+    /// println!("Active monitor: {}", active.name);
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_active_monitor(&self) -> Result<Monitor, AutomationError> {
+        self.engine.get_active_monitor().await
+    }
+
+    /// Get a monitor by its ID
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let monitor = desktop.get_monitor_by_id("monitor_id").await?;
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[instrument(skip(self, id))]
+    pub async fn get_monitor_by_id(&self, id: &str) -> Result<Monitor, AutomationError> {
+        self.engine.get_monitor_by_id(id).await
+    }
+
+    /// Get a monitor by its name
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let monitor = desktop.get_monitor_by_name("Dell Monitor").await?;
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[instrument(skip(self, name))]
+    pub async fn get_monitor_by_name(&self, name: &str) -> Result<Monitor, AutomationError> {
+        self.engine.get_monitor_by_name(name).await
+    }
+
+    /// Capture a screenshot of a specific monitor
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let monitor = desktop.get_primary_monitor().await?;
+    /// let screenshot = desktop.capture_monitor(&monitor).await?;
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[instrument(skip(self, monitor))]
+    pub async fn capture_monitor(
+        &self,
+        monitor: &Monitor,
+    ) -> Result<ScreenshotResult, AutomationError> {
+        let mut result = self.engine.capture_monitor_by_id(&monitor.id).await?;
+        result.monitor = Some(monitor.clone());
+        Ok(result)
+    }
+
+    /// Capture screenshots of all monitors
+    ///
+    /// Returns a vector of (Monitor, ScreenshotResult) pairs for each display.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let screenshots = desktop.capture_all_monitors().await?;
+    /// for (monitor, screenshot) in screenshots {
+    ///     println!("Captured monitor: {} ({}x{})", monitor.name, screenshot.width, screenshot.height);
+    /// }
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn capture_all_monitors(
+        &self,
+    ) -> Result<Vec<(Monitor, ScreenshotResult)>, AutomationError> {
+        let monitors = self.list_monitors().await?;
+        let mut results = Vec::new();
+
+        for monitor in monitors {
+            match self.capture_monitor(&monitor).await {
+                Ok(screenshot) => results.push((monitor, screenshot)),
+                Err(e) => {
+                    error!("Failed to capture monitor {}: {}", monitor.name, e);
+                    // Continue with other monitors rather than failing completely
+                }
+            }
+        }
+
+        if results.is_empty() {
+            return Err(AutomationError::PlatformError(
+                "Failed to capture any monitors".to_string(),
+            ));
+        }
+
+        Ok(results)
+    }
+
+    // ============== DEPRECATED METHODS ==============
+
+    /// Capture a screenshot of the primary monitor
+    ///
+    /// # Deprecated
+    ///
+    /// Use [`Desktop::get_primary_monitor`] and [`Desktop::capture_monitor`] instead:
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let primary = desktop.get_primary_monitor().await?;
+    /// let screenshot = desktop.capture_monitor(&primary).await?;
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[deprecated(
+        since = "0.4.9",
+        note = "Use get_primary_monitor() and capture_monitor() instead"
+    )]
     #[instrument(skip(self))]
     pub async fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
-        self.engine.capture_screen().await
+        let primary = self.get_primary_monitor().await?;
+        self.capture_monitor(&primary).await
     }
 
+    /// Get the name of the monitor containing the focused window
+    ///
+    /// # Deprecated
+    ///
+    /// Use [`Desktop::get_active_monitor`] instead:
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let active_monitor = desktop.get_active_monitor().await?;
+    /// println!("Active monitor name: {}", active_monitor.name);
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[deprecated(since = "0.4.9", note = "Use get_active_monitor() instead")]
     #[instrument(skip(self))]
     pub async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
-        // Get all windows
-        let windows = xcap::Window::all()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get windows: {}", e)))?;
-
-        // Find the focused window
-        let focused_window = windows
-            .iter()
-            .find(|w| w.is_focused().unwrap_or(false))
-            .ok_or_else(|| {
-                AutomationError::ElementNotFound("No focused window found".to_string())
-            })?;
-
-        // Get the monitor name for the focused window
-        let monitor = focused_window.current_monitor().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get current monitor: {}", e))
-        })?;
-
-        let monitor_name = monitor.name().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
-        })?;
-
-        Ok(monitor_name)
+        let monitor = self.get_active_monitor().await?;
+        Ok(monitor.name)
     }
 
+    /// Capture a screenshot of a monitor by name
+    ///
+    /// # Deprecated
+    ///
+    /// Use [`Desktop::get_monitor_by_name`] and [`Desktop::capture_monitor`] instead:
+    ///
+    /// ```
+    /// use terminator::Desktop;
+    /// let desktop = Desktop::new_default()?;
+    /// let monitor = desktop.get_monitor_by_name("Monitor Name").await?;
+    /// let screenshot = desktop.capture_monitor(&monitor).await?;
+    /// # Ok::<(), terminator::AutomationError>(())
+    /// ```
+    #[deprecated(
+        since = "0.4.9",
+        note = "Use get_monitor_by_name() and capture_monitor() instead"
+    )]
     #[instrument(skip(self, name))]
     pub async fn capture_monitor_by_name(
         &self,
         name: &str,
     ) -> Result<ScreenshotResult, AutomationError> {
-        self.engine.capture_monitor_by_name(name).await
+        let monitor = self.get_monitor_by_name(name).await?;
+        self.capture_monitor(&monitor).await
     }
+
+    // ============== END DEPRECATED METHODS ==============
 
     #[instrument(skip(self, image_path))]
     pub async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError> {
