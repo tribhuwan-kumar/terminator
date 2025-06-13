@@ -1308,7 +1308,6 @@ impl WindowsRecorder {
                 fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
                     // Ensure we're handling this on the correct thread
                     let current_thread = unsafe { GetCurrentThreadId() };
-                    debug!("Focus change event received on thread {}", current_thread);
 
                     // Extract basic data that's safe to send across threads
                     let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
@@ -1495,8 +1494,7 @@ impl WindowsRecorder {
                                     let role = element.role();
                                     (name, role)
                                 })) {
-                                    Ok((name, role)) => {
-                                        debug!("Successfully converted property UI element: name='{}', role='{}'", name, role);
+                                    Ok((_, _)) => {
                                         Some(element)
                                     }
                                     Err(e) => {

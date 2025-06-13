@@ -171,8 +171,6 @@ impl WindowsEngine {
             // If we get here, either initialization succeeded or it was already initialized
             if hr == HRESULT(0x80010106u32 as i32) {
                 debug!("COM already initialized in this thread");
-            } else {
-                debug!("Successfully initialized COM in multithreaded mode");
             }
         }
 
@@ -2701,11 +2699,6 @@ impl UIElementImpl for WindowsUIElement {
                     current_element_arc = Arc::new(parent_uia_element); // Move to the parent
                 }
                 Err(e) => {
-                    // No cached parent found or error occurred.
-                    debug!(
-                        "No cached parent found or error during window search (iteration {}): {}. Stopping traversal.",
-                        i, e
-                    );
                     break;
                 }
             }
