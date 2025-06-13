@@ -39,11 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         record_text_input_completion: true, // 🔥 NEW: High-level text input events
         text_input_completion_timeout_ms: 2000, // Complete typing after 2s pause OR focus change
 
-        // UI Automation events
-        record_ui_focus_changes: true,
-        record_ui_structure_changes: true,
-        record_ui_property_changes: true,
-
         // Configuration tuning
         max_clipboard_content_length: 2048, // 2KB max for clipboard content
         max_text_selection_length: 512,     // 512 chars max for text selections
@@ -137,9 +132,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if let Some(ref ui_element) = kb_event.metadata.ui_element {
                             // Highlight the keyboard target element in red
-                            if let Err(e) = ui_element.highlight(Some(0xFF0000), None) {
-                                debug!("Error highlighting keyboard target UI element: {:?}", e);
-                            }
+                            // if let Err(e) = ui_element.highlight(Some(0xFF0000), None) {
+                            //     debug!("Error highlighting keyboard target UI element: {:?}", e);
+                            // }
 
                             println!(
                                 "     └─ Target: {} in {} 🎯",
@@ -182,9 +177,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     if let Some(ref ui_element) = selection_event.metadata.ui_element {
                         // Highlight the text selection element in yellow
-                        if let Err(e) = ui_element.highlight(Some(0x00FFFF), None) {
-                            debug!("Error highlighting text selection UI element: {:?}", e);
-                        }
+                        // if let Err(e) = ui_element.highlight(Some(0x00FFFF), None) {
+                        //     debug!("Error highlighting text selection UI element: {:?}", e);
+                        // }
 
                         println!(
                             "     └─ App: {}, Method: {:?} 🎯",
@@ -217,9 +212,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Highlight source and target elements if available
                     if let Some(ref ui_element) = drag_event.metadata.ui_element {
                         // Highlight the drag source/target element in cyan
-                        if let Err(e) = ui_element.highlight(Some(0xFFFF00), None) {
-                            debug!("Error highlighting drag/drop UI element: {:?}", e);
-                        }
+                        // if let Err(e) = ui_element.highlight(Some(0xFFFF00), None) {
+                        //     debug!("Error highlighting drag/drop UI element: {:?}", e);
+                        // }
 
                         println!(
                             "     └─ Element: {} in {} 🎯",
@@ -296,9 +291,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Show application context and highlight the input field
                     if let Some(ref ui_element) = text_input_event.metadata.ui_element {
                         // Highlight the text input field in purple
-                        if let Err(e) = ui_element.highlight(Some(0xFF00FF), None) {
-                            debug!("Error highlighting text input UI element: {:?}", e);
-                        }
+                        // if let Err(e) = ui_element.highlight(Some(0xFF00FF), None) {
+                        //     debug!("Error highlighting text input UI element: {:?}", e);
+                        // }
 
                         println!("     └─ App: {} 🎯", ui_element.application_name());
                     }

@@ -19,6 +19,4 @@
         "editor.formatOnSave": true,
         "editor.formatOnPaste": true
     },
-    // Auto-save settings (optional)
-    "files.autoSave": "onFocusChange"
 }

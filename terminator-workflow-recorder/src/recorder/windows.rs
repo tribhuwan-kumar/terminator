@@ -2,8 +2,7 @@ use crate::{
     ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
     ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent,
     MouseEventType, Position, Result, TabAction, TabNavigationMethod, TextInputCompletedEvent,
-    TextInputMethod, UiFocusChangedEvent, UiPropertyChangedEvent, WorkflowEvent,
-    WorkflowRecorderConfig,
+    TextInputMethod, WorkflowEvent, WorkflowRecorderConfig,
 };
 use arboard::Clipboard;
 use rdev::{Button, EventType, Key};
@@ -18,11 +17,14 @@ use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use uiautomation::UIAutomation;
-use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
+};
+use windows::Win32::{
+    Foundation::{LPARAM, WPARAM},
+    System::Com::COINIT_MULTITHREADED,
 };
 
 /// The Windows-specific recorder
@@ -1231,7 +1233,7 @@ impl WindowsRecorder {
             // CRITICAL: Initialize COM apartment as STA for UI Automation events
             // This is required because UI Automation events need STA threading
             let com_initialized = unsafe {
-                let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+                let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
                 if hr.is_ok() {
                     info!(
                         "✅ Successfully initialized COM apartment as STA for UI Automation events"
@@ -1374,7 +1376,7 @@ impl WindowsRecorder {
 
                 while let Ok((element_name, ui_element)) = focus_rx.recv() {
                     // Apply filtering
-                    if WindowsRecorder::should_ignore_focus_event(
+                    if WindowsRecorder::should_ignore_focus_event( // TODO double click it does not badly affect he app switch event
                         &element_name,
                         &ui_element,
                         &focus_ignore_patterns,
@@ -1383,22 +1385,6 @@ impl WindowsRecorder {
                     ) {
                         debug!("Ignoring focus change event for: {}", element_name);
                         continue;
-                    }
-
-                    // Create a minimal UI element representation
-                    let focus_event = UiFocusChangedEvent {
-                        previous_element: None,
-                        metadata: EventMetadata {
-                            ui_element: ui_element.clone(),
-                            timestamp: Some(Self::capture_timestamp()),
-                        },
-                    };
-
-                    if let Err(e) =
-                        focus_event_tx_clone.send(WorkflowEvent::UiFocusChanged(focus_event))
-                    {
-                        debug!("Failed to send focus change event: {}", e);
-                        break;
                     }
 
                     // Check for application switch (focus changes often indicate app switches)
@@ -1449,6 +1435,7 @@ impl WindowsRecorder {
             let property_handler: Box<uiautomation::events::CustomPropertyChangedEventHandlerFn> =
                 Box::new(move |sender, property, value| {
                     // PERFORMANCE OPTIMIZATION: Aggressively filter property events to reduce CPU load
+                    // TODO double check if this is actually valuable or harmful 
                     let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
                     match property {
                         uiautomation::types::UIProperty::ValueValue => {
@@ -1591,23 +1578,6 @@ impl WindowsRecorder {
                             element_name, property_name
                         );
                         continue;
-                    }
-
-                    let property_event = UiPropertyChangedEvent {
-                        property_name: property_name.clone(),
-                        old_value: None,
-                        new_value: Some(value_string.clone()),
-                        metadata: EventMetadata {
-                            ui_element: ui_element.clone(),
-                            timestamp: Some(Self::capture_timestamp()),
-                        },
-                    };
-
-                    if let Err(e) = property_event_tx_clone
-                        .send(WorkflowEvent::UiPropertyChanged(property_event))
-                    {
-                        debug!("Failed to send property change event: {}", e);
-                        break;
                     }
 
                     // Check for browser tab navigation (property changes often indicate URL/title changes)

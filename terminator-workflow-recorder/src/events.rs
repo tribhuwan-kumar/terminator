@@ -292,12 +292,6 @@ pub enum WorkflowEvent {
     /// A hotkey event
     Hotkey(HotkeyEvent),
 
-    /// A UI Automation property change event
-    UiPropertyChanged(UiPropertyChangedEvent),
-
-    /// A UI Automation focus change event
-    UiFocusChanged(UiFocusChangedEvent),
-
     /// High-level text input completion event
     TextInputCompleted(TextInputCompletedEvent),
 
@@ -361,8 +355,6 @@ impl RecordedWorkflow {
             WorkflowEvent::TextSelection(e) => e.metadata.timestamp,
             WorkflowEvent::DragDrop(e) => e.metadata.timestamp,
             WorkflowEvent::Hotkey(e) => e.metadata.timestamp,
-            WorkflowEvent::UiPropertyChanged(e) => e.metadata.timestamp,
-            WorkflowEvent::UiFocusChanged(e) => e.metadata.timestamp,
             WorkflowEvent::TextInputCompleted(e) => e.metadata.timestamp,
             WorkflowEvent::ApplicationSwitch(e) => e.metadata.timestamp,
             WorkflowEvent::BrowserTabNavigation(e) => e.metadata.timestamp,
@@ -472,35 +464,6 @@ pub struct UiStructureChangedEvent {
     /// Additional details about the change
     #[serde(skip_serializing_if = "is_empty_string")]
     pub details: Option<String>,
-}
-
-/// Represents a UI Automation property change event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiPropertyChangedEvent {
-    /// The property that changed (as string for serialization)
-    pub property_name: String,
-
-    /// The old value (if available)
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub old_value: Option<String>,
-
-    /// The new value
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub new_value: Option<String>,
-
-    /// Event metadata (UI element, application, etc.)
-    pub metadata: EventMetadata,
-}
-
-/// Represents a UI Automation focus change event
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiFocusChangedEvent {
-    /// The previous element that had focus (if available)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_element: Option<UIElement>,
-
-    /// Event metadata (current focused UI element, application, etc.)
-    pub metadata: EventMetadata,
 }
 
 /// Method used to input text
@@ -926,45 +889,6 @@ impl From<&HotkeyEvent> for SerializableHotkeyEvent {
     }
 }
 
-/// Serializable version of UiPropertyChangedEvent for JSON export
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableUiPropertyChangedEvent {
-    pub property_name: String,
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub old_value: Option<String>,
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub new_value: Option<String>,
-    pub metadata: SerializableEventMetadata,
-}
-
-impl From<&UiPropertyChangedEvent> for SerializableUiPropertyChangedEvent {
-    fn from(event: &UiPropertyChangedEvent) -> Self {
-        Self {
-            property_name: event.property_name.clone(),
-            old_value: event.old_value.clone(),
-            new_value: event.new_value.clone(),
-            metadata: (&event.metadata).into(),
-        }
-    }
-}
-
-/// Serializable version of UiFocusChangedEvent for JSON export
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableUiFocusChangedEvent {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_element: Option<SerializableUIElement>,
-    pub metadata: SerializableEventMetadata,
-}
-
-impl From<&UiFocusChangedEvent> for SerializableUiFocusChangedEvent {
-    fn from(event: &UiFocusChangedEvent) -> Self {
-        Self {
-            previous_element: event.previous_element.as_ref().map(|elem| elem.into()),
-            metadata: (&event.metadata).into(),
-        }
-    }
-}
-
 /// Serializable version of TextInputCompletedEvent for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableTextInputCompletedEvent {
@@ -1073,8 +997,6 @@ pub enum SerializableWorkflowEvent {
     TextSelection(SerializableTextSelectionEvent),
     DragDrop(SerializableDragDropEvent),
     Hotkey(SerializableHotkeyEvent),
-    UiPropertyChanged(SerializableUiPropertyChangedEvent),
-    UiFocusChanged(SerializableUiFocusChangedEvent),
     TextInputCompleted(SerializableTextInputCompletedEvent),
     ApplicationSwitch(SerializableApplicationSwitchEvent),
     BrowserTabNavigation(SerializableBrowserTabNavigationEvent),
@@ -1089,10 +1011,6 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             WorkflowEvent::TextSelection(e) => SerializableWorkflowEvent::TextSelection(e.into()),
             WorkflowEvent::DragDrop(e) => SerializableWorkflowEvent::DragDrop(e.into()),
             WorkflowEvent::Hotkey(e) => SerializableWorkflowEvent::Hotkey(e.into()),
-            WorkflowEvent::UiPropertyChanged(e) => {
-                SerializableWorkflowEvent::UiPropertyChanged(e.into())
-            }
-            WorkflowEvent::UiFocusChanged(e) => SerializableWorkflowEvent::UiFocusChanged(e.into()),
             WorkflowEvent::TextInputCompleted(e) => {
                 SerializableWorkflowEvent::TextInputCompleted(e.into())
             }
