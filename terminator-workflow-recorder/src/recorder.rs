@@ -84,6 +84,22 @@ pub struct WorkflowRecorderConfig {
 
     /// Application/process names to ignore for UI events (case-insensitive)
     pub ignore_applications: HashSet<String>,
+
+    /// Whether to enable multithreading for COM initialization and event processing
+    /// On Windows: Controls COINIT_MULTITHREADED vs COINIT_APARTMENTTHREADED
+    /// On other platforms: Controls threading model for equivalent operations
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// let mut config = WorkflowRecorderConfig::default();
+    /// config.enable_multithreading = true;  // Use multithreaded COM (MTA)
+    /// config.enable_multithreading = false; // Use apartment threaded COM (STA) - default
+    /// ```
+    ///
+    /// Note: Apartment threaded (STA) mode may provide better system responsiveness
+    /// but multithreaded (MTA) mode may be required for some complex scenarios.
+    pub enable_multithreading: bool,
 }
 
 impl Default for WorkflowRecorderConfig {
@@ -314,6 +330,7 @@ impl Default for WorkflowRecorderConfig {
             ]
             .into_iter()
             .collect(),
+            enable_multithreading: false, // Default to false for better system responsiveness
         }
     }
 }

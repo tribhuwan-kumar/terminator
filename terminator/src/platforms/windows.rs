@@ -2698,7 +2698,7 @@ impl UIElementImpl for WindowsUIElement {
                     }
                     current_element_arc = Arc::new(parent_uia_element); // Move to the parent
                 }
-                Err(e) => {
+                Err(_) => {
                     break;
                 }
             }

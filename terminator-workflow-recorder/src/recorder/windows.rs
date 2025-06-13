@@ -17,14 +17,13 @@ use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use uiautomation::UIAutomation;
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize};
+use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::System::Com::{
+    CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED,
+};
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
-};
-use windows::Win32::{
-    Foundation::{LPARAM, WPARAM},
-    System::Com::COINIT_MULTITHREADED,
 };
 
 /// The Windows-specific recorder
@@ -1230,18 +1229,30 @@ impl WindowsRecorder {
         thread::spawn(move || {
             info!("Starting UI Automation event monitoring thread");
 
-            // CRITICAL: Initialize COM apartment as STA for UI Automation events
-            // This is required because UI Automation events need STA threading
+            // Initialize COM apartment for UI Automation events
+            // Threading model controlled by configuration
+            let threading_model = if config_clone.enable_multithreading {
+                COINIT_MULTITHREADED
+            } else {
+                COINIT_APARTMENTTHREADED
+            };
+
             let com_initialized = unsafe {
-                let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+                let hr = CoInitializeEx(None, threading_model);
                 if hr.is_ok() {
+                    let threading_name = if config_clone.enable_multithreading {
+                        "multithreaded (MTA)"
+                    } else {
+                        "apartment threaded (STA)"
+                    };
                     info!(
-                        "✅ Successfully initialized COM apartment as STA for UI Automation events"
+                        "✅ Successfully initialized COM apartment as {} for UI Automation events",
+                        threading_name
                     );
                     true
                 } else if hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE {
                     warn!("⚠️  COM apartment already initialized with different threading model");
-                    // This is expected if the main process already initialized COM as MTA
+                    // This is expected if the main process already initialized COM differently
                     false
                 } else {
                     error!(
@@ -1306,9 +1317,6 @@ impl WindowsRecorder {
 
             impl uiautomation::events::CustomFocusChangedEventHandler for FocusHandler {
                 fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
-                    // Ensure we're handling this on the correct thread
-                    let current_thread = unsafe { GetCurrentThreadId() };
-
                     // Extract basic data that's safe to send across threads
                     let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
 
@@ -1494,9 +1502,7 @@ impl WindowsRecorder {
                                     let role = element.role();
                                     (name, role)
                                 })) {
-                                    Ok((_, _)) => {
-                                        Some(element)
-                                    }
+                                    Ok((_, _)) => Some(element),
                                     Err(e) => {
                                         debug!("UI element converted but properties inaccessible: {:?}", e);
                                         // Return the element anyway since basic conversion worked
