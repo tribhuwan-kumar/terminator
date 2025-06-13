@@ -1,4 +1,5 @@
 use napi_derive::napi;
+use serde_json;
 use terminator::Locator as TerminatorLocator;
 
 use crate::map_error;
@@ -98,5 +99,10 @@ impl Locator {
         let sel: terminator::selector::Selector = selector.as_str().into();
         let loc = self.inner.clone().locator(sel);
         Ok(Locator::from(loc))
+    }
+
+    #[napi]
+    pub fn to_string(&self) -> String {
+        format!("Locator({})", self.inner.selector_string())
     }
 }

@@ -169,9 +169,8 @@ fn get_app_info(
     let process_name = format!("Process-{}", pid);
 
     // Get window/app title
-    let attributes = app.attributes();
-    let window_title = attributes
-        .name
+    let window_title = app
+        .name()
         .unwrap_or_else(|| format!("Unnamed-App-{}", index));
 
     Ok((pid, process_name, window_title))

@@ -1,6 +1,8 @@
 use napi::bindgen_prelude::FromNapiValue;
 use napi::{self};
 use napi_derive::napi;
+use serde::Serialize;
+use serde_json;
 use terminator::{
     UIElement as TerminatorUIElement, UIElementAttributes as TerminatorUIElementAttributes,
 };
@@ -384,6 +386,14 @@ impl Element {
     #[napi]
     pub fn process_id(&self) -> napi::Result<u32> {
         self.inner.process_id().map_err(map_error)
+    }
+
+    #[napi]
+    pub fn to_string(&self) -> napi::Result<String> {
+        let attrs = self.inner.attributes();
+        let json =
+            serde_json::to_string(&attrs).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        Ok(format!("Element<{}>", json))
     }
 
     /// Sets the transparency of the window.
