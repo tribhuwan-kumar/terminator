@@ -3238,10 +3238,6 @@ impl AccessibilityEngine for MacOSEngine {
 
     // ============== DEPRECATED METHODS ==============
 
-    #[deprecated(
-        since = "0.4.9",
-        note = "Use get_monitor_by_name() and capture_monitor_by_id() instead"
-    )]
     async fn capture_monitor_by_name(
         &self,
         name: &str,
@@ -3782,7 +3778,6 @@ impl AccessibilityEngine for MacOSEngine {
         Ok(result)
     }
 
-    #[deprecated(since = "0.4.9", note = "Use get_active_monitor() instead")]
     async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
         let monitor = self.get_active_monitor().await?;
         Ok(monitor.name)
