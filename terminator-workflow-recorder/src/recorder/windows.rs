@@ -27,13 +27,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
 };
 
-/// Simple mouse click tracking for synthesizing click events
+/// Track the last focused element for correlating with mouse clicks
 #[derive(Debug, Clone)]
-struct PendingMouseClick {
-    button: MouseButton,
-    down_position: Position,
-    down_time: Instant,
-    ui_element: Option<UIElement>,
+struct LastFocusedElement {
+    ui_element: UIElement,
+    focus_time: Instant,
 }
 
 /// The Windows-specific recorder
@@ -74,8 +72,8 @@ pub struct WindowsRecorder {
     /// Browser tab navigation tracking
     browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
 
-    /// Pending mouse clicks for click synthesis
-    pending_clicks: Arc<Mutex<Vec<PendingMouseClick>>>,
+    /// Last focused element for correlating with clicks
+    last_focused_element: Arc<Mutex<Option<LastFocusedElement>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -282,7 +280,7 @@ impl WindowsRecorder {
             current_typing_session: Arc::new(AtomicTypingSession::default()),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
-            pending_clicks: Arc::new(Mutex::new(Vec::new())),
+            last_focused_element: Arc::new(Mutex::new(None)),
         };
 
         // Set up comprehensive event listeners
@@ -292,9 +290,6 @@ impl WindowsRecorder {
         if recorder.config.record_text_input_completion {
             recorder.start_typing_completion_timer();
         }
-
-        // Start click synthesis timer
-        recorder.start_click_synthesis_timer();
 
         Ok(recorder)
     }
@@ -754,7 +749,7 @@ impl WindowsRecorder {
         let record_text_input_completion = self.config.record_text_input_completion;
         let text_input_timeout_ms = self.config.text_input_completion_timeout_ms;
         let current_typing_session = Arc::clone(&self.current_typing_session);
-        let pending_clicks = Arc::clone(&self.pending_clicks);
+        let last_focused_element = Arc::clone(&self.last_focused_element);
 
         thread::spawn(move || {
             // PERFORMANCE: Create UIAutomation instance once outside the event loop
@@ -963,16 +958,24 @@ impl WindowsRecorder {
                                 ui_element = Self::get_focused_ui_element_with_timeout(
                                     automation.as_ref().unwrap(),
                                 );
+
+                                // Debug: Log what UI element we captured at mouse down
+                                if let Some(ref element) = ui_element {
+                                    debug!(
+                                        "Mouse down captured element: name='{}', role='{}', position=({}, {})",
+                                        element.name_or_empty(),
+                                        element.role(),
+                                        x, y
+                                    );
+                                } else {
+                                    debug!(
+                                        "Mouse down: No UI element captured at position ({}, {})",
+                                        x, y
+                                    );
+                                }
                             }
 
-                            // Store pending click for synthesis
-                            let pending_click = PendingMouseClick {
-                                button: mouse_button,
-                                down_position: Position { x, y },
-                                down_time: Instant::now(),
-                                ui_element: ui_element.clone(),
-                            };
-                            pending_clicks.lock().unwrap().push(pending_click);
+                            // No need to store pending clicks - we'll use focus events
 
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Down,
@@ -1004,20 +1007,32 @@ impl WindowsRecorder {
                                 );
                             }
 
-                            // Check for matching pending click and synthesize click event
-                            let mut clicks = pending_clicks.lock().unwrap();
-                            if let Some(index) = clicks.iter().position(|click| {
-                                click.button == mouse_button
-                                    && click.down_time.elapsed() < Duration::from_millis(1000)
-                            }) {
-                                let down_event = clicks.remove(index);
-                                drop(clicks);
+                            // Synthesize click event using the last focused element from UI Automation
+                            if let Ok(last_focused) = last_focused_element.try_lock() {
+                                if let Some(ref focused) = *last_focused {
+                                    // Check if the focus happened recently (within 500ms of this click)
+                                    if focused.focus_time.elapsed() < Duration::from_millis(500) {
+                                        Self::try_emit_semantic_event(
+                                            &event_tx,
+                                            &focused.ui_element,
+                                            Position { x, y },
+                                        );
 
-                                Self::synthesize_click_event(
-                                    &event_tx,
-                                    &down_event,
-                                    Position { x, y },
-                                );
+                                        // Emit synthetic click with the focused element
+                                        let click_event = MouseEvent {
+                                            event_type: MouseEventType::Click,
+                                            button: mouse_button,
+                                            position: Position { x, y },
+                                            scroll_delta: None,
+                                            drag_start: None,
+                                            metadata: EventMetadata {
+                                                ui_element: Some(focused.ui_element.clone()),
+                                                timestamp: Some(Self::capture_timestamp()),
+                                            },
+                                        };
+                                        let _ = event_tx.send(WorkflowEvent::Mouse(click_event));
+                                    }
+                                }
                             }
 
                             let mouse_event = MouseEvent {
@@ -1262,6 +1277,7 @@ impl WindowsRecorder {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let ui_automation_thread_id = Arc::clone(&self.ui_automation_thread_id);
+        let last_focused_element = Arc::clone(&self.last_focused_element);
 
         // Clone filtering configuration
         let ignore_focus_patterns = self.config.ignore_focus_patterns.clone();
@@ -1420,13 +1436,26 @@ impl WindowsRecorder {
             let focus_event_tx_clone = focus_event_tx.clone();
             let focus_current_app = Arc::clone(&current_application);
             let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
+            let focus_last_focused = Arc::clone(&last_focused_element);
             let config_clone = config_clone.clone();
             let config_clone_clone = config_clone.clone();
-
             std::thread::spawn(move || {
-                let config_clone_clone = config_clone_clone.clone();
-
                 while let Ok((element_name, ui_element)) = focus_rx.recv() {
+                    // Update the last focused element for click correlation
+                    if let Some(ref element) = ui_element {
+                        if let Ok(mut last_focused) = focus_last_focused.try_lock() {
+                            *last_focused = Some(LastFocusedElement {
+                                ui_element: element.clone(),
+                                focus_time: Instant::now(),
+                            });
+                            debug!(
+                                "Updated last focused element: name='{}', role='{}'",
+                                element.name_or_empty(),
+                                element.role()
+                            );
+                        }
+                    }
+
                     // Apply filtering
                     if WindowsRecorder::should_ignore_focus_event(
                         // TODO double click it does not badly affect he app switch event
@@ -1798,61 +1827,25 @@ impl WindowsRecorder {
         Ok(())
     }
 
-    /// Start background timer to complete typing sessions on timeout
+    /// Start typing completion timer to handle session timeouts
     fn start_typing_completion_timer(&self) {
-        let current_typing_session = Arc::clone(&self.current_typing_session);
+        let current_session = Arc::clone(&self.current_typing_session);
         let event_tx = self.event_tx.clone();
-        let timeout_ms = self.config.text_input_completion_timeout_ms;
         let stop_indicator = Arc::clone(&self.stop_indicator);
+        let timeout_ms = self.config.text_input_completion_timeout_ms;
 
         thread::spawn(move || {
             while !stop_indicator.load(Ordering::SeqCst) {
-                // PERFORMANCE: Check every 1 second for timed-out sessions (was 500ms)
-                thread::sleep(Duration::from_millis(1000));
+                thread::sleep(Duration::from_millis(timeout_ms / 2)); // Check twice per timeout period
 
                 Self::check_and_complete_typing_session(
-                    &current_typing_session,
+                    &current_session,
                     &event_tx,
-                    false, // don't force complete, only if timeout expired
+                    false, // don't force, let timeout logic decide
                     timeout_ms,
                 );
             }
         });
-    }
-
-    /// Synthesize a click event from down+up events
-    fn synthesize_click_event(
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        down_event: &PendingMouseClick,
-        up_position: Position,
-    ) {
-        // Calculate distance moved
-        let distance = (((up_position.x - down_event.down_position.x).pow(2)
-            + (up_position.y - down_event.down_position.y).pow(2)) as f64)
-            .sqrt();
-
-        // Only synthesize click if mouse didn't move too much (within 10 pixels)
-        if distance <= 10.0 {
-            // Check if this looks like a semantic UI interaction
-            if let Some(ref ui_element) = down_event.ui_element {
-                Self::try_emit_semantic_event(event_tx, ui_element, up_position);
-            }
-
-            // Always emit the synthetic mouse click event
-            let click_event = MouseEvent {
-                event_type: MouseEventType::Click,
-                button: down_event.button,
-                position: up_position,
-                scroll_delta: None,
-                drag_start: None,
-                metadata: EventMetadata {
-                    ui_element: down_event.ui_element.clone(),
-                    timestamp: Some(Self::capture_timestamp()),
-                },
-            };
-
-            let _ = event_tx.send(WorkflowEvent::Mouse(click_event));
-        }
     }
 
     /// Try to emit semantic UI events based on element characteristics
@@ -1976,27 +1969,6 @@ impl WindowsRecorder {
         ButtonInteractionType::Click
     }
 
-    /// Start click synthesis timer to process pending clicks
-    fn start_click_synthesis_timer(&self) {
-        let pending_clicks = Arc::clone(&self.pending_clicks);
-        let _event_tx = self.event_tx.clone();
-        let stop_indicator = Arc::clone(&self.stop_indicator);
-
-        thread::spawn(move || {
-            while !stop_indicator.load(Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(100)); // Check every 100ms
-
-                let mut clicks = pending_clicks.lock().unwrap();
-                let now = Instant::now();
-
-                // Remove expired clicks (more than 1 second old)
-                clicks.retain(|click| {
-                    now.duration_since(click.down_time) < Duration::from_millis(1000)
-                });
-            }
-        });
-    }
-
     /// Improved browser navigation detection with better filtering
     fn should_emit_browser_navigation(
         ui_element: &Option<UIElement>,
@@ -2013,20 +1985,15 @@ impl WindowsRecorder {
             let element_role = element.role().to_lowercase();
             let element_name = element.name_or_empty().to_lowercase();
 
-            // Don't treat button clicks as navigation
-            if element_role.contains("button") && !element_name.contains("tab") {
+            // Don't treat dropdown/list interactions as navigation (main issue to fix)
+            if element_role.contains("listitem")
+                && (element_name.contains("break")
+                    || element_name.contains("ready")
+                    || element_name.contains("lunch"))
+            {
                 debug!(
-                    "Ignoring browser navigation for button click: {}",
-                    element_name
-                );
-                return false;
-            }
-
-            // Don't treat dropdown interactions as navigation
-            if element_role.contains("combobox") || element_role.contains("listbox") {
-                debug!(
-                    "Ignoring browser navigation for dropdown interaction: {}",
-                    element_name
+                    "Ignoring browser navigation for dropdown option: {} (role: {})",
+                    element_name, element_role
                 );
                 return false;
             }
@@ -2039,6 +2006,9 @@ impl WindowsRecorder {
                 );
                 return false;
             }
+
+            // Remove the overly restrictive filtering - let most browser events through
+            // Only block the specific dropdown items that were causing issues
         }
 
         // Only emit for meaningful URL changes
