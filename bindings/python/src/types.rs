@@ -7,6 +7,29 @@ use pyo3_stub_gen::derive::*;
 use serde::Serialize;
 use std::collections::HashMap;
 
+/// Monitor/display information.
+#[gen_stub_pyclass]
+#[pyclass(name = "Monitor")]
+#[derive(Serialize, Clone)]
+pub struct Monitor {
+    #[pyo3(get)]
+    pub id: String,
+    #[pyo3(get)]
+    pub name: String,
+    #[pyo3(get)]
+    pub is_primary: bool,
+    #[pyo3(get)]
+    pub width: u32,
+    #[pyo3(get)]
+    pub height: u32,
+    #[pyo3(get)]
+    pub x: i32,
+    #[pyo3(get)]
+    pub y: i32,
+    #[pyo3(get)]
+    pub scale_factor: f64,
+}
+
 /// Result of a screenshot operation.
 #[gen_stub_pyclass]
 #[pyclass(name = "ScreenshotResult")]
@@ -18,6 +41,8 @@ pub struct ScreenshotResult {
     pub height: u32,
     #[pyo3(get)]
     pub image_data: Vec<u8>,
+    #[pyo3(get)]
+    pub monitor: Option<Monitor>,
 }
 
 /// Result of a click operation.
@@ -188,12 +213,28 @@ pub struct TreeBuildConfig {
     pub batch_size: Option<usize>,
 }
 
+impl From<::terminator_core::Monitor> for Monitor {
+    fn from(m: ::terminator_core::Monitor) -> Self {
+        Monitor {
+            id: m.id,
+            name: m.name,
+            is_primary: m.is_primary,
+            width: m.width,
+            height: m.height,
+            x: m.x,
+            y: m.y,
+            scale_factor: m.scale_factor,
+        }
+    }
+}
+
 impl From<CoreScreenshotResult> for ScreenshotResult {
     fn from(r: CoreScreenshotResult) -> Self {
         ScreenshotResult {
             width: r.width,
             height: r.height,
             image_data: r.image_data,
+            monitor: r.monitor.map(Monitor::from),
         }
     }
 }
@@ -387,6 +428,19 @@ impl UINode {
 #[gen_stub_pymethods]
 #[pymethods]
 impl PropertyLoadingMode {
+    fn __repr__(&self) -> PyResult<String> {
+        serde_json::to_string(self)
+            .map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()))
+    }
+    fn __str__(&self) -> PyResult<String> {
+        serde_json::to_string_pretty(self)
+            .map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()))
+    }
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl Monitor {
     fn __repr__(&self) -> PyResult<String> {
         serde_json::to_string(self)
             .map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()))

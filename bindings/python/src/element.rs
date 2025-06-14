@@ -480,6 +480,7 @@ impl UIElement {
                 image_data: result.image_data,
                 width: result.width,
                 height: result.height,
+                monitor: result.monitor.map(crate::types::Monitor::from),
             })
             .map_err(automation_error_to_pyerr)
     }

@@ -22,6 +22,7 @@ fn terminator(_py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<UIElement>()?;
     m.add_class::<Locator>()?;
     m.add_class::<ScreenshotResult>()?;
+    m.add_class::<Monitor>()?;
     m.add_class::<ClickResult>()?;
     m.add_class::<CommandOutput>()?;
     m.add_class::<UIElementAttributes>()?;

@@ -31,10 +31,29 @@ pub struct CommandOutput {
 }
 
 #[napi(object)]
+pub struct Monitor {
+    pub id: String,
+    pub name: String,
+    pub is_primary: bool,
+    pub width: u32,
+    pub height: u32,
+    pub x: i32,
+    pub y: i32,
+    pub scale_factor: f64,
+}
+
+#[napi(object)]
+pub struct MonitorScreenshotPair {
+    pub monitor: Monitor,
+    pub screenshot: ScreenshotResult,
+}
+
+#[napi(object)]
 pub struct ScreenshotResult {
     pub width: u32,
     pub height: u32,
     pub image_data: Vec<u8>,
+    pub monitor: Option<Monitor>,
 }
 
 #[napi(object, js_name = "UIElementAttributes")]
@@ -120,6 +139,21 @@ impl From<terminator::ClickResult> for ClickResult {
             method: r.method,
             coordinates: r.coordinates.map(Coordinates::from),
             details: r.details,
+        }
+    }
+}
+
+impl From<terminator::Monitor> for Monitor {
+    fn from(m: terminator::Monitor) -> Self {
+        Monitor {
+            id: m.id,
+            name: m.name,
+            is_primary: m.is_primary,
+            width: m.width,
+            height: m.height,
+            x: m.x,
+            y: m.y,
+            scale_factor: m.scale_factor,
         }
     }
 }

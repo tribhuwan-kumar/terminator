@@ -133,4 +133,8 @@ impl Locator {
             root: self.root.clone(),              // Inherit root
         }
     }
+
+    pub fn selector_string(&self) -> String {
+        format!("{:?}", self.selector)
+    }
 }

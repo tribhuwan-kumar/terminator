@@ -99,4 +99,9 @@ impl Locator {
         let loc = self.inner.clone().locator(sel);
         Ok(Locator::from(loc))
     }
+
+    #[napi]
+    pub fn to_string(&self) -> String {
+        format!("Locator({})", self.inner.selector_string())
+    }
 }

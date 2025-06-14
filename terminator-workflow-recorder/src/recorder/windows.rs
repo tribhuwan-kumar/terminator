@@ -1,3 +1,4 @@
+use crate::events::{ButtonClickEvent, ButtonInteractionType, DropdownEvent, LinkClickEvent};
 use crate::{
     ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
     ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent,
@@ -25,6 +26,15 @@ use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
 };
+
+/// Simple mouse click tracking for synthesizing click events
+#[derive(Debug, Clone)]
+struct PendingMouseClick {
+    button: MouseButton,
+    down_position: Position,
+    down_time: Instant,
+    ui_element: Option<UIElement>,
+}
 
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
@@ -63,6 +73,9 @@ pub struct WindowsRecorder {
 
     /// Browser tab navigation tracking
     browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
+
+    /// Pending mouse clicks for click synthesis
+    pending_clicks: Arc<Mutex<Vec<PendingMouseClick>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -269,6 +282,7 @@ impl WindowsRecorder {
             current_typing_session: Arc::new(AtomicTypingSession::default()),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
+            pending_clicks: Arc::new(Mutex::new(Vec::new())),
         };
 
         // Set up comprehensive event listeners
@@ -278,6 +292,9 @@ impl WindowsRecorder {
         if recorder.config.record_text_input_completion {
             recorder.start_typing_completion_timer();
         }
+
+        // Start click synthesis timer
+        recorder.start_click_synthesis_timer();
 
         Ok(recorder)
     }
@@ -420,7 +437,7 @@ impl WindowsRecorder {
         }
     }
 
-    /// Check and emit browser navigation events with optional URL override
+    /// Check and emit browser navigation events with improved filtering
     fn check_and_emit_browser_navigation_with_url(
         tracker: &Arc<Mutex<BrowserTabTracker>>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
@@ -465,7 +482,12 @@ impl WindowsRecorder {
                     detected_url = Some(element_name.clone());
                 }
 
-                let has_meaningful_data = detected_url.is_some() || detected_title.is_some();
+                // Apply improved filtering
+                if !Self::should_emit_browser_navigation(ui_element, &detected_url, &detected_title)
+                {
+                    debug!("Filtering out browser navigation event - not a real navigation");
+                    return;
+                }
 
                 let mut tracker_guard = tracker.lock().unwrap();
 
@@ -483,8 +505,7 @@ impl WindowsRecorder {
                 // 1. This is the first detection of a browser
                 // 2. There's a URL change
                 // 3. There's a title change (new page)
-                if has_meaningful_data && (is_first_detection || has_url_change || has_title_change)
-                {
+                if is_first_detection || has_url_change || has_title_change {
                     // Calculate time spent on previous page
                     let page_dwell_time_ms = tracker_guard
                         .last_navigation_time
@@ -529,9 +550,7 @@ impl WindowsRecorder {
                         debug!("Failed to send browser navigation event: {}", e);
                     }
                 } else {
-                    debug!(
-                        "Skipping browser navigation event - no meaningful data or change detected"
-                    );
+                    debug!("Skipping browser navigation event - no meaningful change detected");
                 }
             }
         }
@@ -735,6 +754,7 @@ impl WindowsRecorder {
         let record_text_input_completion = self.config.record_text_input_completion;
         let text_input_timeout_ms = self.config.text_input_completion_timeout_ms;
         let current_typing_session = Arc::clone(&self.current_typing_session);
+        let pending_clicks = Arc::clone(&self.pending_clicks);
 
         thread::spawn(move || {
             // PERFORMANCE: Create UIAutomation instance once outside the event loop
@@ -945,6 +965,15 @@ impl WindowsRecorder {
                                 );
                             }
 
+                            // Store pending click for synthesis
+                            let pending_click = PendingMouseClick {
+                                button: mouse_button,
+                                down_position: Position { x, y },
+                                down_time: Instant::now(),
+                                ui_element: ui_element.clone(),
+                            };
+                            pending_clicks.lock().unwrap().push(pending_click);
+
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Down,
                                 button: mouse_button,
@@ -972,6 +1001,22 @@ impl WindowsRecorder {
                             if capture_ui_elements {
                                 ui_element = Self::get_focused_ui_element_with_timeout(
                                     automation.as_ref().unwrap(),
+                                );
+                            }
+
+                            // Check for matching pending click and synthesize click event
+                            let mut clicks = pending_clicks.lock().unwrap();
+                            if let Some(index) = clicks.iter().position(|click| {
+                                click.button == mouse_button
+                                    && click.down_time.elapsed() < Duration::from_millis(1000)
+                            }) {
+                                let down_event = clicks.remove(index);
+                                drop(clicks);
+
+                                Self::synthesize_click_event(
+                                    &event_tx,
+                                    &down_event,
+                                    Position { x, y },
                                 );
                             }
 
@@ -1773,6 +1818,238 @@ impl WindowsRecorder {
                 );
             }
         });
+    }
+
+    /// Synthesize a click event from down+up events
+    fn synthesize_click_event(
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        down_event: &PendingMouseClick,
+        up_position: Position,
+    ) {
+        // Calculate distance moved
+        let distance = (((up_position.x - down_event.down_position.x).pow(2)
+            + (up_position.y - down_event.down_position.y).pow(2)) as f64)
+            .sqrt();
+
+        // Only synthesize click if mouse didn't move too much (within 10 pixels)
+        if distance <= 10.0 {
+            // Check if this looks like a semantic UI interaction
+            if let Some(ref ui_element) = down_event.ui_element {
+                Self::try_emit_semantic_event(event_tx, ui_element, up_position);
+            }
+
+            // Always emit the synthetic mouse click event
+            let click_event = MouseEvent {
+                event_type: MouseEventType::Click,
+                button: down_event.button,
+                position: up_position,
+                scroll_delta: None,
+                drag_start: None,
+                metadata: EventMetadata {
+                    ui_element: down_event.ui_element.clone(),
+                    timestamp: Some(Self::capture_timestamp()),
+                },
+            };
+
+            let _ = event_tx.send(WorkflowEvent::Mouse(click_event));
+        }
+    }
+
+    /// Try to emit semantic UI events based on element characteristics
+    fn try_emit_semantic_event(
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        ui_element: &UIElement,
+        click_position: Position,
+    ) {
+        let element_role = ui_element.role().to_lowercase();
+        let element_name = ui_element.name_or_empty();
+        let element_desc = ui_element.attributes().description.unwrap_or_default();
+
+        // Button detection
+        if element_role.contains("button") || element_role.contains("menuitem") {
+            let interaction_type = Self::determine_button_interaction_type(
+                &element_name,
+                &element_desc,
+                &element_role,
+            );
+
+            let button_event = ButtonClickEvent {
+                button_text: element_name.clone(),
+                interaction_type,
+                button_role: element_role.clone(),
+                was_enabled: true, // TODO: Actually check if element is enabled
+                click_position,
+                button_description: if element_desc.is_empty() {
+                    None
+                } else {
+                    Some(element_desc.clone())
+                },
+                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
+            };
+
+            let _ = event_tx.send(WorkflowEvent::ButtonClick(button_event));
+            return;
+        }
+
+        // Dropdown/Combobox detection
+        if element_role.contains("combobox")
+            || element_role.contains("listbox")
+            || element_role.contains("dropdown")
+            || element_name.to_lowercase().contains("dropdown")
+        {
+            let dropdown_event = DropdownEvent {
+                dropdown_name: element_name.clone(),
+                is_opened: true,               // Assume clicking opens dropdown
+                selected_value: None,          // Would need more complex logic to detect selection
+                available_options: Vec::new(), // Would need to scan child elements
+                click_position,
+                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
+            };
+
+            let _ = event_tx.send(WorkflowEvent::DropdownInteraction(dropdown_event));
+            return;
+        }
+
+        // Link detection
+        if element_role.contains("link") || element_role.contains("hyperlink") {
+            let link_event = LinkClickEvent {
+                link_text: element_name.clone(),
+                url: None,            // Would need to extract href attribute
+                opens_new_tab: false, // Would need to check target attribute
+                click_position,
+                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
+            };
+
+            let _ = event_tx.send(WorkflowEvent::LinkClick(link_event));
+        }
+    }
+
+    /// Determine the type of button interaction based on element characteristics
+    fn determine_button_interaction_type(
+        name: &str,
+        description: &str,
+        role: &str,
+    ) -> ButtonInteractionType {
+        let name_lower = name.to_lowercase();
+        let desc_lower = description.to_lowercase();
+        let role_lower = role.to_lowercase();
+
+        // Check for dropdown indicators
+        if name_lower.contains("dropdown")
+            || name_lower.contains("▼")
+            || name_lower.contains("⏷")
+            || desc_lower.contains("dropdown")
+            || desc_lower.contains("expand")
+            || desc_lower.contains("collapse")
+        {
+            return ButtonInteractionType::DropdownToggle;
+        }
+
+        // Check for submit buttons
+        if name_lower.contains("submit")
+            || name_lower.contains("save")
+            || name_lower.contains("ok")
+            || name_lower.contains("apply")
+            || name_lower.contains("confirm")
+        {
+            return ButtonInteractionType::Submit;
+        }
+
+        // Check for cancel buttons
+        if name_lower.contains("cancel")
+            || name_lower.contains("close")
+            || name_lower.contains("×")
+            || name_lower.contains("dismiss")
+        {
+            return ButtonInteractionType::Cancel;
+        }
+
+        // Check for toggle buttons
+        if role_lower.contains("toggle")
+            || name_lower.contains("toggle")
+            || desc_lower.contains("toggle")
+        {
+            return ButtonInteractionType::Toggle;
+        }
+
+        // Default to simple click
+        ButtonInteractionType::Click
+    }
+
+    /// Start click synthesis timer to process pending clicks
+    fn start_click_synthesis_timer(&self) {
+        let pending_clicks = Arc::clone(&self.pending_clicks);
+        let _event_tx = self.event_tx.clone();
+        let stop_indicator = Arc::clone(&self.stop_indicator);
+
+        thread::spawn(move || {
+            while !stop_indicator.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(100)); // Check every 100ms
+
+                let mut clicks = pending_clicks.lock().unwrap();
+                let now = Instant::now();
+
+                // Remove expired clicks (more than 1 second old)
+                clicks.retain(|click| {
+                    now.duration_since(click.down_time) < Duration::from_millis(1000)
+                });
+            }
+        });
+    }
+
+    /// Improved browser navigation detection with better filtering
+    fn should_emit_browser_navigation(
+        ui_element: &Option<UIElement>,
+        detected_url: &Option<String>,
+        detected_title: &Option<String>,
+    ) -> bool {
+        // Only emit if we have meaningful navigation data
+        if detected_url.is_none() && detected_title.is_none() {
+            return false;
+        }
+
+        // Check if this is actually a page navigation vs UI interaction
+        if let Some(ref element) = ui_element {
+            let element_role = element.role().to_lowercase();
+            let element_name = element.name_or_empty().to_lowercase();
+
+            // Don't treat button clicks as navigation
+            if element_role.contains("button") && !element_name.contains("tab") {
+                debug!(
+                    "Ignoring browser navigation for button click: {}",
+                    element_name
+                );
+                return false;
+            }
+
+            // Don't treat dropdown interactions as navigation
+            if element_role.contains("combobox") || element_role.contains("listbox") {
+                debug!(
+                    "Ignoring browser navigation for dropdown interaction: {}",
+                    element_name
+                );
+                return false;
+            }
+
+            // Don't treat form controls as navigation
+            if element_role.contains("textbox") || element_role.contains("edit") {
+                debug!(
+                    "Ignoring browser navigation for form control: {}",
+                    element_name
+                );
+                return false;
+            }
+        }
+
+        // Only emit for meaningful URL changes
+        if let Some(ref url) = detected_url {
+            // Filter out non-URLs that might have been falsely detected
+            if !url.starts_with("http") || url.len() < 10 {
+                return false;
+            }
+        }
+
+        true
     }
 }
 

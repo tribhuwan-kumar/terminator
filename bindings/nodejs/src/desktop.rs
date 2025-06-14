@@ -2,6 +2,7 @@ use napi_derive::napi;
 use std::sync::Once;
 use terminator::Desktop as TerminatorDesktop;
 
+use crate::types::{Monitor, MonitorScreenshotPair};
 use crate::{
     map_error, CommandOutput, Element, Locator, ScreenshotResult, TreeBuildConfig, UINode,
 };
@@ -104,6 +105,7 @@ impl Desktop {
                 width: r.width,
                 height: r.height,
                 image_data: r.image_data,
+                monitor: r.monitor.map(crate::types::Monitor::from),
             })
             .map_err(map_error)
     }
@@ -154,6 +156,7 @@ impl Desktop {
                 width: r.width,
                 height: r.height,
                 image_data: r.image_data,
+                monitor: r.monitor.map(crate::types::Monitor::from),
             })
             .map_err(map_error)
     }
@@ -180,6 +183,16 @@ impl Desktop {
             image_data: screenshot.image_data,
             width: screenshot.width,
             height: screenshot.height,
+            monitor: screenshot.monitor.map(|m| terminator::Monitor {
+                id: m.id,
+                name: m.name,
+                is_primary: m.is_primary,
+                width: m.width,
+                height: m.height,
+                x: m.x,
+                y: m.y,
+                scale_factor: m.scale_factor,
+            }),
         };
         self.inner
             .ocr_screenshot(&rust_screenshot)
@@ -292,6 +305,123 @@ impl Desktop {
         self.inner
             .get_window_tree(pid, title.as_deref(), rust_config)
             .map(UINode::from)
+            .map_err(map_error)
+    }
+
+    // ============== NEW MONITOR METHODS ==============
+
+    /// (async) List all available monitors/displays.
+    ///
+    /// @returns {Promise<Array<Monitor>>} List of monitor information.
+    #[napi]
+    pub async fn list_monitors(&self) -> napi::Result<Vec<Monitor>> {
+        self.inner
+            .list_monitors()
+            .await
+            .map(|monitors| monitors.into_iter().map(Monitor::from).collect())
+            .map_err(map_error)
+    }
+
+    /// (async) Get the primary monitor.
+    ///
+    /// @returns {Promise<Monitor>} Primary monitor information.
+    #[napi]
+    pub async fn get_primary_monitor(&self) -> napi::Result<Monitor> {
+        self.inner
+            .get_primary_monitor()
+            .await
+            .map(Monitor::from)
+            .map_err(map_error)
+    }
+
+    /// (async) Get the monitor containing the currently focused window.
+    ///
+    /// @returns {Promise<Monitor>} Active monitor information.
+    #[napi]
+    pub async fn get_active_monitor(&self) -> napi::Result<Monitor> {
+        self.inner
+            .get_active_monitor()
+            .await
+            .map(Monitor::from)
+            .map_err(map_error)
+    }
+
+    /// (async) Get a monitor by its ID.
+    ///
+    /// @param {string} id - The monitor ID to find.
+    /// @returns {Promise<Monitor>} Monitor information.
+    #[napi]
+    pub async fn get_monitor_by_id(&self, id: String) -> napi::Result<Monitor> {
+        self.inner
+            .get_monitor_by_id(&id)
+            .await
+            .map(Monitor::from)
+            .map_err(map_error)
+    }
+
+    /// (async) Get a monitor by its name.
+    ///
+    /// @param {string} name - The monitor name to find.
+    /// @returns {Promise<Monitor>} Monitor information.
+    #[napi]
+    pub async fn get_monitor_by_name(&self, name: String) -> napi::Result<Monitor> {
+        self.inner
+            .get_monitor_by_name(&name)
+            .await
+            .map(Monitor::from)
+            .map_err(map_error)
+    }
+
+    /// (async) Capture a screenshot of a specific monitor.
+    ///
+    /// @param {Monitor} monitor - The monitor to capture.
+    /// @returns {Promise<ScreenshotResult>} The screenshot data.
+    #[napi]
+    pub async fn capture_monitor(&self, monitor: Monitor) -> napi::Result<ScreenshotResult> {
+        let rust_monitor = terminator::Monitor {
+            id: monitor.id,
+            name: monitor.name,
+            is_primary: monitor.is_primary,
+            width: monitor.width,
+            height: monitor.height,
+            x: monitor.x,
+            y: monitor.y,
+            scale_factor: monitor.scale_factor,
+        };
+        self.inner
+            .capture_monitor(&rust_monitor)
+            .await
+            .map(|r| ScreenshotResult {
+                width: r.width,
+                height: r.height,
+                image_data: r.image_data,
+                monitor: r.monitor.map(Monitor::from),
+            })
+            .map_err(map_error)
+    }
+
+    /// (async) Capture screenshots of all monitors.
+    ///
+    /// @returns {Promise<Array<{monitor: Monitor, screenshot: ScreenshotResult}>>} Array of monitor and screenshot pairs.
+    #[napi]
+    pub async fn capture_all_monitors(&self) -> napi::Result<Vec<MonitorScreenshotPair>> {
+        self.inner
+            .capture_all_monitors()
+            .await
+            .map(|results| {
+                results
+                    .into_iter()
+                    .map(|(monitor, screenshot)| MonitorScreenshotPair {
+                        monitor: Monitor::from(monitor),
+                        screenshot: ScreenshotResult {
+                            width: screenshot.width,
+                            height: screenshot.height,
+                            image_data: screenshot.image_data,
+                            monitor: screenshot.monitor.map(Monitor::from),
+                        },
+                    })
+                    .collect()
+            })
             .map_err(map_error)
     }
 }
