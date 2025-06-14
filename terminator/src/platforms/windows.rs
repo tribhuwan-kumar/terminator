@@ -14,10 +14,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tracing::debug;
-use tracing::error;
-use tracing::info;
-use tracing::warn;
+use tracing::{warn, debug, error, info};
 use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
@@ -27,34 +24,37 @@ use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
 
-// Windows API imports
-use windows::core::Error;
-use windows::core::HRESULT;
-use windows::core::HSTRING;
-use windows::core::PWSTR;
-
-use windows::Win32::Foundation::CloseHandle;
-use windows::Win32::Foundation::HANDLE;
-
-use windows::Win32::System::Com::CLSCTX_ALL;
-use windows::Win32::System::Com::COINIT_MULTITHREADED;
-use windows::Win32::System::Com::CoCreateInstance;
-use windows::Win32::System::Com::CoInitializeEx;
-
-use windows::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
-use windows::Win32::System::Diagnostics::ToolHelp::PROCESSENTRY32W;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32FirstW;
-use windows::Win32::System::Diagnostics::ToolHelp::Process32NextW;
-use windows::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
-
-use windows::Win32::System::Threading::CREATE_NEW_CONSOLE;
-use windows::Win32::System::Threading::CreateProcessW;
-use windows::Win32::System::Threading::PROCESS_INFORMATION;
-use windows::Win32::System::Threading::STARTUPINFOW;
-
-use windows::Win32::UI::Shell::ACTIVATEOPTIONS;
-use windows::Win32::UI::Shell::ApplicationActivationManager;
-use windows::Win32::UI::Shell::IApplicationActivationManager;
+// windows imports
+use windows::Win32::System::Threading::GetProcessId;
+use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
+use windows::Win32::System::Registry::HKEY;
+use windows::Win32::Foundation::{
+    CloseHandle, HANDLE, HWND, HINSTANCE, 
+};
+use windows::Win32::System::Com::{CLSCTX_ALL,
+    COINIT_MULTITHREADED,
+    CoCreateInstance,
+    CoInitializeEx,
+};
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot,
+    PROCESSENTRY32W, 
+    Process32FirstW,
+    Process32NextW,
+    TH32CS_SNAPPROCESS
+};
+use windows::Win32::UI::{
+    WindowsAndMessaging::SW_SHOWNORMAL,
+    Shell::{
+    ACTIVATEOPTIONS,
+    ApplicationActivationManager,
+    IApplicationActivationManager,
+    ShellExecuteExW,
+    SHELLEXECUTEINFOW,
+    SEE_MASK_NOASYNC,
+    SEE_MASK_NOCLOSEPROCESS
+    }
+};
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -1113,12 +1113,9 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
-        // Check if this is a UWP app by looking for the 'uwp:' prefix
-        if let Some(uwp_app_name) = app_name.strip_prefix("uwp:") {
-            launch_uwp_app(self, uwp_app_name)
-        } else {
-            launch_regular_application(self, app_name)
-        }
+            let app_info = get_app_info_from_startapps(app_name)?;
+            let (app_id, display_name) = app_info;
+            launch_app(self, &app_id, &display_name)
     }
 
     fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
@@ -3040,86 +3037,11 @@ impl From<windows::core::Error> for AutomationError {
     }
 }
 
-// Launches a UWP application and returns its UIElement
-fn launch_uwp_app(
-    engine: &WindowsEngine,
-    uwp_app_name: &str,
-) -> Result<UIElement, AutomationError> {
-    // First try to get app info using Get-StartApps
-    let (app_user_model_id, display_name) = match get_uwp_app_info_from_startapps(uwp_app_name) {
-        Ok(info) => info,
-        Err(_) => {
-            // Fallback to AppX package approach
-            debug!("Failed to find app in Get-StartApps, falling back to AppX package search");
-            let package = get_uwp_package_info(uwp_app_name)?;
-
-            // Get package full name and family name
-            let (package_full_name, package_family_name) = get_package_info(&package)?;
-
-            // Get the app ID and display name
-            let (app_id, display_name) = get_uwp_info(&package_full_name)?;
-
-            // Construct the app user model ID
-            let app_user_model_id = format!("{}!{}", package_family_name.trim(), app_id.trim());
-            (app_user_model_id, display_name)
-        }
-    };
-
-    // Launch the UWP app using Windows API
-    let pid = unsafe {
-        // Initialize COM with proper error handling
-        let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
-        if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
-            // Only return error if it's not the "already initialized" case
-            return Err(AutomationError::PlatformError(format!(
-                "Failed to initialize COM: {}",
-                hr
-            )));
-        }
-        // If we get here, either initialization succeeded or it was already initialized
-        if hr == HRESULT(0x80010106u32 as i32) {
-            debug!("COM already initialized in this thread");
-        }
-
-        // Create the ApplicationActivationManager COM object
-        let manager: IApplicationActivationManager =
-            CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_ALL).map_err(|e| {
-                AutomationError::PlatformError(format!(
-                    "Failed to create ApplicationActivationManager: {}",
-                    e
-                ))
-            })?;
-
-        // Set options (e.g., NoSplashScreen)
-        let options = ACTIVATEOPTIONS(ActivateOptions::None as i32);
-
-        manager
-            .ActivateApplication(
-                &HSTRING::from(&app_user_model_id),
-                &HSTRING::from(""), // no arguments
-                options,
-            )
-            .map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to launch UWP app: {}", e))
-            })?
-    };
-
-    if pid > 0 {
-        get_application_pid(engine, pid as i32, &display_name)
-    } else {
-        Err(Error::new(
-            HRESULT(0x80004005u32 as i32),
-            "Failed to launch the application",
-        )
-        .into())
-    }
-}
-
-// Gets UWP app information using Get-StartApps
-fn get_uwp_app_info_from_startapps(
-    uwp_app_name: &str,
+// Get apps information using Get-StartApps
+pub fn get_app_info_from_startapps(
+    app_name: &str,
 ) -> Result<(String, String), AutomationError> {
-    let command = r#"Get-StartApps | Where-Object { $_.AppID -match '^[\w\.]+_[\w]+![\w\.]+$' } | Select-Object Name, AppID | ConvertTo-Json"#.to_string();
+    let command = r#"Get-StartApps | Select-Object Name, AppID | ConvertTo-Json"#.to_string();
 
     let output = std::process::Command::new("powershell")
         .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
@@ -3136,11 +3058,17 @@ fn get_uwp_app_info_from_startapps(
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let apps: Vec<Value> = serde_json::from_str(&output_str).map_err(|e| {
-        AutomationError::PlatformError(format!("Failed to parse UWP apps list: {}", e))
+        AutomationError::PlatformError(format!("Failed to parse apps list: {}", e))
     })?;
 
+    // two parts
+    let search_terms: Vec<String> = app_name
+        .to_lowercase()
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+
     // Search for matching app by name or AppID
-    let search_term = uwp_app_name.to_lowercase();
     let matching_app = apps.iter().find(|app| {
         let name = app
             .get("Name")
@@ -3152,7 +3080,9 @@ fn get_uwp_app_info_from_startapps(
             .and_then(|id| id.as_str())
             .unwrap_or("")
             .to_lowercase();
-        name.contains(&search_term) || app_id.contains(&search_term)
+
+        // make sure both parts exists
+        search_terms.iter().all(|term| name.contains(term) || app_id.contains(term))
     });
 
     match matching_app {
@@ -3166,134 +3096,10 @@ fn get_uwp_app_info_from_startapps(
             Ok((app_id.to_string(), display_name.to_string()))
         }
         None => Err(AutomationError::PlatformError(format!(
-            "No UWP app found matching '{}' in Get-StartApps list",
-            uwp_app_name
+            "No app found matching '{}' in Get-StartApps list",
+            app_name
         ))),
     }
-}
-
-// Gets UWP package information by name
-fn get_uwp_package_info(uwp_app_name: &str) -> Result<Value, AutomationError> {
-    let command = format!(
-        r#"Get-AppxPackage | Where-Object {{ -not $_.IsFramework }} | Where-Object {{ $_.Name -like "*{}*" }} | ConvertTo-Json -Depth 1"#,
-        uwp_app_name
-    );
-
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
-        .output()
-        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-
-    if !output.status.success() {
-        let error_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(AutomationError::PlatformError(format!(
-            "Failed to find UWP package: {}",
-            error_msg
-        )));
-    }
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let json_str = output_str.trim();
-    if json_str.is_empty() {
-        return Err(AutomationError::PlatformError(format!(
-            "No UWP package found matching '{}'. The package may not be installed or the name is incorrect.",
-            uwp_app_name
-        )));
-    }
-
-    let packages: Value = serde_json::from_str(json_str).map_err(|e| {
-        AutomationError::PlatformError(format!("Failed to parse package info: {}", e))
-    })?;
-
-    match packages {
-        Value::Array(arr) => {
-            if arr.is_empty() {
-                return Err(AutomationError::PlatformError(format!(
-                    "No UWP package found matching '{}'. The package may not be installed or the name is incorrect.",
-                    uwp_app_name
-                )));
-            }
-            if arr.len() > 1 {
-                let package_names = arr
-                    .iter()
-                    .map(|p| p.get("Name").unwrap_or(&Value::Null).to_string())
-                    .collect::<Vec<String>>()
-                    .join("\n    • ");
-
-                return Err(AutomationError::PlatformError(format!(
-                    "Multiple UWP packages found matching '{}'.\nPlease be more specific. Found:\n    • {}",
-                    uwp_app_name, package_names
-                )));
-            }
-            Ok(arr[0].clone())
-        }
-        Value::Object(obj) => Ok(Value::Object(obj)),
-        Value::Null => Err(AutomationError::PlatformError(format!(
-            "No UWP package found matching '{}'. The package may not be installed or the name is incorrect.",
-            uwp_app_name
-        ))),
-        _ => Err(AutomationError::PlatformError(
-            "Invalid package info format".to_string(),
-        )),
-    }
-}
-
-// Gets the application ID for a UWP package
-fn get_uwp_info(package_full_name: &str) -> Result<(String, String), AutomationError> {
-    let command = format!(
-        r#"$manifest = Get-AppxPackageManifest -Package "{}"
-$manifest.Package.Applications.Application.Id
-$manifest.Package.Properties.DisplayName"#,
-        package_full_name
-    );
-
-    let output = std::process::Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "hidden", "-Command", &command])
-        .output()
-        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-
-    if !output.status.success() {
-        let error_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(AutomationError::PlatformError(format!(
-            "Failed to get UWP app info: {}",
-            error_msg
-        )));
-    }
-
-    let output_str = String::from_utf8_lossy(&output.stdout);
-    let mut lines = output_str.lines();
-
-    let app_id = lines.next().ok_or_else(|| {
-        AutomationError::PlatformError("Failed to get application ID".to_string())
-    })?;
-
-    let display_name = lines
-        .next()
-        .ok_or_else(|| AutomationError::PlatformError("Failed to get display name".to_string()))?;
-
-    Ok((app_id.to_string(), display_name.to_string()))
-}
-
-// Gets package information from a UWP package value
-fn get_package_info(package: &Value) -> Result<(String, String), AutomationError> {
-    let package_full_name = package
-        .get("PackageFullName")
-        .and_then(|n| n.as_str())
-        .ok_or_else(|| {
-            AutomationError::PlatformError("Failed to get package full name".to_string())
-        })?;
-
-    let package_family_name = package
-        .get("PackageFamilyName")
-        .and_then(|n| n.as_str())
-        .ok_or_else(|| {
-            AutomationError::PlatformError("Failed to get package family name".to_string())
-        })?;
-
-    Ok((
-        package_full_name.to_string(),
-        package_family_name.to_string(),
-    ))
 }
 
 // Helper function to get application by PID with fallback to child process and name
@@ -3403,59 +3209,100 @@ fn get_application_pid(
     }
 }
 
-// Launches a regular (non-UWP) Windows application
-fn launch_regular_application(
+// launches any windows application returns its UIElement
+fn launch_app(
     engine: &WindowsEngine,
-    app_name: &str,
+    app_id: &str,
+    display_name: &str,
 ) -> Result<UIElement, AutomationError> {
-    unsafe {
-        // Convert app_name to wide string
-        let mut app_name_wide: Vec<u16> =
-            app_name.encode_utf16().chain(std::iter::once(0)).collect();
-
-        // Prepare process startup info
-        let startup_info = STARTUPINFOW {
-            cb: std::mem::size_of::<STARTUPINFOW>() as u32,
-            ..Default::default()
-        };
-
-        // Prepare process info
-        let mut process_info = PROCESS_INFORMATION::default();
-
-        // Create the process
-        let result = CreateProcessW(
-            None, // Application name (null means use command line)
-            Some(PWSTR::from_raw(app_name_wide.as_mut_ptr())), // Command line
-            None, // Process security attributes
-            None, // Thread security attributes
-            false, // Inherit handles
-            CREATE_NEW_CONSOLE, // Creation flags
-            None, // Environment
-            None, // Current directory
-            &startup_info,
-            &mut process_info,
-        );
-
-        if result.is_err() {
+    
+    let pid = unsafe {
+        // Initialize COM with proper error handling
+        let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+        if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
+            // Only return error if it's not the "already initialized" case
             return Err(AutomationError::PlatformError(format!(
-                "Failed to launch application '{}'",
-                app_name
+                "Failed to initialize COM: {}",
+                hr
             )));
         }
+        // If we get here, either initialization succeeded or it was already initialized
+        if hr == HRESULT(0x80010106u32 as i32) {
+            debug!("COM already initialized in this thread");
+        }
 
-        // Close thread handle as we don't need it
-        let _ = CloseHandle(process_info.hThread);
+        // Create the ApplicationActivationManager COM object
+        let manager: IApplicationActivationManager =
+            CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_ALL).map_err(|e| {
+                AutomationError::PlatformError(format!(
+                    "Failed to create ApplicationActivationManager: {}",
+                    e
+                ))
+            })?;
 
-        // Store process handle in a guard to ensure it's closed
-        let _process_handle = HandleGuard(process_info.hProcess);
+        // Set options (e.g., NoSplashScreen)
+        let options = ACTIVATEOPTIONS(ActivateOptions::None as i32);
 
-        // Get the PID
-        let pid = process_info.dwProcessId as i32;
+        match manager.ActivateApplication(
+                &HSTRING::from(app_id),
+                &HSTRING::from(""), // no arguments
+                options,
+            ) {
+            Ok(pid) => pid,
+            Err(_) => {
+                // let app_id_wide: Vec<u16> = app_id.encode_utf16().chain(Some(0)).collect();
+                let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{}", app_id).encode_utf16().chain(Some(0)).collect();
+                let operation_wide: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+                let mut sei = SHELLEXECUTEINFOW {
+                    cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+                    fMask: SEE_MASK_NOASYNC | SEE_MASK_NOCLOSEPROCESS,
+                    hwnd: HWND(std::ptr::null_mut()),
+                    lpVerb: PCWSTR(operation_wide.as_ptr()),
+                    lpFile: PCWSTR::from_raw(shell_app_id.as_ptr()),
+                    lpParameters: PCWSTR::null(),
+                    lpDirectory: PCWSTR::null(),
+                    nShow: SW_SHOWNORMAL.0,
+                    hInstApp: HINSTANCE(std::ptr::null_mut()),
+                    lpIDList: std::ptr::null_mut(),
+                    lpClass: PCWSTR::null(),
+                    hkeyClass: HKEY(std::ptr::null_mut()),
+                    dwHotKey: 0,
+                    Anonymous: Default::default(),
+                    hProcess: HANDLE(std::ptr::null_mut()),
+                };
 
-        // Wait a bit for the application to start
-        std::thread::sleep(std::time::Duration::from_millis(200));
+                ShellExecuteExW(&mut sei).map_err(|e| {
+                    AutomationError::PlatformError(format!("ShellExecuteExW failed: 
+                        '{}' to launch app '{}':", e, display_name))
+                })?;
 
-        get_application_pid(engine, pid, app_name)
+                let process_handle = sei.hProcess;
+
+                if process_handle.is_invalid() {
+                    let _ = CloseHandle(process_handle);
+                    debug!(
+                        "Failed to get pid of launched app: '{:?}' using `ShellExecuteExW`, will get the ui element of by its name ",
+                        display_name
+                    );
+                    return engine.get_application_by_name(display_name);
+                }
+
+                let pid = GetProcessId(process_handle);
+                let _ = CloseHandle(process_handle);    // we can use HandleGuard too 
+
+                pid
+            }
+        }
+    };
+
+    if pid > 0 {
+        get_application_pid(engine, pid as i32, display_name)
+    } else {
+        Err(Error::new(
+            HRESULT(0x80004005u32 as i32),
+            "Failed to launch the application",
+        )
+        .into())
     }
 }
 
