@@ -271,6 +271,112 @@ pub struct HotkeyEvent {
     pub metadata: EventMetadata,
 }
 
+/// Represents the type of button interaction
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ButtonInteractionType {
+    /// Simple button click
+    Click,
+    /// Toggle button (on/off)
+    Toggle,
+    /// Dropdown button expand/collapse
+    DropdownToggle,
+    /// Submit button
+    Submit,
+    /// Cancel/close button
+    Cancel,
+}
+
+/// Represents a high-level button click event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ButtonClickEvent {
+    /// The text/label of the button
+    pub button_text: String,
+
+    /// The type of button interaction
+    pub interaction_type: ButtonInteractionType,
+
+    /// The role/type of the button element
+    pub button_role: String,
+
+    /// Whether the button was enabled when clicked
+    pub was_enabled: bool,
+
+    /// The position where the button was clicked
+    pub click_position: Position,
+
+    /// Additional context about the button's function
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub button_description: Option<String>,
+
+    /// Event metadata with UI element context
+    pub metadata: EventMetadata,
+}
+
+/// Represents dropdown/combobox interactions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DropdownEvent {
+    /// The dropdown label/name
+    pub dropdown_name: String,
+
+    /// Whether the dropdown was opened or closed
+    pub is_opened: bool,
+
+    /// The selected value (if applicable)
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub selected_value: Option<String>,
+
+    /// Available options (if captured)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub available_options: Vec<String>,
+
+    /// The click position
+    pub click_position: Position,
+
+    /// Event metadata with UI element context
+    pub metadata: EventMetadata,
+}
+
+/// Represents link click events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkClickEvent {
+    /// The link text
+    pub link_text: String,
+
+    /// The URL being navigated to (if available)
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub url: Option<String>,
+
+    /// Whether this opens in a new tab/window
+    pub opens_new_tab: bool,
+
+    /// The click position
+    pub click_position: Position,
+
+    /// Event metadata with UI element context
+    pub metadata: EventMetadata,
+}
+
+/// Represents form submission events
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormSubmitEvent {
+    /// The form name/title
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub form_name: Option<String>,
+
+    /// The submit method (button click, Enter key, etc.)
+    pub submit_method: String,
+
+    /// Field names that had values
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub filled_fields: Vec<String>,
+
+    /// Whether the form validation passed
+    pub validation_passed: bool,
+
+    /// Event metadata with UI element context
+    pub metadata: EventMetadata,
+}
+
 /// Represents a workflow event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WorkflowEvent {
@@ -300,6 +406,18 @@ pub enum WorkflowEvent {
 
     /// High-level browser tab navigation event
     BrowserTabNavigation(BrowserTabNavigationEvent),
+
+    /// High-level button click event
+    ButtonClick(ButtonClickEvent),
+
+    /// High-level dropdown interaction event
+    DropdownInteraction(DropdownEvent),
+
+    /// High-level link click event
+    LinkClick(LinkClickEvent),
+
+    /// High-level form submission event
+    FormSubmit(FormSubmitEvent),
 }
 
 /// Represents a recorded event with timestamp
@@ -358,6 +476,10 @@ impl RecordedWorkflow {
             WorkflowEvent::TextInputCompleted(e) => e.metadata.timestamp,
             WorkflowEvent::ApplicationSwitch(e) => e.metadata.timestamp,
             WorkflowEvent::BrowserTabNavigation(e) => e.metadata.timestamp,
+            WorkflowEvent::ButtonClick(e) => e.metadata.timestamp,
+            WorkflowEvent::DropdownInteraction(e) => e.metadata.timestamp,
+            WorkflowEvent::LinkClick(e) => e.metadata.timestamp,
+            WorkflowEvent::FormSubmit(e) => e.metadata.timestamp,
         }
         .unwrap_or_else(|| {
             // Fallback: generate timestamp now if not present in event metadata
@@ -430,17 +552,6 @@ impl RecordedWorkflow {
         let workflow = Self::from_json(&json)?;
         Ok(workflow)
     }
-}
-
-/// Represents UI Automation structure change types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum StructureChangeType {
-    ChildAdded,
-    ChildRemoved,
-    ChildrenInvalidated,
-    ChildrenBulkAdded,
-    ChildrenBulkRemoved,
-    ChildrenReordered,
 }
 
 /// Method used to input text
@@ -965,6 +1076,106 @@ impl From<&BrowserTabNavigationEvent> for SerializableBrowserTabNavigationEvent 
     }
 }
 
+/// Serializable version of ButtonClickEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableButtonClickEvent {
+    pub button_text: String,
+    pub interaction_type: ButtonInteractionType,
+    pub button_role: String,
+    pub was_enabled: bool,
+    pub click_position: Position,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub button_description: Option<String>,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&ButtonClickEvent> for SerializableButtonClickEvent {
+    fn from(event: &ButtonClickEvent) -> Self {
+        Self {
+            button_text: event.button_text.clone(),
+            interaction_type: event.interaction_type.clone(),
+            button_role: event.button_role.clone(),
+            was_enabled: event.was_enabled,
+            click_position: event.click_position,
+            button_description: event.button_description.clone(),
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of DropdownEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableDropdownEvent {
+    pub dropdown_name: String,
+    pub is_opened: bool,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub selected_value: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub available_options: Vec<String>,
+    pub click_position: Position,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&DropdownEvent> for SerializableDropdownEvent {
+    fn from(event: &DropdownEvent) -> Self {
+        Self {
+            dropdown_name: event.dropdown_name.clone(),
+            is_opened: event.is_opened,
+            selected_value: event.selected_value.clone(),
+            available_options: event.available_options.clone(),
+            click_position: event.click_position,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of LinkClickEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableLinkClickEvent {
+    pub link_text: String,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub url: Option<String>,
+    pub opens_new_tab: bool,
+    pub click_position: Position,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&LinkClickEvent> for SerializableLinkClickEvent {
+    fn from(event: &LinkClickEvent) -> Self {
+        Self {
+            link_text: event.link_text.clone(),
+            url: event.url.clone(),
+            opens_new_tab: event.opens_new_tab,
+            click_position: event.click_position,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
+/// Serializable version of FormSubmitEvent for JSON export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableFormSubmitEvent {
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub form_name: Option<String>,
+    pub submit_method: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub filled_fields: Vec<String>,
+    pub validation_passed: bool,
+    pub metadata: SerializableEventMetadata,
+}
+
+impl From<&FormSubmitEvent> for SerializableFormSubmitEvent {
+    fn from(event: &FormSubmitEvent) -> Self {
+        Self {
+            form_name: event.form_name.clone(),
+            submit_method: event.submit_method.clone(),
+            filled_fields: event.filled_fields.clone(),
+            validation_passed: event.validation_passed,
+            metadata: (&event.metadata).into(),
+        }
+    }
+}
+
 /// Serializable version of WorkflowEvent for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SerializableWorkflowEvent {
@@ -977,6 +1188,10 @@ pub enum SerializableWorkflowEvent {
     TextInputCompleted(SerializableTextInputCompletedEvent),
     ApplicationSwitch(SerializableApplicationSwitchEvent),
     BrowserTabNavigation(SerializableBrowserTabNavigationEvent),
+    ButtonClick(SerializableButtonClickEvent),
+    DropdownInteraction(SerializableDropdownEvent),
+    LinkClick(SerializableLinkClickEvent),
+    FormSubmit(SerializableFormSubmitEvent),
 }
 
 impl From<&WorkflowEvent> for SerializableWorkflowEvent {
@@ -997,6 +1212,12 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             WorkflowEvent::BrowserTabNavigation(e) => {
                 SerializableWorkflowEvent::BrowserTabNavigation(e.into())
             }
+            WorkflowEvent::ButtonClick(e) => SerializableWorkflowEvent::ButtonClick(e.into()),
+            WorkflowEvent::DropdownInteraction(e) => {
+                SerializableWorkflowEvent::DropdownInteraction(e.into())
+            }
+            WorkflowEvent::LinkClick(e) => SerializableWorkflowEvent::LinkClick(e.into()),
+            WorkflowEvent::FormSubmit(e) => SerializableWorkflowEvent::FormSubmit(e.into()),
         }
     }
 }
