@@ -3430,7 +3430,6 @@ fn launch_app(
             ) {
             Ok(pid) => pid,
             Err(_) => {
-                // let app_id_wide: Vec<u16> = app_id.encode_utf16().chain(Some(0)).collect();
                 let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{}", app_id).encode_utf16().chain(Some(0)).collect();
                 let operation_wide: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
                 let mut sei = SHELLEXECUTEINFOW {
