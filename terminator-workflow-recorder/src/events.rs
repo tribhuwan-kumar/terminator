@@ -302,7 +302,8 @@ pub struct ButtonClickEvent {
     pub was_enabled: bool,
 
     /// The position where the button was clicked
-    pub click_position: Position,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub click_position: Option<Position>,
 
     /// Additional context about the button's function
     #[serde(skip_serializing_if = "is_empty_string")]
@@ -409,15 +410,6 @@ pub enum WorkflowEvent {
 
     /// High-level button click event
     ButtonClick(ButtonClickEvent),
-
-    /// High-level dropdown interaction event
-    DropdownInteraction(DropdownEvent),
-
-    /// High-level link click event
-    LinkClick(LinkClickEvent),
-
-    /// High-level form submission event
-    FormSubmit(FormSubmitEvent),
 }
 
 /// Represents a recorded event with timestamp
@@ -477,9 +469,6 @@ impl RecordedWorkflow {
             WorkflowEvent::ApplicationSwitch(e) => e.metadata.timestamp,
             WorkflowEvent::BrowserTabNavigation(e) => e.metadata.timestamp,
             WorkflowEvent::ButtonClick(e) => e.metadata.timestamp,
-            WorkflowEvent::DropdownInteraction(e) => e.metadata.timestamp,
-            WorkflowEvent::LinkClick(e) => e.metadata.timestamp,
-            WorkflowEvent::FormSubmit(e) => e.metadata.timestamp,
         }
         .unwrap_or_else(|| {
             // Fallback: generate timestamp now if not present in event metadata
@@ -1083,7 +1072,8 @@ pub struct SerializableButtonClickEvent {
     pub interaction_type: ButtonInteractionType,
     pub button_role: String,
     pub was_enabled: bool,
-    pub click_position: Position,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub click_position: Option<Position>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub button_description: Option<String>,
     pub metadata: SerializableEventMetadata,
@@ -1189,9 +1179,6 @@ pub enum SerializableWorkflowEvent {
     ApplicationSwitch(SerializableApplicationSwitchEvent),
     BrowserTabNavigation(SerializableBrowserTabNavigationEvent),
     ButtonClick(SerializableButtonClickEvent),
-    DropdownInteraction(SerializableDropdownEvent),
-    LinkClick(SerializableLinkClickEvent),
-    FormSubmit(SerializableFormSubmitEvent),
 }
 
 impl From<&WorkflowEvent> for SerializableWorkflowEvent {
@@ -1212,12 +1199,7 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             WorkflowEvent::BrowserTabNavigation(e) => {
                 SerializableWorkflowEvent::BrowserTabNavigation(e.into())
             }
-            WorkflowEvent::ButtonClick(e) => SerializableWorkflowEvent::ButtonClick(e.into()),
-            WorkflowEvent::DropdownInteraction(e) => {
-                SerializableWorkflowEvent::DropdownInteraction(e.into())
-            }
-            WorkflowEvent::LinkClick(e) => SerializableWorkflowEvent::LinkClick(e.into()),
-            WorkflowEvent::FormSubmit(e) => SerializableWorkflowEvent::FormSubmit(e.into()),
+            WorkflowEvent::ButtonClick(e) => SerializableWorkflowEvent::ButtonClick(e.into())
         }
     }
 }

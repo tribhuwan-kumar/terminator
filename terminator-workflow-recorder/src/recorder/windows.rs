@@ -1,4 +1,4 @@
-use crate::events::{ButtonClickEvent, ButtonInteractionType, DropdownEvent, LinkClickEvent};
+use crate::events::{ButtonClickEvent, ButtonInteractionType};
 use crate::{
     ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
     ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent,
@@ -26,13 +26,6 @@ use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
 };
-
-/// Track the last focused element for correlating with mouse clicks
-#[derive(Debug, Clone)]
-struct LastFocusedElement {
-    ui_element: UIElement,
-    focus_time: Instant,
-}
 
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
@@ -71,9 +64,6 @@ pub struct WindowsRecorder {
 
     /// Browser tab navigation tracking
     browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
-
-    /// Last focused element for correlating with clicks
-    last_focused_element: Arc<Mutex<Option<LastFocusedElement>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -280,11 +270,12 @@ impl WindowsRecorder {
             current_typing_session: Arc::new(AtomicTypingSession::default()),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
-            last_focused_element: Arc::new(Mutex::new(None)),
         };
 
+        let handle = tokio::runtime::Handle::current();
+
         // Set up comprehensive event listeners
-        recorder.setup_comprehensive_listeners().await?;
+        recorder.setup_comprehensive_listeners(handle).await?;
 
         // Start background typing session completion timer for reliable text completion
         if recorder.config.record_text_input_completion {
@@ -716,7 +707,10 @@ impl WindowsRecorder {
     }
 
     /// Set up comprehensive event listeners
-    async fn setup_comprehensive_listeners(&mut self) -> Result<()> {
+    async fn setup_comprehensive_listeners(
+        &mut self,
+        handle: tokio::runtime::Handle,
+    ) -> Result<()> {
         // Main input event listener (enhanced from original)
         self.setup_enhanced_input_listener().await?;
 
@@ -729,6 +723,7 @@ impl WindowsRecorder {
         self.setup_ui_automation_events(
             Arc::clone(&self.current_application),
             Arc::clone(&self.browser_tab_tracker),
+            handle,
         )?;
 
         Ok(())
@@ -749,7 +744,6 @@ impl WindowsRecorder {
         let record_text_input_completion = self.config.record_text_input_completion;
         let text_input_timeout_ms = self.config.text_input_completion_timeout_ms;
         let current_typing_session = Arc::clone(&self.current_typing_session);
-        let last_focused_element = Arc::clone(&self.last_focused_element);
 
         thread::spawn(move || {
             // PERFORMANCE: Create UIAutomation instance once outside the event loop
@@ -1007,34 +1001,6 @@ impl WindowsRecorder {
                                 );
                             }
 
-                            // Synthesize click event using the last focused element from UI Automation
-                            if let Ok(last_focused) = last_focused_element.try_lock() {
-                                if let Some(ref focused) = *last_focused {
-                                    // Check if the focus happened recently (within 500ms of this click)
-                                    if focused.focus_time.elapsed() < Duration::from_millis(500) {
-                                        Self::try_emit_semantic_event(
-                                            &event_tx,
-                                            &focused.ui_element,
-                                            Position { x, y },
-                                        );
-
-                                        // Emit synthetic click with the focused element
-                                        let click_event = MouseEvent {
-                                            event_type: MouseEventType::Click,
-                                            button: mouse_button,
-                                            position: Position { x, y },
-                                            scroll_delta: None,
-                                            drag_start: None,
-                                            metadata: EventMetadata {
-                                                ui_element: Some(focused.ui_element.clone()),
-                                                timestamp: Some(Self::capture_timestamp()),
-                                            },
-                                        };
-                                        let _ = event_tx.send(WorkflowEvent::Mouse(click_event));
-                                    }
-                                }
-                            }
-
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Up,
                                 button: mouse_button,
@@ -1273,11 +1239,11 @@ impl WindowsRecorder {
         &self,
         current_application: Arc<Mutex<Option<ApplicationState>>>,
         browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
+        handle: tokio::runtime::Handle,
     ) -> Result<()> {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let ui_automation_thread_id = Arc::clone(&self.ui_automation_thread_id);
-        let last_focused_element = Arc::clone(&self.last_focused_element);
 
         // Clone filtering configuration
         let ignore_focus_patterns = self.config.ignore_focus_patterns.clone();
@@ -1364,9 +1330,6 @@ impl WindowsRecorder {
             // Set up focus change event handler if enabled
             info!("Setting up focus change event handler");
             let focus_event_tx = event_tx.clone();
-            let focus_ignore_patterns = ignore_focus_patterns.clone();
-            let focus_ignore_window_titles = ignore_window_titles.clone();
-            let focus_ignore_applications = ignore_applications.clone();
 
             // Create a channel for thread-safe communication
             let (focus_tx, focus_rx) = std::sync::mpsc::channel::<(String, Option<UIElement>)>();
@@ -1436,69 +1399,128 @@ impl WindowsRecorder {
             let focus_event_tx_clone = focus_event_tx.clone();
             let focus_current_app = Arc::clone(&current_application);
             let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
-            let focus_last_focused = Arc::clone(&last_focused_element);
-            let config_clone = config_clone.clone();
-            let config_clone_clone = config_clone.clone();
+
+            // Clone the necessary variables for the focus-processing thread to take ownership of.
+            let focus_processing_config = config_clone.clone();
+            let focus_processing_ignore_patterns = ignore_focus_patterns.clone();
+            let focus_processing_ignore_window_titles = ignore_window_titles.clone();
+            let focus_processing_ignore_applications = ignore_applications.clone();
+            let processing_handle = handle;
+
             std::thread::spawn(move || {
                 while let Ok((element_name, ui_element)) = focus_rx.recv() {
-                    // Update the last focused element for click correlation
                     if let Some(ref element) = ui_element {
-                        if let Ok(mut last_focused) = focus_last_focused.try_lock() {
-                            *last_focused = Some(LastFocusedElement {
-                                ui_element: element.clone(),
-                                focus_time: Instant::now(),
-                            });
-                            debug!(
-                                "Updated last focused element: name='{}', role='{}'",
-                                element.name_or_empty(),
-                                element.role()
+                        let element_role = element.role().to_lowercase();
+                        debug!(
+                            "Focus event received for element: '{}', role: '{}'",
+                            element.name_or_empty(),
+                            element_role
+                        );
+
+                        // User Request: If a button gets focus, send a ButtonClickEvent
+                        if element_role.contains("button")
+                            || element_role.contains("menuitem")
+                            || element_role.contains("listitem")
+                        {
+                            let element_name = element.name_or_empty();
+                            let element_desc = element.attributes().description.unwrap_or_default();
+
+                            let interaction_type = Self::determine_button_interaction_type(
+                                &element_name,
+                                &element_desc,
+                                &element_role,
                             );
+                            let is_enabled = element.is_enabled().unwrap_or(true);
+                            let bounds = element.bounds().unwrap_or_default();
+
+                            let button_event = ButtonClickEvent {
+                                button_text: element_name.clone(),
+                                interaction_type,
+                                button_role: element_role.clone(),
+                                was_enabled: is_enabled,
+                                click_position: Some(Position {
+                                    x: bounds.0 as i32,
+                                    y: bounds.1 as i32,
+                                }),
+                                button_description: if element_desc.is_empty() {
+                                    None
+                                } else {
+                                    Some(element_desc.clone())
+                                },
+                                metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                    element.clone(),
+                                )),
+                            };
+                            let result =
+                                focus_event_tx_clone.send(WorkflowEvent::ButtonClick(button_event));
+
+                            if result.is_ok() {
+                                debug!("Successfully sent ButtonClickEvent for '{}'", element_name);
+                            } else {
+                                warn!(
+                                    "Failed to send ButtonClickEvent for '{}': {:?}",
+                                    element_name,
+                                    result.err()
+                                );
+                            }
                         }
                     }
 
-                    // Apply filtering
-                    if WindowsRecorder::should_ignore_focus_event(
-                        // TODO double click it does not badly affect he app switch event
-                        &element_name,
-                        &ui_element,
-                        &focus_ignore_patterns,
-                        &focus_ignore_window_titles,
-                        &focus_ignore_applications,
-                    ) {
-                        debug!("Ignoring focus change event for: {}", element_name);
-                        continue;
-                    }
+                    // Offload slow checks to a separate async task to avoid blocking the queue
+                    let task_current_app = Arc::clone(&focus_current_app);
+                    let task_browser_tracker = Arc::clone(&focus_browser_tracker);
+                    let task_event_tx_clone = focus_event_tx_clone.clone();
+                    let task_element_name = element_name.clone();
+                    let task_ui_element = ui_element.clone();
+                    let task_config_clone = focus_processing_config.clone();
+                    let task_ignore_focus_patterns = focus_processing_ignore_patterns.clone();
+                    let task_ignore_window_titles = focus_processing_ignore_window_titles.clone();
+                    let task_ignore_applications = focus_processing_ignore_applications.clone();
 
-                    // Check for application switch (focus changes often indicate app switches)
-                    Self::check_and_emit_application_switch(
-                        &focus_current_app,
-                        &focus_event_tx_clone,
-                        &ui_element,
-                        ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
-                        &config_clone_clone,
-                    );
+                    processing_handle.spawn(async move {
+                        // Re-enable the previously disabled checks inside this non-blocking task
+                        if WindowsRecorder::should_ignore_focus_event(
+                            &task_element_name,
+                            &task_ui_element,
+                            &task_ignore_focus_patterns,
+                            &task_ignore_window_titles,
+                            &task_ignore_applications,
+                        ) {
+                            debug!("Ignoring focus change event for: {}", task_element_name);
+                            return;
+                        }
 
-                    // Check for browser tab navigation
-                    // Extract URL from focus text if available
-                    let focus_url = if let Some(ref element) = ui_element {
-                        let element_name = element.name_or_empty();
-                        if element_name.starts_with("http") && element_name.len() > 10 {
-                            Some(element_name.clone())
+                        // Check for application switch (focus changes often indicate app switches)
+                        Self::check_and_emit_application_switch(
+                            &task_current_app,
+                            &task_event_tx_clone,
+                            &task_ui_element,
+                            ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
+                            &task_config_clone,
+                        );
+
+                        // Check for browser tab navigation
+                        // Extract URL from focus text if available
+                        let focus_url = if let Some(ref element) = task_ui_element {
+                            let element_name = element.name_or_empty();
+                            if element_name.starts_with("http") && element_name.len() > 10 {
+                                Some(element_name.clone())
+                            } else {
+                                None
+                            }
                         } else {
                             None
-                        }
-                    } else {
-                        None
-                    };
+                        };
 
-                    Self::check_and_emit_browser_navigation_with_url(
-                        &focus_browser_tracker,
-                        &focus_event_tx_clone,
-                        &ui_element,
-                        TabNavigationMethod::TabClick, // Focus change in browser could be tab click
-                        &config_clone,
-                        focus_url,
-                    );
+                        Self::check_and_emit_browser_navigation_with_url(
+                            &task_browser_tracker,
+                            &task_event_tx_clone,
+                            &task_ui_element,
+                            TabNavigationMethod::TabClick, // Focus change in browser could be tab click
+                            &task_config_clone,
+                            focus_url,
+                        );
+                    });
                 }
             });
 
@@ -1846,75 +1868,6 @@ impl WindowsRecorder {
                 );
             }
         });
-    }
-
-    /// Try to emit semantic UI events based on element characteristics
-    fn try_emit_semantic_event(
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        ui_element: &UIElement,
-        click_position: Position,
-    ) {
-        let element_role = ui_element.role().to_lowercase();
-        let element_name = ui_element.name_or_empty();
-        let element_desc = ui_element.attributes().description.unwrap_or_default();
-
-        // Button detection
-        if element_role.contains("button") || element_role.contains("menuitem") {
-            let interaction_type = Self::determine_button_interaction_type(
-                &element_name,
-                &element_desc,
-                &element_role,
-            );
-
-            let button_event = ButtonClickEvent {
-                button_text: element_name.clone(),
-                interaction_type,
-                button_role: element_role.clone(),
-                was_enabled: true, // TODO: Actually check if element is enabled
-                click_position,
-                button_description: if element_desc.is_empty() {
-                    None
-                } else {
-                    Some(element_desc.clone())
-                },
-                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
-            };
-
-            let _ = event_tx.send(WorkflowEvent::ButtonClick(button_event));
-            return;
-        }
-
-        // Dropdown/Combobox detection
-        if element_role.contains("combobox")
-            || element_role.contains("listbox")
-            || element_role.contains("dropdown")
-            || element_name.to_lowercase().contains("dropdown")
-        {
-            let dropdown_event = DropdownEvent {
-                dropdown_name: element_name.clone(),
-                is_opened: true,               // Assume clicking opens dropdown
-                selected_value: None,          // Would need more complex logic to detect selection
-                available_options: Vec::new(), // Would need to scan child elements
-                click_position,
-                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
-            };
-
-            let _ = event_tx.send(WorkflowEvent::DropdownInteraction(dropdown_event));
-            return;
-        }
-
-        // Link detection
-        if element_role.contains("link") || element_role.contains("hyperlink") {
-            let link_event = LinkClickEvent {
-                link_text: element_name.clone(),
-                url: None,            // Would need to extract href attribute
-                opens_new_tab: false, // Would need to check target attribute
-                click_position,
-                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
-            };
-
-            let _ = event_tx.send(WorkflowEvent::LinkClick(link_event));
-        }
     }
 
     /// Determine the type of button interaction based on element characteristics

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tracing::{warn, debug, error, info};
+use tracing::{debug, error, info, warn};
 use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
@@ -25,36 +25,23 @@ use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
 
 // windows imports
-use windows::Win32::System::Threading::GetProcessId;
-use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
-use windows::Win32::System::Registry::HKEY;
-use windows::Win32::Foundation::{
-    CloseHandle, HANDLE, HWND, HINSTANCE, 
-};
-use windows::Win32::System::Com::{CLSCTX_ALL,
-    COINIT_MULTITHREADED,
-    CoCreateInstance,
-    CoInitializeEx,
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE, HWND};
+use windows::Win32::System::Com::{
+    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot,
-    PROCESSENTRY32W, 
-    Process32FirstW,
-    Process32NextW,
-    TH32CS_SNAPPROCESS
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
+use windows::Win32::System::Registry::HKEY;
+use windows::Win32::System::Threading::GetProcessId;
 use windows::Win32::UI::{
-    WindowsAndMessaging::SW_SHOWNORMAL,
     Shell::{
-    ACTIVATEOPTIONS,
-    ApplicationActivationManager,
-    IApplicationActivationManager,
-    ShellExecuteExW,
-    SHELLEXECUTEINFOW,
-    SEE_MASK_NOASYNC,
-    SEE_MASK_NOCLOSEPROCESS
-    }
+        ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager,
+        SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
+    },
+    WindowsAndMessaging::SW_SHOWNORMAL,
 };
+use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -1113,9 +1100,9 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
-            let app_info = get_app_info_from_startapps(app_name)?;
-            let (app_id, display_name) = app_info;
-            launch_app(self, &app_id, &display_name)
+        let app_info = get_app_info_from_startapps(app_name)?;
+        let (app_id, display_name) = app_info;
+        launch_app(self, &app_id, &display_name)
     }
 
     fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
@@ -1934,15 +1921,6 @@ impl AccessibilityEngine for WindowsEngine {
             context.errors_encountered
         );
 
-        // Log cache effectiveness
-        let cache_hit_rate = if context.elements_processed > 0 {
-            (context.cache_hits as f64 / context.elements_processed as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        info!("Cache hit rate: {:.1}%", cache_hit_rate);
-
         Ok(result)
     }
 
@@ -2462,26 +2440,12 @@ impl UIElementImpl for WindowsUIElement {
                             match temp_automation.create_true_condition() {
                                 Ok(true_condition) => {
                                     // Perform the non-cached search for direct children
-                                    match element.find_all(
-                                        uiautomation::types::TreeScope::Children,
-                                        &true_condition,
-                                    ) {
-                                        Ok(found_children) => {
-                                            debug!(
-                                                "Found {} non-cached children for text extraction via fallback.",
-                                                found_children.len()
-                                            );
-                                            found_children
-                                        }
-                                        Err(_) => {
-                                            // error!(
-                                            //     "Failed to get children via find_all fallback for text extraction: CacheErr={}, FindErr={}",
-                                            //     cache_err, find_err
-                                            // );
-                                            // Return an empty vec to avoid erroring out the whole text extraction
-                                            vec![]
-                                        }
-                                    }
+                                    element
+                                        .find_all(
+                                            uiautomation::types::TreeScope::Children,
+                                            &true_condition,
+                                        )
+                                        .unwrap_or_default()
                                 }
                                 Err(cond_err) => {
                                     error!(
@@ -3218,9 +3182,7 @@ impl From<windows::core::Error> for AutomationError {
 }
 
 // Get apps information using Get-StartApps
-pub fn get_app_info_from_startapps(
-    app_name: &str,
-) -> Result<(String, String), AutomationError> {
+pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), AutomationError> {
     let command = r#"Get-StartApps | Select-Object Name, AppID | ConvertTo-Json"#.to_string();
 
     let output = std::process::Command::new("powershell")
@@ -3237,9 +3199,8 @@ pub fn get_app_info_from_startapps(
     }
 
     let output_str = String::from_utf8_lossy(&output.stdout);
-    let apps: Vec<Value> = serde_json::from_str(&output_str).map_err(|e| {
-        AutomationError::PlatformError(format!("Failed to parse apps list: {}", e))
-    })?;
+    let apps: Vec<Value> = serde_json::from_str(&output_str)
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to parse apps list: {}", e)))?;
 
     // two parts
     let search_terms: Vec<String> = app_name
@@ -3262,7 +3223,9 @@ pub fn get_app_info_from_startapps(
             .to_lowercase();
 
         // make sure both parts exists
-        search_terms.iter().all(|term| name.contains(term) || app_id.contains(term))
+        search_terms
+            .iter()
+            .all(|term| name.contains(term) || app_id.contains(term))
     });
 
     match matching_app {
@@ -3395,7 +3358,6 @@ fn launch_app(
     app_id: &str,
     display_name: &str,
 ) -> Result<UIElement, AutomationError> {
-    
     let pid = unsafe {
         // Initialize COM with proper error handling
         let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -3424,13 +3386,16 @@ fn launch_app(
         let options = ACTIVATEOPTIONS(ActivateOptions::None as i32);
 
         match manager.ActivateApplication(
-                &HSTRING::from(app_id),
-                &HSTRING::from(""), // no arguments
-                options,
-            ) {
+            &HSTRING::from(app_id),
+            &HSTRING::from(""), // no arguments
+            options,
+        ) {
             Ok(pid) => pid,
             Err(_) => {
-                let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{}", app_id).encode_utf16().chain(Some(0)).collect();
+                let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{}", app_id)
+                    .encode_utf16()
+                    .chain(Some(0))
+                    .collect();
                 let operation_wide: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
                 let mut sei = SHELLEXECUTEINFOW {
                     cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -3451,8 +3416,11 @@ fn launch_app(
                 };
 
                 ShellExecuteExW(&mut sei).map_err(|e| {
-                    AutomationError::PlatformError(format!("ShellExecuteExW failed: 
-                        '{}' to launch app '{}':", e, display_name))
+                    AutomationError::PlatformError(format!(
+                        "ShellExecuteExW failed: 
+                        '{}' to launch app '{}':",
+                        e, display_name
+                    ))
                 })?;
 
                 let process_handle = sei.hProcess;
@@ -3467,7 +3435,7 @@ fn launch_app(
                 }
 
                 let pid = GetProcessId(process_handle);
-                let _ = CloseHandle(process_handle);    // we can use HandleGuard too 
+                let _ = CloseHandle(process_handle); // we can use HandleGuard too 
 
                 pid
             }
