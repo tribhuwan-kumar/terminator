@@ -2145,51 +2145,22 @@ impl UIElementImpl for WindowsUIElement {
                 cached_children
             }
             Err(_) => {
-                // Fallback logic (similar to explore_element_children)
-                match create_ui_automation_with_com_init() {
-                    Ok(temp_automation) => {
-                        match temp_automation.create_true_condition() {
-                            Ok(true_condition) => {
-                                self.element
-                                    .0
-                                    .find_all(
-                                        uiautomation::types::TreeScope::Children,
-                                        &true_condition,
-                                    )
-                                    .map_err(|find_err| {
-                                        // error!(
-                                        //     "Failed to get children via find_all fallback: CacheErr={}, FindErr={}",
-                                        //     cache_err, find_err
-                                        // );
-                                        AutomationError::PlatformError(format!(
-                                            "Failed to get children (cached and non-cached): {}",
-                                            find_err
-                                        ))
-                                    })? // Propagate error
-                            }
-                            Err(cond_err) => {
-                                error!(
-                                    "Failed to create true condition for child fallback: {}",
-                                    cond_err
-                                );
-                                return Err(AutomationError::PlatformError(format!(
-                                    "Failed to create true condition for fallback: {}",
-                                    cond_err
-                                )));
-                            }
-                        }
-                    }
-                    Err(auto_err) => {
-                        error!(
-                            "Failed to create temporary UIAutomation for child fallback: {}",
-                            auto_err
-                        );
-                        return Err(AutomationError::PlatformError(format!(
-                            "Failed to create temp UIAutomation for fallback: {}",
-                            auto_err
-                        )));
-                    }
-                }
+                let temp_automation = create_ui_automation_with_com_init()?;
+                let true_condition = temp_automation.create_true_condition().map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to create true condition for child fallback: {}",
+                        e
+                    ))
+                })?;
+                self.element
+                    .0
+                    .find_all(uiautomation::types::TreeScope::Children, &true_condition)
+                    .map_err(|find_err| {
+                        AutomationError::PlatformError(format!(
+                            "Failed to get children (cached and non-cached): {}",
+                            find_err
+                        ))
+                    })? // Propagate error
             }
         };
 
@@ -2397,9 +2368,11 @@ impl UIElementImpl for WindowsUIElement {
 
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError> {
         let mut all_texts = Vec::new();
+        let automation = create_ui_automation_with_com_init()?;
 
         // Create a function to extract text recursively
         fn extract_text_from_element(
+            automation: &UIAutomation,
             element: &uiautomation::UIElement,
             texts: &mut Vec<String>,
             current_depth: usize,
@@ -2431,37 +2404,19 @@ impl UIElementImpl for WindowsUIElement {
                     cached_children
                 }
                 Err(_) => {
-                    // Need a UIAutomation instance to create conditions for find_all
-                    // Create a temporary instance here for the fallback.
-                    // Note: Creating a new UIAutomation instance here might be inefficient.
-                    // Consider passing it down or finding another way if performance is critical.
-                    match create_ui_automation_with_com_init() {
-                        Ok(temp_automation) => {
-                            match temp_automation.create_true_condition() {
-                                Ok(true_condition) => {
-                                    // Perform the non-cached search for direct children
-                                    element
-                                        .find_all(
-                                            uiautomation::types::TreeScope::Children,
-                                            &true_condition,
-                                        )
-                                        .unwrap_or_default()
-                                }
-                                Err(cond_err) => {
-                                    error!(
-                                        "Failed to create true condition for child fallback in text extraction: {}",
-                                        cond_err
-                                    );
-                                    vec![] // Return empty vec on condition creation error
-                                }
-                            }
+                    match automation.create_true_condition() {
+                        Ok(true_condition) => {
+                            // Perform the non-cached search for direct children
+                            element
+                                .find_all(uiautomation::types::TreeScope::Children, &true_condition)
+                                .unwrap_or_default()
                         }
-                        Err(auto_err) => {
+                        Err(cond_err) => {
                             error!(
-                                "Failed to create temporary UIAutomation for child fallback in text extraction: {}",
-                                auto_err
+                                "Failed to create true condition for child fallback in text extraction: {}",
+                                cond_err
                             );
-                            vec![] // Return empty vec on automation creation error
+                            vec![] // Return empty vec on condition creation error
                         }
                     }
                 }
@@ -2469,14 +2424,20 @@ impl UIElementImpl for WindowsUIElement {
 
             // Process the children (either cached or found via fallback)
             for child in children_to_process {
-                let _ = extract_text_from_element(&child, texts, current_depth + 1, max_depth);
+                let _ = extract_text_from_element(
+                    automation,
+                    &child,
+                    texts,
+                    current_depth + 1,
+                    max_depth,
+                );
             }
 
             Ok(())
         }
 
         // Extract text from the element and its descendants
-        extract_text_from_element(&self.element.0, &mut all_texts, 0, max_depth)?;
+        extract_text_from_element(&automation, &self.element.0, &mut all_texts, 0, max_depth)?;
 
         // Join the texts with spaces
         Ok(all_texts.join(" "))
