@@ -1873,10 +1873,11 @@ impl WindowsRecorder {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let timeout_ms = self.config.text_input_completion_timeout_ms;
+        let config = self.config.clone();
 
         thread::spawn(move || {
-            // Create a UIAutomation instance once for this thread to reuse
-            let automation = match UIAutomation::new() {
+            // Create a UIAutomation instance once for this thread to reuse, respecting the configured threading model
+            let automation = match Self::create_configured_automation_instance(&config) {
                 Ok(auto) => Some(auto),
                 Err(e) => {
                     warn!(
