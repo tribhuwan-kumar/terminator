@@ -546,6 +546,76 @@ impl Desktop {
         self.engine.get_window_tree(pid, title, tree_config)
     }
 
+    /// Get the UI tree for all open applications in parallel.
+    ///
+    /// This function retrieves the UI hierarchy for every running application
+    /// on the desktop. It processes applications in parallel for better performance.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use terminator::Desktop;
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let app_trees = desktop.get_all_applications_tree().await.unwrap();
+    ///     for tree in app_trees {
+    ///         println!("Application Tree: {:#?}", tree);
+    ///     }
+    /// }
+    /// ```
+    #[instrument(skip(self))]
+    pub async fn get_all_applications_tree(&self) -> Result<Vec<UINode>, AutomationError> {
+        let applications = self.applications()?;
+
+        let futures = applications.into_iter().map(|app| {
+            let desktop = self.clone();
+            tokio::task::spawn_blocking(move || {
+                let pid = match app.process_id() {
+                    Ok(pid) if pid > 0 => pid,
+                    _ => return None, // Skip apps with invalid or zero/negative PIDs
+                };
+
+                // TODO: tbh not sure it cannot lead to crash to run this in threads on windows :)
+                match desktop.get_window_tree(pid, None, None) {
+                    Ok(tree) => {
+                        if !tree.children.is_empty() || tree.attributes.name.is_some() {
+                            Some(tree)
+                        } else {
+                            None
+                        }
+                    }
+                    Err(e) => {
+                        let app_name = app.name().unwrap_or_else(|| "Unknown".to_string());
+                        tracing::warn!(
+                            "Could not get window tree for app '{}' (PID: {}): {}",
+                            app_name,
+                            pid,
+                            e
+                        );
+                        None
+                    }
+                }
+            })
+        });
+
+        let results = futures::future::join_all(futures).await;
+
+        let trees: Vec<UINode> = results
+            .into_iter()
+            .filter_map(|res| match res {
+                Ok(Some(tree)) => Some(tree),
+                Ok(None) => None,
+                Err(e) => {
+                    error!("A task for getting a window tree panicked: {}", e);
+                    None
+                }
+            })
+            .collect();
+
+        Ok(trees)
+    }
+
     /// Get all window elements for a given application by name
     #[instrument(skip(self, app_name))]
     pub async fn windows_for_application(

@@ -50,5 +50,7 @@ Elements are found using accessibility properties like:
 ## Development Workflow
 This is a Rust workspace with multiple crates. The core library is in `terminator/` and language bindings are generated in `bindings/`. Examples demonstrate usage patterns for different scenarios.
 
+Always place Rust examples in the `terminator/examples` folder
+
 ## AI Agent Integration
 Terminator is specifically designed for AI agents to automate desktop applications programmatically, making it ideal for workflow automation and testing scenarios.
