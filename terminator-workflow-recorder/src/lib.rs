@@ -13,10 +13,9 @@ pub mod recorder;
 pub use error::*;
 pub use events::{
     ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ButtonClickEvent,
-    ButtonInteractionType, ClipboardAction, ClipboardEvent, DragDropEvent, DropdownEvent,
-    EventMetadata, FormSubmitEvent, HotkeyEvent, KeyboardEvent, LinkClickEvent, MouseButton,
-    MouseEvent, MouseEventType, Position, RecordedEvent, RecordedWorkflow, Rect, SelectionMethod,
-    TabAction, TabNavigationMethod, TextInputCompletedEvent, TextInputMethod, TextSelectionEvent,
-    WorkflowEvent,
+    ButtonInteractionType, ClipboardAction, ClipboardEvent, DragDropEvent, EventMetadata,
+    HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position, RecordedEvent,
+    RecordedWorkflow, Rect, SelectionMethod, TabAction, TabNavigationMethod,
+    TextInputCompletedEvent, TextInputMethod, TextSelectionEvent, WorkflowEvent,
 };
 pub use recorder::*;
