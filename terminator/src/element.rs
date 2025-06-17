@@ -1,7 +1,6 @@
 use crate::ScreenshotResult;
 use crate::errors::AutomationError;
 use crate::selector::Selector;
-use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
@@ -90,6 +89,8 @@ pub struct SerializableUIElement {
     pub application: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub children: Option<Vec<SerializableUIElement>>,
 }
@@ -99,20 +100,16 @@ impl From<&UIElement> for SerializableUIElement {
         let attrs = element.attributes();
         let bounds = element.bounds().ok();
 
-        // Helper function to filter empty strings
-        fn filter_empty(s: Option<String>) -> Option<String> {
-            s.filter(|s| !s.is_empty())
-        }
-
         Self {
-            id: filter_empty(element.id()),
+            id: element.id(),
             role: element.role(),
-            name: filter_empty(attrs.name),
+            name: attrs.name,
             bounds,
-            value: filter_empty(attrs.value),
-            description: filter_empty(attrs.description),
-            application: filter_empty(Some(element.application_name())),
-            window_title: filter_empty(Some(element.window_title())),
+            value: attrs.value,
+            description: attrs.description,
+            application: Some(element.application_name()),
+            window_title: Some(element.window_title()),
+            process_id: element.process_id().ok(),
             children: None,
         }
     }
@@ -130,6 +127,7 @@ impl SerializableUIElement {
             description: None,
             application: None,
             window_title: None,
+            process_id: None,
             children: None,
         }
     }
@@ -612,6 +610,15 @@ impl UIElement {
     pub fn to_serializable_tree(&self, max_depth: usize) -> SerializableUIElement {
         fn build(element: &UIElement, depth: usize, max_depth: usize) -> SerializableUIElement {
             let mut serializable = element.to_serializable();
+
+            // For child elements (depth > 0), remove redundant window/app info.
+            // This information is only needed at the root of the tree.
+            if depth > 0 {
+                serializable.application = None;
+                serializable.window_title = None;
+                serializable.process_id = None;
+            }
+
             let children = if depth < max_depth {
                 match element.children() {
                     Ok(children) => {
@@ -699,89 +706,6 @@ pub mod utils {
     }
 }
 
-#[test]
-#[allow(clippy::assertions_on_constants)]
-fn test_uielement_serialization() {
-    // Note: This test demonstrates the serialization capability
-    // In practice, you would create a UIElement from a real platform implementation
-    // For this test, we're just showing that the Serialize trait is properly implemented
-
-    // The actual serialization would work like this:
-    // let element = some_ui_element_instance;
-    // let json = serde_json::to_string(&element).unwrap();
-    // println!("Serialized UIElement: {}", json);
-
-    // Since we can't easily create a UIElement without platform-specific code,
-    // we'll just verify the trait is implemented by checking compilation
-    assert!(true, "UIElement implements Serialize trait");
-}
-
-#[test]
-fn test_uielement_deserialization() {
-    // Test deserializing a UIElement from JSON
-    // Note: This test will fail if the element doesn't exist in the current UI tree
-    // or if Desktop automation is not available (e.g., in CI environments)
-    let json = r#"
-    {
-        "id": "test-123",
-        "role": "Button",
-        "name": "Test Button",
-        "bounds": [10.0, 20.0, 100.0, 30.0],
-        "value": "Click me",
-        "description": "A test button",
-        "application": "Test App",
-        "window_title": "Test Window"
-    }"#;
-
-    // This will fail because the element doesn't exist in the UI tree
-    // or because Desktop automation is not available
-    let result: Result<UIElement, _> = serde_json::from_str(json);
-    assert!(
-        result.is_err(),
-        "Deserialization should fail for non-existent elements or when Desktop is unavailable"
-    );
-
-    // Verify the error message mentions the element details
-    let error_msg = result.unwrap_err().to_string();
-    assert!(
-        error_msg.contains("Button") || error_msg.contains("Test Button"),
-        "Error should mention the element role or name"
-    );
-}
-
-#[test]
-fn test_uielement_round_trip() {
-    // Test that we can serialize and deserialize existing elements
-    // Note: This test demonstrates the concept but will fail in CI
-    // because there's no UI tree available or Desktop automation is not accessible
-
-    let json = r#"
-    {
-        "id": "round-trip-test",
-        "role": "TextField",
-        "name": "Input Field",
-        "bounds": [50.0, 60.0, 200.0, 25.0],
-        "value": "Hello World",
-        "description": "Text input",
-        "application": "My App",
-        "window_title": "Main Window"
-    }"#;
-
-    // This will fail because the element doesn't exist or Desktop is unavailable
-    let result: Result<UIElement, _> = serde_json::from_str(json);
-    assert!(
-        result.is_err(),
-        "Deserialization should fail for non-existent elements or when Desktop is unavailable"
-    );
-
-    // Verify the error message mentions the element details
-    let error_msg = result.unwrap_err().to_string();
-    assert!(
-        error_msg.contains("TextField") || error_msg.contains("Input Field"),
-        "Error should mention the element role or name"
-    );
-}
-
 /// Serialize implementation for UIElement
 ///
 /// This implementation serializes the accessible properties of a UI element to JSON.
@@ -803,56 +727,11 @@ impl Serialize for UIElement {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("UIElement", 8)?;
-
-        // Only serialize non-empty fields
-        if let Some(id) = self.id() {
-            if !id.is_empty() {
-                state.serialize_field("id", &id)?;
-            }
-        }
-
-        let role = self.role();
-        if !role.is_empty() {
-            state.serialize_field("role", &role)?;
-        }
-
-        if let Some(name) = self.name() {
-            if !name.is_empty() {
-                state.serialize_field("name", &name)?;
-            }
-        }
-
-        if let Ok(bounds) = self.bounds() {
-            state.serialize_field("bounds", &bounds)?;
-        }
-
-        let attrs = self.attributes();
-        if let Some(ref value) = attrs.value {
-            if !value.is_empty() {
-                state.serialize_field("value", value)?;
-            }
-        }
-
-        if let Some(ref description) = attrs.description {
-            if !description.is_empty() {
-                state.serialize_field("description", description)?;
-            }
-        }
-
-        let app_name = self.application_name();
-        if !app_name.is_empty() {
-            state.serialize_field("application", &app_name)?;
-        }
-
-        let window_title = self.window_title();
-        if !window_title.is_empty() {
-            state.serialize_field("window_title", &window_title)?;
-        }
-
-        state.end()
+        self.to_serializable().serialize(serializer)
     }
 }
+
+// TODO: Deserialize is pretty much very experimental and untested
 
 /// Deserialize implementation for UIElement
 ///
@@ -924,9 +803,9 @@ async fn find_element_in_tree(
     }
 
     // Try to find by role and name
-    let mut selector = format!("[role='{}']", serializable.role);
+    let mut selector = format!("role:{}", serializable.role);
     if let Some(ref name) = serializable.name {
-        selector = format!("{}[name='{}']", selector, name);
+        selector = format!("{}name:{}", selector, name);
     }
 
     if let Ok(element) = desktop

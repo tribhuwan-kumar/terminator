@@ -1060,42 +1060,6 @@ impl From<&ButtonClickEvent> for SerializableButtonClickEvent {
     }
 }
 
-/// Serializable version of DropdownEvent for JSON export
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableDropdownEvent {
-    pub dropdown_name: String,
-    pub is_opened: bool,
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub selected_value: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub available_options: Vec<String>,
-    pub click_position: Position,
-    pub metadata: SerializableEventMetadata,
-}
-
-/// Serializable version of LinkClickEvent for JSON export
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableLinkClickEvent {
-    pub link_text: String,
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub url: Option<String>,
-    pub opens_new_tab: bool,
-    pub click_position: Position,
-    pub metadata: SerializableEventMetadata,
-}
-
-/// Serializable version of FormSubmitEvent for JSON export
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableFormSubmitEvent {
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub form_name: Option<String>,
-    pub submit_method: String,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub filled_fields: Vec<String>,
-    pub validation_passed: bool,
-    pub metadata: SerializableEventMetadata,
-}
-
 /// Serializable version of WorkflowEvent for JSON export
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SerializableWorkflowEvent {
