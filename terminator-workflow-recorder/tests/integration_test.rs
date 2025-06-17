@@ -263,3 +263,135 @@ async fn test_e2e_text_input_completion() {
     println!("   - High-level semantic aggregation is working correctly!");
     println!("   - Text content verification passed");
 }
+
+#[tokio::test]
+#[ignore] // This test interacts with the live desktop and should be run manually
+async fn test_text_input_event_latency() {
+    use std::time::Instant;
+    use tokio::time::timeout;
+    println!("\n🚀 Starting Text Input Event Latency Test");
+    println!("==============================================");
+
+    // 1. Setup the recorder
+    let config = WorkflowRecorderConfig {
+        record_text_input_completion: true,
+        text_input_completion_timeout_ms: 1000,
+        ..Default::default()
+    };
+    let mut recorder = WorkflowRecorder::new("Latency Test".to_string(), config);
+    let mut event_stream = recorder.event_stream();
+
+    println!("✅ Workflow recorder initialized");
+
+    // 2. Start recording
+    println!("🎬 Starting recording...");
+    recorder.start().await.expect("Failed to start recording");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // 3. Automation task
+    let automation_task = tokio::spawn(async move {
+        println!("🖥️  Initializing Terminator Desktop for automation...");
+        let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
+
+        println!("🌍 Opening URL...");
+        let browser = desktop
+            .open_url("https://pages.dataiku.com/guide-to-ai-agents", None)
+            .expect("Failed to open URL");
+
+        // Wait for page to load
+        println!("⏳ Waiting for page to load...");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        println!("🔍 Finding email input element...");
+        let email_input = browser
+            .locator("role:edit")
+            .unwrap()
+            .all(Some(Duration::from_secs(10)), None)
+            .await
+            .expect("Failed to find email input");
+
+        // 4. Type text and record time
+        let test_text = format!(
+            "test-{}",
+            std::time::UNIX_EPOCH.elapsed().unwrap().as_millis()
+        );
+        let start_time = Instant::now();
+
+        for input in email_input {
+            println!("✅ Found email input element: {:?}", input.name());
+
+            println!("⌨️  Typing text: '{}'", &test_text);
+
+            input.type_text(&test_text, true).unwrap_or_else(|e| {
+                println!("❌ Failed to type text: {}", e);
+                // std::process::exit(1);
+            });
+            input.press_key("{Tab}").unwrap_or_else(|e| {
+                println!("❌ Failed to press Tab: {}", e);
+                // std::process::exit(1);
+            });
+        }
+
+        browser.close().expect("Failed to close browser");
+
+        (start_time, test_text)
+    });
+
+    // 5. Event listener task
+    let event_listener_task = tokio::spawn(async move {
+        println!("👂 Listening for TextInputCompleted event...");
+        loop {
+            match timeout(Duration::from_secs(5), event_stream.next()).await {
+                Ok(Some(WorkflowEvent::TextInputCompleted(event))) => {
+                    println!(
+                        "🎉 Received TextInputCompleted event: '{}'",
+                        event.text_value
+                    );
+                    return Some(event);
+                }
+                Ok(Some(_)) => {
+                    // Ignore other events
+                }
+                _ => {
+                    println!("Event stream ended, lagged, or timed out before event received.");
+                    return None;
+                }
+            }
+        }
+    });
+
+    let (start_time, typed_text) = automation_task.await.expect("Automation task panicked");
+    let received_event = event_listener_task
+        .await
+        .expect("Event listener task panicked");
+
+    // 6. Teardown and Assertion
+    println!("⏹️  Stopping recording...");
+    recorder.stop().await.expect("Failed to stop recording");
+
+    assert!(
+        received_event.is_some(),
+        "❌ Did not receive the TextInputCompleted event"
+    );
+
+    let event = received_event.unwrap();
+    // Note: Web pages can have tricky text retrieval. We check if the typed text is contained
+    // in the retrieved value, which is more robust.
+    assert!(
+        event.text_value.contains(&typed_text),
+        "❌ Received event text ('{}') does not contain typed text ('{}')",
+        event.text_value,
+        typed_text
+    );
+
+    let latency = start_time.elapsed();
+    println!("✅ Text input event latency: {:?}", latency);
+
+    assert!(
+        latency < Duration::from_secs(2),
+        "❌ Event latency is too high: {:?}. Expected < 2s.",
+        latency
+    );
+
+    println!("\n✅ Latency Test PASSED!");
+}
