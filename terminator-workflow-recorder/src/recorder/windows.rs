@@ -744,6 +744,7 @@ impl WindowsRecorder {
             Arc::clone(&self.current_application),
             Arc::clone(&self.browser_tab_tracker),
             handle,
+            Arc::clone(&self.current_typing_session),
         )?;
 
         Ok(())
@@ -1287,6 +1288,7 @@ impl WindowsRecorder {
         current_application: Arc<Mutex<Option<ApplicationState>>>,
         browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
         handle: tokio::runtime::Handle,
+        current_typing_session: Arc<AtomicTypingSession>,
     ) -> Result<()> {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
@@ -1299,6 +1301,7 @@ impl WindowsRecorder {
         let ignore_applications = self.config.ignore_applications.clone();
         let config_clone = self.config.clone();
         let property_config = self.config.clone();
+        let property_current_typing_session = Arc::clone(&current_typing_session);
 
         thread::spawn(move || {
             info!("Starting UI Automation event monitoring thread");
@@ -1628,7 +1631,6 @@ impl WindowsRecorder {
             }
 
             // Spawn a thread to process the property change data safely
-            let property_event_tx_clone = property_event_tx.clone();
             let property_browser_tracker = Arc::clone(&browser_tab_tracker);
             std::thread::spawn(move || {
                 while let Ok((property_name, value_string, ui_element)) = property_rx.recv() {
@@ -1654,6 +1656,42 @@ impl WindowsRecorder {
                         continue;
                     }
 
+                    if property_config.record_text_input_completion && property_name == "ValueValue"
+                    {
+                        if let Some(ref element) = ui_element {
+                            let role = element.role().to_lowercase();
+                            if role.contains("edit")
+                                || role.contains("document")
+                                || role.contains("textbox")
+                            {
+                                // A suggestion click can change the value without any keystrokes.
+                                // If no typing session is active, we can assume this is an auto-fill.
+                                if !property_current_typing_session
+                                    .is_active
+                                    .load(Ordering::Relaxed)
+                                {
+                                    debug!(
+                                        "Detected value change on '{}' with no active typing session. Emitting TextInputCompletedEvent.",
+                                        element_name
+                                    );
+                                    let text_input_event = TextInputCompletedEvent {
+                                        text_value: value_string.clone(),
+                                        field_name: Some(element_name.clone()),
+                                        field_type: element.role(),
+                                        input_method: TextInputMethod::AutoFilled,
+                                        typing_duration_ms: 0,
+                                        keystroke_count: value_string.len() as u32,
+                                        metadata: EventMetadata::with_ui_element_and_timestamp(
+                                            ui_element.clone(),
+                                        ),
+                                    };
+                                    let _ = property_event_tx
+                                        .send(WorkflowEvent::TextInputCompleted(text_input_event));
+                                }
+                            }
+                        }
+                    }
+
                     // Check for browser tab navigation (property changes often indicate URL/title changes)
                     // We look for URL-like strings in ValueValue property changes
                     if property_name == "ValueValue"
@@ -1671,7 +1709,7 @@ impl WindowsRecorder {
 
                         Self::check_and_emit_browser_navigation_with_url(
                             &property_browser_tracker,
-                            &property_event_tx_clone,
+                            &property_event_tx,
                             &ui_element,
                             TabNavigationMethod::AddressBar, // Property change likely means address bar update
                             &property_config,
