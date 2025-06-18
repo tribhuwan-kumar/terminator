@@ -17,13 +17,7 @@ async def run_mspaint():
         print(f"Canvas bounds: {canvas_bounds}")
 
         # Restore original panel, tool_panel, and shapes_toolbar selectors
-        panel = (
-            paint_window.locator("Pane:UIRibbonDockTop")
-            .locator("Pane:Ribbon")
-            .locator("Pane:Ribbon")
-            .locator("Pane:Ribbon")
-            .locator("Pane:Ribbon")
-        )
+        panel = paint_window.locator("Pane:UIRibbonDockTop")
         tool_panel = panel.locator("Pane:Lower Ribbon")
         shapes_toolbar = tool_panel.locator("Name:Shapes")
 
@@ -79,14 +73,10 @@ async def run_mspaint():
             print(f"Selecting shape tool: {shape_name}")
             await click_more_shapes_button()
             await asyncio.sleep(0.2)
-            shapes_box = (
-                desktop.locator("window:Shapes")
-                .locator("window:Shapes")
-                .locator("List:Shapes")
-                .locator("Role:Custom")
-            )
-            tool = shapes_box.locator(f"Name:{shape_name}")
-            await tool.click()
+
+            shapes_box = desktop.locator("window:Shapes").locator("List:Shapes")
+            tool = await shapes_box.locator(f"Name:{shape_name}").first()
+            tool.click()
             await asyncio.sleep(0.5)
 
         async def select_brush(brush_name):
@@ -112,12 +102,8 @@ async def run_mspaint():
             )
             brushes_button.click()
             await asyncio.sleep(0.5)
-            brushes_group = (
-                paint_window.locator("window:Brushes")
-                .locator("List:Brushes")
-                .locator("Role:Custom")
-                .locator("Group:Brushes")
-            )
+
+            brushes_group = desktop.locator("List:Brushes")
             brush = await brushes_group.locator(f"Name:{brush_name}").first()
             brush.click()
             await asyncio.sleep(0.5)
@@ -239,7 +225,7 @@ async def run_mspaint():
 
         # Enter file name
         print("Entering file name...")
-        save_dialog = desktop.locator("window:Save As").locator("window:Save As")
+        save_dialog = paint_window.locator("window:Save As")
         file_name_edit_box = (
             await save_dialog.locator("role:Pane")
             .locator("role:ComboBox")
