@@ -11,7 +11,7 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
 
     // Try to find the Firefox window by title.
     // This might need adjustment based on the actual window title.
-    let firefox_window_title_contains = "Best";
+    // let firefox_window_title_contains = "Best";
 
     // Now get the tree for the found/active Firefox window.
     // We'll use a common part of Firefox window titles. This might need to be made more robust.
@@ -33,13 +33,21 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
     // );
 
     let locator = desktop.locator(Selector::Chain(vec![
-        Selector::Name("Agent Desktop Plus".to_string()),
+        Selector::Role {
+            role: "Document".to_string(),
+            name: Some("Agent Desktop Plus".to_string()),
+        },
+        // Selector::Text("Ready".to_string()),
         Selector::Role {
             role: "Button".to_string(),
             name: Some("Ready".to_string()),
         },
+        // Selector::Role {
+        //     role: "ListItem".to_string(),
+        //     name: Some("Ready".to_string()),
+        // },
     ]));
-    let element = locator.first(Some(Duration::from_secs(2))).await?;
+    let element = locator.first(Some(Duration::from_secs(5))).await?;
     println!("Element: {:?}", element.name_or_empty());
 
     Ok(())

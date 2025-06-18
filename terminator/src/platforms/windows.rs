@@ -886,7 +886,11 @@ impl AccessibilityEngine for WindowsEngine {
                 if let Some(name) = name {
                     // use contains_name, its undetermined right now
                     // wheather we should use `name` or `contains_name`
-                    matcher_builder = matcher_builder.contains_name(name);
+                    matcher_builder = matcher_builder.filter(Box::new(NameFilter {
+                        value: name.clone(),
+                        casesensitive: false,
+                        partial: true,
+                    }));
                 }
 
                 let element = matcher_builder.find_first().map_err(|e| {

@@ -27,6 +27,12 @@ pub enum Selector {
 
 impl From<&str> for Selector {
     fn from(s: &str) -> Self {
+        // Handle chained selectors first
+        let parts: Vec<&str> = s.split(">>").map(|p| p.trim()).collect();
+        if parts.len() > 1 {
+            return Selector::Chain(parts.into_iter().map(Selector::from).collect());
+        }
+
         // Make common UI roles like "window", "button", etc. default to Role selectors
         // instead of Name selectors
         match s {
