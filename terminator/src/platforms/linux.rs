@@ -555,6 +555,11 @@ fn find_elements_inner<'a>(
                 }
                 return Ok(results);
             }
+            Selector::Visible(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Selector::Visible is not implemented for Linux".to_string(),
+                ));
+            }
             Selector::Chain(chain) => {
                 if chain.is_empty() {
                     return Err(AutomationError::InvalidArgument(

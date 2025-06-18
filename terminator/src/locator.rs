@@ -111,11 +111,7 @@ impl Locator {
         }
     }
 
-    /// Get a nested locator
-    pub fn locator(&self, selector: impl Into<Selector>) -> Locator {
-        let next_selector = selector.into();
-
-        // Get the current chain or create a new one
+    fn append_selector(&self, selector_to_append: Selector) -> Locator {
         let mut new_chain = match self.selector.clone() {
             Selector::Chain(existing_chain) => existing_chain,
             s if s != Selector::Path("/".to_string()) => vec![s], // Assuming root path is default
@@ -123,7 +119,7 @@ impl Locator {
         };
 
         // Append the new selector, flattening if it's also a chain
-        match next_selector {
+        match selector_to_append {
             Selector::Chain(mut next_chain_parts) => {
                 new_chain.append(&mut next_chain_parts);
             }
@@ -136,6 +132,16 @@ impl Locator {
             timeout: self.timeout,
             root: self.root.clone(),
         }
+    }
+
+    /// Adds a filter to find elements based on their visibility.
+    pub fn visible(&self, is_visible: bool) -> Locator {
+        self.append_selector(Selector::Visible(is_visible))
+    }
+
+    /// Get a nested locator
+    pub fn locator(&self, selector: impl Into<Selector>) -> Locator {
+        self.append_selector(selector.into())
     }
 
     pub fn selector_string(&self) -> String {

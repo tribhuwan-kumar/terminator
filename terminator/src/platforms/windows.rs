@@ -34,13 +34,11 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 };
 use windows::Win32::System::Registry::HKEY;
 use windows::Win32::System::Threading::GetProcessId;
-use windows::Win32::UI::{
-    Shell::{
-        ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager,
-        SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
-    },
-    WindowsAndMessaging::SW_SHOWNORMAL,
+use windows::Win32::UI::Shell::{
+    ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_NOASYNC,
+    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
 };
+use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 
 // Define a default timeout duration
@@ -841,6 +839,38 @@ impl AccessibilityEngine for WindowsEngine {
                     })
                     .collect())
             }
+            Selector::Visible(visibility) => {
+                let visibility = *visibility;
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        match e.is_offscreen() {
+                            Ok(is_offscreen) => Ok(is_offscreen != visibility),
+                            Err(e) => {
+                                debug!("failed to get visibility: {}", e);
+                                Ok(false)
+                            }
+                        }
+                    }))
+                    .timeout(timeout_ms as u64);
+                let elements = matcher.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "Visible: '{}', Err: {}",
+                        visibility, e
+                    ))
+                })?;
+                Ok(elements
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect())
+            }
         }
     }
 
@@ -1100,16 +1130,54 @@ impl AccessibilityEngine for WindowsEngine {
                     element: arc_ele,
                 })))
             }
+            Selector::Visible(visibility) => {
+                let visibility = *visibility;
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        match e.is_offscreen() {
+                            Ok(is_offscreen) => Ok(is_offscreen != visibility),
+                            Err(e) => {
+                                debug!("failed to get visibility: {}", e);
+                                Ok(false)
+                            }
+                        }
+                    }))
+                    .timeout(timeout_ms as u64);
+                let element = matcher.find_first().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "Visible: '{}', Err: {}",
+                        visibility, e
+                    ))
+                })?;
+                Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: ThreadSafeWinUIElement(Arc::new(element)),
+                })))
+            }
         }
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
-        let app_info = get_app_info_from_startapps(app_name)?;
-        let (app_id, display_name) = app_info;
-        launch_app(self, &app_id, &display_name)
+        info!("Opening application on Windows: {}", app_name);
+
+        // Try to get app info from StartApps first
+        if let Ok((app_id, display_name)) = get_app_info_from_startapps(app_name) {
+            return launch_app(self, &app_id, &display_name);
+        }
+
+        // If it's not a start menu app, assume it's a legacy executable
+        warn!(
+            "Could not find '{}' in StartApps, attempting to launch as executable.",
+            app_name
+        );
+        launch_legacy_app(self, app_name)
     }
 
     fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
+        info!("Opening URL on Windows: {} (browser: {:?})", url, browser);
         let browser = browser.unwrap_or(""); // when empty it'll open url in system's default browser
         let status = std::process::Command::new("powershell")
             .args([
@@ -3784,4 +3852,38 @@ fn get_smart_attributes(element: &UIElement) -> UIElementAttributes {
             element.attributes()
         }
     }
+}
+
+fn launch_legacy_app(engine: &WindowsEngine, app_name: &str) -> Result<UIElement, AutomationError> {
+    info!("Launching legacy app: {}", app_name);
+    unsafe {
+        let mut sei = SHELLEXECUTEINFOW {
+            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
+            lpFile: PCWSTR(HSTRING::from(app_name).as_ptr()),
+            nShow: SW_SHOWNORMAL.0 as i32,
+            ..Default::default()
+        };
+
+        if let Err(e) = ShellExecuteExW(&mut sei) {
+            return Err(AutomationError::PlatformError(format!(
+                "Failed to launch legacy app '{}': {}",
+                app_name, e
+            )));
+        }
+
+        let _ = CloseHandle(sei.hProcess);
+    }
+
+    // After launching, wait a bit for the app to initialize.
+    std::thread::sleep(Duration::from_secs(2));
+
+    // The name might be different from the exe name. For notepad.exe, it's "Notepad".
+    let friendly_app_name = if app_name.eq_ignore_ascii_case("notepad.exe") {
+        "Notepad"
+    } else {
+        app_name.trim_end_matches(".exe")
+    };
+
+    engine.get_application_by_name(friendly_app_name)
 }
