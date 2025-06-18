@@ -20,10 +20,10 @@ param (
 )
 
 # PsExec path
-$psexec = Join-Path $env:ProgramFiles "PSTools\PsExec.exe"
+$psexec = (where.exe psexec).Split("`n")[0]
 
-if (-not (Test-Path $psexec)) {
-    Write-Error "PsExec not found at $psexec. Make sure PSTools is installed in Program Files."
+if (-not $psexec) {
+    Write-Error "PsExec not found. Make sure PSTools is installed and in PATH."
     exit 1
 }
 
