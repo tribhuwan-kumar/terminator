@@ -22,6 +22,19 @@ pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Browser {
+    Default,
+    Chrome,
+    Firefox,
+    Edge,
+    Brave,
+    Opera,
+    Vivaldi,
+    Arc,
+    Custom(String),
+}
+
 #[cfg(target_os = "windows")]
 pub use platforms::windows::convert_uiautomation_element_to_terminator;
 
@@ -260,7 +273,11 @@ impl Desktop {
     }
 
     #[instrument(skip(self, url, browser))]
-    pub fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
+    pub fn open_url(
+        &self,
+        url: &str,
+        browser: Option<Browser>,
+    ) -> Result<UIElement, AutomationError> {
         self.engine.open_url(url, browser)
     }
 

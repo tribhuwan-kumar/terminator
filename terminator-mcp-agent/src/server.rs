@@ -11,7 +11,7 @@ use rmcp::model::{
 use rmcp::{tool, Error as McpError, ServerHandler};
 use serde_json::json;
 use std::env;
-use terminator::{Desktop, Selector};
+use terminator::{Browser, Desktop, Selector};
 
 
 #[tool(tool_box)]
@@ -656,8 +656,9 @@ impl DesktopWrapper {
         &self,
         #[tool(param)] args: NavigateBrowserArgs,
     ) -> Result<CallToolResult, McpError> {
+        let browser = args.browser.clone().map(Browser::Custom);
         self.desktop
-            .open_url(&args.url, args.browser.as_deref())
+            .open_url(&args.url, browser)
             .map_err(|e| {
                 McpError::internal_error(
                     "Failed to open URL",

@@ -36,9 +36,11 @@ use windows::Win32::System::Registry::HKEY;
 use windows::Win32::System::Threading::GetProcessId;
 use windows::Win32::UI::Shell::{
     ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_NOASYNC,
-    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
+    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW, ShellExecuteW,
 };
-use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetWindowThreadProcessId, SW_SHOWNORMAL,
+};
 use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 
 // Define a default timeout duration
@@ -1176,30 +1178,89 @@ impl AccessibilityEngine for WindowsEngine {
         launch_legacy_app(self, app_name)
     }
 
-    fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
+    fn open_url(
+        &self,
+        url: &str,
+        browser: Option<crate::Browser>,
+    ) -> Result<UIElement, AutomationError> {
         info!("Opening URL on Windows: {} (browser: {:?})", url, browser);
-        let browser = browser.unwrap_or(""); // when empty it'll open url in system's default browser
-        let status = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-WindowStyle",
-                "hidden",
-                "-Command",
-                "start",
-                browser,
-                url,
-            ])
-            .status()
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        if !status.success() {
-            return Err(AutomationError::PlatformError(
-                "Failed to open URL".to_string(),
-            ));
+
+        let (browser_exe, browser_search_name) = match browser.as_ref() {
+            Some(crate::Browser::Chrome) => (Some("chrome.exe"), "chrome"),
+            Some(crate::Browser::Firefox) => (Some("firefox.exe"), "firefox"),
+            Some(crate::Browser::Edge) => (Some("msedge.exe"), "msedge"),
+            Some(crate::Browser::Brave) => (Some("brave.exe"), "brave"),
+            Some(crate::Browser::Opera) => (Some("opera.exe"), "opera"),
+            Some(crate::Browser::Vivaldi) => (Some("vivaldi.exe"), "vivaldi"),
+            Some(crate::Browser::Arc) => (Some("Arc.exe"), "Arc"),
+            Some(crate::Browser::Custom(path)) => {
+                let path_str: &str = path;
+                (Some(path_str), path_str.trim_end_matches(".exe"))
+            }
+            Some(crate::Browser::Default) | None => (None, ""),
+        };
+
+        let url_hstring = HSTRING::from(url);
+        let verb_hstring = HSTRING::from("open");
+        let verb_pcwstr = PCWSTR(verb_hstring.as_ptr());
+
+        let hinstance = if let Some(exe_name) = browser_exe {
+            // Open with a specific browser
+            let exe_hstring = HSTRING::from(exe_name);
+            unsafe {
+                ShellExecuteW(
+                    None,
+                    verb_pcwstr,
+                    PCWSTR(exe_hstring.as_ptr()),
+                    PCWSTR(url_hstring.as_ptr()),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                )
+            }
+        } else {
+            // Open with default browser
+            unsafe {
+                ShellExecuteW(
+                    None,
+                    verb_pcwstr,
+                    PCWSTR(url_hstring.as_ptr()),
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                )
+            }
+        };
+
+        // HINSTANCE returned by ShellExecuteW is not a real HRESULT, but a value > 32 on success.
+        if hinstance.0 as i32 <= 32 {
+            return Err(AutomationError::PlatformError(format!(
+                "Failed to open URL. ShellExecuteW returned error code: {:?}",
+                hinstance.0 as i32
+            )));
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Give the browser time to open and take focus
+        std::thread::sleep(std::time::Duration::from_millis(2000));
 
-        self.get_application_by_name(browser)
+        if browser_search_name.is_empty() {
+            // If default browser, try to find the foreground window.
+            let hwnd = unsafe { GetForegroundWindow() };
+            if hwnd.0.is_null() {
+                return Err(AutomationError::ElementNotFound(
+                    "Could not get foreground window after opening URL.".to_string(),
+                ));
+            }
+            let mut pid = 0;
+            unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+            if pid == 0 {
+                return Err(AutomationError::ElementNotFound(
+                    "Could not get process ID for foreground window.".to_string(),
+                ));
+            }
+            self.get_application_by_pid(pid as i32, None)
+        } else {
+            self.get_application_by_name(browser_search_name)
+        }
     }
 
     fn open_file(&self, file_path: &str) -> Result<(), AutomationError> {
@@ -3196,6 +3257,30 @@ impl UIElementImpl for WindowsUIElement {
         }
 
         Ok(())
+    }
+
+    fn url(&self) -> Option<String> {
+        // find the first element with name "search bar" (chrome, edge, arc) or "enter address" (firefox)
+        let automation = create_ui_automation_with_com_init().ok()?;
+        let url = automation
+            .create_matcher()
+            // .from_ref(&self.element.0)
+            .filter(Box::new(OrFilter {
+                left: Box::new(NameFilter {
+                    value: "search bar".to_string(),
+                    casesensitive: false,
+                    partial: true,
+                }),
+                right: Box::new(NameFilter {
+                    value: "enter address".to_string(),
+                    casesensitive: false,
+                    partial: true,
+                }),
+            }))
+            .find_first()
+            .map(|e| e.get_name().unwrap_or_default());
+
+        url.ok()
     }
 }
 

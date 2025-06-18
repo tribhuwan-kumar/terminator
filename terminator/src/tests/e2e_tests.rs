@@ -1,5 +1,5 @@
 use super::init_tracing;
-use crate::Desktop;
+use crate::{Browser, Desktop};
 use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -152,7 +152,7 @@ async fn test_fill_edit_elements_direct() {
 
     // 2. Open the website
     info!("Opening URL: {}", TEST_URL);
-    desktop.open_url(TEST_URL, Some("chrome")).unwrap();
+    desktop.open_url(TEST_URL, Some(Browser::Chrome)).unwrap();
     info!("Successfully opened URL");
 
     // Wait for page load
@@ -312,7 +312,7 @@ async fn benchmark_find_edit_elements() {
 
     // 2. Open the website
     info!("(Direct) Opening URL: {}", TEST_URL);
-    desktop.open_url(TEST_URL, Some("chrome")).unwrap();
+    desktop.open_url(TEST_URL, Some(Browser::Chrome)).unwrap();
     info!("(Direct) Successfully opened URL");
     sleep(Duration::from_secs(2)).await; // Wait for page load
 

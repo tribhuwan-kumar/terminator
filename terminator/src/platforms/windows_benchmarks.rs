@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod performance_benchmarks {
     use super::super::windows::WindowsEngine;
+    use crate::Browser;
     use crate::platforms::AccessibilityEngine;
     use std::process::Command;
     use std::time::{Duration, Instant};
@@ -105,9 +106,9 @@ mod performance_benchmarks {
                 "browser" => {
                     // Try different browsers in order of preference
                     let browsers = vec![
-                        ("Chrome", "chrome"),
-                        ("Edge", "msedge"),
-                        ("Firefox", "firefox"),
+                        ("Chrome", Browser::Chrome),
+                        ("Edge", Browser::Edge),
+                        ("Firefox", Browser::Firefox),
                     ];
 
                     let mut last_error = None;

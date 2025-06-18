@@ -725,6 +725,8 @@ pub struct SerializableUIElement {
     pub application: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub process_id: Option<u32>,
 }
@@ -748,6 +750,7 @@ impl From<&UIElement> for SerializableUIElement {
             description: filter_empty(attrs.description),
             application: filter_empty(Some(element.application_name())),
             window_title: filter_empty(Some(element.window_title())),
+            url: element.url(),
             process_id: element.process_id().ok(),
         }
     }

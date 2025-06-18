@@ -1,4 +1,4 @@
-use crate::{AutomationError, Selector, UIElement, UINode};
+use crate::{AutomationError, Browser, Selector, UIElement, UINode};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -87,7 +87,7 @@ pub trait AccessibilityEngine: Send + Sync {
     fn activate_application(&self, app_name: &str) -> Result<(), AutomationError>;
 
     /// Open a URL in a specified browser (or default if None)
-    fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError>;
+    fn open_url(&self, url: &str, browser: Option<Browser>) -> Result<UIElement, AutomationError>;
 
     /// Open a file
     fn open_file(&self, file_path: &str) -> Result<(), AutomationError>;

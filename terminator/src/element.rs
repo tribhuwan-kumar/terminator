@@ -89,6 +89,8 @@ pub struct SerializableUIElement {
     pub application: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub process_id: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -109,6 +111,7 @@ impl From<&UIElement> for SerializableUIElement {
             description: attrs.description,
             application: Some(element.application_name()),
             window_title: Some(element.window_title()),
+            url: element.url(),
             process_id: element.process_id().ok(),
             children: None,
         }
@@ -127,6 +130,7 @@ impl SerializableUIElement {
             description: None,
             application: None,
             window_title: None,
+            url: None,
             process_id: None,
             children: None,
         }
@@ -313,6 +317,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     /// Close the element if it's closable (like windows, applications)
     /// Does nothing for non-closable elements (like buttons, text, etc.)
     fn close(&self) -> Result<(), AutomationError>;
+
+    // New method to get the URL if the element is in a browser window
+    fn url(&self) -> Option<String>;
 }
 
 impl UIElement {
@@ -513,6 +520,11 @@ impl UIElement {
         self.inner.close()
     }
 
+    /// Get the URL if the element is in a browser window
+    pub fn url(&self) -> Option<String> {
+        self.inner.url()
+    }
+
     // Convenience methods to reduce verbosity with optional properties
 
     /// Get element ID or empty string if not available
@@ -617,6 +629,7 @@ impl UIElement {
                 serializable.application = None;
                 serializable.window_title = None;
                 serializable.process_id = None;
+                serializable.url = None;
             }
 
             let children = if depth < max_depth {

@@ -1,5 +1,5 @@
 use crate::tests::init_tracing;
-use crate::{AutomationError, Desktop, Locator, Selector};
+use crate::{AutomationError, Browser, Desktop, Locator, Selector};
 use std::fs;
 use std::time::Duration;
 
@@ -49,6 +49,48 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
     ]));
     let element = locator.first(Some(Duration::from_secs(5))).await?;
     println!("Element: {:?}", element.name_or_empty());
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_get_browser_url() -> Result<(), AutomationError> {
+    init_tracing();
+    let desktop = Desktop::new(false, true)?;
+    let test_url = "https://www.google.com/";
+    let browsers_to_test = [Browser::Chrome, Browser::Firefox, Browser::Edge]; // FOCUS ONLY ON CHROME
+
+    for browser_name in browsers_to_test {
+        println!("Testing URL retrieval in {:?}", browser_name);
+
+        let browser_app = match desktop.open_url(test_url, Some(browser_name.clone())) {
+            Ok(app) => app,
+            Err(e) => {
+                panic!(
+                    "Could not open browser {:?}: {}. Test failed.",
+                    browser_name, e
+                );
+            }
+        };
+
+        // Increase wait time significantly
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let url = browser_app.url().unwrap_or_default();
+
+        println!("Retrieved URL from {:?}: {:?}", browser_name, url);
+
+        assert!(
+            !url.is_empty(),
+            "URL should be retrieved from {:?}",
+            browser_name
+        );
+
+        browser_app.close()?;
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 
     Ok(())
 }
