@@ -59,6 +59,9 @@ pub struct WindowsRecorder {
     /// Current typing session tracking
     current_typing_session: Arc<AtomicTypingSession>,
 
+    /// Last emitted text value to prevent duplicate text input events
+    last_emitted_text: Arc<Mutex<Option<String>>>,
+
     /// Current application tracking for switch detection
     current_application: Arc<Mutex<Option<ApplicationState>>>,
 
@@ -292,6 +295,7 @@ impl WindowsRecorder {
             hotkey_patterns,
             ui_automation_thread_id: Arc::new(Mutex::new(None)),
             current_typing_session: Arc::new(AtomicTypingSession::default()),
+            last_emitted_text: Arc::new(Mutex::new(None)),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
         };
@@ -636,6 +640,7 @@ impl WindowsRecorder {
         event_tx: &broadcast::Sender<WorkflowEvent>,
         force_complete: bool,
         timeout_ms: u64,
+        last_emitted_text: &Arc<Mutex<Option<String>>>,
     ) {
         let session_data = current_session.complete_session(force_complete, timeout_ms);
 
@@ -666,20 +671,30 @@ impl WindowsRecorder {
                     false, // had_paste is not available in the AtomicTypingSession
                 );
 
-                let text_input_event = TextInputCompletedEvent {
-                    text_value,
-                    field_name,
-                    field_type,
-                    input_method,
-                    typing_duration_ms: duration_ms,
-                    keystroke_count,
-                    metadata: EventMetadata {
-                        ui_element,
-                        timestamp: Some(Self::capture_timestamp()),
-                    },
-                };
+                let mut last_text = last_emitted_text.lock().unwrap();
 
-                let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
+                // Only emit if the text is different from the last one
+                if last_text.as_deref() != Some(text_value.as_str()) {
+                    let text_input_event = TextInputCompletedEvent {
+                        text_value: text_value.clone(),
+                        field_name,
+                        field_type,
+                        input_method,
+                        typing_duration_ms: duration_ms,
+                        keystroke_count,
+                        metadata: EventMetadata {
+                            ui_element,
+                            timestamp: Some(Self::capture_timestamp()),
+                        },
+                    };
+
+                    if event_tx
+                        .send(WorkflowEvent::TextInputCompleted(text_input_event))
+                        .is_ok()
+                    {
+                        *last_text = Some(text_value);
+                    }
+                }
             }
         }
     }
@@ -732,7 +747,8 @@ impl WindowsRecorder {
         handle: tokio::runtime::Handle,
     ) -> Result<()> {
         // Main input event listener (enhanced from original)
-        self.setup_enhanced_input_listener().await?;
+        self.setup_enhanced_input_listener(Arc::clone(&self.last_emitted_text))
+            .await?;
 
         // Clipboard monitoring
         if self.config.record_clipboard {
@@ -745,13 +761,17 @@ impl WindowsRecorder {
             Arc::clone(&self.browser_tab_tracker),
             handle,
             Arc::clone(&self.current_typing_session),
+            Arc::clone(&self.last_emitted_text),
         )?;
 
         Ok(())
     }
 
     /// Set up enhanced input event listener
-    async fn setup_enhanced_input_listener(&mut self) -> Result<()> {
+    async fn setup_enhanced_input_listener(
+        &mut self,
+        last_emitted_text: Arc<Mutex<Option<String>>>,
+    ) -> Result<()> {
         let event_tx = self.event_tx.clone();
         let last_mouse_pos = Arc::clone(&self.last_mouse_pos);
         let capture_ui_elements = self.config.capture_ui_elements;
@@ -761,6 +781,7 @@ impl WindowsRecorder {
         let hotkey_patterns = Arc::clone(&self.hotkey_patterns);
         let config = self.config.clone();
         let current_typing_session = Arc::clone(&self.current_typing_session);
+        let last_emitted_text_clone = Arc::clone(&last_emitted_text);
 
         thread::spawn(move || {
             let track_modifiers = config.track_modifier_states;
@@ -863,6 +884,7 @@ impl WindowsRecorder {
                                         &event_tx,
                                         true, // force complete on Enter
                                         config.text_input_completion_timeout_ms,
+                                        &last_emitted_text_clone,
                                     );
                                 }
                             }
@@ -879,6 +901,7 @@ impl WindowsRecorder {
                                     &event_tx,
                                     true, // force complete on Tab
                                     config.text_input_completion_timeout_ms,
+                                    &last_emitted_text_clone,
                                 );
                             }
                         }
@@ -973,6 +996,7 @@ impl WindowsRecorder {
                                         &event_tx,
                                         true, // force complete on click
                                         config.text_input_completion_timeout_ms,
+                                        &last_emitted_text_clone,
                                     );
                                 }
                             }
@@ -1289,6 +1313,7 @@ impl WindowsRecorder {
         browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
         handle: tokio::runtime::Handle,
         current_typing_session: Arc<AtomicTypingSession>,
+        last_emitted_text: Arc<Mutex<Option<String>>>,
     ) -> Result<()> {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
@@ -1302,6 +1327,7 @@ impl WindowsRecorder {
         let config_clone = self.config.clone();
         let property_config = self.config.clone();
         let property_current_typing_session = Arc::clone(&current_typing_session);
+        let property_last_emitted_text = Arc::clone(&last_emitted_text);
 
         thread::spawn(move || {
             info!("Starting UI Automation event monitoring thread");
@@ -1566,7 +1592,7 @@ impl WindowsRecorder {
 
             // Create a channel for thread-safe communication
             let (property_tx, property_rx) =
-                std::sync::mpsc::channel::<(String, String, Option<UIElement>)>();
+                std::sync::mpsc::channel::<(String, String, Option<UIElement>, u64)>();
 
             // Create a property changed event handler using the proper closure type
             let property_handler: Box<uiautomation::events::CustomPropertyChangedEventHandlerFn> =
@@ -1588,10 +1614,11 @@ impl WindowsRecorder {
                                     None
                                 }
                             };
+                        let timestamp = Self::capture_timestamp();
 
                         // Send the extracted data through the channel
                         if property_tx
-                            .send((property_name, value_string, ui_element))
+                            .send((property_name, value_string, ui_element, timestamp))
                             .is_err()
                         {
                             debug!(
@@ -1633,7 +1660,9 @@ impl WindowsRecorder {
             // Spawn a thread to process the property change data safely
             let property_browser_tracker = Arc::clone(&browser_tab_tracker);
             std::thread::spawn(move || {
-                while let Ok((property_name, value_string, ui_element)) = property_rx.recv() {
+                while let Ok((property_name, value_string, ui_element, timestamp)) =
+                    property_rx.recv()
+                {
                     // Extract element name on the worker thread
                     let element_name = ui_element
                         .as_ref()
@@ -1655,7 +1684,6 @@ impl WindowsRecorder {
                         );
                         continue;
                     }
-
                     if property_config.record_text_input_completion && property_name == "ValueValue"
                     {
                         if let Some(ref element) = ui_element {
@@ -1664,12 +1692,33 @@ impl WindowsRecorder {
                                 || role.contains("document")
                                 || role.contains("textbox")
                             {
-                                // A suggestion click can change the value without any keystrokes.
-                                // If no typing session is active, we can assume this is an auto-fill.
-                                if !property_current_typing_session
+                                // If a typing session is active, ignore this event to avoid conflicts.
+                                if property_current_typing_session
                                     .is_active
                                     .load(Ordering::Relaxed)
                                 {
+                                    continue;
+                                }
+
+                                // If the event is older than the last keystroke of the last completed session,
+                                // it's a stale event that we should ignore.
+                                let last_keystroke_nanos = property_current_typing_session
+                                    .last_keystroke_nanos
+                                    .load(Ordering::Relaxed);
+
+                                if last_keystroke_nanos > 0 {
+                                    let event_timestamp_nanos = timestamp * 1_000_000;
+                                    if event_timestamp_nanos < last_keystroke_nanos {
+                                        debug!("Ignoring stale property change event from last typing session.");
+                                        continue;
+                                    }
+                                }
+
+                                // A suggestion click can change the value without any keystrokes.
+                                // If no typing session is active, we can assume this is an auto-fill.
+                                let mut last_text = property_last_emitted_text.lock().unwrap();
+
+                                if last_text.as_deref() != Some(value_string.as_str()) {
                                     debug!(
                                         "Detected value change on '{}' with no active typing session. Emitting TextInputCompletedEvent.",
                                         element_name
@@ -1685,8 +1734,12 @@ impl WindowsRecorder {
                                             ui_element.clone(),
                                         ),
                                     };
-                                    let _ = property_event_tx
-                                        .send(WorkflowEvent::TextInputCompleted(text_input_event));
+                                    if event_tx
+                                        .send(WorkflowEvent::TextInputCompleted(text_input_event))
+                                        .is_ok()
+                                    {
+                                        *last_text = Some(value_string.clone());
+                                    }
                                 }
                             }
                         }
@@ -1912,6 +1965,7 @@ impl WindowsRecorder {
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let timeout_ms = self.config.text_input_completion_timeout_ms;
         let config = self.config.clone();
+        let last_emitted_text = Arc::clone(&self.last_emitted_text);
 
         thread::spawn(move || {
             // Create a UIAutomation instance once for this thread to reuse, respecting the configured threading model
@@ -1936,6 +1990,7 @@ impl WindowsRecorder {
                         &event_tx,
                         false, // don't force, let timeout logic decide
                         timeout_ms,
+                        &last_emitted_text,
                     );
                 }
             }
