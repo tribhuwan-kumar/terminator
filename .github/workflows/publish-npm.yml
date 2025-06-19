@@ -22,18 +22,18 @@ jobs:
           #     cd bindings/nodejs
           #     npm run build
           #     cp terminator.linux-x64-gnu.node npm/linux-x64-gnu/
-          # - host: macos-latest
-          #   target: x86_64-apple-darwin
-          #   build: |
-          #     cd bindings/nodejs
-          #     npm run build -- --target x86_64-apple-darwin
-          #     cp terminator.darwin-x64.node npm/darwin-x64/
-          # - host: macos-latest
-          #   target: aarch64-apple-darwin
-          #   build: |
-          #     cd bindings/nodejs
-          #     npm run build -- --target aarch64-apple-darwin
-          #     cp terminator.darwin-arm64.node npm/darwin-arm64/
+          - host: macos-latest
+            target: x86_64-apple-darwin
+            build: |
+              cd bindings/nodejs
+              npm run build -- --target x86_64-apple-darwin
+              cp terminator.darwin-x64.node npm/darwin-x64/
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            build: |
+              cd bindings/nodejs
+              npm run build -- --target aarch64-apple-darwin
+              cp terminator.darwin-arm64.node npm/darwin-arm64/
 
     name: stable - ${{ matrix.settings.target }}
     runs-on: ${{ matrix.settings.host }}
