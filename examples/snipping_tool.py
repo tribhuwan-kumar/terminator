@@ -38,7 +38,7 @@ async def draw_polygon(
     x0 = center_x + radius * math.cos(angle0)
     y0 = center_y + radius * math.sin(angle0)
     app_window.mouse_click_and_hold(x0, y0)
-    asyncio.sleep(sleep_time)
+    await asyncio.sleep(sleep_time)
     for r in range(rounds):
         for i in range(1, sides + 1):
             angle = 2 * math.pi * i / sides
@@ -73,7 +73,7 @@ async def run_snipping_tool():
         await asyncio.sleep(1)
 
         print("Entering file name...")
-        save_dialog = desktop.locator("window:Save As").locator("window:Save As")
+        save_dialog = app_window.locator("window:Save As")
         file_name_edit_box = (
             await save_dialog.locator("role:Pane")
             .locator("role:ComboBox")

@@ -51,7 +51,7 @@ async def run_notepad():
         document.press_key("{Ctrl}s")
 
         print("Entering file name...")
-        save_dialog = desktop.locator("window:Save As").locator("window:Save As")
+        save_dialog = editor.locator("window:Save As")
         save_dialog_window = await save_dialog.first()
         save_dialog_window.highlight(
             color=0xFF00FF, duration_ms=3000
