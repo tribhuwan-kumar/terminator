@@ -27,6 +27,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{Level, debug, info, instrument, warn};
+use tracing_subscriber::field::debug;
 use uni_ocr::{OcrEngine, OcrProvider};
 
 use super::tree_search::ElementsCollectorWithWindows;
@@ -2043,9 +2044,63 @@ fn macos_role_to_generic_role(role: &str) -> Vec<String> {
 }
 
 // List of application localized names to exclude.
-// These are known to consistently fail to retrieve role
-// and take an unusually long time to do so.
-const EXCLUDED_APPLICATION_NAMES: &[&str] = &["Raycast Web Content", "superwhisper Web Content"];
+const EXCLUDED_APPLICATION_NAMES: &[&str] = &[
+    // These are known to consistently fail to retrieve role
+    // and take an unusually long time to do so.
+    "<unknown>",
+    "Raycast Web Content",
+    "superwhisper Web Content",
+    // "QLPreviewGenerationExtension",
+    "QLPreviewGenerationExtension (Open and Save Panel Service (Google Chrome))",
+    // "com.apple.Safari.SandboxBroker",
+    "com.apple.Safari.SandboxBroker (Safari)",
+    // Additional exclusions based on Hammerspoon's window_filter.lua:
+    // See: https://github.com/Hammerspoon/hammerspoon/blob/master/extensions/window/window_filter.lua#L115-L138
+    // Apps that often have no PID or are not accessible
+    "universalaccessd",
+    "sharingd",
+    "Safari Networking",
+    "Spotlight Networking",
+    "iTunes Helper",
+    "Safari Web Content",
+    "App Store Web Content",
+    "Safari Database Storage",
+    "Google Chrome Helper",
+    "Spotify Helper",
+    "Todoist Networking",
+    "Safari Storage",
+    "Todoist Database Storage",
+    "AAM Updates Notifier",
+    "Slack Helper",
+    // Apps that often have no windows or are system/background agents
+    "com.apple.internetaccounts",
+    "CoreServicesUIAgent",
+    "AirPlayUIAgent",
+    "com.apple.security.pboxd",
+    "PowerChime",
+    "SystemUIServer",
+    "Dock",
+    "com.apple.dock.extra",
+    "storeuid",
+    "Folder Actions Dispatcher",
+    "Keychain Circle Notification",
+    "Wi-Fi",
+    "Image Capture Extension",
+    "iCloud Photos",
+    "System Events",
+    "Speech Synthesis Server",
+    "Dropbox Finder Integration",
+    "LaterAgent",
+    "Karabiner_AXNotifier",
+    "Photos Agent",
+    "EscrowSecurityAlert",
+    "com.apple.MailServiceAgent",
+    "Mail Web Content",
+    "nbagent",
+    "rcd",
+    "Evernote Helper",
+    "BTTRelaunch",
+];
 
 #[async_trait::async_trait]
 impl AccessibilityEngine for MacOSEngine {
@@ -2159,6 +2214,11 @@ impl AccessibilityEngine for MacOSEngine {
                             name
                         );
                         continue;
+                    } else {
+                        debug!(
+                            "[macOS][get_applications] Application localized_name: {:?}",
+                            name
+                        );
                     }
                 }
 
