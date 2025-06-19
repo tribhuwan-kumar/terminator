@@ -3,6 +3,7 @@
 import asyncio
 import terminator
 
+
 async def run_calculator():
     # Create a Desktop instance (main entry point for automation)
     desktop = terminator.Desktop(log_level="error")
@@ -14,7 +15,9 @@ async def run_calculator():
 
         # Locators relative to the calculator window
         # IMPORTANT: Selectors might differ on non-Windows platforms or even Windows versions
-        display_element = calculator_window.locator("nativeid:CalculatorResults")  # Using AutomationId is often more stable
+        display_element = calculator_window.locator(
+            "nativeid:CalculatorResults"
+        )  # Using AutomationId is often more stable
         button_1 = await calculator_window.locator("Name:One").first()
         button_plus = await calculator_window.locator("Name:Plus").first()
         button_2 = await calculator_window.locator("Name:Two").first()
@@ -74,6 +77,7 @@ async def run_calculator():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+
 # Entry point for running the example
 if __name__ == "__main__":
-    asyncio.run(run_calculator()) 
+    asyncio.run(run_calculator())

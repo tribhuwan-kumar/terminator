@@ -1,11 +1,12 @@
 import asyncio
 import terminator
 
+
 async def main():
     desktop = terminator.Desktop(log_level="error")
 
     # Try to find a window element to get monitor info
-    locator = desktop.locator('role:Window')
+    locator = desktop.locator("role:Window")
     try:
         windows = await locator.all()
         if not windows:
@@ -22,7 +23,7 @@ async def main():
 
         # You can also get monitor info for any UI element
         # For example, let's find a button and get its monitor
-        button_locator = desktop.locator('role:Button')
+        button_locator = desktop.locator("role:Button")
         button = await button_locator.first()
         if button:
             print("\nFound button:", button.name() or "Unnamed button")
@@ -32,5 +33,6 @@ async def main():
     except Exception as e:
         print("Error:", str(e))
 
+
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
