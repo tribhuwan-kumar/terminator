@@ -508,4 +508,16 @@ impl UIElement {
     pub fn close(&self) -> PyResult<()> {
         self.inner.close().map_err(automation_error_to_pyerr)
     }
+
+    #[pyo3(name = "monitor", text_signature = "($self)")]
+    /// Get the monitor containing this element.
+    ///
+    /// Returns:
+    ///     Monitor: The monitor information for the display containing this element.
+    pub fn monitor(&self) -> PyResult<crate::types::Monitor> {
+        self.inner
+            .monitor()
+            .map(crate::types::Monitor::from)
+            .map_err(automation_error_to_pyerr)
+    }
 }

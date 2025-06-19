@@ -23,10 +23,25 @@ export interface CommandOutput {
   stdout: string
   stderr: string
 }
+export interface Monitor {
+  id: string
+  name: string
+  isPrimary: boolean
+  width: number
+  height: number
+  x: number
+  y: number
+  scaleFactor: number
+}
+export interface MonitorScreenshotPair {
+  monitor: Monitor
+  screenshot: ScreenshotResult
+}
 export interface ScreenshotResult {
   width: number
   height: number
   imageData: Array<number>
+  monitor?: Monitor
 }
 export interface UIElementAttributes {
   role: string
@@ -194,7 +209,7 @@ export declare class Desktop {
    * Open a URL in a browser.
    *
    * @param {string} url - The URL to open.
-   * @param {string} [browser] - The browser to use.
+   * @param {string} [browser] - The browser to use. Can be "Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Arc", or a custom browser path.
    */
   openUrl(url: string, browser?: string | undefined | null): Element
   /**
@@ -218,6 +233,51 @@ export declare class Desktop {
    * @returns {UINode} Complete UI tree starting from the identified window.
    */
   getWindowTree(pid: number, title?: string | undefined | null, config?: TreeBuildConfig | undefined | null): UINode
+  /**
+   * (async) List all available monitors/displays.
+   *
+   * @returns {Promise<Array<Monitor>>} List of monitor information.
+   */
+  listMonitors(): Promise<Array<Monitor>>
+  /**
+   * (async) Get the primary monitor.
+   *
+   * @returns {Promise<Monitor>} Primary monitor information.
+   */
+  getPrimaryMonitor(): Promise<Monitor>
+  /**
+   * (async) Get the monitor containing the currently focused window.
+   *
+   * @returns {Promise<Monitor>} Active monitor information.
+   */
+  getActiveMonitor(): Promise<Monitor>
+  /**
+   * (async) Get a monitor by its ID.
+   *
+   * @param {string} id - The monitor ID to find.
+   * @returns {Promise<Monitor>} Monitor information.
+   */
+  getMonitorById(id: string): Promise<Monitor>
+  /**
+   * (async) Get a monitor by its name.
+   *
+   * @param {string} name - The monitor name to find.
+   * @returns {Promise<Monitor>} Monitor information.
+   */
+  getMonitorByName(name: string): Promise<Monitor>
+  /**
+   * (async) Capture a screenshot of a specific monitor.
+   *
+   * @param {Monitor} monitor - The monitor to capture.
+   * @returns {Promise<ScreenshotResult>} The screenshot data.
+   */
+  captureMonitor(monitor: Monitor): Promise<ScreenshotResult>
+  /**
+   * (async) Capture screenshots of all monitors.
+   *
+   * @returns {Promise<Array<{monitor: Monitor, screenshot: ScreenshotResult}>>} Array of monitor and screenshot pairs.
+   */
+  captureAllMonitors(): Promise<Array<MonitorScreenshotPair>>
 }
 /** A UI element in the accessibility tree. */
 export declare class Element {
@@ -431,6 +491,12 @@ export declare class Element {
    * @returns {void}
    */
   close(): void
+  /**
+   * Get the monitor containing this element.
+   *
+   * @returns {Monitor} The monitor information for the display containing this element.
+   */
+  monitor(): Monitor
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
