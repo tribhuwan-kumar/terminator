@@ -12,6 +12,7 @@ Vagrant.configure("2") do |config|
     vb.gui = true
     # Enables a bidirectional clipboard between host and guest
     vb.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
+    vb.customize ["modifyvm", :id, "--monitorcount", "3"]
   end
 
   # Network configuration
