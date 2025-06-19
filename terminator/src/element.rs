@@ -328,8 +328,15 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     /// top-left corner. Individual platforms can override this for a more
     /// accurate or cheaper implementation.
     fn monitor(&self) -> Result<crate::Monitor, AutomationError> {
-        // 1. Get element bounds (x, y)
-        let (x, y, _w, _h) = self.bounds()?;
+        // 1. Get element bounds (x, y) with better error handling
+        let (x, y, _w, _h) = match self.bounds() {
+            Ok(bounds) => bounds,
+            Err(e) => {
+                // If we can't get bounds, fall back to primary monitor
+                warn!("Failed to get element bounds for monitor detection: {}", e);
+                return self.get_primary_monitor_fallback();
+            }
+        };
 
         // 2. Enumerate available monitors using xcap (already a dependency)
         let monitors = xcap::Monitor::all().map_err(|e| {
@@ -388,8 +395,63 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
             }
         }
 
-        Err(AutomationError::ElementNotFound(
-            "Unable to determine monitor for element".to_string(),
+        // If no monitor found containing the element, fall back to primary
+        warn!(
+            "Element coordinates ({}, {}) not found on any monitor, falling back to primary",
+            x, y
+        );
+        self.get_primary_monitor_fallback()
+    }
+
+    /// Helper method to get primary monitor as fallback
+    fn get_primary_monitor_fallback(&self) -> Result<crate::Monitor, AutomationError> {
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to enumerate monitors: {}", e))
+        })?;
+
+        for (idx, monitor) in monitors.iter().enumerate() {
+            let is_primary = monitor.is_primary().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to check primary status: {}", e))
+            })?;
+
+            if is_primary {
+                let name = monitor.name().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+                })?;
+                let width = monitor.width().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+                })?;
+                let height = monitor.height().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+                })?;
+                let x = monitor.x().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
+                })?;
+                let y = monitor.y().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
+                })?;
+                let scale_factor = monitor.scale_factor().map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to get monitor scale factor: {}",
+                        e
+                    ))
+                })? as f64;
+
+                return Ok(crate::Monitor {
+                    id: format!("monitor_{}", idx),
+                    name,
+                    is_primary,
+                    width,
+                    height,
+                    x,
+                    y,
+                    scale_factor,
+                });
+            }
+        }
+
+        Err(AutomationError::PlatformError(
+            "No primary monitor found".to_string(),
         ))
     }
 }
@@ -401,7 +463,7 @@ impl UIElement {
     }
 
     /// Get the element's ID
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn id(&self) -> Option<String> {
         self.inner.id()
     }
@@ -432,19 +494,19 @@ impl UIElement {
     }
 
     /// Click on this element
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn click(&self) -> Result<ClickResult, AutomationError> {
         self.inner.click()
     }
 
     /// Double-click on this element
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn double_click(&self) -> Result<ClickResult, AutomationError> {
         self.inner.double_click()
     }
 
     /// Right-click on this element
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn right_click(&self) -> Result<(), AutomationError> {
         self.inner.right_click()
     }
@@ -480,7 +542,7 @@ impl UIElement {
     }
 
     /// Check if element is enabled
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn is_enabled(&self) -> Result<bool, AutomationError> {
         self.inner.is_enabled()
     }
@@ -522,7 +584,7 @@ impl UIElement {
     }
 
     /// Get the element's name
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn name(&self) -> Option<String> {
         self.inner.name()
     }
