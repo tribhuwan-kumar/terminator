@@ -35,7 +35,7 @@ async function main() {
         // Generate file names
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const safeAppName = appName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const baseFileName = `${safeAppName}_${pid}_${timestamp}`;
+        const baseFileName = `data/${safeAppName}_${pid}_${timestamp}`;
         const jsonFileName = `${baseFileName}.json`;
         const mdFileName = `${baseFileName}.md`;
 

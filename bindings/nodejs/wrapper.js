@@ -150,12 +150,14 @@ function mapNativeError(error) {
 const Desktop = wrapClassMethods(native.Desktop);
 const Element = wrapClass(native.Element);
 const Locator = wrapClass(native.Locator);
+const Selector = wrapClass(native.Selector);
 
 // Export everything
 module.exports = {
     Desktop,
     Element,
     Locator,
+    Selector,
     // Export error classes
     ElementNotFoundError,
     TimeoutError,
