@@ -130,9 +130,6 @@ async def run_notepad():
         except:
             pass
 
-        # close notepad
-        editor.close()
-
     except terminator.PlatformError as e:
         print(f"Platform Error: {e}")
     except Exception as e:
