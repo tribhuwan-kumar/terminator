@@ -80,19 +80,25 @@ impl DesktopWrapper {
         let app_info: Vec<_> = apps
             .iter()
             .map(|app| {
+                let id = app.id().unwrap_or_default();
                 json!({
                     "name": app.name().unwrap_or_default(),
-                    "id": app.id().unwrap_or_default(),
+                    "id": id,
                     "role": app.role(),
                     "pid": app.process_id().unwrap_or(0),
-                    "suggested_selector": format!("name:{}", app.name().unwrap_or_default())
+                    "suggested_selector": format!("#{}", id),
+                    "alternative_selectors": [
+                        format!("#{}", id),
+                        format!("name:{}", app.name().unwrap_or_default())
+                    ]
                 })
             })
             .collect();
 
         Ok(CallToolResult::success(vec![Content::json(json!({
             "applications": app_info,
-            "count": apps.len()
+            "count": apps.len(),
+            "recommendation": "Always prefer using ID selectors (e.g., '#12345') over name selectors for reliability. Use get_window_tree with include_tree=true to get the full UI structure and find specific element IDs."
         }))?]))
     }
 
@@ -397,18 +403,49 @@ impl DesktopWrapper {
             .map_err(|e| {
                 McpError::internal_error(
                     "Failed to locate element",
-                    Some(json!({"reason": e.to_string()})),
+                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
                 )
             })?;
+
+        let pid = element.process_id().unwrap_or(0);
+        let id = element.id().unwrap_or_default();
+
+        let element_info = json!({
+            "name": element.name().unwrap_or_default(),
+            "role": element.role(),
+            "id": id,
+            "pid": pid,
+            "bounds": element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+            "enabled": element.is_enabled().unwrap_or(false),
+            "suggested_selector": format!("#{}", id),
+        });
+
         element.activate_window().map_err(|e| {
             McpError::resource_not_found(
                 "Failed to activate window with that element",
-                Some(json!({"reason": e.to_string()})),
+                Some(json!({"reason": e.to_string(), "selector": args.selector, "element_info": element_info})),
             )
         })?;
-        Ok(CallToolResult::success(vec![Content::json(
-            "Window with that element activated successfully",
-        )?]))
+
+        let mut result_json = json!({
+            "action": "activate_element",
+            "status": "success",
+            "element": element_info,
+            "selector": args.selector,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "recommendation": "Window activated successfully. The UI tree is attached to help you find specific elements to interact with next."
+        });
+
+        // Always attach UI tree for activated elements to help with next actions
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true), // Default to true for activate_element
+            Some(pid),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(
@@ -418,7 +455,14 @@ impl DesktopWrapper {
         &self,
         #[tool(param)] _args: EmptyArgs,
     ) -> Result<CallToolResult, McpError> {
-        let screenshot = self.desktop.capture_screen().await.map_err(|e| {
+        let monitor = self.desktop.get_primary_monitor().await.map_err(|e| {
+            McpError::internal_error(
+                "Failed to get primary monitor",
+                Some(json!({"reason": e.to_string()})),
+            )
+        })?;
+
+        let screenshot = self.desktop.capture_monitor(&monitor).await.map_err(|e| {
             McpError::internal_error(
                 "Failed to capture screen",
                 Some(json!({"reason": e.to_string()})),
@@ -784,20 +828,42 @@ impl DesktopWrapper {
             )
         })?;
 
+        let pid = result.process_id().unwrap_or(0);
+        let id = result.id().unwrap_or_default();
+
         let element_info = json!({
             "name": result.name().unwrap_or_default(),
             "role": result.role(),
-            "id": result.id().unwrap_or_default(),
-            "pid": result.process_id().unwrap_or(0),
+            "id": id,
+            "pid": pid,
+            "suggested_selector": format!("#{}", id),
+            "alternative_selectors": [
+                format!("#{}", id),
+                format!("name:{}", result.name().unwrap_or_default())
+            ]
         });
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "open_application",
             "status": "success",
             "app_name": args.app_name,
             "application": element_info,
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "recommendation": "Application opened successfully. Use get_window_tree with the PID to get the full UI structure for reliable element targeting."
+        });
+
+        // Always attach the full UI tree for newly opened applications
+        if pid > 0 {
+            if let Ok(tree) = self.desktop.get_window_tree(pid, None, None) {
+                if let Ok(tree_val) = serde_json::to_value(tree) {
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert("ui_tree".to_string(), tree_val);
+                    }
+                }
+            }
+        }
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(
@@ -951,22 +1017,27 @@ fn get_server_instructions() -> String {
         "
 You are an AI assistant designed to control a computer desktop. Your primary goal is to understand the user's request and translate it into a sequence of tool calls to automate GUI interactions.
 
-**Core Workflow: Discover, then Act**
+**CRITICAL: ID-First Selector Strategy**
 
-Your most reliable strategy is to inspect the application's UI structure *before* trying to interact with it. Do not guess selectors.
+**GOLDEN RULE:** When any UI element has an `id` field, ALWAYS use ONLY that ID as the selector with the format `#[ID]`. This is the most reliable targeting method and prevents ambiguity.
 
-1.  **Discover Running Applications:** Use `get_applications` to see what's running. This gives you the `name` and `pid` (Process ID) for each application.
+**Core Workflow: Discover, then Act with ID Priority**
 
-2.  **Get the UI Tree:** This is the most important step. Once you have the `pid` of your target application, call `get_window_tree`. This returns a complete, JSON-like structure of all UI elements in that application.
+Your most reliable strategy is to inspect the application's UI structure *before* trying to interact with it. Never guess selectors.
 
-3.  **Find Your Target Element in the Tree:** Parse the tree to locate the element you need. Each element in the tree has several properties, but you should prioritize them in this order:
-    *   `id`: This is the most reliable way to find an element. It's a unique identifier.
+1.  **Discover Running Applications:** Use `get_applications` to see what's running. This gives you the `name`, `id`, and `pid` (Process ID) for each application. Note the `suggested_selector` field which prioritizes ID selectors.
+
+2.  **Get the UI Tree:** This is the most important step. Once you have the `pid` of your target application, call `get_window_tree` with `include_tree: true`. This returns a complete, JSON-like structure of all UI elements in that application.
+
+3.  **Find Your Target Element in the Tree:** Parse the tree to locate the element you need. MANDATORY priority order:
+    *   **`id`: HIGHEST PRIORITY** - This is the most reliable way to find an element. It's a unique identifier.
     *   `name`: The visible text or label of the element (e.g., \"Save\", \"File\").
     *   `role`: The type of the element (e.g., \"Button\", \"Window\", \"Edit\").
 
-4.  **Construct a Selector String:** Create a `selector` string to target the element. You can chain selectors using ` >> `.
+4.  **Construct a Selector String:** Create a `selector` string to target the element:
     *   **CRITICAL BEST PRACTICE:** When an element has an `id`, ALWAYS use JUST the ID with a hash prefix. For example, if ID is `12345`, use the selector `\"#12345\"`. Do NOT chain selectors when you have a reliable, unique ID.
-    *   **Chaining Example:** To find a button named \"OK\" inside a window named \"My App\", you could use `\"window:'My App' >> button:OK\"`.
+    *   **Fallback Chaining Example:** Only if NO ID exists, find a button named \"OK\" inside a window named \"My App\": `\"window:'My App' >> button:OK\"`.
+    *   **Context-Specific Selectors:** For web pages or complex applications, be more specific to avoid wrong elements. Use parent-child relationships when no ID is available.
 
 5.  **Interact with the Element:** Once you have a reliable `selector`, use an action tool:
     *   `click_element`: To click buttons, links, etc.
@@ -1037,10 +1108,13 @@ Contextual information:
 - Current working directory: {}.
 
 **Golden Rules:** 
-1. Always call `get_window_tree` to understand the UI landscape before you try to act on it. 
-2. When an element has an `id`, use ONLY that ID with a hash prefix.
-3. Always scroll pages to get full context when working with web pages or long documents.
-4. Always use highlight_element to show the user what you are doing.
+1. Always call `get_window_tree` with `include_tree: true` to understand the UI landscape before you try to act on it. 
+2. When an element has an `id`, use ONLY that ID with a hash prefix as the selector (e.g., `#12345`).
+3. NEVER use broad, ambiguous selectors like `name:Search` - always be specific and context-aware.
+4. Always activate_element should include `include_tree: true` for next action planning.
+5. Always scroll pages to get full context when working with web pages or long documents.
+6. Always use highlight_element to show the user what you are doing.
+7. For web automation, use specific element IDs or combine parent-child selectors to avoid selecting wrong elements (e.g., search bars from different applications).
 ",
         current_date_time, current_os, current_working_dir
     )

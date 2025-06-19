@@ -2575,6 +2575,38 @@ impl UIElementImpl for WindowsUIElement {
         Ok(())
     }
 
+    fn minimize_window(&self) -> Result<(), AutomationError> {
+        use windows::Win32::UI::WindowsAndMessaging::{SW_MINIMIZE, ShowWindow};
+
+        debug!("Minimizing window for element: {:?}", self.element.0);
+
+        // First try to get the native window handle
+        let hwnd = match self.element.0.get_native_window_handle() {
+            Ok(handle) => handle,
+            Err(_) => {
+                return Err(AutomationError::PlatformError(
+                    "Could not get native window handle for minimize operation".to_string(),
+                ));
+            }
+        };
+
+        unsafe {
+            let hwnd_param: windows::Win32::Foundation::HWND = hwnd.into();
+
+            // Minimize the window
+            let result = ShowWindow(hwnd_param, SW_MINIMIZE);
+
+            if result.as_bool() {
+                debug!("Window minimized successfully");
+            } else {
+                debug!("Window was already minimized or minimize operation had no effect");
+            }
+        }
+
+        debug!("Window minimize operation completed");
+        Ok(())
+    }
+
     fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError> {
         let control_type = self
             .element

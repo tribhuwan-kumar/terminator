@@ -18,7 +18,9 @@ pub struct GetWindowTreeArgs {
     pub pid: u32,
     #[schemars(description = "Optional window title filter")]
     pub title: Option<String>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
+    #[schemars(
+        description = "Whether to include full UI tree in the response (verbose mode). STRONGLY RECOMMENDED to set to true for detailed element discovery with IDs."
+    )]
     pub include_tree: Option<bool>,
 }
 

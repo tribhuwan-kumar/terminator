@@ -273,6 +273,9 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     // New method to activate the window containing the element
     fn activate_window(&self) -> Result<(), AutomationError>;
 
+    // New method to minimize the window containing the element
+    fn minimize_window(&self) -> Result<(), AutomationError>;
+
     // Add a method to clone the box
     fn clone_box(&self) -> Box<dyn UIElementImpl>;
 
@@ -581,6 +584,10 @@ impl UIElement {
     /// Activate the window containing this element (bring to foreground)
     pub fn activate_window(&self) -> Result<(), AutomationError> {
         self.inner.activate_window()
+    }
+
+    pub fn minimize_window(&self) -> Result<(), AutomationError> {
+        self.inner.minimize_window()
     }
 
     /// Get the element's name

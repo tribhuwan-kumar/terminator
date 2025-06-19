@@ -2176,6 +2176,12 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
+    fn minimize_window(&self) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedPlatform(
+            "Linux implementation is not yet available".to_string(),
+        ))
+    }
+
     fn process_id(&self) -> Result<u32, AutomationError> {
         let (resp_tx, resp_rx): U32Channel = std::sync::mpsc::channel();
         let this = self.clone();

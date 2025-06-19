@@ -1579,6 +1579,56 @@ impl UIElementImpl for MacOSUIElement {
         self.focus()
     }
 
+    fn minimize_window(&self) -> Result<(), AutomationError> {
+        // On macOS, try to minimize the window containing this element
+        debug!("Minimizing window for element: {:?}", self.element.0);
+
+        // First, try to find the window element
+        match self.window() {
+            Ok(Some(window)) => {
+                // Try to use the AXMinimizeButton action if available
+                let minimize_button_attr = AXAttribute::new(&CFString::new("AXMinimizeButton"));
+                if let Ok(minimize_button_value) = window
+                    .inner
+                    .as_any()
+                    .downcast_ref::<MacOSUIElement>()
+                    .unwrap()
+                    .element
+                    .0
+                    .attribute(&minimize_button_attr)
+                {
+                    if let Some(minimize_button) =
+                        minimize_button_value.downcast_into::<AXUIElement>()
+                    {
+                        let press_action = CFString::new("AXPress");
+                        if minimize_button.perform_action(&press_action).is_ok() {
+                            debug!("Window minimized using AXMinimizeButton");
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // Fallback: try using Cmd+M to minimize
+                window.press_key("cmd+m").map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to minimize window: {}", e))
+                })
+            }
+            Ok(None) => {
+                // No window found, try Cmd+M on the current element
+                self.press_key("cmd+m").map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to minimize (no window found): {}",
+                        e
+                    ))
+                })
+            }
+            Err(e) => Err(AutomationError::PlatformError(format!(
+                "Failed to get window for minimize: {}",
+                e
+            ))),
+        }
+    }
+
     fn mouse_drag(
         &self,
         _start_x: f64,
