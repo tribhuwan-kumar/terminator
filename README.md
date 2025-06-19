@@ -52,6 +52,7 @@ await desktop.locator('name:Edit').typeText('hello world')
 Terminator is the Playwright-style SDK for automating Windows GUI apps.
 
 - 🪟 Built for Windows, works on Linux & macOS (partial)
+- 🤖 Uses RLHF'd human screen recording as context
 - 🧠 Designed for AI agents, not humans
 - ⚡ Uses OS-level accessibility (not vision)
 - 🧩 TS, Python, and Rust support
