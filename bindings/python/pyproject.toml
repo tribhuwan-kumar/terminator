@@ -28,6 +28,7 @@ classifiers = [
 dynamic = ["version"]
 
 [tool.maturin]
+module-name = "terminator"
 # "extension-module" tells pyo3 we want to build an extension module (skips linking against libpython.so)
 features = ["pyo3/extension-module"]
 
