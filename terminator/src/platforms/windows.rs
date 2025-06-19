@@ -2527,13 +2527,52 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn activate_window(&self) -> Result<(), AutomationError> {
-        // On Windows, setting focus on an element within the window
-        // typically brings the window to the foreground.
+        use windows::Win32::UI::WindowsAndMessaging::{
+            BringWindowToTop, IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow,
+        };
+
         debug!(
             "Activating window by focusing element: {:?}",
             self.element.0
         );
-        self.focus()
+
+        // First try to get the native window handle
+        let hwnd = match self.element.0.get_native_window_handle() {
+            Ok(handle) => handle,
+            Err(_) => {
+                // Fallback to just setting focus if we can't get the window handle
+                debug!("Could not get native window handle, falling back to set_focus");
+                return self.focus();
+            }
+        };
+
+        unsafe {
+            let hwnd_param: windows::Win32::Foundation::HWND = hwnd.into();
+
+            // Check if the window is minimized and restore it if needed
+            if IsIconic(hwnd_param).as_bool() {
+                debug!("Window is minimized, restoring it");
+                let _ = ShowWindow(hwnd_param, SW_RESTORE);
+            }
+
+            // Bring the window to the top of the Z order
+            let _ = BringWindowToTop(hwnd_param);
+
+            // Set as the foreground window (this is the key method for activation)
+            let result = SetForegroundWindow(hwnd_param);
+
+            if !result.as_bool() {
+                debug!("SetForegroundWindow failed, but continuing");
+                // Note: SetActiveWindow is not available in the current Windows crate version
+                // The SetForegroundWindow should be sufficient for most cases
+            }
+
+            // Finally, set focus to the specific element
+            let _ = self.element.0.set_focus();
+        }
+
+        debug!("Window activation completed");
+        Ok(())
     }
 
     fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError> {

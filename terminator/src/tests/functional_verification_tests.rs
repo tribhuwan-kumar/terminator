@@ -442,6 +442,9 @@ fn test_comprehensive_functional_verification() {
     test_focused_element_access();
     println!("\n{}\n", "=".repeat(50));
 
+    test_window_activation();
+    println!("\n{}\n", "=".repeat(50));
+
     test_error_handling_robustness();
 
     println!("\n✅ All functional verification tests completed!");
@@ -456,4 +459,225 @@ fn test_comprehensive_functional_verification() {
     println!("  cargo test test_get_applications_functional -- --ignored --nocapture");
     println!("  cargo test test_get_application_by_name_functional -- --ignored --nocapture");
     println!("  cargo test test_comprehensive_functional_verification -- --ignored --nocapture");
+}
+
+#[test]
+#[ignore]
+fn test_window_activation() {
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    println!("\n🪟 Testing window activation functionality");
+    let desktop = Desktop::new(false, false).unwrap();
+
+    // Get current applications
+    let apps = match desktop.applications() {
+        Ok(apps) => {
+            println!("  ✅ Found {} applications", apps.len());
+            apps
+        }
+        Err(e) => {
+            println!("  ❌ Failed to get applications: {}", e);
+            return;
+        }
+    };
+
+    if apps.is_empty() {
+        println!("  ⚠️  No applications found to test activation");
+        return;
+    }
+
+    // Test activation on multiple applications
+    for (i, app) in apps.iter().take(3).enumerate() {
+        let app_name = app.name().unwrap_or_else(|| format!("App_{}", i));
+        println!("\n  🎯 Testing activation for application: '{}'", app_name);
+
+        // Test 1: activate_window method
+        println!("    📋 Testing activate_window() method...");
+        match app.activate_window() {
+            Ok(()) => {
+                println!("      ✅ activate_window() reported success");
+
+                // Verify activation by checking if the app became the focused element
+                sleep(Duration::from_millis(500));
+                match desktop.focused_element() {
+                    Ok(focused) => {
+                        if let (Ok(focused_pid), Ok(app_pid)) =
+                            (focused.process_id(), app.process_id())
+                        {
+                            if focused_pid == app_pid {
+                                println!(
+                                    "      ✅ Verification: Application is now focused (PID match)"
+                                );
+                            } else {
+                                println!(
+                                    "      ⚠️  Verification: Different app is focused (PID: {} vs {})",
+                                    focused_pid, app_pid
+                                );
+                            }
+                        } else {
+                            println!("      ⚠️  Verification: Could not get PIDs for comparison");
+                        }
+                    }
+                    Err(e) => {
+                        println!(
+                            "      ⚠️  Verification: Could not get focused element: {}",
+                            e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                println!("      ❌ activate_window() failed: {}", e);
+            }
+        }
+
+        // Test 2: focus method as alternative
+        println!("    📋 Testing focus() method...");
+        match app.focus() {
+            Ok(()) => {
+                println!("      ✅ focus() reported success");
+
+                // Verify focus
+                sleep(Duration::from_millis(500));
+                match desktop.focused_element() {
+                    Ok(focused) => {
+                        if let (Ok(focused_pid), Ok(app_pid)) =
+                            (focused.process_id(), app.process_id())
+                        {
+                            if focused_pid == app_pid {
+                                println!(
+                                    "      ✅ Verification: Application is now focused (PID match)"
+                                );
+                            } else {
+                                println!(
+                                    "      ⚠️  Verification: Different app is focused (PID: {} vs {})",
+                                    focused_pid, app_pid
+                                );
+                            }
+                        } else {
+                            println!("      ⚠️  Verification: Could not get PIDs for comparison");
+                        }
+                    }
+                    Err(e) => {
+                        println!(
+                            "      ⚠️  Verification: Could not get focused element: {}",
+                            e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                println!("      ❌ focus() failed: {}", e);
+            }
+        }
+
+        // Test 3: Check if the element is keyboard focusable
+        println!("    📋 Testing keyboard focusability...");
+        match app.is_keyboard_focusable() {
+            Ok(focusable) => {
+                println!("      ✅ is_keyboard_focusable(): {}", focusable);
+                if !focusable {
+                    println!(
+                        "      ⚠️  Element is not keyboard focusable - this may explain activation issues"
+                    );
+                }
+            }
+            Err(e) => {
+                println!("      ❌ is_keyboard_focusable() failed: {}", e);
+            }
+        }
+
+        // Test 4: Get window for this app and try to activate that
+        println!("    📋 Testing window activation via window() method...");
+        match app.window() {
+            Ok(Some(window)) => {
+                println!("      ✅ Found window for application");
+                match window.activate_window() {
+                    Ok(()) => {
+                        println!("      ✅ Window activate_window() reported success");
+
+                        // Verify activation
+                        sleep(Duration::from_millis(500));
+                        match desktop.focused_element() {
+                            Ok(focused) => {
+                                if let (Ok(focused_pid), Ok(window_pid)) =
+                                    (focused.process_id(), window.process_id())
+                                {
+                                    if focused_pid == window_pid {
+                                        println!(
+                                            "      ✅ Verification: Window is now focused (PID match)"
+                                        );
+                                    } else {
+                                        println!(
+                                            "      ⚠️  Verification: Different app is focused (PID: {} vs {})",
+                                            focused_pid, window_pid
+                                        );
+                                    }
+                                } else {
+                                    println!(
+                                        "      ⚠️  Verification: Could not get PIDs for comparison"
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                println!(
+                                    "      ⚠️  Verification: Could not get focused element: {}",
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("      ❌ Window activate_window() failed: {}", e);
+                    }
+                }
+            }
+            Ok(None) => {
+                println!("      ⚠️  No window found for application");
+            }
+            Err(e) => {
+                println!("      ❌ Failed to get window: {}", e);
+            }
+        }
+
+        println!("    ⏱️  Pausing between tests...");
+        sleep(Duration::from_millis(1000));
+    }
+
+    // Test 5: Test with Notepad specifically (if available)
+    println!("\n  🗒️  Testing Notepad specifically...");
+    match desktop.application("notepad") {
+        Ok(notepad) => {
+            println!("    ✅ Found Notepad application");
+
+            // Test various activation methods on Notepad
+            println!("    📋 Testing Notepad activation methods...");
+
+            // Method 1: Direct activation
+            match notepad.activate_window() {
+                Ok(()) => println!("      ✅ Notepad activate_window() succeeded"),
+                Err(e) => println!("      ❌ Notepad activate_window() failed: {}", e),
+            }
+
+            sleep(Duration::from_millis(500));
+
+            // Method 2: Focus
+            match notepad.focus() {
+                Ok(()) => println!("      ✅ Notepad focus() succeeded"),
+                Err(e) => println!("      ❌ Notepad focus() failed: {}", e),
+            }
+
+            sleep(Duration::from_millis(500));
+
+            // Method 3: Click to activate
+            match notepad.click() {
+                Ok(_) => println!("      ✅ Notepad click() succeeded"),
+                Err(e) => println!("      ❌ Notepad click() failed: {}", e),
+            }
+        }
+        Err(_) => {
+            println!("    ⚠️  Notepad not found - this is fine for testing");
+        }
+    }
 }
