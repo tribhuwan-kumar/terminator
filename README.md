@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 
->Automate desktop apps like a browser. AI-native GUI automation for Windows, MacOS, Linux. Fast, reliable, agent-ready.
+>Computer use SDK for building agents that learn from real user interactions. Cross-platform (Windows/macOS/Linux), deterministic, and ready for L5 desktop automation.
 
 ## ⚡ TL;DR — Hello World Example
 
