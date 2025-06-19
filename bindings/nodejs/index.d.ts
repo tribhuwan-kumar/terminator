@@ -23,10 +23,25 @@ export interface CommandOutput {
   stdout: string
   stderr: string
 }
+export interface Monitor {
+  id: string
+  name: string
+  isPrimary: boolean
+  width: number
+  height: number
+  x: number
+  y: number
+  scaleFactor: number
+}
+export interface MonitorScreenshotPair {
+  monitor: Monitor
+  screenshot: ScreenshotResult
+}
 export interface ScreenshotResult {
   width: number
   height: number
   imageData: Array<number>
+  monitor?: Monitor
 }
 export interface UIElementAttributes {
   role: string
@@ -218,6 +233,58 @@ export declare class Desktop {
    * @returns {UINode} Complete UI tree starting from the identified window.
    */
   getWindowTree(pid: number, title?: string | undefined | null, config?: TreeBuildConfig | undefined | null): UINode
+  /**
+   * (async) List all available monitors/displays.
+   *
+   * @returns {Promise<Array<Monitor>>} List of monitor information.
+   */
+  listMonitors(): Promise<Array<Monitor>>
+  /**
+   * (async) Get the primary monitor.
+   *
+   * @returns {Promise<Monitor>} Primary monitor information.
+   */
+  getPrimaryMonitor(): Promise<Monitor>
+  /**
+   * (async) Get the monitor containing the currently focused window.
+   *
+   * @returns {Promise<Monitor>} Active monitor information.
+   */
+  getActiveMonitor(): Promise<Monitor>
+  /**
+   * (async) Get a monitor by its ID.
+   *
+   * @param {string} id - The monitor ID to find.
+   * @returns {Promise<Monitor>} Monitor information.
+   */
+  getMonitorById(id: string): Promise<Monitor>
+  /**
+   * (async) Get a monitor by its name.
+   *
+   * @param {string} name - The monitor name to find.
+   * @returns {Promise<Monitor>} Monitor information.
+   */
+  getMonitorByName(name: string): Promise<Monitor>
+  /**
+   * (async) Capture a screenshot of a specific monitor.
+   *
+   * @param {Monitor} monitor - The monitor to capture.
+   * @returns {Promise<ScreenshotResult>} The screenshot data.
+   */
+  captureMonitor(monitor: Monitor): Promise<ScreenshotResult>
+  /**
+   * (async) Capture screenshots of all monitors.
+   *
+   * @returns {Promise<Array<{monitor: Monitor, screenshot: ScreenshotResult}>>} Array of monitor and screenshot pairs.
+   */
+  captureAllMonitors(): Promise<Array<MonitorScreenshotPair>>
+  /**
+   * (async) Get all window elements for a given application name.
+   *
+   * @param {string} name - The name of the application whose windows will be retrieved.
+   * @returns {Promise<Array<Element>>} A list of window elements belonging to the application.
+   */
+  windowsForApplication(name: string): Promise<Array<Element>>
 }
 /** A UI element in the accessibility tree. */
 export declare class Element {

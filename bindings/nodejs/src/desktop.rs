@@ -424,4 +424,17 @@ impl Desktop {
             })
             .map_err(map_error)
     }
+
+    /// (async) Get all window elements for a given application name.
+    ///
+    /// @param {string} name - The name of the application whose windows will be retrieved.
+    /// @returns {Promise<Array<Element>>} A list of window elements belonging to the application.
+    #[napi]
+    pub async fn windows_for_application(&self, name: String) -> napi::Result<Vec<Element>> {
+        self.inner
+            .windows_for_application(&name)
+            .await
+            .map(|windows| windows.into_iter().map(Element::from).collect())
+            .map_err(map_error)
+    }
 }
