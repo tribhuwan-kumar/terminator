@@ -112,4 +112,30 @@ open the claude app and search for developer options then MCP. when you click on
 remember to replace `path_to_terminator` exe with actual path of terminator-mcp-agent binary, you can find the binary of terminator mcp in the target directory where you've build the project!
 </details>
 
+## 🆕 Headless/Automated Install Support
+
+You can now run the installer non-interactively by passing the `-App` argument to select which app to configure. This is useful for automation, CI, or scripting.
+
+**Usage:**
+
+```powershell
+# Install for Cursor (headless)
+pwsh -File install.ps1 -App cursor
+
+# Install for Claude
+iwr -useb https://raw.githubusercontent.com/mediar-ai/terminator/refs/heads/main/terminator-mcp-agent/install.ps1 | iex -App claude
+
+# Install for Windsurf
+pwsh -File install.ps1 -App windsurf
+```
+
+**Supported values for `-App`:**
+- `cursor`
+- `claude`
+- `vscode`
+- `insiders`
+- `windsurf`
+
+If you do not provide `-App`, the script will prompt you interactively as before.
+
 
