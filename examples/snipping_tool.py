@@ -6,21 +6,32 @@ from enum import Enum
 
 desktop = terminator.Desktop(log_level="error")
 
+
 class SnipMode(Enum):
     FREEFORM = "Free-form Snip"
     RECTANGULAR = "Rectangular Snip"
     WINDOW = "Window Snip"
     FULL_SCREEN = "Full-screen Snip"
 
+
 async def select_snip_mode(app_window: terminator.Locator, mode: SnipMode):
     print(f"Selecting snip mode: {mode.value}")
-    button = await app_window.locator('SplitButton:Mode').first()
+    button = await app_window.locator("SplitButton:Mode").first()
     button.click()
-    menu = desktop.locator('Menu:Context')
-    mode_button = await menu.locator(f'Name:{mode.value}').first()
+    menu = desktop.locator("Menu:Context")
+    mode_button = await menu.locator(f"Name:{mode.value}").first()
     mode_button.click()
 
-async def draw_polygon(app_window: terminator.UIElement, center_x, center_y, radius, sides=6, rounds=1, sleep_time=0.01):
+
+async def draw_polygon(
+    app_window: terminator.UIElement,
+    center_x,
+    center_y,
+    radius,
+    sides=6,
+    rounds=1,
+    sleep_time=0.01,
+):
     if sides < 3:
         raise ValueError("Polygon must have at least 3 sides.")
     angle0 = 0
@@ -38,13 +49,14 @@ async def draw_polygon(app_window: terminator.UIElement, center_x, center_y, rad
                 await asyncio.sleep(sleep_time)
     app_window.mouse_release()
 
+
 async def run_snipping_tool():
     try:
         print("Opening Snipping Tool...")
         desktop.open_application("SnippingTool.exe")
         await asyncio.sleep(2)
 
-        app_window: terminator.Locator = desktop.locator('window:Snipping Tool')
+        app_window: terminator.Locator = desktop.locator("window:Snipping Tool")
 
         await select_snip_mode(app_window, SnipMode.FREEFORM)
         await asyncio.sleep(1)
@@ -57,23 +69,34 @@ async def run_snipping_tool():
 
         print("Opening Save As dialog...")
         window = await app_window.first()
-        window.press_key('{Ctrl}s')
+        window.press_key("{Ctrl}s")
         await asyncio.sleep(1)
 
         print("Entering file name...")
-        save_dialog = desktop.locator('window:Save As').locator('window:Save As')
-        file_name_edit_box = await save_dialog.locator('role:Pane').locator('role:ComboBox').locator('role:Edit').first()
+        save_dialog = desktop.locator("window:Save As").locator("window:Save As")
+        file_name_edit_box = (
+            await save_dialog.locator("role:Pane")
+            .locator("role:ComboBox")
+            .locator("role:Edit")
+            .first()
+        )
 
-        home_dir = os.path.expanduser('~')
-        file_path = os.path.join(home_dir, 'terminator_snip_test.png')
+        home_dir = os.path.expanduser("~")
+        file_path = os.path.join(home_dir, "terminator_snip_test.png")
         file_name_edit_box.type_text(file_path)
 
         # Find and click the Save button
         save_dialog_ele = await save_dialog.first()
         window_elements = save_dialog_ele.explore()
         for child in window_elements.children:
-            if child.role == 'Button' and child.suggested_selector and child.name == 'Save':
-                save_button = await save_dialog.locator(child.suggested_selector).first()
+            if (
+                child.role == "Button"
+                and child.suggested_selector
+                and child.name == "Save"
+            ):
+                save_button = await save_dialog.locator(
+                    child.suggested_selector
+                ).first()
                 save_button.click()
                 break
 
@@ -82,8 +105,16 @@ async def run_snipping_tool():
             save_dialog_ele = await save_dialog.first()
             confirm_overwrite = save_dialog_ele.explore()
             for child in confirm_overwrite.children:
-                if child.role == 'Window' and child.suggested_selector and 'Confirm Save As' in child.text:
-                    save_button = await save_dialog.locator(child.suggested_selector).locator('Name:Yes').first()
+                if (
+                    child.role == "Window"
+                    and child.suggested_selector
+                    and "Confirm Save As" in child.text
+                ):
+                    save_button = (
+                        await save_dialog.locator(child.suggested_selector)
+                        .locator("Name:Yes")
+                        .first()
+                    )
                     save_button.click()
                     break
         except:
@@ -96,5 +127,6 @@ async def run_snipping_tool():
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
+
 if __name__ == "__main__":
-    asyncio.run(run_snipping_tool()) 
+    asyncio.run(run_snipping_tool())
