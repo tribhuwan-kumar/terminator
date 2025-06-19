@@ -1,18 +1,17 @@
 use crate::utils::{
     get_timeout, ClipboardArgs, DesktopWrapper, EmptyArgs, GetClipboardArgs, GetWindowTreeArgs,
-    GetWindowsArgs, HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs,
-    OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs, TypeIntoElementArgs,
-    ValidateElementArgs, WaitForElementArgs,
+    GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs, MouseDragArgs,
+    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
 use rmcp::{tool, Error as McpError, ServerHandler};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::env;
 use terminator::{Browser, Desktop, Selector};
-
 
 #[tool(tool_box)]
 impl DesktopWrapper {
@@ -174,14 +173,21 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "type",
             "status": "success",
             "text_typed": args.text_to_type,
             "element": element_info,
             "selector": args.selector,
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(description = "Clicks a UI element.")]
@@ -222,16 +228,27 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        // Build base result
+        let mut result_json = json!({
             "action": "click",
             "status": "success",
             "element": element_info,
             "selector": args.selector,
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        });
+        // Attach tree if requested
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Sends a key press to a UI element.")]
+    #[tool(
+        description = "Sends a key press to a UI element. Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc."
+    )]
     async fn press_key(
         &self,
         #[tool(param)] args: PressKeyArgs,
@@ -269,14 +286,75 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "press_key",
             "status": "success",
             "key_pressed": args.key,
             "element": element_info,
             "selector": args.selector,
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Sends a key press to the currently focused element (no selector required). Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc."
+    )]
+    async fn press_key_global(
+        &self,
+        #[tool(param)] args: GlobalKeyArgs,
+    ) -> Result<CallToolResult, McpError> {
+        // Identify focused element
+        let focused = self.desktop.focused_element().map_err(|e| {
+            McpError::internal_error(
+                "Failed to get focused element",
+                Some(json!({"reason": e.to_string()})),
+            )
+        })?;
+
+        // Gather metadata for debugging / result payload
+        let element_info = json!({
+            "name": focused.name().unwrap_or_default(),
+            "role": focused.role(),
+            "id": focused.id().unwrap_or_default(),
+            "bounds": focused.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+            "enabled": focused.is_enabled().unwrap_or(false),
+        });
+
+        // Perform the key press
+        focused.press_key(&args.key).map_err(|e| {
+            McpError::resource_not_found(
+                "Failed to press key on focused element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "key_pressed": args.key,
+                    "element_info": element_info
+                })),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "press_key_global",
+            "status": "success",
+            "key_pressed": args.key,
+            "element": element_info,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            focused.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(description = "Executes a shell command.")]
@@ -476,7 +554,7 @@ impl DesktopWrapper {
                 )
             })?;
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "mouse_drag",
             "status": "success",
             "element": element_info,
@@ -484,7 +562,14 @@ impl DesktopWrapper {
             "start": (args.start_x, args.start_y),
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(
@@ -514,13 +599,20 @@ impl DesktopWrapper {
                     "value": element.attributes().value.unwrap_or_default(),
                 });
 
-                Ok(CallToolResult::success(vec![Content::json(json!({
+                let mut result_json = json!({
                     "action": "validate_element",
                     "status": "success",
                     "element": element_info,
                     "selector": args.selector,
                     "timestamp": chrono::Utc::now().to_rfc3339()
-                }))?]))
+                });
+                self.maybe_attach_tree(
+                    args.include_tree.unwrap_or(false),
+                    element.process_id().ok(),
+                    &mut result_json,
+                );
+
+                Ok(CallToolResult::success(vec![Content::json(result_json)?]))
             }
             Err(e) => Ok(CallToolResult::success(vec![Content::json(json!({
                 "action": "validate_element",
@@ -566,7 +658,7 @@ impl DesktopWrapper {
             })).unwrap_or(json!(null)),
         });
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "highlight_element",
             "status": "success",
             "element": element_info,
@@ -574,7 +666,14 @@ impl DesktopWrapper {
             "color": args.color.unwrap_or(0x0000FF),
             "duration_ms": args.duration_ms.unwrap_or(1000),
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(
@@ -657,16 +756,12 @@ impl DesktopWrapper {
         #[tool(param)] args: NavigateBrowserArgs,
     ) -> Result<CallToolResult, McpError> {
         let browser = args.browser.clone().map(Browser::Custom);
-        self.desktop
-            .open_url(&args.url, browser)
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to open URL",
-                    Some(
-                        json!({"reason": e.to_string(), "url": args.url, "browser": args.browser}),
-                    ),
-                )
-            })?;
+        self.desktop.open_url(&args.url, browser).map_err(|e| {
+            McpError::internal_error(
+                "Failed to open URL",
+                Some(json!({"reason": e.to_string(), "url": args.url, "browser": args.browser})),
+            )
+        })?;
 
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "navigate_browser",
@@ -794,7 +889,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "scroll_element",
             "status": "success",
             "element": element_info,
@@ -802,7 +897,30 @@ impl DesktopWrapper {
             "direction": args.direction,
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    // Helper to optionally attach UI tree to response
+    fn maybe_attach_tree(&self, include_tree: bool, pid_opt: Option<u32>, result_json: &mut Value) {
+        if !include_tree {
+            return;
+        }
+        if let Some(pid) = pid_opt {
+            if let Ok(tree) = self.desktop.get_window_tree(pid, None, None) {
+                if let Ok(tree_val) = serde_json::to_value(tree) {
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert("ui_tree".to_string(), tree_val);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -863,13 +981,13 @@ Your most reliable strategy is to inspect the application's UI structure *before
 6.  **Handle Scrolling for Full Context:** When working with pages or long content, ALWAYS scroll to see all content. Use `scroll_element` to scroll pages up/down to get the full context before making decisions or extracting information.
 
 **Important: Key Syntax for press_key Tool**
-When using the `press_key` tool, you MUST use curly braces for special keys:
-- Single special key: Enter, Tab, Escape, Delete - wrap each in curly braces
-- Key combinations: For Ctrl+V use curly-Ctrl curly-V, for Alt+F4 use curly-Alt curly-F4
-- Windows key: For Win+D use curly-Win curly-D (shows desktop)
-- Function keys: F1, F5 - wrap in curly braces
-- Arrow keys: Up, Down, Left, Right - wrap in curly braces
-- Regular text can be mixed with special keys wrapped in curly braces
+When using the press_key or press_key_global tools, use the following format:
+- Key combinations: Use curly braces: {{Ctrl}}c, {{Alt}}{{F4}}, {{Ctrl}}{{Shift}}n
+- Single special keys: Use curly braces: {{Enter}}, {{Tab}}, {{Escape}}, {{Delete}}, {{PageDown}}, {{PageUp}}
+- Function keys: Use curly braces: {{F1}}, {{F5}}, {{F12}}
+- Arrow keys: Use curly braces: {{Up}}, {{Down}}, {{Left}}, {{Right}}
+- Regular text: Just type the text directly, it will be sent as individual keystrokes
+- Examples: {{Ctrl}}c (copy), {{Ctrl}}v (paste), {{Alt}}{{Tab}} (switch windows), {{Win}}d (show desktop)
 
 **Example Scenario:**
 1.  User: \"Type hello into Notepad.\"
@@ -922,6 +1040,7 @@ Contextual information:
 1. Always call `get_window_tree` to understand the UI landscape before you try to act on it. 
 2. When an element has an `id`, use ONLY that ID with a hash prefix.
 3. Always scroll pages to get full context when working with web pages or long documents.
+4. Always use highlight_element to show the user what you are doing.
 ",
         current_date_time, current_os, current_working_dir
     )
