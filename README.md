@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 
->Computer use SDK for building agents that learn from real user interactions. Cross-platform (Windows/macOS/Linux), deterministic, and ready for L5 desktop automation.
+>Computer use SDK for building agents that learn from human screen recordings. Cross-platform (Windows/macOS/Linux), deterministic, and ready for L5 desktop automation.
 
 ## ⚡ TL;DR — Hello World Example
 
