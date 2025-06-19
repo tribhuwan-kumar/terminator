@@ -5,14 +5,6 @@ $DisablePubkeyAuthentication = $True
 $AutoStartSSHD = $true
 $AutoStartSSHAGENT = $true
 
-# Prevent re-installation if already installed
-$sshdPath = Join-Path $InstallPath 'sshd.exe'
-$sshPath = Join-Path $InstallPath 'ssh.exe'
-if ((Test-Path $sshdPath) -and (Test-Path $sshPath)) {
-    Write-Host "OpenSSH is already installed at $InstallPath. Skipping installation." -ForegroundColor Yellow
-    return
-}
-
 $OpenSSHLocation = $null
 $GitUrl = 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/v8.1.0.0p1-Beta/OpenSSH-Win64.zip'
 $GitZipName = "OpenSSH-Win64.zip"
@@ -55,6 +47,11 @@ if (Get-Service ssh-agent -ErrorAction SilentlyContinue) {
     sc.exe delete ssh-agent 1>$null
 }
 
+# Ensure all sshd and ssh-agent processes are stopped
+Get-Process sshd -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process ssh-agent -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+
 if ($OpenSSHLocation.Length -eq 0) {
     # Download and extract archive
     Write-Host "Downloading Archive" -ForegroundColor Green
@@ -84,7 +81,7 @@ $archive.Entries | ForEach-Object {
     if ($_.Name -ne '') {
         $NewFIleName = Join-Path $InstallPath $_.Name
         Remove-Item -Path $NewFIleName -Force -ErrorAction SilentlyContinue
-        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($_, $NewFIleName)
+        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($_, $NewFIleName, $true)
     }
 }
 $archive.Dispose()
