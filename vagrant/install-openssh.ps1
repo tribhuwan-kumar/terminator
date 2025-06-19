@@ -5,6 +5,14 @@ $DisablePubkeyAuthentication = $True
 $AutoStartSSHD = $true
 $AutoStartSSHAGENT = $true
 
+# Prevent re-installation if already installed
+$sshdPath = Join-Path $InstallPath 'sshd.exe'
+$sshPath = Join-Path $InstallPath 'ssh.exe'
+if ((Test-Path $sshdPath) -and (Test-Path $sshPath)) {
+    Write-Host "OpenSSH is already installed at $InstallPath. Skipping installation." -ForegroundColor Yellow
+    return
+}
+
 $OpenSSHLocation = $null
 $GitUrl = 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/v8.1.0.0p1-Beta/OpenSSH-Win64.zip'
 $GitZipName = "OpenSSH-Win64.zip"
