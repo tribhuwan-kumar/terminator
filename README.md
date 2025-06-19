@@ -56,7 +56,7 @@ Terminator is the Playwright-style SDK for automating Windows GUI apps.
 - 🧠 Designed for AI agents, not humans
 - ⚡ Uses OS-level accessibility (not vision)
 - 🧩 TS, Python, and Rust support
-- 📈 80ms UI scans, 10000x speedup via compiled workflows
+- 📈 80ms UI scans, 10000x faster and cheaper than humans
 
 ## Documentation
 
