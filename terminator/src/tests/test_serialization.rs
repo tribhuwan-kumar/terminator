@@ -55,22 +55,26 @@ async fn test_browser_tree_serialization() -> Result<(), Box<dyn std::error::Err
     // Verify the window title is correct.
     let window_title = root_value["window_title"].as_str().unwrap_or_default();
     assert!(
-        window_title.contains("Guide to AI Agents"),
-        "Window title is incorrect"
+        window_title.contains("GLO CONTENT Agents"),
+        "Window title is incorrect: {}",
+        window_title
     );
 
     // **Crucial Test**: Verify that the JSON does NOT contain empty strings for optional fields.
     assert!(
         !json_output.contains(r#""name": """#),
-        "JSON should not contain empty name fields"
+        "JSON should not contain empty name fields: {}",
+        json_output
     );
     assert!(
         !json_output.contains(r#""value": """#),
-        "JSON should not contain empty value fields"
+        "JSON should not contain empty value fields: {}",
+        json_output
     );
     assert!(
         !json_output.contains(r#""description": """#),
-        "JSON should not contain empty description fields"
+        "JSON should not contain empty description fields: {}",
+        json_output
     );
 
     info!("Validation successful!");

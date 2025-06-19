@@ -632,15 +632,18 @@ pub struct BrowserTabNavigationEvent {
     pub action: TabAction,
     /// Method used for the navigation
     pub method: TabNavigationMethod,
-    /// Current URL in the tab (if available)
+    /// URL being navigated TO (destination URL)
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub url: Option<String>,
-    /// Previous URL (for navigation events)
+    pub to_url: Option<String>,
+    /// URL being navigated FROM (source URL)
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub previous_url: Option<String>,
-    /// Page title (if available)
+    pub from_url: Option<String>,
+    /// Title of the page being navigated TO (destination title)
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub title: Option<String>,
+    pub to_title: Option<String>,
+    /// Title of the page being navigated FROM (source title)
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub from_title: Option<String>,
     /// Browser application (Chrome, Firefox, Edge, etc.)
     pub browser: String,
     /// Current tab index in the window
@@ -1001,11 +1004,13 @@ pub struct SerializableBrowserTabNavigationEvent {
     pub action: TabAction,
     pub method: TabNavigationMethod,
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub url: Option<String>,
+    pub to_url: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub previous_url: Option<String>,
+    pub from_url: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub title: Option<String>,
+    pub to_title: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub from_title: Option<String>,
     pub browser: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tab_index: Option<u32>,
@@ -1022,9 +1027,10 @@ impl From<&BrowserTabNavigationEvent> for SerializableBrowserTabNavigationEvent 
         Self {
             action: event.action.clone(),
             method: event.method.clone(),
-            url: event.url.clone(),
-            previous_url: event.previous_url.clone(),
-            title: event.title.clone(),
+            to_url: event.to_url.clone(),
+            from_url: event.from_url.clone(),
+            to_title: event.to_title.clone(),
+            from_title: event.from_title.clone(),
             browser: event.browser.clone(),
             tab_index: event.tab_index,
             total_tabs: event.total_tabs,

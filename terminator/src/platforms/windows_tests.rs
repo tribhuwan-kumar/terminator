@@ -543,7 +543,7 @@ fn test_window_transparency() {
     let notepad = engine.open_application("notepad.exe").unwrap();
 
     // Fade out effect
-    for percentage in (100..=0).step_by(5) {
+    for percentage in (0..=100).rev().step_by(5) {
         notepad.set_transparency(percentage as u8).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
     }

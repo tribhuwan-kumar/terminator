@@ -39,9 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Disable noisy events for this demo
         record_clipboard: false,
         record_hotkeys: false,
-        record_ui_focus_changes: false,
-        record_ui_property_changes: false,
-        record_ui_structure_changes: false,
 
         ..Default::default()
     };

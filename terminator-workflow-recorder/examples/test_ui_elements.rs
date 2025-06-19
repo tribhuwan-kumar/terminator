@@ -20,9 +20,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         track_modifier_states: true,
         mouse_move_throttle_ms: 50,
         min_drag_distance: 5.0,
-        record_ui_structure_changes: false,
-        record_ui_property_changes: false,
-        record_ui_focus_changes: false,
         ..Default::default()
     };
 

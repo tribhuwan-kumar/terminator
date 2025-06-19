@@ -2,7 +2,6 @@
 
 use crate::element::UIElementImpl;
 use crate::platforms::AccessibilityEngine;
-use crate::utils::normalize;
 use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
 use crate::{ClickResult, ScreenshotResult};
 use image::DynamicImage;
@@ -403,71 +402,97 @@ impl AccessibilityEngine for WindowsEngine {
         // Strip .exe suffix if present
         let search_name = name
             .strip_suffix(".exe")
-            .or_else(|| name.strip_suffix(".EXE")) // Also check uppercase
+            .or_else(|| name.strip_suffix(".EXE"))
             .unwrap_or(name);
-        debug!("using search name: {}", search_name);
 
-        // OPTIMIZATION: Try PID lookup first as it's much faster than UI tree search
-        if let Some(pid) = get_pid_by_name(search_name) {
-            debug!(
-                "Found process PID {} for name {}, trying direct lookup",
-                pid, search_name
-            );
-            let condition = self
-                .automation
-                .0
-                .create_property_condition(UIProperty::ProcessId, Variant::from(pid), None)
-                .unwrap();
-            let root_ele = self.automation.0.get_root_element().unwrap();
+        let search_name_lower = search_name.to_lowercase();
+        let is_browser = KNOWN_BROWSER_PROCESS_NAMES
+            .iter()
+            .any(|&browser| search_name_lower.contains(browser));
 
-            // OPTIMIZATION: Use Children scope first, then fallback to Subtree only if needed
-            if let Ok(ele) = root_ele.find_first(TreeScope::Children, &condition) {
-                debug!("Found application via Children scope for PID {}", pid);
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-                return Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })));
-            }
+        // For non-browsers, try fast PID lookup first
+        if !is_browser {
+            if let Some(pid) = get_pid_by_name(search_name) {
+                debug!(
+                    "Found process PID {} for non-browser app: {}",
+                    pid, search_name
+                );
 
-            // Fallback to Subtree only if Children search failed
-            if let Ok(ele) = root_ele.find_first(TreeScope::Subtree, &condition) {
-                debug!("Found application via Subtree scope for PID {}", pid);
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-                return Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })));
+                let condition = self
+                    .automation
+                    .0
+                    .create_property_condition(UIProperty::ProcessId, Variant::from(pid), None)
+                    .unwrap();
+                let root_ele = self.automation.0.get_root_element().unwrap();
+
+                // Try direct window lookup by PID
+                if let Ok(ele) = root_ele.find_first(TreeScope::Children, &condition) {
+                    debug!("Found application window for PID {}", pid);
+                    let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
+                    return Ok(UIElement::new(Box::new(WindowsUIElement {
+                        element: arc_ele,
+                    })));
+                }
             }
         }
 
-        // OPTIMIZATION: Only do expensive UI tree search as last resort
-        debug!(
-            "PID lookup failed, falling back to UI tree search for: {}",
-            search_name
-        );
+        // For browsers and fallback: Use window title search
+        debug!("Using window title search for: {}", search_name);
         let root_ele = self.automation.0.get_root_element().unwrap();
-        let search_name_norm = normalize(search_name);
 
-        // OPTIMIZATION: Reduce timeout and depth for faster response
         let matcher = self
             .automation
             .0
             .create_matcher()
             .control_type(ControlType::Window)
             .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                let name = normalize(&e.get_name().unwrap_or_default());
-                Ok(name.contains(&search_name_norm))
+                let window_name = e.get_name().unwrap_or_default();
+                let window_name_lower = window_name.to_lowercase();
+
+                // Simple browser matching logic
+                let matches = match search_name_lower.as_str() {
+                    "chrome" => window_name_lower.contains("chrome"),
+                    "firefox" => {
+                        window_name_lower.contains("firefox")
+                            || window_name_lower.contains("mozilla")
+                    }
+                    "msedge" | "edge" => {
+                        // Edge is tricky - check window title or process name
+                        if window_name_lower.contains("edge")
+                            || window_name_lower.contains("microsoft")
+                        {
+                            true
+                        } else if let Ok(pid) = e.get_process_id() {
+                            get_process_name_by_pid(pid as i32)
+                                .map(|p| p.to_lowercase() == "msedge")
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        }
+                    }
+                    "brave" => window_name_lower.contains("brave"),
+                    "opera" => window_name_lower.contains("opera"),
+                    "vivaldi" => window_name_lower.contains("vivaldi"),
+                    "arc" => window_name_lower.contains("arc"),
+                    _ => {
+                        // For non-browsers, simple contains check
+                        window_name_lower.contains(&search_name_lower)
+                    }
+                };
+                Ok(matches)
             }))
             .from_ref(&root_ele)
-            .depth(3) // Reduced from 7 to 3 for faster search
-            .timeout(2000); // Reduced from 5000 to 2000ms
+            .depth(3)
+            .timeout(3000);
 
         let ele = matcher.find_first().map_err(|e| {
             AutomationError::PlatformError(format!(
-                "no running application found from name: {:?} (searched as: {:?}). Error: {}",
-                name, search_name, e
+                "No window found for application '{}': {}",
+                name, e
             ))
         })?;
 
+        debug!("Found window: {}", ele.get_name().unwrap_or_default());
         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
         Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_ele,
@@ -1239,27 +1264,77 @@ impl AccessibilityEngine for WindowsEngine {
             )));
         }
 
-        // Give the browser time to open and take focus
-        std::thread::sleep(std::time::Duration::from_millis(2000));
+        // Poll for the browser window to appear instead of fixed sleep
+        let start_time = std::time::Instant::now();
+        let timeout = std::time::Duration::from_millis(5000); // 5 second total timeout
+        let poll_interval = std::time::Duration::from_millis(100); // Check every 100ms
 
         if browser_search_name.is_empty() {
-            // If default browser, try to find the foreground window.
-            let hwnd = unsafe { GetForegroundWindow() };
-            if hwnd.0.is_null() {
-                return Err(AutomationError::ElementNotFound(
-                    "Could not get foreground window after opening URL.".to_string(),
-                ));
+            // For default browser, poll for foreground window change
+            let initial_hwnd = unsafe { GetForegroundWindow() };
+
+            loop {
+                if start_time.elapsed() > timeout {
+                    return Err(AutomationError::ElementNotFound(
+                        "Timeout waiting for browser window to open".to_string(),
+                    ));
+                }
+
+                let current_hwnd = unsafe { GetForegroundWindow() };
+
+                // Check if foreground window changed
+                if current_hwnd != initial_hwnd && !current_hwnd.0.is_null() {
+                    let mut pid = 0;
+                    unsafe { GetWindowThreadProcessId(current_hwnd, Some(&mut pid)) };
+
+                    if pid != 0 {
+                        // Try to get the application element
+                        match self.get_application_by_pid(pid as i32, None) {
+                            Ok(app) => return Ok(app),
+                            Err(_) => {
+                                // Window might not be fully initialized yet, continue polling
+                            }
+                        }
+                    }
+                }
+
+                std::thread::sleep(poll_interval);
             }
-            let mut pid = 0;
-            unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
-            if pid == 0 {
-                return Err(AutomationError::ElementNotFound(
-                    "Could not get process ID for foreground window.".to_string(),
-                ));
-            }
-            self.get_application_by_pid(pid as i32, None)
         } else {
-            self.get_application_by_name(browser_search_name)
+            // For specific browser, poll for the application by name
+            loop {
+                if start_time.elapsed() > timeout {
+                    return Err(AutomationError::ElementNotFound(format!(
+                        "Timeout waiting for {} browser to open",
+                        browser_search_name
+                    )));
+                }
+
+                // Try to find the browser window
+                match self.get_application_by_name(browser_search_name) {
+                    Ok(app) => {
+                        // Verify it's actually ready by checking if it has a valid window
+                        if app.window().is_ok() {
+                            debug!("Found {} browser window, returning", browser_search_name);
+                            return Ok(app);
+                        }
+                        // Window exists but might not be fully ready, continue polling
+                        debug!(
+                            "{} window found but not ready yet, continuing poll",
+                            browser_search_name
+                        );
+                    }
+                    Err(e) => {
+                        // Browser not found yet, continue polling
+                        debug!(
+                            "{} browser not found yet: {}, continuing poll",
+                            browser_search_name, e
+                        );
+                    }
+                }
+
+                std::thread::sleep(poll_interval);
+            }
         }
     }
 
@@ -3260,27 +3335,74 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn url(&self) -> Option<String> {
-        // find the first element with name "search bar" (chrome, edge, arc) or "enter address" (firefox)
-        let automation = create_ui_automation_with_com_init().ok()?;
-        let url = automation
-            .create_matcher()
-            // .from_ref(&self.element.0)
-            .filter(Box::new(OrFilter {
-                left: Box::new(NameFilter {
-                    value: "search bar".to_string(),
-                    casesensitive: false,
-                    partial: true,
-                }),
-                right: Box::new(NameFilter {
-                    value: "enter address".to_string(),
-                    casesensitive: false,
-                    partial: true,
-                }),
-            }))
-            .find_first()
-            .map(|e| e.get_name().unwrap_or_default());
+        let automation = match create_ui_automation_with_com_init() {
+            Ok(a) => a,
+            Err(_) => return None,
+        };
 
-        url.ok()
+        let search_root = if let Ok(Some(window)) = self.window() {
+            window
+                .as_any()
+                .downcast_ref::<WindowsUIElement>()
+                .map(|win_el| win_el.element.0.clone())
+                .unwrap_or_else(|| self.element.0.clone())
+        } else {
+            self.element.0.clone()
+        };
+
+        // Detect browser type from window title or process name
+        let window_title = search_root.get_name().unwrap_or_default().to_lowercase();
+        let process_name = if let Ok(pid) = self.element.0.get_process_id() {
+            get_process_name_by_pid(pid as i32)
+                .unwrap_or_default()
+                .to_lowercase()
+        } else {
+            String::new()
+        };
+
+        // Select address bar names based on detected browser
+        let address_bar_names: &[&str] =
+            if window_title.contains("firefox") || process_name.contains("firefox") {
+                &[
+                    "Search with Google or enter address", // Most common Firefox
+                    "Search or enter address",             // Firefox alternative
+                ]
+            } else {
+                &["Address and search bar"] // Chrome and default
+            };
+
+        // Try to find the address bar with reduced timeout and optimized search
+        for name in address_bar_names {
+            match automation
+                .create_matcher()
+                .from_ref(&search_root)
+                .control_type(ControlType::Edit)
+                .match_name(*name)
+                .timeout(5000) // Reduced from 2000ms to 500ms
+                .depth(10) // Reduced from 15 to 10 for faster search
+                .find_first()
+            {
+                Ok(element) => {
+                    // The URL is in the ValuePattern.
+                    if let Ok(value_pattern) = element.get_pattern::<patterns::UIValuePattern>() {
+                        if let Ok(value) = value_pattern.get_value() {
+                            if !value.is_empty() {
+                                return Some(value);
+                            }
+                        }
+                    }
+                    // Fallback to name, though less likely for this specific element.
+                    if let Ok(element_name) = element.get_name() {
+                        if element_name.starts_with("http") {
+                            return Some(element_name);
+                        }
+                    }
+                }
+                Err(_) => continue,
+            }
+        }
+
+        None
     }
 }
 
@@ -3459,14 +3581,15 @@ fn get_application_pid(
                 }
             }
         }
-        // If all else fails, try to find the application by name
+        // If all else fails, return an error instead of recursing
         debug!(
-            "Failed to get application by PID and child PID, trying by name: {}",
-            app_name
+            "Failed to get application by PID {} and child PID for: {}",
+            pid, app_name
         );
-        let app = engine.get_application_by_name(app_name)?;
-        app.activate_window()?;
-        Ok(app)
+        Err(AutomationError::ElementNotFound(format!(
+            "Could not find window for process '{}' (PID: {}) or its children",
+            app_name, pid
+        )))
     }
 }
 

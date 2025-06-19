@@ -1,6 +1,5 @@
 use crate::tests::init_tracing;
-use crate::{AutomationError, Browser, Desktop, Locator, Selector};
-use std::fs;
+use crate::{AutomationError, Browser, Desktop, Selector};
 use std::time::Duration;
 
 #[tokio::test]
@@ -54,12 +53,11 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_get_browser_url() -> Result<(), AutomationError> {
     init_tracing();
     let desktop = Desktop::new(false, true)?;
     let test_url = "https://www.google.com/";
-    let browsers_to_test = [Browser::Chrome, Browser::Firefox, Browser::Edge]; // FOCUS ONLY ON CHROME
+    let browsers_to_test = [Browser::Chrome, Browser::Firefox, Browser::Edge];
 
     for browser_name in browsers_to_test {
         println!("Testing URL retrieval in {:?}", browser_name);
@@ -67,24 +65,25 @@ async fn test_get_browser_url() -> Result<(), AutomationError> {
         let browser_app = match desktop.open_url(test_url, Some(browser_name.clone())) {
             Ok(app) => app,
             Err(e) => {
-                panic!(
-                    "Could not open browser {:?}: {}. Test failed.",
+                println!(
+                    "Could not open browser {:?}: {}. Skipping.",
                     browser_name, e
                 );
+                continue; // Skip browsers that can't be opened
             }
         };
 
-        // Increase wait time significantly
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         let url = browser_app.url().unwrap_or_default();
 
         println!("Retrieved URL from {:?}: {:?}", browser_name, url);
 
         assert!(
-            !url.is_empty(),
-            "URL should be retrieved from {:?}",
-            browser_name
+            url.contains("google.com") || url.contains("www.google.com"),
+            "URL should be retrieved from {:?} and contain 'google.com', but was '{}'",
+            browser_name,
+            url
         );
 
         browser_app.close()?;

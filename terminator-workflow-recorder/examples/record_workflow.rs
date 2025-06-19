@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
+use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::signal::ctrl_c;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, Level};
@@ -46,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mouse_move_throttle_ms: 100, // PERFORMANCE: Increase throttle to reduce event spam
         min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
         enable_multithreading: true,
+        record_browser_tab_navigation: true,
 
         // performance_mode: PerformanceMode::LowEnergy,
         // event_processing_delay_ms: Some(100),
@@ -53,7 +54,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // filter_mouse_noise: true,
         // filter_keyboard_noise: true,
         // reduce_ui_element_capture: true,
-
         ..Default::default()
     };
 
@@ -425,24 +425,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         event_count, tab_nav_event.action, tab_nav_event.browser
                     );
 
-                    // Show URL information
-                    if let Some(ref url) = tab_nav_event.url {
-                        let url_display = if url.len() > 50 {
-                            format!("{}...", &url[..50])
+                    // Show FROM → TO navigation clearly
+                    if let Some(ref from_url) = tab_nav_event.from_url {
+                        let from_display = if from_url.len() > 40 {
+                            format!("{}...", &from_url[..40])
                         } else {
-                            url.clone()
+                            from_url.clone()
                         };
-                        println!("     └─ URL: {}", url_display);
+                        println!("     └─ FROM URL: {}", from_display);
                     }
 
-                    // Show page title
-                    if let Some(ref title) = tab_nav_event.title {
-                        let title_display = if title.len() > 40 {
-                            format!("{}...", &title[..40])
+                    if let Some(ref to_url) = tab_nav_event.to_url {
+                        let to_display = if to_url.len() > 40 {
+                            format!("{}...", &to_url[..40])
                         } else {
-                            title.clone()
+                            to_url.clone()
                         };
-                        println!("     └─ Title: \"{}\"", title_display);
+                        println!("     └─ TO URL: {}", to_display);
+                    }
+
+                    // Show FROM → TO titles clearly
+                    if let Some(ref from_title) = tab_nav_event.from_title {
+                        let from_title_display = if from_title.len() > 35 {
+                            format!("{}...", &from_title[..35])
+                        } else {
+                            from_title.clone()
+                        };
+                        println!("     └─ FROM Title: \"{}\"", from_title_display);
+                    }
+
+                    if let Some(ref to_title) = tab_nav_event.to_title {
+                        let to_title_display = if to_title.len() > 35 {
+                            format!("{}...", &to_title[..35])
+                        } else {
+                            to_title.clone()
+                        };
+                        println!("     └─ TO Title: \"{}\"", to_title_display);
                     }
 
                     // Show navigation method
