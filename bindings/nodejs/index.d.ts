@@ -278,6 +278,13 @@ export declare class Desktop {
    * @returns {Promise<Array<{monitor: Monitor, screenshot: ScreenshotResult}>>} Array of monitor and screenshot pairs.
    */
   captureAllMonitors(): Promise<Array<MonitorScreenshotPair>>
+  /**
+   * (async) Get all window elements for a given application name.
+   *
+   * @param {string} name - The name of the application whose windows will be retrieved.
+   * @returns {Promise<Array<Element>>} A list of window elements belonging to the application.
+   */
+  windowsForApplication(name: string): Promise<Array<Element>>
 }
 /** A UI element in the accessibility tree. */
 export declare class Element {
