@@ -17,34 +17,46 @@ async function main() {
         const appNames = apps.map(app => app.name());
         console.log("Currently running applications:", appNames);
 
-        // --- Find the "Cursor" application ---
-        console.log("\n--- Finding 'Cursor' Application ---");
-        const app = desktop.application("Cursor");
-        // const app = desktop.application("Google Chrome");
+        const appName = "Cursor";
+        // const appName = "Google Chrome";
+        // --- Find the application ---
+        console.log(`\n--- Finding '${appName}' Application ---`);
+        const app = desktop.application(appName);
         console.log("Found application object:");
         console.log(app);
 
         // --- Retrieve and print the entire window tree using getWindowTree ---
-        console.log("\n--- Retrieving UI tree for Cursor window ---");
+        console.log(`\n--- Listing windows for '${appName}' application ---`);
+        const windows = await desktop.windowsForApplication(appName);
+        console.log(`Found ${windows.length} window(s) for ${appName}.`);
+        windows.forEach((win, idx) => {
+            const attrs = win.attributes();
+            const isMain = attrs.properties.AXMain === "true";
+            console.log(`Window #${idx + 1}:`);
+            console.log("  Name:", attrs.name || attrs.label);
+            console.log("  Is Main:", isMain);
+        });
 
-        // Get the PID of the Cursor application
+        // Get the PID of the application
         const pid = app.processId();
-        console.log(`Cursor PID: ${pid}`);
-
+        console.log(`${appName} PID: ${pid}`);
+        
         // Optional: you can provide a window title filter (null means no filter)
         const windowTree = desktop.getWindowTree(pid, null, null);
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const fileName = `window_tree_${pid}_${timestamp}.json`;
         fs.writeFileSync(fileName, JSON.stringify(windowTree, null, 2));
         console.log(`\nWindow tree written to ${fileName}`);
+        
+        // process.exit(0);
 
         // --- Find a button within "Cursor" using locator('role:button').first() ---
         console.log("\n--- Finding a Button in app ---");
         try {
             // You can tweak these locators to test various scenarios
             // const locator = app.locator('role:button');
-            // const locator = app.locator('button:Go Back (⌃-)');
-            const locator = app.locator('button:Start Debugging (F5), use (⌥F1) for accessibility help');
+            const locator = app.locator('button:Go Back (⌃-)');
+            // const locator = app.locator('button:Start Debugging (F5), use (⌥F1) for accessibility help');
             // const locator = app.locator('PopUpButton:Extensions');
 
             console.log("Locator for button:", locator);

@@ -15,7 +15,8 @@ async function testGetWindowTree() {
         }
         
         // Let's use the first application
-        const firstApp = apps[0];
+        // const firstApp = apps[0];
+        const firstApp = await desktop.application('Google Chrome');
         const pid = firstApp.processId();
         const appName = firstApp.attributes().name || 'Unknown App';
         

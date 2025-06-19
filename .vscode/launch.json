@@ -58,5 +58,13 @@
                 "NODE_ENV": "development"
             }
         },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug test-tree.js",
+            "program": "${workspaceFolder}/bindings/nodejs/test-tree.js",
+            "cwd": "${workspaceFolder}/bindings/nodejs",
+            "console": "integratedTerminal",
+        }
     ]
 }
