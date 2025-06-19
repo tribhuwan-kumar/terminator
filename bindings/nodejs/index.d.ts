@@ -209,7 +209,7 @@ export declare class Desktop {
    * Open a URL in a browser.
    *
    * @param {string} url - The URL to open.
-   * @param {string} [browser] - The browser to use.
+   * @param {string} [browser] - The browser to use. Can be "Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Arc", or a custom browser path.
    */
   openUrl(url: string, browser?: string | undefined | null): Element
   /**
@@ -498,6 +498,12 @@ export declare class Element {
    * @returns {void}
    */
   close(): void
+  /**
+   * Get the monitor containing this element.
+   *
+   * @returns {Monitor} The monitor information for the display containing this element.
+   */
+  monitor(): Monitor
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {

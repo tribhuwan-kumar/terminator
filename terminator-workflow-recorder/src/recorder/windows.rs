@@ -1,4 +1,4 @@
-use crate::events::{ButtonClickEvent, ButtonInteractionType, DropdownEvent, LinkClickEvent};
+use crate::events::{ButtonClickEvent, ButtonInteractionType};
 use crate::{
     ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
     ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent,
@@ -26,13 +26,6 @@ use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
 };
-
-/// Track the last focused element for correlating with mouse clicks
-#[derive(Debug, Clone)]
-struct LastFocusedElement {
-    ui_element: UIElement,
-    focus_time: Instant,
-}
 
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
@@ -66,14 +59,20 @@ pub struct WindowsRecorder {
     /// Current typing session tracking
     current_typing_session: Arc<AtomicTypingSession>,
 
+    /// Last emitted text value to prevent duplicate text input events
+    last_emitted_text: Arc<Mutex<Option<String>>>,
+
     /// Current application tracking for switch detection
     current_application: Arc<Mutex<Option<ApplicationState>>>,
 
     /// Browser tab navigation tracking
     browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
 
-    /// Last focused element for correlating with clicks
-    last_focused_element: Arc<Mutex<Option<LastFocusedElement>>>,
+    /// Rate limiting for performance modes
+    last_event_time: Arc<Mutex<std::time::Instant>>,
+
+    /// Event counter for rate limiting
+    events_this_second: Arc<Mutex<(u32, std::time::Instant)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -245,6 +244,30 @@ impl WindowsRecorder {
             .as_millis() as u64
     }
 
+    /// Creates a UIAutomation instance with the configured threading model for a new thread.
+    fn create_configured_automation_instance(
+        config: &WorkflowRecorderConfig,
+    ) -> std::result::Result<UIAutomation, String> {
+        unsafe {
+            let threading_model = if config.enable_multithreading {
+                COINIT_MULTITHREADED
+            } else {
+                COINIT_APARTMENTTHREADED
+            };
+            let hr = CoInitializeEx(None, threading_model);
+            if hr.is_err() && hr != windows::Win32::Foundation::RPC_E_CHANGED_MODE {
+                let err_msg = format!("Failed to initialize COM for new thread: {:?}", hr);
+                error!("{}", err_msg);
+                return Err(err_msg);
+            }
+        }
+        UIAutomation::new_direct().map_err(|e| {
+            let err_msg = format!("Failed to create UIAutomation instance directly: {}", e);
+            error!("{}", err_msg);
+            err_msg
+        })
+    }
+
     /// Create a new Windows recorder
     pub async fn new(
         config: WorkflowRecorderConfig,
@@ -278,13 +301,17 @@ impl WindowsRecorder {
             hotkey_patterns,
             ui_automation_thread_id: Arc::new(Mutex::new(None)),
             current_typing_session: Arc::new(AtomicTypingSession::default()),
+            last_emitted_text: Arc::new(Mutex::new(None)),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
-            last_focused_element: Arc::new(Mutex::new(None)),
+            last_event_time: Arc::new(Mutex::new(Instant::now())),
+            events_this_second: Arc::new(Mutex::new((0, Instant::now()))),
         };
 
+        let handle = tokio::runtime::Handle::current();
+
         // Set up comprehensive event listeners
-        recorder.setup_comprehensive_listeners().await?;
+        recorder.setup_comprehensive_listeners(handle).await?;
 
         // Start background typing session completion timer for reliable text completion
         if recorder.config.record_text_input_completion {
@@ -616,35 +643,32 @@ impl WindowsRecorder {
 
     /// Process potential typing session completion with UI element capture
     fn check_and_complete_typing_session(
+        automation: &UIAutomation,
         current_session: &Arc<AtomicTypingSession>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         force_complete: bool,
         timeout_ms: u64,
+        last_emitted_text: &Arc<Mutex<Option<String>>>,
     ) {
         let session_data = current_session.complete_session(force_complete, timeout_ms);
 
         if let Some((keystroke_count, duration_ms)) = session_data {
             // NOW capture the UI element and text - only when session completes (no contention!)
-            let (ui_element, text_value, field_name, field_type) = match UIAutomation::new() {
-                Ok(automation) => {
-                    if let Some(focused_element) =
-                        Self::get_focused_ui_element_with_timeout(&automation)
-                    {
-                        // Try to get the current text value from the UI element
-                        let text = focused_element.text(1).unwrap_or_else(|_| {
-                            // Fallback: try to get name if text fails
-                            focused_element.name().unwrap_or_default()
-                        });
+            let (ui_element, text_value, field_name, field_type) = if let Some(focused_element) =
+                Self::get_focused_ui_element_with_timeout(automation)
+            {
+                // Try to get the current text value from the UI element
+                let text = focused_element.text(1).unwrap_or_else(|_| {
+                    // Fallback: try to get name if text fails
+                    focused_element.name().unwrap_or_default()
+                });
 
-                        let field_name = focused_element.name().unwrap_or_default();
-                        let field_type = focused_element.role();
+                let field_name = focused_element.name().unwrap_or_default();
+                let field_type = focused_element.role();
 
-                        (Some(focused_element), text, Some(field_name), field_type)
-                    } else {
-                        (None, String::new(), None, "unknown".to_string())
-                    }
-                }
-                Err(_) => (None, String::new(), None, "unknown".to_string()),
+                (Some(focused_element), text, Some(field_name), field_type)
+            } else {
+                (None, String::new(), None, "unknown".to_string())
             };
 
             // Only emit event if we got meaningful text or have multiple keystrokes
@@ -655,20 +679,30 @@ impl WindowsRecorder {
                     false, // had_paste is not available in the AtomicTypingSession
                 );
 
-                let text_input_event = TextInputCompletedEvent {
-                    text_value,
-                    field_name,
-                    field_type,
-                    input_method,
-                    typing_duration_ms: duration_ms,
-                    keystroke_count,
-                    metadata: EventMetadata {
-                        ui_element,
-                        timestamp: Some(Self::capture_timestamp()),
-                    },
-                };
+                let mut last_text = last_emitted_text.lock().unwrap();
 
-                let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_input_event));
+                // Only emit if the text is different from the last one
+                if last_text.as_deref() != Some(text_value.as_str()) {
+                    let text_input_event = TextInputCompletedEvent {
+                        text_value: text_value.clone(),
+                        field_name,
+                        field_type,
+                        input_method,
+                        typing_duration_ms: duration_ms,
+                        keystroke_count,
+                        metadata: EventMetadata {
+                            ui_element,
+                            timestamp: Some(Self::capture_timestamp()),
+                        },
+                    };
+
+                    if event_tx
+                        .send(WorkflowEvent::TextInputCompleted(text_input_event))
+                        .is_ok()
+                    {
+                        *last_text = Some(text_value);
+                    }
+                }
             }
         }
     }
@@ -716,9 +750,13 @@ impl WindowsRecorder {
     }
 
     /// Set up comprehensive event listeners
-    async fn setup_comprehensive_listeners(&mut self) -> Result<()> {
+    async fn setup_comprehensive_listeners(
+        &mut self,
+        handle: tokio::runtime::Handle,
+    ) -> Result<()> {
         // Main input event listener (enhanced from original)
-        self.setup_enhanced_input_listener().await?;
+        self.setup_enhanced_input_listener(Arc::clone(&self.last_emitted_text))
+            .await?;
 
         // Clipboard monitoring
         if self.config.record_clipboard {
@@ -729,13 +767,19 @@ impl WindowsRecorder {
         self.setup_ui_automation_events(
             Arc::clone(&self.current_application),
             Arc::clone(&self.browser_tab_tracker),
+            handle,
+            Arc::clone(&self.current_typing_session),
+            Arc::clone(&self.last_emitted_text),
         )?;
 
         Ok(())
     }
 
     /// Set up enhanced input event listener
-    async fn setup_enhanced_input_listener(&mut self) -> Result<()> {
+    async fn setup_enhanced_input_listener(
+        &mut self,
+        last_emitted_text: Arc<Mutex<Option<String>>>,
+    ) -> Result<()> {
         let event_tx = self.event_tx.clone();
         let last_mouse_pos = Arc::clone(&self.last_mouse_pos);
         let capture_ui_elements = self.config.capture_ui_elements;
@@ -743,24 +787,26 @@ impl WindowsRecorder {
         let modifier_states = Arc::clone(&self.modifier_states);
         let last_mouse_move_time = Arc::clone(&self.last_mouse_move_time);
         let hotkey_patterns = Arc::clone(&self.hotkey_patterns);
-        let mouse_move_throttle = self.config.mouse_move_throttle_ms;
-        let track_modifiers = self.config.track_modifier_states;
-        let record_hotkeys = self.config.record_hotkeys;
-        let record_text_input_completion = self.config.record_text_input_completion;
-        let text_input_timeout_ms = self.config.text_input_completion_timeout_ms;
+        let config = self.config.clone();
         let current_typing_session = Arc::clone(&self.current_typing_session);
-        let last_focused_element = Arc::clone(&self.last_focused_element);
+        let last_emitted_text_clone = Arc::clone(&last_emitted_text);
+        let performance_last_event_time = Arc::clone(&self.last_event_time);
+        let performance_events_counter = Arc::clone(&self.events_this_second);
 
         thread::spawn(move || {
+            let track_modifiers = config.track_modifier_states;
+            let record_hotkeys = config.record_hotkeys;
+            let record_text_input_completion = config.record_text_input_completion;
+            let mouse_move_throttle = config.mouse_move_throttle_ms;
             // PERFORMANCE: Create UIAutomation instance once outside the event loop
             let automation = if capture_ui_elements {
-                match UIAutomation::new() {
+                match Self::create_configured_automation_instance(&config) {
                     Ok(auto) => {
-                        info!("✅ UIAutomation instance created for input events");
+                        info!("✅ UIAutomation instance created for input events with configured threading model");
                         Some(auto)
                     }
                     Err(e) => {
-                        warn!("⚠️  Failed to create UIAutomation for input events: {}", e);
+                        warn!("⚠️  Failed to create UIAutomation for input events: {}. UI context will be missing.", e);
                         None
                     }
                 }
@@ -840,26 +886,34 @@ impl WindowsRecorder {
                             // Special case: Enter key should immediately complete the typing session
                             // This captures common form submission patterns
                             if key_code == 0x0D {
-                                // Enter key
-                                Self::check_and_complete_typing_session(
-                                    &current_typing_session,
-                                    &event_tx,
-                                    true, // force complete on Enter
-                                    text_input_timeout_ms,
-                                );
+                                if let Some(ref auto) = automation {
+                                    // Enter key
+                                    Self::check_and_complete_typing_session(
+                                        auto,
+                                        &current_typing_session,
+                                        &event_tx,
+                                        true, // force complete on Enter
+                                        config.text_input_completion_timeout_ms,
+                                        &last_emitted_text_clone,
+                                    );
+                                }
                             }
                         }
 
                         // Special case: Tab key should also complete typing session
                         // This captures text input when user tabs to next field
                         if record_text_input_completion && key_code == 0x09 {
-                            // Tab key - complete session before focus changes
-                            Self::check_and_complete_typing_session(
-                                &current_typing_session,
-                                &event_tx,
-                                true, // force complete on Tab
-                                text_input_timeout_ms,
-                            );
+                            if let Some(ref auto) = automation {
+                                // Tab key - complete session before focus changes
+                                Self::check_and_complete_typing_session(
+                                    auto,
+                                    &current_typing_session,
+                                    &event_tx,
+                                    true, // force complete on Tab
+                                    config.text_input_completion_timeout_ms,
+                                    &last_emitted_text_clone,
+                                );
+                            }
                         }
 
                         let keyboard_event = KeyboardEvent {
@@ -877,7 +931,13 @@ impl WindowsRecorder {
                             },
                         };
 
-                        let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
+                        Self::send_filtered_event_static(
+                            &event_tx,
+                            &config,
+                            &performance_last_event_time,
+                            &performance_events_counter,
+                            WorkflowEvent::Keyboard(keyboard_event),
+                        );
                     }
                     EventType::KeyRelease(key) => {
                         let key_code = key_to_u32(&key);
@@ -901,7 +961,7 @@ impl WindowsRecorder {
                         // PERFORMANCE OPTIMIZATION: Only capture UI elements for high-level keyboard events
                         // Skip UI element capture for typing keystrokes during key release
                         let mut ui_element = None;
-                        if capture_ui_elements {
+                        if capture_ui_elements && !config.should_reduce_ui_capture() {
                             let character = if (32..=126).contains(&key_code) {
                                 Some(key_code as u8 as char)
                             } else {
@@ -932,7 +992,13 @@ impl WindowsRecorder {
                                 timestamp: Some(Self::capture_timestamp()),
                             },
                         };
-                        let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
+                        Self::send_filtered_event_static(
+                            &event_tx,
+                            &config,
+                            &performance_last_event_time,
+                            &performance_events_counter,
+                            WorkflowEvent::Keyboard(keyboard_event),
+                        );
                     }
                     EventType::ButtonPress(button) => {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
@@ -945,12 +1011,16 @@ impl WindowsRecorder {
 
                             // Complete any active typing session on mouse click (likely focus change)
                             if record_text_input_completion {
-                                Self::check_and_complete_typing_session(
-                                    &current_typing_session,
-                                    &event_tx,
-                                    true, // force complete on click
-                                    text_input_timeout_ms,
-                                );
+                                if let Some(ref auto) = automation {
+                                    Self::check_and_complete_typing_session(
+                                        auto,
+                                        &current_typing_session,
+                                        &event_tx,
+                                        true, // force complete on click
+                                        config.text_input_completion_timeout_ms,
+                                        &last_emitted_text_clone,
+                                    );
+                                }
                             }
 
                             let mut ui_element = None;
@@ -988,7 +1058,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::ButtonRelease(button) => {
@@ -1007,34 +1083,6 @@ impl WindowsRecorder {
                                 );
                             }
 
-                            // Synthesize click event using the last focused element from UI Automation
-                            if let Ok(last_focused) = last_focused_element.try_lock() {
-                                if let Some(ref focused) = *last_focused {
-                                    // Check if the focus happened recently (within 500ms of this click)
-                                    if focused.focus_time.elapsed() < Duration::from_millis(500) {
-                                        Self::try_emit_semantic_event(
-                                            &event_tx,
-                                            &focused.ui_element,
-                                            Position { x, y },
-                                        );
-
-                                        // Emit synthetic click with the focused element
-                                        let click_event = MouseEvent {
-                                            event_type: MouseEventType::Click,
-                                            button: mouse_button,
-                                            position: Position { x, y },
-                                            scroll_delta: None,
-                                            drag_start: None,
-                                            metadata: EventMetadata {
-                                                ui_element: Some(focused.ui_element.clone()),
-                                                timestamp: Some(Self::capture_timestamp()),
-                                            },
-                                        };
-                                        let _ = event_tx.send(WorkflowEvent::Mouse(click_event));
-                                    }
-                                }
-                            }
-
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Up,
                                 button: mouse_button,
@@ -1046,7 +1094,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::MouseMove { x, y } => {
@@ -1087,7 +1141,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::Wheel { delta_x, delta_y } => {
@@ -1110,7 +1170,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                 }
@@ -1164,7 +1230,7 @@ impl WindowsRecorder {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let last_hash = Arc::clone(&self.last_clipboard_hash);
-        let max_content_length = self.config.max_clipboard_content_length;
+        let config = self.config.clone();
         let capture_ui_elements = self.config.capture_ui_elements;
 
         thread::spawn(move || {
@@ -1175,7 +1241,19 @@ impl WindowsRecorder {
                     return;
                 }
             };
-            let automation = UIAutomation::new().unwrap();
+
+            // Use configured automation instance
+            let automation = if capture_ui_elements {
+                match Self::create_configured_automation_instance(&config) {
+                    Ok(auto) => Some(auto),
+                    Err(e) => {
+                        warn!("⚠️ Failed to create UIAutomation for clipboard monitor: {}. UI context will be missing.", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
 
             // Initialize the clipboard hash with current content to avoid false initial events
             if let Ok(initial_content) = clipboard.get_text() {
@@ -1193,15 +1271,21 @@ impl WindowsRecorder {
                         *last_hash_guard = Some(hash);
                         drop(last_hash_guard);
 
-                        let (truncated_content, truncated) = if content.len() > max_content_length {
-                            (content[..max_content_length].to_string(), true)
-                        } else {
-                            (content.clone(), false)
-                        };
+                        let (truncated_content, truncated) =
+                            if content.len() > config.max_clipboard_content_length {
+                                (
+                                    content[..config.max_clipboard_content_length].to_string(),
+                                    true,
+                                )
+                            } else {
+                                (content.clone(), false)
+                            };
 
                         // Capture UI element if enabled
                         let ui_element = if capture_ui_elements {
-                            Self::get_focused_ui_element_with_timeout(&automation)
+                            automation
+                                .as_ref()
+                                .and_then(Self::get_focused_ui_element_with_timeout)
                         } else {
                             None
                         };
@@ -1273,11 +1357,13 @@ impl WindowsRecorder {
         &self,
         current_application: Arc<Mutex<Option<ApplicationState>>>,
         browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
+        handle: tokio::runtime::Handle,
+        current_typing_session: Arc<AtomicTypingSession>,
+        last_emitted_text: Arc<Mutex<Option<String>>>,
     ) -> Result<()> {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let ui_automation_thread_id = Arc::clone(&self.ui_automation_thread_id);
-        let last_focused_element = Arc::clone(&self.last_focused_element);
 
         // Clone filtering configuration
         let ignore_focus_patterns = self.config.ignore_focus_patterns.clone();
@@ -1286,6 +1372,8 @@ impl WindowsRecorder {
         let ignore_applications = self.config.ignore_applications.clone();
         let config_clone = self.config.clone();
         let property_config = self.config.clone();
+        let property_current_typing_session = Arc::clone(&current_typing_session);
+        let property_last_emitted_text = Arc::clone(&last_emitted_text);
 
         thread::spawn(move || {
             info!("Starting UI Automation event monitoring thread");
@@ -1364,57 +1452,37 @@ impl WindowsRecorder {
             // Set up focus change event handler if enabled
             info!("Setting up focus change event handler");
             let focus_event_tx = event_tx.clone();
-            let focus_ignore_patterns = ignore_focus_patterns.clone();
-            let focus_ignore_window_titles = ignore_window_titles.clone();
-            let focus_ignore_applications = ignore_applications.clone();
 
             // Create a channel for thread-safe communication
-            let (focus_tx, focus_rx) = std::sync::mpsc::channel::<(String, Option<UIElement>)>();
+            let (focus_tx, focus_rx) = std::sync::mpsc::channel::<Option<UIElement>>();
 
             // Create a focus changed event handler struct
             struct FocusHandler {
-                sender: std::sync::mpsc::Sender<(String, Option<UIElement>)>,
+                sender: std::sync::mpsc::Sender<Option<UIElement>>,
             }
 
             impl uiautomation::events::CustomFocusChangedEventHandler for FocusHandler {
                 fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
-                    // Extract basic data that's safe to send across threads
-                    let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
-
-                    // SAFELY extract UI element information while we're on the correct COM thread
-                    let ui_element = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                        || convert_uiautomation_element_to_terminator(sender.clone()),
-                    )) {
-                        Ok(element) => {
-                            // Additional safety: verify we can access basic properties
-                            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                let name = element.name_or_empty();
-                                let role = element.role();
-                                (name, role)
-                            })) {
-                                Ok((name, role)) => {
-                                    debug!("Successfully converted focus UI element: name='{}', role='{}'", name, role);
-                                    Some(element)
-                                }
-                                Err(e) => {
-                                    debug!(
-                                        "UI element converted but properties inaccessible: {:?}",
-                                        e
-                                    );
-                                    // Return the element anyway since basic conversion worked
-                                    Some(element)
-                                }
+                    // Perform the absolute minimum work on this thread.
+                    // Convert to our thread-safe UIElement wrapper and send it to the worker thread.
+                    let ui_element =
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            convert_uiautomation_element_to_terminator(sender.clone())
+                        })) {
+                            Ok(element) => Some(element),
+                            Err(_) => {
+                                debug!(
+                                "Failed to convert focused UI element safely during event handling"
+                            );
+                                None
                             }
-                        }
-                        Err(e) => {
-                            debug!("Failed to convert UI element safely: {:?}", e);
-                            None
-                        }
-                    };
+                        };
 
-                    // Send the extracted data through the channel
-                    if let Err(e) = self.sender.send((element_name, ui_element)) {
-                        debug!("Failed to send focus change data through channel: {}", e);
+                    // Send the wrapped element to the processing thread.
+                    if self.sender.send(ui_element).is_err() {
+                        debug!(
+                            "Failed to send focus change data to worker thread; it may have shut down."
+                        );
                     }
 
                     Ok(())
@@ -1436,69 +1504,128 @@ impl WindowsRecorder {
             let focus_event_tx_clone = focus_event_tx.clone();
             let focus_current_app = Arc::clone(&current_application);
             let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
-            let focus_last_focused = Arc::clone(&last_focused_element);
-            let config_clone = config_clone.clone();
-            let config_clone_clone = config_clone.clone();
+
+            // Clone the necessary variables for the focus-processing thread to take ownership of.
+            let focus_processing_config = config_clone.clone();
+            let focus_processing_ignore_patterns = ignore_focus_patterns.clone();
+            let focus_processing_ignore_window_titles = ignore_window_titles.clone();
+            let focus_processing_ignore_applications = ignore_applications.clone();
+            let processing_handle = handle;
+
             std::thread::spawn(move || {
-                while let Ok((element_name, ui_element)) = focus_rx.recv() {
-                    // Update the last focused element for click correlation
-                    if let Some(ref element) = ui_element {
-                        if let Ok(mut last_focused) = focus_last_focused.try_lock() {
-                            *last_focused = Some(LastFocusedElement {
-                                ui_element: element.clone(),
-                                focus_time: Instant::now(),
-                            });
-                            debug!(
-                                "Updated last focused element: name='{}', role='{}'",
-                                element.name_or_empty(),
-                                element.role()
-                            );
-                        }
-                    }
-
-                    // Apply filtering
-                    if WindowsRecorder::should_ignore_focus_event(
-                        // TODO double click it does not badly affect he app switch event
-                        &element_name,
-                        &ui_element,
-                        &focus_ignore_patterns,
-                        &focus_ignore_window_titles,
-                        &focus_ignore_applications,
-                    ) {
-                        debug!("Ignoring focus change event for: {}", element_name);
-                        continue;
-                    }
-
-                    // Check for application switch (focus changes often indicate app switches)
-                    Self::check_and_emit_application_switch(
-                        &focus_current_app,
-                        &focus_event_tx_clone,
-                        &ui_element,
-                        ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
-                        &config_clone_clone,
-                    );
-
-                    // Check for browser tab navigation
-                    // Extract URL from focus text if available
-                    let focus_url = if let Some(ref element) = ui_element {
+                while let Ok(ui_element) = focus_rx.recv() {
+                    if let Some(element) = ui_element {
                         let element_name = element.name_or_empty();
-                        if element_name.starts_with("http") && element_name.len() > 10 {
-                            Some(element_name.clone())
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
+                        let element_role = element.role().to_lowercase();
+                        debug!(
+                            "Focus event received for element: '{}', role: '{}'",
+                            element_name, element_role
+                        );
 
-                    Self::check_and_emit_browser_navigation_with_url(
-                        &focus_browser_tracker,
-                        &focus_event_tx_clone,
-                        &ui_element,
-                        TabNavigationMethod::TabClick, // Focus change in browser could be tab click
-                        &config_clone,
-                        focus_url,
-                    );
+                        // User Request: If a button gets focus, send a ButtonClickEvent
+                        if element_role.contains("button")
+                            || element_role.contains("menuitem")
+                            || element_role.contains("listitem")
+                        {
+                            let element_desc = element.attributes().description.unwrap_or_default();
+
+                            let interaction_type = Self::determine_button_interaction_type(
+                                &element_name,
+                                &element_desc,
+                                &element_role,
+                            );
+                            let is_enabled = element.is_enabled().unwrap_or(true);
+                            let bounds = element.bounds().unwrap_or_default();
+
+                            let button_event = ButtonClickEvent {
+                                button_text: element_name.clone(),
+                                interaction_type,
+                                button_role: element_role.clone(),
+                                was_enabled: is_enabled,
+                                click_position: Some(Position {
+                                    x: bounds.0 as i32,
+                                    y: bounds.1 as i32,
+                                }),
+                                button_description: if element_desc.is_empty() {
+                                    None
+                                } else {
+                                    Some(element_desc.clone())
+                                },
+                                metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                    element.clone(),
+                                )),
+                            };
+                            let result =
+                                focus_event_tx_clone.send(WorkflowEvent::ButtonClick(button_event));
+
+                            if result.is_ok() {
+                                debug!("Successfully sent ButtonClickEvent for '{}'", element_name);
+                            } else {
+                                warn!(
+                                    "Failed to send ButtonClickEvent for '{}': {:?}",
+                                    element_name,
+                                    result.err()
+                                );
+                            }
+                        }
+
+                        // Offload slow checks to a separate async task to avoid blocking the queue
+                        let task_current_app = Arc::clone(&focus_current_app);
+                        let task_browser_tracker = Arc::clone(&focus_browser_tracker);
+                        let task_event_tx_clone = focus_event_tx_clone.clone();
+                        let task_element_name = element_name.clone();
+                        let task_ui_element = Some(element);
+                        let task_config_clone = focus_processing_config.clone();
+                        let task_ignore_focus_patterns = focus_processing_ignore_patterns.clone();
+                        let task_ignore_window_titles =
+                            focus_processing_ignore_window_titles.clone();
+                        let task_ignore_applications = focus_processing_ignore_applications.clone();
+
+                        processing_handle.spawn(async move {
+                            // Re-enable the previously disabled checks inside this non-blocking task
+                            if WindowsRecorder::should_ignore_focus_event(
+                                &task_element_name,
+                                &task_ui_element,
+                                &task_ignore_focus_patterns,
+                                &task_ignore_window_titles,
+                                &task_ignore_applications,
+                            ) {
+                                debug!("Ignoring focus change event for: {}", task_element_name);
+                                return;
+                            }
+
+                            // Check for application switch (focus changes often indicate app switches)
+                            Self::check_and_emit_application_switch(
+                                &task_current_app,
+                                &task_event_tx_clone,
+                                &task_ui_element,
+                                ApplicationSwitchMethod::WindowClick, // Focus change usually means window click
+                                &task_config_clone,
+                            );
+
+                            // Check for browser tab navigation
+                            // Extract URL from focus text if available
+                            let focus_url = if let Some(ref element) = task_ui_element {
+                                let element_name = element.name_or_empty();
+                                if element_name.starts_with("http") && element_name.len() > 10 {
+                                    Some(element_name.clone())
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            Self::check_and_emit_browser_navigation_with_url(
+                                &task_browser_tracker,
+                                &task_event_tx_clone,
+                                &task_ui_element,
+                                TabNavigationMethod::TabClick, // Focus change in browser could be tab click
+                                &task_config_clone,
+                                focus_url,
+                            );
+                        });
+                    }
                 }
             });
 
@@ -1511,53 +1638,38 @@ impl WindowsRecorder {
 
             // Create a channel for thread-safe communication
             let (property_tx, property_rx) =
-                std::sync::mpsc::channel::<(String, String, String, Option<UIElement>)>();
+                std::sync::mpsc::channel::<(String, String, Option<UIElement>, u64)>();
 
             // Create a property changed event handler using the proper closure type
             let property_handler: Box<uiautomation::events::CustomPropertyChangedEventHandlerFn> =
                 Box::new(move |sender, property, value| {
-                    let element_name = sender.get_name().unwrap_or_else(|_| "Unknown".to_string());
-
-                    // element_name already extracted above for filtering
                     let property_name = format!("{:?}", property);
 
                     // Only proceed if we can extract a meaningful value
                     if let Some(value_string) = Self::format_property_value(&value) {
                         // SAFELY extract UI element information while we're on the correct COM thread
-                        let ui_element = match std::panic::catch_unwind(
-                            std::panic::AssertUnwindSafe(|| {
+                        let ui_element =
+                            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                                 convert_uiautomation_element_to_terminator(sender.clone())
-                            }),
-                        ) {
-                            Ok(element) => {
-                                // Additional safety: verify we can access basic properties
-                                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    let name = element.name_or_empty();
-                                    let role = element.role();
-                                    (name, role)
-                                })) {
-                                    Ok((_, _)) => Some(element),
-                                    Err(e) => {
-                                        debug!("UI element converted but properties inaccessible: {:?}", e);
-                                        // Return the element anyway since basic conversion worked
-                                        Some(element)
-                                    }
+                            })) {
+                                Ok(element) => Some(element),
+                                Err(_) => {
+                                    debug!(
+                                    "Failed to convert UI element safely during property change"
+                                );
+                                    None
                                 }
-                            }
-                            Err(e) => {
-                                debug!("Failed to convert UI element safely: {:?}", e);
-                                None
-                            }
-                        };
+                            };
+                        let timestamp = Self::capture_timestamp();
 
                         // Send the extracted data through the channel
-                        if let Err(e) = property_tx.send((
-                            element_name,
-                            property_name,
-                            value_string,
-                            ui_element,
-                        )) {
-                            debug!("Failed to send property change data through channel: {}", e);
+                        if property_tx
+                            .send((property_name, value_string, ui_element, timestamp))
+                            .is_err()
+                        {
+                            debug!(
+                                "Failed to send property change data to worker thread; it may have shut down."
+                            );
                         }
                     }
 
@@ -1592,12 +1704,17 @@ impl WindowsRecorder {
             }
 
             // Spawn a thread to process the property change data safely
-            let property_event_tx_clone = property_event_tx.clone();
             let property_browser_tracker = Arc::clone(&browser_tab_tracker);
             std::thread::spawn(move || {
-                while let Ok((element_name, property_name, value_string, ui_element)) =
+                while let Ok((property_name, value_string, ui_element, timestamp)) =
                     property_rx.recv()
                 {
+                    // Extract element name on the worker thread
+                    let element_name = ui_element
+                        .as_ref()
+                        .map(|el| el.name_or_empty())
+                        .unwrap_or_default();
+
                     // Apply filtering
                     if WindowsRecorder::should_ignore_property_event(
                         &element_name,
@@ -1612,6 +1729,66 @@ impl WindowsRecorder {
                             element_name, property_name
                         );
                         continue;
+                    }
+                    if property_config.record_text_input_completion && property_name == "ValueValue"
+                    {
+                        if let Some(ref element) = ui_element {
+                            let role = element.role().to_lowercase();
+                            if role.contains("edit")
+                                || role.contains("document")
+                                || role.contains("textbox")
+                            {
+                                // If a typing session is active, ignore this event to avoid conflicts.
+                                if property_current_typing_session
+                                    .is_active
+                                    .load(Ordering::Relaxed)
+                                {
+                                    continue;
+                                }
+
+                                // If the event is older than the last keystroke of the last completed session,
+                                // it's a stale event that we should ignore.
+                                let last_keystroke_nanos = property_current_typing_session
+                                    .last_keystroke_nanos
+                                    .load(Ordering::Relaxed);
+
+                                if last_keystroke_nanos > 0 {
+                                    let event_timestamp_nanos = timestamp * 1_000_000;
+                                    if event_timestamp_nanos < last_keystroke_nanos {
+                                        debug!("Ignoring stale property change event from last typing session.");
+                                        continue;
+                                    }
+                                }
+
+                                // A suggestion click can change the value without any keystrokes.
+                                // If no typing session is active, we can assume this is an auto-fill.
+                                let mut last_text = property_last_emitted_text.lock().unwrap();
+
+                                if last_text.as_deref() != Some(value_string.as_str()) {
+                                    debug!(
+                                        "Detected value change on '{}' with no active typing session. Emitting TextInputCompletedEvent.",
+                                        element_name
+                                    );
+                                    let text_input_event = TextInputCompletedEvent {
+                                        text_value: value_string.clone(),
+                                        field_name: Some(element_name.clone()),
+                                        field_type: element.role(),
+                                        input_method: TextInputMethod::AutoFilled,
+                                        typing_duration_ms: 0,
+                                        keystroke_count: value_string.len() as u32,
+                                        metadata: EventMetadata::with_ui_element_and_timestamp(
+                                            ui_element.clone(),
+                                        ),
+                                    };
+                                    if event_tx
+                                        .send(WorkflowEvent::TextInputCompleted(text_input_event))
+                                        .is_ok()
+                                    {
+                                        *last_text = Some(value_string.clone());
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Check for browser tab navigation (property changes often indicate URL/title changes)
@@ -1631,7 +1808,7 @@ impl WindowsRecorder {
 
                         Self::check_and_emit_browser_navigation_with_url(
                             &property_browser_tracker,
-                            &property_event_tx_clone,
+                            &property_event_tx,
                             &ui_element,
                             TabNavigationMethod::AddressBar, // Property change likely means address bar update
                             &property_config,
@@ -1833,88 +2010,37 @@ impl WindowsRecorder {
         let event_tx = self.event_tx.clone();
         let stop_indicator = Arc::clone(&self.stop_indicator);
         let timeout_ms = self.config.text_input_completion_timeout_ms;
+        let config = self.config.clone();
+        let last_emitted_text = Arc::clone(&self.last_emitted_text);
 
         thread::spawn(move || {
-            while !stop_indicator.load(Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(timeout_ms / 2)); // Check twice per timeout period
+            // Create a UIAutomation instance once for this thread to reuse, respecting the configured threading model
+            let automation = match Self::create_configured_automation_instance(&config) {
+                Ok(auto) => Some(auto),
+                Err(e) => {
+                    warn!(
+                        "Failed to create UIAutomation for typing completion timer: {}. Text completion events might be missed.",
+                        e
+                    );
+                    None
+                }
+            };
 
-                Self::check_and_complete_typing_session(
-                    &current_session,
-                    &event_tx,
-                    false, // don't force, let timeout logic decide
-                    timeout_ms,
-                );
+            if let Some(auto) = automation {
+                while !stop_indicator.load(Ordering::SeqCst) {
+                    thread::sleep(Duration::from_millis(timeout_ms / 2)); // Check twice per timeout period
+
+                    Self::check_and_complete_typing_session(
+                        &auto,
+                        &current_session,
+                        &event_tx,
+                        false, // don't force, let timeout logic decide
+                        timeout_ms,
+                        &last_emitted_text,
+                    );
+                }
             }
         });
-    }
-
-    /// Try to emit semantic UI events based on element characteristics
-    fn try_emit_semantic_event(
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        ui_element: &UIElement,
-        click_position: Position,
-    ) {
-        let element_role = ui_element.role().to_lowercase();
-        let element_name = ui_element.name_or_empty();
-        let element_desc = ui_element.attributes().description.unwrap_or_default();
-
-        // Button detection
-        if element_role.contains("button") || element_role.contains("menuitem") {
-            let interaction_type = Self::determine_button_interaction_type(
-                &element_name,
-                &element_desc,
-                &element_role,
-            );
-
-            let button_event = ButtonClickEvent {
-                button_text: element_name.clone(),
-                interaction_type,
-                button_role: element_role.clone(),
-                was_enabled: true, // TODO: Actually check if element is enabled
-                click_position,
-                button_description: if element_desc.is_empty() {
-                    None
-                } else {
-                    Some(element_desc.clone())
-                },
-                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
-            };
-
-            let _ = event_tx.send(WorkflowEvent::ButtonClick(button_event));
-            return;
-        }
-
-        // Dropdown/Combobox detection
-        if element_role.contains("combobox")
-            || element_role.contains("listbox")
-            || element_role.contains("dropdown")
-            || element_name.to_lowercase().contains("dropdown")
-        {
-            let dropdown_event = DropdownEvent {
-                dropdown_name: element_name.clone(),
-                is_opened: true,               // Assume clicking opens dropdown
-                selected_value: None,          // Would need more complex logic to detect selection
-                available_options: Vec::new(), // Would need to scan child elements
-                click_position,
-                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
-            };
-
-            let _ = event_tx.send(WorkflowEvent::DropdownInteraction(dropdown_event));
-            return;
-        }
-
-        // Link detection
-        if element_role.contains("link") || element_role.contains("hyperlink") {
-            let link_event = LinkClickEvent {
-                link_text: element_name.clone(),
-                url: None,            // Would need to extract href attribute
-                opens_new_tab: false, // Would need to check target attribute
-                click_position,
-                metadata: EventMetadata::with_ui_element_and_timestamp(Some(ui_element.clone())),
-            };
-
-            let _ = event_tx.send(WorkflowEvent::LinkClick(link_event));
-        }
     }
 
     /// Determine the type of button interaction based on element characteristics
@@ -2020,6 +2146,92 @@ impl WindowsRecorder {
         }
 
         true
+    }
+
+    /// Static version for use in event listeners where self is not available
+    fn send_filtered_event_static(
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        config: &WorkflowRecorderConfig,
+        last_event_time: &Arc<Mutex<Instant>>,
+        events_this_second: &Arc<Mutex<(u32, Instant)>>,
+        event: WorkflowEvent,
+    ) {
+        // Apply rate limiting first
+        if let Some(max_events) = config.effective_max_events_per_second() {
+            let mut counter = events_this_second.lock().unwrap();
+            let now = Instant::now();
+
+            // Reset counter if a new second has started
+            if now.duration_since(counter.1).as_secs() >= 1 {
+                counter.0 = 0;
+                counter.1 = now;
+            }
+
+            if counter.0 >= max_events {
+                return; // Rate limit exceeded
+            }
+
+            counter.0 += 1;
+        }
+
+        // Apply processing delay
+        let processing_delay = config.effective_processing_delay_ms();
+        if processing_delay > 0 {
+            let mut last_time = last_event_time.lock().unwrap();
+            let now = Instant::now();
+            if now.duration_since(*last_time).as_millis() < processing_delay as u128 {
+                return; // Filter out if within delay window
+            }
+            *last_time = now;
+        }
+
+        // Apply event-specific filtering
+        let should_filter = match &event {
+            WorkflowEvent::Mouse(mouse_event) => {
+                if config.should_filter_mouse_noise() {
+                    matches!(
+                        mouse_event.event_type,
+                        MouseEventType::Move | MouseEventType::Wheel
+                    )
+                } else {
+                    false
+                }
+            }
+            WorkflowEvent::Keyboard(keyboard_event) => {
+                if config.should_filter_keyboard_noise() {
+                    // Filter key-down events and non-printable keys
+                    if keyboard_event.is_key_down {
+                        // Keep printable characters (32-126) and common editing keys
+                        !(keyboard_event.key_code >= 32 && keyboard_event.key_code <= 126)
+                            && !matches!(
+                                keyboard_event.key_code,
+                                0x08 | // Backspace
+                            0x2E | // Delete
+                            0x20 | // Space  
+                            0x0D | // Enter
+                            0x09 // Tab
+                            )
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            // Never filter high-value events
+            WorkflowEvent::TextInputCompleted(_)
+            | WorkflowEvent::ApplicationSwitch(_)
+            | WorkflowEvent::BrowserTabNavigation(_)
+            | WorkflowEvent::ButtonClick(_)
+            | WorkflowEvent::Clipboard(_) => false,
+
+            // Other events can be filtered in LowEnergy mode
+            _ => matches!(config.performance_mode, crate::PerformanceMode::LowEnergy),
+        };
+
+        if !should_filter {
+            let _ = event_tx.send(event);
+        }
     }
 }
 

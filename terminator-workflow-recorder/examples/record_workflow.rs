@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
+use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::signal::ctrl_c;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, Level};
@@ -45,6 +45,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         track_modifier_states: true,
         mouse_move_throttle_ms: 100, // PERFORMANCE: Increase throttle to reduce event spam
         min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
+        enable_multithreading: true,
+
+        // performance_mode: PerformanceMode::LowEnergy,
+        // event_processing_delay_ms: Some(100),
+        // max_events_per_second: Some(100),
+        // filter_mouse_noise: true,
+        // filter_keyboard_noise: true,
+        // reduce_ui_element_capture: true,
 
         ..Default::default()
     };
@@ -137,10 +145,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         button_event.interaction_type
                     );
 
-                    println!(
-                        "     └─ Position: ({}, {})",
-                        button_event.click_position.x, button_event.click_position.y
-                    );
+                    if let Some(position) = button_event.click_position {
+                        println!("     └─ Position: ({}, {})", position.x, position.y);
+                    }
                     println!("     └─ Role: {}", button_event.button_role);
 
                     if let Some(ref description) = button_event.button_description {
@@ -152,118 +159,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     println!("     └─ 🎯 High-level button interaction detected!");
-                }
-
-                terminator_workflow_recorder::WorkflowEvent::DropdownInteraction(
-                    dropdown_event,
-                ) => {
-                    let state_icon = if dropdown_event.is_opened {
-                        "📂"
-                    } else {
-                        "📁"
-                    };
-                    let state_text = if dropdown_event.is_opened {
-                        "Opened"
-                    } else {
-                        "Closed"
-                    };
-
-                    println!(
-                        "{} DROPDOWN {}: \"{}\" ({})",
-                        state_icon, event_count, dropdown_event.dropdown_name, state_text
-                    );
-
-                    println!(
-                        "     └─ Position: ({}, {})",
-                        dropdown_event.click_position.x, dropdown_event.click_position.y
-                    );
-
-                    if let Some(ref selected) = dropdown_event.selected_value {
-                        println!("     └─ Selected: \"{}\"", selected);
-                    }
-
-                    if !dropdown_event.available_options.is_empty() {
-                        println!("     └─ Options: {:?}", dropdown_event.available_options);
-                    }
-
-                    if let Some(ref ui_element) = dropdown_event.metadata.ui_element {
-                        println!("     └─ App: {} 🎯", ui_element.application_name());
-                    }
-
-                    println!("     └─ 🎯 High-level dropdown interaction detected!");
-                }
-
-                terminator_workflow_recorder::WorkflowEvent::LinkClick(link_event) => {
-                    let link_icon = if link_event.opens_new_tab {
-                        "🔗🆕"
-                    } else {
-                        "🔗"
-                    };
-
-                    println!(
-                        "{} LINK CLICK {}: \"{}\"",
-                        link_icon, event_count, link_event.link_text
-                    );
-
-                    println!(
-                        "     └─ Position: ({}, {})",
-                        link_event.click_position.x, link_event.click_position.y
-                    );
-
-                    if let Some(ref url) = link_event.url {
-                        let url_display = if url.len() > 60 {
-                            format!("{}...", &url[..60])
-                        } else {
-                            url.clone()
-                        };
-                        println!("     └─ URL: {}", url_display);
-                    }
-
-                    if link_event.opens_new_tab {
-                        println!("     └─ Opens in: New Tab");
-                    }
-
-                    if let Some(ref ui_element) = link_event.metadata.ui_element {
-                        println!("     └─ App: {} 🎯", ui_element.application_name());
-                    }
-
-                    println!("     └─ 🎯 High-level link navigation detected!");
-                }
-
-                terminator_workflow_recorder::WorkflowEvent::FormSubmit(form_event) => {
-                    println!(
-                        "📤 FORM SUBMIT {}: {}",
-                        event_count, form_event.submit_method
-                    );
-
-                    if let Some(ref form_name) = form_event.form_name {
-                        println!("     └─ Form: \"{}\"", form_name);
-                    }
-
-                    if !form_event.filled_fields.is_empty() {
-                        println!("     └─ Fields: {:?}", form_event.filled_fields);
-                    }
-
-                    let validation_icon = if form_event.validation_passed {
-                        "✅"
-                    } else {
-                        "❌"
-                    };
-                    println!(
-                        "     └─ Validation: {} {}",
-                        validation_icon,
-                        if form_event.validation_passed {
-                            "Passed"
-                        } else {
-                            "Failed"
-                        }
-                    );
-
-                    if let Some(ref ui_element) = form_event.metadata.ui_element {
-                        println!("     └─ App: {} 🎯", ui_element.application_name());
-                    }
-
-                    println!("     └─ 🎯 High-level form submission detected!");
                 }
                 terminator_workflow_recorder::WorkflowEvent::Keyboard(kb_event) => {
                     if kb_event.is_key_down {

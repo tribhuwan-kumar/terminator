@@ -23,10 +23,18 @@ pub enum Selector {
     Chain(Vec<Selector>),
     /// Select by class name
     ClassName(String),
+    /// Filter by visibility on screen
+    Visible(bool),
 }
 
 impl From<&str> for Selector {
     fn from(s: &str) -> Self {
+        // Handle chained selectors first
+        let parts: Vec<&str> = s.split(">>").map(|p| p.trim()).collect();
+        if parts.len() > 1 {
+            return Selector::Chain(parts.into_iter().map(Selector::from).collect());
+        }
+
         // Make common UI roles like "window", "button", etc. default to Role selectors
         // instead of Name selectors
         match s {
@@ -59,6 +67,10 @@ impl From<&str> for Selector {
             _ if s.to_lowercase().starts_with("nativeid:") => {
                 let parts: Vec<&str> = s.splitn(2, ':').collect();
                 Selector::NativeId(parts[1].trim().to_string())
+            }
+            _ if s.to_lowercase().starts_with("visible:") => {
+                let value = s[8..].trim().to_lowercase();
+                Selector::Visible(value == "true")
             }
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),

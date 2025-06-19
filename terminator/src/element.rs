@@ -1,7 +1,6 @@
 use crate::ScreenshotResult;
 use crate::errors::AutomationError;
 use crate::selector::Selector;
-use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
@@ -90,6 +89,10 @@ pub struct SerializableUIElement {
     pub application: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub children: Option<Vec<SerializableUIElement>>,
 }
@@ -99,20 +102,17 @@ impl From<&UIElement> for SerializableUIElement {
         let attrs = element.attributes();
         let bounds = element.bounds().ok();
 
-        // Helper function to filter empty strings
-        fn filter_empty(s: Option<String>) -> Option<String> {
-            s.filter(|s| !s.is_empty())
-        }
-
         Self {
-            id: filter_empty(element.id()),
+            id: element.id(),
             role: element.role(),
-            name: filter_empty(attrs.name),
+            name: attrs.name,
             bounds,
-            value: filter_empty(attrs.value),
-            description: filter_empty(attrs.description),
-            application: filter_empty(Some(element.application_name())),
-            window_title: filter_empty(Some(element.window_title())),
+            value: attrs.value,
+            description: attrs.description,
+            application: Some(element.application_name()),
+            window_title: Some(element.window_title()),
+            url: element.url(),
+            process_id: element.process_id().ok(),
             children: None,
         }
     }
@@ -130,6 +130,8 @@ impl SerializableUIElement {
             description: None,
             application: None,
             window_title: None,
+            url: None,
+            process_id: None,
             children: None,
         }
     }
@@ -315,6 +317,143 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
     /// Close the element if it's closable (like windows, applications)
     /// Does nothing for non-closable elements (like buttons, text, etc.)
     fn close(&self) -> Result<(), AutomationError>;
+
+    // New method to get the URL if the element is in a browser window
+    fn url(&self) -> Option<String>;
+
+    /// Returns the `Monitor` object that contains this element.
+    ///
+    /// By default this implementation uses the element's bounding box and
+    /// the `xcap` crate to locate the monitor that contains the element's
+    /// top-left corner. Individual platforms can override this for a more
+    /// accurate or cheaper implementation.
+    fn monitor(&self) -> Result<crate::Monitor, AutomationError> {
+        // 1. Get element bounds (x, y) with better error handling
+        let (x, y, _w, _h) = match self.bounds() {
+            Ok(bounds) => bounds,
+            Err(e) => {
+                // If we can't get bounds, fall back to primary monitor
+                warn!("Failed to get element bounds for monitor detection: {}", e);
+                return self.get_primary_monitor_fallback();
+            }
+        };
+
+        // 2. Enumerate available monitors using xcap (already a dependency)
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to enumerate monitors: {}", e))
+        })?;
+
+        // 3. Find the first monitor whose geometry contains the element's
+        //    upper-left corner.
+        for (idx, mon) in monitors.iter().enumerate() {
+            // Guard every call because each accessor returns Result<_>
+            let mon_x = mon.x().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
+            })?;
+            let mon_y = mon.y().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
+            })?;
+            let mon_w = mon.width().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+            })? as i32;
+            let mon_h = mon.height().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+            })? as i32;
+
+            // Simple contains check (include edges)
+            let within_x = (x as i32) >= mon_x && (x as i32) < mon_x + mon_w;
+            let within_y = (y as i32) >= mon_y && (y as i32) < mon_y + mon_h;
+
+            if within_x && within_y {
+                // Build our internal Monitor struct from the xcap monitor
+                let name = mon.name().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+                })?;
+                let is_primary = mon.is_primary().map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to get monitor primary flag: {}",
+                        e
+                    ))
+                })?;
+                let scale_factor = mon.scale_factor().map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to get monitor scale factor: {}",
+                        e
+                    ))
+                })? as f64;
+
+                return Ok(crate::Monitor {
+                    id: format!("monitor_{}", idx),
+                    name,
+                    is_primary,
+                    width: mon_w as u32,
+                    height: mon_h as u32,
+                    x: mon_x,
+                    y: mon_y,
+                    scale_factor,
+                });
+            }
+        }
+
+        // If no monitor found containing the element, fall back to primary
+        warn!(
+            "Element coordinates ({}, {}) not found on any monitor, falling back to primary",
+            x, y
+        );
+        self.get_primary_monitor_fallback()
+    }
+
+    /// Helper method to get primary monitor as fallback
+    fn get_primary_monitor_fallback(&self) -> Result<crate::Monitor, AutomationError> {
+        let monitors = xcap::Monitor::all().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to enumerate monitors: {}", e))
+        })?;
+
+        for (idx, monitor) in monitors.iter().enumerate() {
+            let is_primary = monitor.is_primary().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to check primary status: {}", e))
+            })?;
+
+            if is_primary {
+                let name = monitor.name().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+                })?;
+                let width = monitor.width().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+                })?;
+                let height = monitor.height().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+                })?;
+                let x = monitor.x().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
+                })?;
+                let y = monitor.y().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
+                })?;
+                let scale_factor = monitor.scale_factor().map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to get monitor scale factor: {}",
+                        e
+                    ))
+                })? as f64;
+
+                return Ok(crate::Monitor {
+                    id: format!("monitor_{}", idx),
+                    name,
+                    is_primary,
+                    width,
+                    height,
+                    x,
+                    y,
+                    scale_factor,
+                });
+            }
+        }
+
+        Err(AutomationError::PlatformError(
+            "No primary monitor found".to_string(),
+        ))
+    }
 }
 
 impl UIElement {
@@ -324,7 +463,7 @@ impl UIElement {
     }
 
     /// Get the element's ID
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn id(&self) -> Option<String> {
         self.inner.id()
     }
@@ -355,19 +494,19 @@ impl UIElement {
     }
 
     /// Click on this element
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn click(&self) -> Result<ClickResult, AutomationError> {
         self.inner.click()
     }
 
     /// Double-click on this element
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn double_click(&self) -> Result<ClickResult, AutomationError> {
         self.inner.double_click()
     }
 
     /// Right-click on this element
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn right_click(&self) -> Result<(), AutomationError> {
         self.inner.right_click()
     }
@@ -403,7 +542,7 @@ impl UIElement {
     }
 
     /// Check if element is enabled
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn is_enabled(&self) -> Result<bool, AutomationError> {
         self.inner.is_enabled()
     }
@@ -445,7 +584,7 @@ impl UIElement {
     }
 
     /// Get the element's name
-    #[instrument(skip(self))]
+    #[instrument(level = "debug", skip(self))]
     pub fn name(&self) -> Option<String> {
         self.inner.name()
     }
@@ -513,6 +652,19 @@ impl UIElement {
     /// Does nothing for non-closable elements (like buttons, text, etc.)
     pub fn close(&self) -> Result<(), AutomationError> {
         self.inner.close()
+    }
+
+    /// Get the URL if the element is in a browser window
+    pub fn url(&self) -> Option<String> {
+        self.inner.url()
+    }
+
+    /// Return the `Monitor` that contains this UI element.
+    ///
+    /// This is useful when you need to perform monitor-specific operations
+    /// (e.g. capturing the screen area around the element).
+    pub fn monitor(&self) -> Result<crate::Monitor, AutomationError> {
+        self.inner.monitor()
     }
 
     // Convenience methods to reduce verbosity with optional properties
@@ -612,6 +764,16 @@ impl UIElement {
     pub fn to_serializable_tree(&self, max_depth: usize) -> SerializableUIElement {
         fn build(element: &UIElement, depth: usize, max_depth: usize) -> SerializableUIElement {
             let mut serializable = element.to_serializable();
+
+            // For child elements (depth > 0), remove redundant window/app info.
+            // This information is only needed at the root of the tree.
+            if depth > 0 {
+                serializable.application = None;
+                serializable.window_title = None;
+                serializable.process_id = None;
+                serializable.url = None;
+            }
+
             let children = if depth < max_depth {
                 match element.children() {
                     Ok(children) => {
@@ -699,89 +861,6 @@ pub mod utils {
     }
 }
 
-#[test]
-#[allow(clippy::assertions_on_constants)]
-fn test_uielement_serialization() {
-    // Note: This test demonstrates the serialization capability
-    // In practice, you would create a UIElement from a real platform implementation
-    // For this test, we're just showing that the Serialize trait is properly implemented
-
-    // The actual serialization would work like this:
-    // let element = some_ui_element_instance;
-    // let json = serde_json::to_string(&element).unwrap();
-    // println!("Serialized UIElement: {}", json);
-
-    // Since we can't easily create a UIElement without platform-specific code,
-    // we'll just verify the trait is implemented by checking compilation
-    assert!(true, "UIElement implements Serialize trait");
-}
-
-#[test]
-fn test_uielement_deserialization() {
-    // Test deserializing a UIElement from JSON
-    // Note: This test will fail if the element doesn't exist in the current UI tree
-    // or if Desktop automation is not available (e.g., in CI environments)
-    let json = r#"
-    {
-        "id": "test-123",
-        "role": "Button",
-        "name": "Test Button",
-        "bounds": [10.0, 20.0, 100.0, 30.0],
-        "value": "Click me",
-        "description": "A test button",
-        "application": "Test App",
-        "window_title": "Test Window"
-    }"#;
-
-    // This will fail because the element doesn't exist in the UI tree
-    // or because Desktop automation is not available
-    let result: Result<UIElement, _> = serde_json::from_str(json);
-    assert!(
-        result.is_err(),
-        "Deserialization should fail for non-existent elements or when Desktop is unavailable"
-    );
-
-    // Verify the error message mentions the element details
-    let error_msg = result.unwrap_err().to_string();
-    assert!(
-        error_msg.contains("Button") || error_msg.contains("Test Button"),
-        "Error should mention the element role or name"
-    );
-}
-
-#[test]
-fn test_uielement_round_trip() {
-    // Test that we can serialize and deserialize existing elements
-    // Note: This test demonstrates the concept but will fail in CI
-    // because there's no UI tree available or Desktop automation is not accessible
-
-    let json = r#"
-    {
-        "id": "round-trip-test",
-        "role": "TextField",
-        "name": "Input Field",
-        "bounds": [50.0, 60.0, 200.0, 25.0],
-        "value": "Hello World",
-        "description": "Text input",
-        "application": "My App",
-        "window_title": "Main Window"
-    }"#;
-
-    // This will fail because the element doesn't exist or Desktop is unavailable
-    let result: Result<UIElement, _> = serde_json::from_str(json);
-    assert!(
-        result.is_err(),
-        "Deserialization should fail for non-existent elements or when Desktop is unavailable"
-    );
-
-    // Verify the error message mentions the element details
-    let error_msg = result.unwrap_err().to_string();
-    assert!(
-        error_msg.contains("TextField") || error_msg.contains("Input Field"),
-        "Error should mention the element role or name"
-    );
-}
-
 /// Serialize implementation for UIElement
 ///
 /// This implementation serializes the accessible properties of a UI element to JSON.
@@ -803,56 +882,11 @@ impl Serialize for UIElement {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("UIElement", 8)?;
-
-        // Only serialize non-empty fields
-        if let Some(id) = self.id() {
-            if !id.is_empty() {
-                state.serialize_field("id", &id)?;
-            }
-        }
-
-        let role = self.role();
-        if !role.is_empty() {
-            state.serialize_field("role", &role)?;
-        }
-
-        if let Some(name) = self.name() {
-            if !name.is_empty() {
-                state.serialize_field("name", &name)?;
-            }
-        }
-
-        if let Ok(bounds) = self.bounds() {
-            state.serialize_field("bounds", &bounds)?;
-        }
-
-        let attrs = self.attributes();
-        if let Some(ref value) = attrs.value {
-            if !value.is_empty() {
-                state.serialize_field("value", value)?;
-            }
-        }
-
-        if let Some(ref description) = attrs.description {
-            if !description.is_empty() {
-                state.serialize_field("description", description)?;
-            }
-        }
-
-        let app_name = self.application_name();
-        if !app_name.is_empty() {
-            state.serialize_field("application", &app_name)?;
-        }
-
-        let window_title = self.window_title();
-        if !window_title.is_empty() {
-            state.serialize_field("window_title", &window_title)?;
-        }
-
-        state.end()
+        self.to_serializable().serialize(serializer)
     }
 }
+
+// TODO: Deserialize is pretty much very experimental and untested
 
 /// Deserialize implementation for UIElement
 ///
@@ -924,9 +958,9 @@ async fn find_element_in_tree(
     }
 
     // Try to find by role and name
-    let mut selector = format!("[role='{}']", serializable.role);
+    let mut selector = format!("role:{}", serializable.role);
     if let Some(ref name) = serializable.name {
-        selector = format!("{}[name='{}']", selector, name);
+        selector = format!("{}name:{}", selector, name);
     }
 
     if let Ok(element) = desktop

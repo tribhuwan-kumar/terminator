@@ -111,27 +111,37 @@ impl Locator {
         }
     }
 
-    /// Get a nested locator
-    pub fn locator(&self, selector: impl Into<Selector>) -> Locator {
-        let next_selector = selector.into();
-        let new_chain = match self.selector.clone() {
-            // If the current selector is already a chain, append to it
-            Selector::Chain(mut existing_chain) => {
-                existing_chain.push(next_selector);
-                existing_chain
-            }
-            // If the current selector is not a chain, create a new chain
-            current_selector => {
-                vec![current_selector, next_selector]
-            }
+    fn append_selector(&self, selector_to_append: Selector) -> Locator {
+        let mut new_chain = match self.selector.clone() {
+            Selector::Chain(existing_chain) => existing_chain,
+            s if s != Selector::Path("/".to_string()) => vec![s], // Assuming root path is default
+            _ => vec![],
         };
+
+        // Append the new selector, flattening if it's also a chain
+        match selector_to_append {
+            Selector::Chain(mut next_chain_parts) => {
+                new_chain.append(&mut next_chain_parts);
+            }
+            s => new_chain.push(s),
+        }
 
         Locator {
             engine: self.engine.clone(),
-            selector: Selector::Chain(new_chain), // Create the chain variant
-            timeout: self.timeout,                // Inherit timeout
-            root: self.root.clone(),              // Inherit root
+            selector: Selector::Chain(new_chain),
+            timeout: self.timeout,
+            root: self.root.clone(),
         }
+    }
+
+    /// Adds a filter to find elements based on their visibility.
+    pub fn visible(&self, is_visible: bool) -> Locator {
+        self.append_selector(Selector::Visible(is_visible))
+    }
+
+    /// Get a nested locator
+    pub fn locator(&self, selector: impl Into<Selector>) -> Locator {
+        self.append_selector(selector.into())
     }
 
     pub fn selector_string(&self) -> String {

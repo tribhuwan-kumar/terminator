@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
-use tracing::{warn, debug, error, info};
+use tracing::{debug, error, info, warn};
 use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
@@ -25,36 +25,23 @@ use uiautomation::variants::Variant;
 use uni_ocr::{OcrEngine, OcrProvider};
 
 // windows imports
-use windows::Win32::System::Threading::GetProcessId;
-use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
-use windows::Win32::System::Registry::HKEY;
-use windows::Win32::Foundation::{
-    CloseHandle, HANDLE, HWND, HINSTANCE, 
-};
-use windows::Win32::System::Com::{CLSCTX_ALL,
-    COINIT_MULTITHREADED,
-    CoCreateInstance,
-    CoInitializeEx,
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE, HWND};
+use windows::Win32::System::Com::{
+    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot,
-    PROCESSENTRY32W, 
-    Process32FirstW,
-    Process32NextW,
-    TH32CS_SNAPPROCESS
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
-use windows::Win32::UI::{
-    WindowsAndMessaging::SW_SHOWNORMAL,
-    Shell::{
-    ACTIVATEOPTIONS,
-    ApplicationActivationManager,
-    IApplicationActivationManager,
-    ShellExecuteExW,
-    SHELLEXECUTEINFOW,
-    SEE_MASK_NOASYNC,
-    SEE_MASK_NOCLOSEPROCESS
-    }
+use windows::Win32::System::Registry::HKEY;
+use windows::Win32::System::Threading::GetProcessId;
+use windows::Win32::UI::Shell::{
+    ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_NOASYNC,
+    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW, ShellExecuteW,
 };
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetForegroundWindow, GetWindowThreadProcessId, SW_SHOWNORMAL,
+};
+use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -854,6 +841,38 @@ impl AccessibilityEngine for WindowsEngine {
                     })
                     .collect())
             }
+            Selector::Visible(visibility) => {
+                let visibility = *visibility;
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        match e.is_offscreen() {
+                            Ok(is_offscreen) => Ok(is_offscreen != visibility),
+                            Err(e) => {
+                                debug!("failed to get visibility: {}", e);
+                                Ok(false)
+                            }
+                        }
+                    }))
+                    .timeout(timeout_ms as u64);
+                let elements = matcher.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "Visible: '{}', Err: {}",
+                        visibility, e
+                    ))
+                })?;
+                Ok(elements
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect())
+            }
         }
     }
 
@@ -899,7 +918,11 @@ impl AccessibilityEngine for WindowsEngine {
                 if let Some(name) = name {
                     // use contains_name, its undetermined right now
                     // wheather we should use `name` or `contains_name`
-                    matcher_builder = matcher_builder.contains_name(name);
+                    matcher_builder = matcher_builder.filter(Box::new(NameFilter {
+                        value: name.clone(),
+                        casesensitive: false,
+                        partial: true,
+                    }));
                 }
 
                 let element = matcher_builder.find_first().map_err(|e| {
@@ -1109,38 +1132,135 @@ impl AccessibilityEngine for WindowsEngine {
                     element: arc_ele,
                 })))
             }
+            Selector::Visible(visibility) => {
+                let visibility = *visibility;
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        match e.is_offscreen() {
+                            Ok(is_offscreen) => Ok(is_offscreen != visibility),
+                            Err(e) => {
+                                debug!("failed to get visibility: {}", e);
+                                Ok(false)
+                            }
+                        }
+                    }))
+                    .timeout(timeout_ms as u64);
+                let element = matcher.find_first().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "Visible: '{}', Err: {}",
+                        visibility, e
+                    ))
+                })?;
+                Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: ThreadSafeWinUIElement(Arc::new(element)),
+                })))
+            }
         }
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
-            let app_info = get_app_info_from_startapps(app_name)?;
-            let (app_id, display_name) = app_info;
-            launch_app(self, &app_id, &display_name)
-    }
+        info!("Opening application on Windows: {}", app_name);
 
-    fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
-        let browser = browser.unwrap_or(""); // when empty it'll open url in system's default browser
-        let status = std::process::Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-WindowStyle",
-                "hidden",
-                "-Command",
-                "start",
-                browser,
-                url,
-            ])
-            .status()
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-        if !status.success() {
-            return Err(AutomationError::PlatformError(
-                "Failed to open URL".to_string(),
-            ));
+        // Try to get app info from StartApps first
+        if let Ok((app_id, display_name)) = get_app_info_from_startapps(app_name) {
+            return launch_app(self, &app_id, &display_name);
         }
 
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // If it's not a start menu app, assume it's a legacy executable
+        warn!(
+            "Could not find '{}' in StartApps, attempting to launch as executable.",
+            app_name
+        );
+        launch_legacy_app(self, app_name)
+    }
 
-        self.get_application_by_name(browser)
+    fn open_url(
+        &self,
+        url: &str,
+        browser: Option<crate::Browser>,
+    ) -> Result<UIElement, AutomationError> {
+        info!("Opening URL on Windows: {} (browser: {:?})", url, browser);
+
+        let (browser_exe, browser_search_name) = match browser.as_ref() {
+            Some(crate::Browser::Chrome) => (Some("chrome.exe"), "chrome"),
+            Some(crate::Browser::Firefox) => (Some("firefox.exe"), "firefox"),
+            Some(crate::Browser::Edge) => (Some("msedge.exe"), "msedge"),
+            Some(crate::Browser::Brave) => (Some("brave.exe"), "brave"),
+            Some(crate::Browser::Opera) => (Some("opera.exe"), "opera"),
+            Some(crate::Browser::Vivaldi) => (Some("vivaldi.exe"), "vivaldi"),
+            Some(crate::Browser::Arc) => (Some("Arc.exe"), "Arc"),
+            Some(crate::Browser::Custom(path)) => {
+                let path_str: &str = path;
+                (Some(path_str), path_str.trim_end_matches(".exe"))
+            }
+            Some(crate::Browser::Default) | None => (None, ""),
+        };
+
+        let url_hstring = HSTRING::from(url);
+        let verb_hstring = HSTRING::from("open");
+        let verb_pcwstr = PCWSTR(verb_hstring.as_ptr());
+
+        let hinstance = if let Some(exe_name) = browser_exe {
+            // Open with a specific browser
+            let exe_hstring = HSTRING::from(exe_name);
+            unsafe {
+                ShellExecuteW(
+                    None,
+                    verb_pcwstr,
+                    PCWSTR(exe_hstring.as_ptr()),
+                    PCWSTR(url_hstring.as_ptr()),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                )
+            }
+        } else {
+            // Open with default browser
+            unsafe {
+                ShellExecuteW(
+                    None,
+                    verb_pcwstr,
+                    PCWSTR(url_hstring.as_ptr()),
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                )
+            }
+        };
+
+        // HINSTANCE returned by ShellExecuteW is not a real HRESULT, but a value > 32 on success.
+        if hinstance.0 as i32 <= 32 {
+            return Err(AutomationError::PlatformError(format!(
+                "Failed to open URL. ShellExecuteW returned error code: {:?}",
+                hinstance.0 as i32
+            )));
+        }
+
+        // Give the browser time to open and take focus
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+
+        if browser_search_name.is_empty() {
+            // If default browser, try to find the foreground window.
+            let hwnd = unsafe { GetForegroundWindow() };
+            if hwnd.0.is_null() {
+                return Err(AutomationError::ElementNotFound(
+                    "Could not get foreground window after opening URL.".to_string(),
+                ));
+            }
+            let mut pid = 0;
+            unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+            if pid == 0 {
+                return Err(AutomationError::ElementNotFound(
+                    "Could not get process ID for foreground window.".to_string(),
+                ));
+            }
+            self.get_application_by_pid(pid as i32, None)
+        } else {
+            self.get_application_by_name(browser_search_name)
+        }
     }
 
     fn open_file(&self, file_path: &str) -> Result<(), AutomationError> {
@@ -1934,15 +2054,6 @@ impl AccessibilityEngine for WindowsEngine {
             context.errors_encountered
         );
 
-        // Log cache effectiveness
-        let cache_hit_rate = if context.elements_processed > 0 {
-            (context.cache_hits as f64 / context.elements_processed as f64) * 100.0
-        } else {
-            0.0
-        };
-
-        info!("Cache hit rate: {:.1}%", cache_hit_rate);
-
         Ok(result)
     }
 
@@ -2167,51 +2278,22 @@ impl UIElementImpl for WindowsUIElement {
                 cached_children
             }
             Err(_) => {
-                // Fallback logic (similar to explore_element_children)
-                match create_ui_automation_with_com_init() {
-                    Ok(temp_automation) => {
-                        match temp_automation.create_true_condition() {
-                            Ok(true_condition) => {
-                                self.element
-                                    .0
-                                    .find_all(
-                                        uiautomation::types::TreeScope::Children,
-                                        &true_condition,
-                                    )
-                                    .map_err(|find_err| {
-                                        // error!(
-                                        //     "Failed to get children via find_all fallback: CacheErr={}, FindErr={}",
-                                        //     cache_err, find_err
-                                        // );
-                                        AutomationError::PlatformError(format!(
-                                            "Failed to get children (cached and non-cached): {}",
-                                            find_err
-                                        ))
-                                    })? // Propagate error
-                            }
-                            Err(cond_err) => {
-                                error!(
-                                    "Failed to create true condition for child fallback: {}",
-                                    cond_err
-                                );
-                                return Err(AutomationError::PlatformError(format!(
-                                    "Failed to create true condition for fallback: {}",
-                                    cond_err
-                                )));
-                            }
-                        }
-                    }
-                    Err(auto_err) => {
-                        error!(
-                            "Failed to create temporary UIAutomation for child fallback: {}",
-                            auto_err
-                        );
-                        return Err(AutomationError::PlatformError(format!(
-                            "Failed to create temp UIAutomation for fallback: {}",
-                            auto_err
-                        )));
-                    }
-                }
+                let temp_automation = create_ui_automation_with_com_init()?;
+                let true_condition = temp_automation.create_true_condition().map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to create true condition for child fallback: {}",
+                        e
+                    ))
+                })?;
+                self.element
+                    .0
+                    .find_all(uiautomation::types::TreeScope::Children, &true_condition)
+                    .map_err(|find_err| {
+                        AutomationError::PlatformError(format!(
+                            "Failed to get children (cached and non-cached): {}",
+                            find_err
+                        ))
+                    })? // Propagate error
             }
         };
 
@@ -2419,9 +2501,11 @@ impl UIElementImpl for WindowsUIElement {
 
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError> {
         let mut all_texts = Vec::new();
+        let automation = create_ui_automation_with_com_init()?;
 
         // Create a function to extract text recursively
         fn extract_text_from_element(
+            automation: &UIAutomation,
             element: &uiautomation::UIElement,
             texts: &mut Vec<String>,
             current_depth: usize,
@@ -2453,51 +2537,19 @@ impl UIElementImpl for WindowsUIElement {
                     cached_children
                 }
                 Err(_) => {
-                    // Need a UIAutomation instance to create conditions for find_all
-                    // Create a temporary instance here for the fallback.
-                    // Note: Creating a new UIAutomation instance here might be inefficient.
-                    // Consider passing it down or finding another way if performance is critical.
-                    match create_ui_automation_with_com_init() {
-                        Ok(temp_automation) => {
-                            match temp_automation.create_true_condition() {
-                                Ok(true_condition) => {
-                                    // Perform the non-cached search for direct children
-                                    match element.find_all(
-                                        uiautomation::types::TreeScope::Children,
-                                        &true_condition,
-                                    ) {
-                                        Ok(found_children) => {
-                                            debug!(
-                                                "Found {} non-cached children for text extraction via fallback.",
-                                                found_children.len()
-                                            );
-                                            found_children
-                                        }
-                                        Err(_) => {
-                                            // error!(
-                                            //     "Failed to get children via find_all fallback for text extraction: CacheErr={}, FindErr={}",
-                                            //     cache_err, find_err
-                                            // );
-                                            // Return an empty vec to avoid erroring out the whole text extraction
-                                            vec![]
-                                        }
-                                    }
-                                }
-                                Err(cond_err) => {
-                                    error!(
-                                        "Failed to create true condition for child fallback in text extraction: {}",
-                                        cond_err
-                                    );
-                                    vec![] // Return empty vec on condition creation error
-                                }
-                            }
+                    match automation.create_true_condition() {
+                        Ok(true_condition) => {
+                            // Perform the non-cached search for direct children
+                            element
+                                .find_all(uiautomation::types::TreeScope::Children, &true_condition)
+                                .unwrap_or_default()
                         }
-                        Err(auto_err) => {
+                        Err(cond_err) => {
                             error!(
-                                "Failed to create temporary UIAutomation for child fallback in text extraction: {}",
-                                auto_err
+                                "Failed to create true condition for child fallback in text extraction: {}",
+                                cond_err
                             );
-                            vec![] // Return empty vec on automation creation error
+                            vec![] // Return empty vec on condition creation error
                         }
                     }
                 }
@@ -2505,14 +2557,20 @@ impl UIElementImpl for WindowsUIElement {
 
             // Process the children (either cached or found via fallback)
             for child in children_to_process {
-                let _ = extract_text_from_element(&child, texts, current_depth + 1, max_depth);
+                let _ = extract_text_from_element(
+                    automation,
+                    &child,
+                    texts,
+                    current_depth + 1,
+                    max_depth,
+                );
             }
 
             Ok(())
         }
 
         // Extract text from the element and its descendants
-        extract_text_from_element(&self.element.0, &mut all_texts, 0, max_depth)?;
+        extract_text_from_element(&automation, &self.element.0, &mut all_texts, 0, max_depth)?;
 
         // Join the texts with spaces
         Ok(all_texts.join(" "))
@@ -3200,6 +3258,30 @@ impl UIElementImpl for WindowsUIElement {
 
         Ok(())
     }
+
+    fn url(&self) -> Option<String> {
+        // find the first element with name "search bar" (chrome, edge, arc) or "enter address" (firefox)
+        let automation = create_ui_automation_with_com_init().ok()?;
+        let url = automation
+            .create_matcher()
+            // .from_ref(&self.element.0)
+            .filter(Box::new(OrFilter {
+                left: Box::new(NameFilter {
+                    value: "search bar".to_string(),
+                    casesensitive: false,
+                    partial: true,
+                }),
+                right: Box::new(NameFilter {
+                    value: "enter address".to_string(),
+                    casesensitive: false,
+                    partial: true,
+                }),
+            }))
+            .find_first()
+            .map(|e| e.get_name().unwrap_or_default());
+
+        url.ok()
+    }
 }
 
 #[allow(dead_code)]
@@ -3218,9 +3300,7 @@ impl From<windows::core::Error> for AutomationError {
 }
 
 // Get apps information using Get-StartApps
-pub fn get_app_info_from_startapps(
-    app_name: &str,
-) -> Result<(String, String), AutomationError> {
+pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), AutomationError> {
     let command = r#"Get-StartApps | Select-Object Name, AppID | ConvertTo-Json"#.to_string();
 
     let output = std::process::Command::new("powershell")
@@ -3237,9 +3317,8 @@ pub fn get_app_info_from_startapps(
     }
 
     let output_str = String::from_utf8_lossy(&output.stdout);
-    let apps: Vec<Value> = serde_json::from_str(&output_str).map_err(|e| {
-        AutomationError::PlatformError(format!("Failed to parse apps list: {}", e))
-    })?;
+    let apps: Vec<Value> = serde_json::from_str(&output_str)
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to parse apps list: {}", e)))?;
 
     // two parts
     let search_terms: Vec<String> = app_name
@@ -3262,7 +3341,9 @@ pub fn get_app_info_from_startapps(
             .to_lowercase();
 
         // make sure both parts exists
-        search_terms.iter().all(|term| name.contains(term) || app_id.contains(term))
+        search_terms
+            .iter()
+            .all(|term| name.contains(term) || app_id.contains(term))
     });
 
     match matching_app {
@@ -3395,7 +3476,6 @@ fn launch_app(
     app_id: &str,
     display_name: &str,
 ) -> Result<UIElement, AutomationError> {
-    
     let pid = unsafe {
         // Initialize COM with proper error handling
         let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -3424,13 +3504,16 @@ fn launch_app(
         let options = ACTIVATEOPTIONS(ActivateOptions::None as i32);
 
         match manager.ActivateApplication(
-                &HSTRING::from(app_id),
-                &HSTRING::from(""), // no arguments
-                options,
-            ) {
+            &HSTRING::from(app_id),
+            &HSTRING::from(""), // no arguments
+            options,
+        ) {
             Ok(pid) => pid,
             Err(_) => {
-                let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{}", app_id).encode_utf16().chain(Some(0)).collect();
+                let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{}", app_id)
+                    .encode_utf16()
+                    .chain(Some(0))
+                    .collect();
                 let operation_wide: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
                 let mut sei = SHELLEXECUTEINFOW {
                     cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -3451,8 +3534,11 @@ fn launch_app(
                 };
 
                 ShellExecuteExW(&mut sei).map_err(|e| {
-                    AutomationError::PlatformError(format!("ShellExecuteExW failed: 
-                        '{}' to launch app '{}':", e, display_name))
+                    AutomationError::PlatformError(format!(
+                        "ShellExecuteExW failed: 
+                        '{}' to launch app '{}':",
+                        e, display_name
+                    ))
                 })?;
 
                 let process_handle = sei.hProcess;
@@ -3467,7 +3553,7 @@ fn launch_app(
                 }
 
                 let pid = GetProcessId(process_handle);
-                let _ = CloseHandle(process_handle);    // we can use HandleGuard too 
+                let _ = CloseHandle(process_handle); // we can use HandleGuard too 
 
                 pid
             }
@@ -3851,4 +3937,38 @@ fn get_smart_attributes(element: &UIElement) -> UIElementAttributes {
             element.attributes()
         }
     }
+}
+
+fn launch_legacy_app(engine: &WindowsEngine, app_name: &str) -> Result<UIElement, AutomationError> {
+    info!("Launching legacy app: {}", app_name);
+    unsafe {
+        let mut sei = SHELLEXECUTEINFOW {
+            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
+            lpFile: PCWSTR(HSTRING::from(app_name).as_ptr()),
+            nShow: SW_SHOWNORMAL.0 as i32,
+            ..Default::default()
+        };
+
+        if let Err(e) = ShellExecuteExW(&mut sei) {
+            return Err(AutomationError::PlatformError(format!(
+                "Failed to launch legacy app '{}': {}",
+                app_name, e
+            )));
+        }
+
+        let _ = CloseHandle(sei.hProcess);
+    }
+
+    // After launching, wait a bit for the app to initialize.
+    std::thread::sleep(Duration::from_secs(2));
+
+    // The name might be different from the exe name. For notepad.exe, it's "Notepad".
+    let friendly_app_name = if app_name.eq_ignore_ascii_case("notepad.exe") {
+        "Notepad"
+    } else {
+        app_name.trim_end_matches(".exe")
+    };
+
+    engine.get_application_by_name(friendly_app_name)
 }

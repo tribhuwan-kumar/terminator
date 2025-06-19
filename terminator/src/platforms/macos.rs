@@ -2639,6 +2639,9 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::Filter(_) => Err(AutomationError::UnsupportedOperation(
                 "Filter selector not yet supported for macOS".to_string(),
             )),
+            Selector::Visible(_) => Err(AutomationError::UnsupportedOperation(
+                "Visible selector not yet supported for macOS".to_string(),
+            )),
             Selector::Chain(selectors) => {
                 if selectors.is_empty() {
                     return Err(AutomationError::InvalidArgument(

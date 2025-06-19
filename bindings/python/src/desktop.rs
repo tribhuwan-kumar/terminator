@@ -330,10 +330,21 @@ impl Desktop {
     ///
     /// Args:
     ///     url (str): The URL to open.
-    ///     browser (Optional[str]): The browser to use.
+    ///     browser (Optional[str]): The browser to use. Can be "Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Arc", or a custom browser path.
     pub fn open_url(&self, url: &str, browser: Option<&str>) -> PyResult<UIElement> {
+        let browser_enum = browser.map(|b| match b.to_lowercase().as_str() {
+            "default" => ::terminator_core::Browser::Default,
+            "chrome" => ::terminator_core::Browser::Chrome,
+            "firefox" => ::terminator_core::Browser::Firefox,
+            "edge" => ::terminator_core::Browser::Edge,
+            "brave" => ::terminator_core::Browser::Brave,
+            "opera" => ::terminator_core::Browser::Opera,
+            "vivaldi" => ::terminator_core::Browser::Vivaldi,
+            "arc" => ::terminator_core::Browser::Arc,
+            custom => ::terminator_core::Browser::Custom(custom.to_string()),
+        });
         self.inner
-            .open_url(url, browser)
+            .open_url(url, browser_enum)
             .map(|e| UIElement { inner: e })
             .map_err(automation_error_to_pyerr)
     }

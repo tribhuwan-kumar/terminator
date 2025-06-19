@@ -412,4 +412,15 @@ impl Element {
     pub fn close(&self) -> napi::Result<()> {
         self.inner.close().map_err(map_error)
     }
+
+    /// Get the monitor containing this element.
+    ///
+    /// @returns {Monitor} The monitor information for the display containing this element.
+    #[napi]
+    pub fn monitor(&self) -> napi::Result<crate::types::Monitor> {
+        self.inner
+            .monitor()
+            .map(crate::types::Monitor::from)
+            .map_err(map_error)
+    }
 }

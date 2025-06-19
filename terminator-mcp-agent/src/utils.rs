@@ -28,16 +28,20 @@ pub struct GetWindowsArgs {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LocatorArgs {
-    #[schemars(description = "An array of selector strings to locate the element")]
-    pub selector_chain: Vec<String>,
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct TypeIntoElementArgs {
-    #[schemars(description = "An array of selector strings to locate the element")]
-    pub selector_chain: Vec<String>,
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
     #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
@@ -48,8 +52,10 @@ pub struct TypeIntoElementArgs {
 pub struct PressKeyArgs {
     #[schemars(description = "The key or key combination to press (e.g., 'Enter', 'Ctrl+A')")]
     pub key: String,
-    #[schemars(description = "An array of selector strings to locate the element")]
-    pub selector_chain: Vec<String>,
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
 }
@@ -73,8 +79,10 @@ pub struct GetClipboardArgs {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MouseDragArgs {
-    #[schemars(description = "An array of selector strings to locate the element")]
-    pub selector_chain: Vec<String>,
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
     #[schemars(description = "Start X coordinate")]
     pub start_x: f64,
     #[schemars(description = "Start Y coordinate")]
@@ -89,16 +97,20 @@ pub struct MouseDragArgs {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ValidateElementArgs {
-    #[schemars(description = "An array of selector strings to locate the element")]
-    pub selector_chain: Vec<String>,
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct HighlightElementArgs {
-    #[schemars(description = "An array of selector strings to locate the element")]
-    pub selector_chain: Vec<String>,
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
     #[schemars(description = "BGR color code (optional, default red)")]
     pub color: Option<u32>,
     #[schemars(description = "Duration in milliseconds (optional, default 1000ms)")]
@@ -109,8 +121,10 @@ pub struct HighlightElementArgs {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct WaitForElementArgs {
-    #[schemars(description = "An array of selector strings to locate the element")]
-    pub selector_chain: Vec<String>,
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
     #[schemars(description = "Condition to wait for: 'visible', 'enabled', 'focused', 'exists'")]
     pub condition: String,
     #[schemars(description = "Optional timeout in milliseconds")]
@@ -140,7 +154,7 @@ pub struct ClipboardArgs {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[schemars(description = "Arguments for scrolling an element")]
 pub struct ScrollElementArgs {
-    pub selector_chain: Vec<String>,
+    pub selector: String,
     #[serde(default)]
     #[schemars(description = "Direction to scroll: 'up', 'down', 'left', 'right'")]
     pub direction: String,
