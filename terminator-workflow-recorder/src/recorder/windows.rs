@@ -67,6 +67,12 @@ pub struct WindowsRecorder {
 
     /// Browser tab navigation tracking
     browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
+
+    /// Rate limiting for performance modes
+    last_event_time: Arc<Mutex<std::time::Instant>>,
+
+    /// Event counter for rate limiting
+    events_this_second: Arc<Mutex<(u32, std::time::Instant)>>,
 }
 
 #[derive(Debug, Clone)]
@@ -298,6 +304,8 @@ impl WindowsRecorder {
             last_emitted_text: Arc::new(Mutex::new(None)),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
+            last_event_time: Arc::new(Mutex::new(Instant::now())),
+            events_this_second: Arc::new(Mutex::new((0, Instant::now()))),
         };
 
         let handle = tokio::runtime::Handle::current();
@@ -782,6 +790,8 @@ impl WindowsRecorder {
         let config = self.config.clone();
         let current_typing_session = Arc::clone(&self.current_typing_session);
         let last_emitted_text_clone = Arc::clone(&last_emitted_text);
+        let performance_last_event_time = Arc::clone(&self.last_event_time);
+        let performance_events_counter = Arc::clone(&self.events_this_second);
 
         thread::spawn(move || {
             let track_modifiers = config.track_modifier_states;
@@ -921,7 +931,13 @@ impl WindowsRecorder {
                             },
                         };
 
-                        let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
+                        Self::send_filtered_event_static(
+                            &event_tx,
+                            &config,
+                            &performance_last_event_time,
+                            &performance_events_counter,
+                            WorkflowEvent::Keyboard(keyboard_event),
+                        );
                     }
                     EventType::KeyRelease(key) => {
                         let key_code = key_to_u32(&key);
@@ -945,7 +961,7 @@ impl WindowsRecorder {
                         // PERFORMANCE OPTIMIZATION: Only capture UI elements for high-level keyboard events
                         // Skip UI element capture for typing keystrokes during key release
                         let mut ui_element = None;
-                        if capture_ui_elements {
+                        if capture_ui_elements && !config.should_reduce_ui_capture() {
                             let character = if (32..=126).contains(&key_code) {
                                 Some(key_code as u8 as char)
                             } else {
@@ -976,7 +992,13 @@ impl WindowsRecorder {
                                 timestamp: Some(Self::capture_timestamp()),
                             },
                         };
-                        let _ = event_tx.send(WorkflowEvent::Keyboard(keyboard_event));
+                        Self::send_filtered_event_static(
+                            &event_tx,
+                            &config,
+                            &performance_last_event_time,
+                            &performance_events_counter,
+                            WorkflowEvent::Keyboard(keyboard_event),
+                        );
                     }
                     EventType::ButtonPress(button) => {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
@@ -1036,7 +1058,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::ButtonRelease(button) => {
@@ -1066,7 +1094,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::MouseMove { x, y } => {
@@ -1107,7 +1141,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::Wheel { delta_x, delta_y } => {
@@ -1130,7 +1170,13 @@ impl WindowsRecorder {
                                     timestamp: Some(Self::capture_timestamp()),
                                 },
                             };
-                            let _ = event_tx.send(WorkflowEvent::Mouse(mouse_event));
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                 }
@@ -2100,6 +2146,92 @@ impl WindowsRecorder {
         }
 
         true
+    }
+
+    /// Static version for use in event listeners where self is not available
+    fn send_filtered_event_static(
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        config: &WorkflowRecorderConfig,
+        last_event_time: &Arc<Mutex<Instant>>,
+        events_this_second: &Arc<Mutex<(u32, Instant)>>,
+        event: WorkflowEvent,
+    ) {
+        // Apply rate limiting first
+        if let Some(max_events) = config.effective_max_events_per_second() {
+            let mut counter = events_this_second.lock().unwrap();
+            let now = Instant::now();
+
+            // Reset counter if a new second has started
+            if now.duration_since(counter.1).as_secs() >= 1 {
+                counter.0 = 0;
+                counter.1 = now;
+            }
+
+            if counter.0 >= max_events {
+                return; // Rate limit exceeded
+            }
+
+            counter.0 += 1;
+        }
+
+        // Apply processing delay
+        let processing_delay = config.effective_processing_delay_ms();
+        if processing_delay > 0 {
+            let mut last_time = last_event_time.lock().unwrap();
+            let now = Instant::now();
+            if now.duration_since(*last_time).as_millis() < processing_delay as u128 {
+                return; // Filter out if within delay window
+            }
+            *last_time = now;
+        }
+
+        // Apply event-specific filtering
+        let should_filter = match &event {
+            WorkflowEvent::Mouse(mouse_event) => {
+                if config.should_filter_mouse_noise() {
+                    matches!(
+                        mouse_event.event_type,
+                        MouseEventType::Move | MouseEventType::Wheel
+                    )
+                } else {
+                    false
+                }
+            }
+            WorkflowEvent::Keyboard(keyboard_event) => {
+                if config.should_filter_keyboard_noise() {
+                    // Filter key-down events and non-printable keys
+                    if keyboard_event.is_key_down {
+                        // Keep printable characters (32-126) and common editing keys
+                        !(keyboard_event.key_code >= 32 && keyboard_event.key_code <= 126)
+                            && !matches!(
+                                keyboard_event.key_code,
+                                0x08 | // Backspace
+                            0x2E | // Delete
+                            0x20 | // Space  
+                            0x0D | // Enter
+                            0x09 // Tab
+                            )
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            // Never filter high-value events
+            WorkflowEvent::TextInputCompleted(_)
+            | WorkflowEvent::ApplicationSwitch(_)
+            | WorkflowEvent::BrowserTabNavigation(_)
+            | WorkflowEvent::ButtonClick(_)
+            | WorkflowEvent::Clipboard(_) => false,
+
+            // Other events can be filtered in LowEnergy mode
+            _ => matches!(config.performance_mode, crate::PerformanceMode::LowEnergy),
+        };
+
+        if !should_filter {
+            let _ = event_tx.send(event);
+        }
     }
 }
 

@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
+use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::signal::ctrl_c;
 use tokio_stream::StreamExt;
 use tracing::{debug, info, Level};
@@ -46,6 +46,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mouse_move_throttle_ms: 100, // PERFORMANCE: Increase throttle to reduce event spam
         min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
         enable_multithreading: true,
+
+        // performance_mode: PerformanceMode::LowEnergy,
+        // event_processing_delay_ms: Some(100),
+        // max_events_per_second: Some(100),
+        // filter_mouse_noise: true,
+        // filter_keyboard_noise: true,
+        // reduce_ui_element_capture: true,
 
         ..Default::default()
     };

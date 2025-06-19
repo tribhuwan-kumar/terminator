@@ -14,6 +14,65 @@ mod windows;
 #[cfg(target_os = "windows")]
 pub use self::windows::*;
 
+/// Performance mode for the workflow recorder
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum PerformanceMode {
+    /// Default behavior - captures all events with full detail
+    #[default]
+    Normal,
+    /// Moderate optimizations - some filtering and reduced capture frequency
+    Balanced,
+    /// Aggressive optimizations for weak computers - minimal overhead
+    LowEnergy,
+}
+
+impl PerformanceMode {
+    /// Create a configuration optimized for low-end computers
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use terminator_workflow_recorder::{WorkflowRecorderConfig, PerformanceMode};
+    ///
+    /// let mut config = WorkflowRecorderConfig::default();
+    /// config.performance_mode = PerformanceMode::LowEnergy;
+    ///
+    /// // Or use the helper method for a complete low-energy setup
+    /// let low_energy_config = PerformanceMode::low_energy_config();
+    /// ```
+    pub fn low_energy_config() -> WorkflowRecorderConfig {
+        WorkflowRecorderConfig {
+            performance_mode: PerformanceMode::LowEnergy,
+            max_events_per_second: Some(5),       // Very conservative
+            event_processing_delay_ms: Some(100), // 100ms delays
+            filter_mouse_noise: true,
+            filter_keyboard_noise: true,
+            reduce_ui_element_capture: true,
+            record_text_input_completion: false, // Disable high-overhead feature
+            mouse_move_throttle_ms: 500,         // Very slow mouse tracking
+            ..WorkflowRecorderConfig::default()
+        }
+    }
+
+    /// Create a configuration with balanced performance optimizations
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use terminator_workflow_recorder::PerformanceMode;
+    ///
+    /// let balanced_config = PerformanceMode::balanced_config();
+    /// ```
+    pub fn balanced_config() -> WorkflowRecorderConfig {
+        WorkflowRecorderConfig {
+            performance_mode: PerformanceMode::Balanced,
+            filter_mouse_noise: true,    // Skip mouse moves/scrolls
+            mouse_move_throttle_ms: 200, // Moderate mouse tracking
+            ..WorkflowRecorderConfig::default()
+        }
+    }
+}
+
 /// Configuration for the workflow recorder
 #[derive(Debug, Clone)]
 pub struct WorkflowRecorderConfig {
@@ -100,6 +159,27 @@ pub struct WorkflowRecorderConfig {
     /// Note: Apartment threaded (STA) mode may provide better system responsiveness
     /// but multithreaded (MTA) mode may be required for some complex scenarios.
     pub enable_multithreading: bool,
+
+    // Performance optimization options
+    /// Performance mode controlling overall resource usage and event filtering
+    pub performance_mode: PerformanceMode,
+
+    /// Custom delay between event processing cycles (milliseconds)
+    /// None uses the performance_mode default
+    pub event_processing_delay_ms: Option<u64>,
+
+    /// Rate limiting for events per second
+    /// None uses the performance_mode default  
+    pub max_events_per_second: Option<u32>,
+
+    /// Skip mouse move and scroll events to reduce noise (keeps clicks)
+    pub filter_mouse_noise: bool,
+
+    /// Skip key-down events and non-printable keys to reduce noise
+    pub filter_keyboard_noise: bool,
+
+    /// Reduce expensive UI element capture operations
+    pub reduce_ui_element_capture: bool,
 }
 
 impl Default for WorkflowRecorderConfig {
@@ -331,7 +411,64 @@ impl Default for WorkflowRecorderConfig {
             .into_iter()
             .collect(),
             enable_multithreading: false, // Default to false for better system responsiveness
+            performance_mode: PerformanceMode::Normal,
+            event_processing_delay_ms: None,
+            max_events_per_second: None,
+            filter_mouse_noise: false,
+            filter_keyboard_noise: false,
+            reduce_ui_element_capture: false,
         }
+    }
+}
+
+impl WorkflowRecorderConfig {
+    /// Get the effective event processing delay based on performance mode
+    pub fn effective_processing_delay_ms(&self) -> u64 {
+        if let Some(delay) = self.event_processing_delay_ms {
+            return delay;
+        }
+
+        match self.performance_mode {
+            PerformanceMode::Normal => 0,
+            PerformanceMode::Balanced => 25,
+            PerformanceMode::LowEnergy => 50,
+        }
+    }
+
+    /// Get the effective max events per second based on performance mode
+    pub fn effective_max_events_per_second(&self) -> Option<u32> {
+        if let Some(limit) = self.max_events_per_second {
+            return Some(limit);
+        }
+
+        match self.performance_mode {
+            PerformanceMode::Normal => None,
+            PerformanceMode::Balanced => Some(20),
+            PerformanceMode::LowEnergy => Some(10),
+        }
+    }
+
+    /// Check if mouse noise filtering should be enabled
+    pub fn should_filter_mouse_noise(&self) -> bool {
+        self.filter_mouse_noise
+            || matches!(
+                self.performance_mode,
+                PerformanceMode::Balanced | PerformanceMode::LowEnergy
+            )
+    }
+
+    /// Check if keyboard noise filtering should be enabled  
+    pub fn should_filter_keyboard_noise(&self) -> bool {
+        self.filter_keyboard_noise || matches!(self.performance_mode, PerformanceMode::LowEnergy)
+    }
+
+    /// Check if UI element capture should be reduced
+    pub fn should_reduce_ui_capture(&self) -> bool {
+        self.reduce_ui_element_capture
+            || matches!(
+                self.performance_mode,
+                PerformanceMode::Balanced | PerformanceMode::LowEnergy
+            )
     }
 }
 
