@@ -400,10 +400,13 @@ impl Element {
 
     #[napi]
     pub fn to_string(&self) -> napi::Result<String> {
+        let id_part = self.inner.id().map_or("null".to_string(), |id| id);
+
         let attrs = self.inner.attributes();
         let json =
             serde_json::to_string(&attrs).map_err(|e| napi::Error::from_reason(e.to_string()))?;
-        Ok(format!("Element<{}>", json))
+
+        Ok(format!("Element<{}, {}>", id_part, json))
     }
 
     /// Sets the transparency of the window.
