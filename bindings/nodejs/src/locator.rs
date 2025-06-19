@@ -3,6 +3,8 @@ use terminator::Locator as TerminatorLocator;
 
 use crate::map_error;
 use crate::Element;
+use crate::Selector;
+use napi::bindgen_prelude::Either;
 
 /// Locator for finding UI elements by selector.
 #[napi(js_name = "Locator")]
@@ -90,13 +92,21 @@ impl Locator {
     }
 
     /// Chain another selector.
+    /// Accepts either a selector string or a Selector object.
     ///
-    /// @param {string} selector - The selector string.
+    /// @param {string | Selector} selector - The selector.
     /// @returns {Locator} A new locator with the chained selector.
     #[napi]
-    pub fn locator(&self, selector: String) -> napi::Result<Locator> {
-        let sel: terminator::selector::Selector = selector.as_str().into();
-        let loc = self.inner.clone().locator(sel);
+    pub fn locator(
+        &self,
+        #[napi(ts_arg_type = "string | Selector")] selector: Either<String, &Selector>,
+    ) -> napi::Result<Locator> {
+        use napi::bindgen_prelude::Either::*;
+        let sel_rust: terminator::selector::Selector = match selector {
+            A(sel_str) => sel_str.as_str().into(),
+            B(sel_obj) => sel_obj.inner.clone(),
+        };
+        let loc = self.inner.clone().locator(sel_rust);
         Ok(Locator::from(loc))
     }
 

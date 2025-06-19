@@ -2,12 +2,14 @@ mod desktop;
 mod element;
 mod exceptions;
 mod locator;
+mod selector;
 mod types;
 
 // Main types first
 pub use desktop::Desktop;
 pub use element::Element;
 pub use locator::Locator;
+pub use selector::Selector;
 pub use types::{
     Bounds, ClickResult, CommandOutput, Coordinates, Monitor, MonitorScreenshotPair,
     PropertyLoadingMode, ScreenshotResult, TreeBuildConfig, UIElementAttributes, UINode,

@@ -183,10 +183,10 @@ export declare class Desktop {
   /**
    * Create a locator for finding UI elements.
    *
-   * @param {string} selector - The selector string to find elements.
+   * @param {string | Selector} selector - The selector.
    * @returns {Locator} A locator for finding elements.
    */
-  locator(selector: string): Locator
+  locator(selector: string | Selector): Locator
   /**
    * (async) Get the currently focused window.
    *
@@ -440,11 +440,12 @@ export declare class Element {
   mouseRelease(): void
   /**
    * Create a locator from this element.
+   * Accepts either a selector string or a Selector object.
    *
-   * @param {string} selector - The selector string.
+   * @param {string | Selector} selector - The selector.
    * @returns {Locator} A new locator for finding elements.
    */
-  locator(selector: string): Locator
+  locator(selector: string | Selector): Locator
   /**
    * Get the containing application element.
    *
@@ -544,10 +545,35 @@ export declare class Locator {
   within(element: Element): Locator
   /**
    * Chain another selector.
+   * Accepts either a selector string or a Selector object.
    *
-   * @param {string} selector - The selector string.
+   * @param {string | Selector} selector - The selector.
    * @returns {Locator} A new locator with the chained selector.
    */
-  locator(selector: string): Locator
+  locator(selector: string | Selector): Locator
+  toString(): string
+}
+/** Selector for locating UI elements. Provides a typed alternative to the string based selector API. */
+export declare class Selector {
+  /** Create a selector that matches elements by their accessibility `name`. */
+  static name(name: string): Selector
+  /** Create a selector that matches elements by role (and optionally name). */
+  static role(role: string, name?: string | undefined | null): Selector
+  /** Create a selector that matches elements by accessibility `id`. */
+  static id(id: string): Selector
+  /** Create a selector that matches elements by the text they display. */
+  static text(text: string): Selector
+  /** Create a selector from an XPath-like path string. */
+  static path(path: string): Selector
+  /** Create a selector that matches elements by a native automation id (e.g., AutomationID on Windows). */
+  static nativeId(id: string): Selector
+  /** Create a selector that matches elements by their class name. */
+  static className(name: string): Selector
+  /** Create a selector from an arbitrary attribute map. */
+  static attributes(attributes: Record<string, string>): Selector
+  /** Chain another selector onto this selector. */
+  chain(other: Selector): Selector
+  /** Filter by visibility. */
+  visible(isVisible: boolean): Selector
   toString(): string
 }

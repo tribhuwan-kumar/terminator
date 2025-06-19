@@ -11,6 +11,9 @@ use crate::{
     Bounds, ClickResult, Locator, ScreenshotResult, UIElementAttributes,
 };
 
+use crate::Selector;
+use napi::bindgen_prelude::Either;
+
 /// A UI element in the accessibility tree.
 #[napi(js_name = "Element")]
 pub struct Element {
@@ -291,13 +294,21 @@ impl Element {
     }
 
     /// Create a locator from this element.
+    /// Accepts either a selector string or a Selector object.
     ///
-    /// @param {string} selector - The selector string.
+    /// @param {string | Selector} selector - The selector.
     /// @returns {Locator} A new locator for finding elements.
     #[napi]
-    pub fn locator(&self, selector: String) -> napi::Result<Locator> {
-        let sel: terminator::selector::Selector = selector.as_str().into();
-        let loc = self.inner.locator(sel).map_err(map_error)?;
+    pub fn locator(
+        &self,
+        #[napi(ts_arg_type = "string | Selector")] selector: Either<String, &Selector>,
+    ) -> napi::Result<Locator> {
+        use napi::bindgen_prelude::Either::*;
+        let sel_rust: terminator::selector::Selector = match selector {
+            A(sel_str) => sel_str.as_str().into(),
+            B(sel_obj) => sel_obj.inner.clone(),
+        };
+        let loc = self.inner.locator(sel_rust).map_err(map_error)?;
         Ok(Locator::from(loc))
     }
 

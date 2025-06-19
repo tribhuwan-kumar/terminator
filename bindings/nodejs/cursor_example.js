@@ -1,7 +1,8 @@
 const {
     Desktop,
     ElementNotFoundError,
-    PlatformError
+    PlatformError,
+    Selector
 } = require('.');
 const fs = require('fs');
 
@@ -42,9 +43,16 @@ async function main() {
         console.log(`${appName} PID: ${pid}`);
         
         // Optional: you can provide a window title filter (null means no filter)
-        const windowTree = desktop.getWindowTree(pid, null, null);
+        const selectedWindow = windows[0];
+        const windowAttrs = selectedWindow.attributes();
+        const windowId = selectedWindow.id();
+        const windowTitle = windowAttrs.name || windowAttrs.label;
+        console.log(`Window title: ${windowTitle} (id: ${windowId})`);
+
+        const windowTree = desktop.getWindowTree(pid, windowTitle, null);
+
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const fileName = `window_tree_${pid}_${timestamp}.json`;
+        const fileName = `data/window_tree_${pid}_${timestamp}.json`;
         fs.writeFileSync(fileName, JSON.stringify(windowTree, null, 2));
         console.log(`\nWindow tree written to ${fileName}`);
         
@@ -55,7 +63,14 @@ async function main() {
         try {
             // You can tweak these locators to test various scenarios
             // const locator = app.locator('role:button');
-            const locator = app.locator('button:Go Back (⌃-)');
+            
+            const locator1 = app.locator('button:Go Back (⌃-)');
+            console.log("Locator 1:", locator1);
+            const locator2 = app.locator(Selector.role('button', 'Go Back (⌃-)'));
+            console.log("Locator 2:", locator2);
+
+            const locator = locator2;
+
             // const locator = app.locator('button:Start Debugging (F5), use (⌥F1) for accessibility help');
             // const locator = app.locator('PopUpButton:Extensions');
 
@@ -65,7 +80,8 @@ async function main() {
             console.log(button);
 
             // Find and log all buttons in the app
-            const allButtonsLocator = app.locator('role:button');
+            // const allButtonsLocator = app.locator('role:button');
+            const allButtonsLocator = app.locator(Selector.role('button'));
             const buttons = await allButtonsLocator.all();
             console.log(`Found ${buttons.length} button(s) in the Cursor application:`);
             buttons.forEach((button, idx) => {
