@@ -1774,6 +1774,11 @@ impl UIElementImpl for MacOSUIElement {
             }
         }
     }
+
+    // TODO: macOS backend doesn't yet expose current URL.
+    fn url(&self) -> Option<String> {
+        None
+    }
 }
 
 // Helper function to parse AXUIElement attribute values into appropriate types
@@ -2973,6 +2978,9 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::ClassName(_) => Err(AutomationError::UnsupportedOperation(
                 "ClassName selector is not yet supported for macOS".to_string(),
             )),
+            Selector::Visible(_) => Err(AutomationError::UnsupportedOperation(
+                "Visible selector not yet supported for macOS".to_string(),
+            )),
         }
     }
 
@@ -3000,13 +3008,19 @@ impl AccessibilityEngine for MacOSEngine {
         self.get_application_by_name(app_name)
     }
 
-    fn open_url(&self, url: &str, browser: Option<&str>) -> Result<UIElement, AutomationError> {
+    fn open_url(
+        &self,
+        url: &str,
+        browser: Option<crate::Browser>,
+    ) -> Result<UIElement, AutomationError> {
         let mut command = std::process::Command::new("open");
-        if let Some(browser_name) = browser {
-            // Use -a to specify the browser application
-            command.arg("-a").arg(browser_name);
+
+        // Only handle custom browser paths explicitly; everything else uses the default browser.
+        if let Some(crate::Browser::Custom(ref path)) = browser {
+            command.arg("-a").arg(path);
         }
-        command.arg(url); // The URL to open
+
+        command.arg(url);
 
         let status = command.status().map_err(|e| {
             AutomationError::PlatformError(format!("Failed to run open command for URL: {}", e))
@@ -3014,24 +3028,18 @@ impl AccessibilityEngine for MacOSEngine {
 
         if !status.success() {
             return Err(AutomationError::PlatformError(format!(
-                "Failed to open URL '{}' {}. 'open' command failed.",
-                url,
-                browser
-                    .map(|b| format!("with browser '{}'", b))
-                    .unwrap_or_default()
+                "Failed to open URL '{}' {:?}. 'open' command failed.",
+                url, browser
             )));
         }
 
-        // Wait a bit
+        // Wait briefly for the browser to appear.
         std::thread::sleep(std::time::Duration::from_millis(500));
 
-        // Try to get the browser application element
-        // If no browser specified, we can't reliably get the element, maybe return root?
-        // For now, let's try to get the browser element if specified.
-        if let Some(browser_name) = browser {
-            self.get_application_by_name(browser_name)
+        // If we launched a specific custom browser, try to return its UI element; otherwise we cannot know which app opened.
+        if let Some(crate::Browser::Custom(path)) = browser {
+            self.get_application_by_name(&path)
         } else {
-            // Cannot reliably determine which app opened the URL if default browser was used.
             Err(AutomationError::UnsupportedOperation(
                 "Cannot get UIElement for default browser after opening URL".to_string(),
             ))
