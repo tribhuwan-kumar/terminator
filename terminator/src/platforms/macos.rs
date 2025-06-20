@@ -1588,22 +1588,18 @@ impl UIElementImpl for MacOSUIElement {
             Ok(Some(window)) => {
                 // Try to use the AXMinimizeButton action if available
                 let minimize_button_attr = AXAttribute::new(&CFString::new("AXMinimizeButton"));
-                if let Ok(minimize_button_value) = window
-                    .inner
-                    .as_any()
-                    .downcast_ref::<MacOSUIElement>()
-                    .unwrap()
-                    .element
-                    .0
-                    .attribute(&minimize_button_attr)
-                {
-                    if let Some(minimize_button) =
-                        minimize_button_value.downcast_into::<AXUIElement>()
+                if let Some(macos_window) = window.as_any().downcast_ref::<MacOSUIElement>() {
+                    if let Ok(minimize_button_value) =
+                        macos_window.element.0.attribute(&minimize_button_attr)
                     {
-                        let press_action = CFString::new("AXPress");
-                        if minimize_button.perform_action(&press_action).is_ok() {
-                            debug!("Window minimized using AXMinimizeButton");
-                            return Ok(());
+                        if let Some(minimize_button) =
+                            minimize_button_value.downcast_into::<AXUIElement>()
+                        {
+                            let press_action = CFString::new("AXPress");
+                            if minimize_button.perform_action(&press_action).is_ok() {
+                                debug!("Window minimized using AXMinimizeButton");
+                                return Ok(());
+                            }
                         }
                     }
                 }
