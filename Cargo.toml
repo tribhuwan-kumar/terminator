@@ -12,7 +12,7 @@ members = [
 
 # Shared metadata for workspace members
 [workspace.package]
-version = "0.5.3" # From your original Cargo.toml
+version = "0.5.4" # From your original Cargo.toml
 edition = "2021"  # From your original Cargo.toml
 
 # Centralized dependency definitions
