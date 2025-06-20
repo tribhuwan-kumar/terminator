@@ -24,6 +24,7 @@
   "scripts": {
     "sync-version": "node ./utils/sync-version.js",
     "build": "node ./utils/build-server.js --release",
-    "build:debug": "node ./utils/build-server.js --debug"
+    "build:debug": "node ./utils/build-server.js --debug",
+    "update-badges": "node ./utils/update-badges.js"
   }
 }
