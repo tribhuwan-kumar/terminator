@@ -27,7 +27,7 @@ First, install the Terminator MCP server with your client. A typical configurati
 ```json
 {
   "mcpServers": {
-    "playwright": {
+    "terminator-mcp-agent": {
       "command": "npx",
       "args": ["-y", "terminator-mcp-agent"]
     }
