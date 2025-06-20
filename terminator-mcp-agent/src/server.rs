@@ -42,7 +42,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Get the complete UI tree for an application by PID and optional window title."
+        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state."
     )]
     async fn get_window_tree(
         &self,
@@ -58,11 +58,29 @@ impl DesktopWrapper {
             .map_err(|e| {
                 McpError::resource_not_found(
                     "Failed to get window tree",
-                    Some(json!({"reason": e.to_string()})),
+                    Some(json!({"reason": e.to_string(), "pid": args.pid, "title": args.title})),
                 )
             })?;
 
-        Ok(CallToolResult::success(vec![Content::json(&tree)?]))
+        let mut result_json = json!({
+            "action": "get_window_tree",
+            "status": "success",
+            "pid": args.pid,
+            "title": args.title,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "recommendation": "Look for element IDs (e.g., '#12345') as primary selectors. Avoid name-based selectors when IDs are available."
+        });
+
+        // Always include the tree unless explicitly disabled
+        if args.include_tree.unwrap_or(true) {
+            if let Ok(tree_val) = serde_json::to_value(tree) {
+                if let Some(obj) = result_json.as_object_mut() {
+                    obj.insert("ui_tree".to_string(), tree_val);
+                }
+            }
+        }
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(description = "Get all applications currently running.")]
@@ -140,34 +158,58 @@ impl DesktopWrapper {
         }))?]))
     }
 
-    #[tool(description = "Types text into a UI element.")]
+    #[tool(
+        description = "Types text into a UI element with smart clipboard optimization and verification. Much faster than press key."
+    )]
     async fn type_into_element(
         &self,
         #[tool(param)] args: TypeIntoElementArgs,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_ref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            let selectors_tried = if let Some(alternatives) = &args.alternative_selectors {
+                let mut all = vec![args.selector.clone()];
+                all.extend(alternatives.clone());
+                all
+            } else {
+                vec![args.selector.clone()]
+            };
+
+            McpError::internal_error(
+                "Failed to locate element with any selector",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": selectors_tried,
+                    "timeout_used": get_timeout(args.timeout_ms).map(|d| d.as_millis())
+                })),
+            )
+        })?;
+
+        let pid = element.process_id().unwrap_or(0);
+        let id = element.id().unwrap_or_default();
 
         // Get element details before typing for better feedback
         let element_info = json!({
             "name": element.name().unwrap_or_default(),
             "role": element.role(),
-            "id": element.id().unwrap_or_default(),
+            "id": id,
+            "pid": pid,
             "bounds": element.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
             "enabled": element.is_enabled().unwrap_or(false),
+            "suggested_selector": format!("#{}", id),
         });
 
-        element.type_text(&args.text_to_type, false).map_err(|e| {
+        element.type_text(&args.text_to_type, true).map_err(|e| {
             McpError::resource_not_found(
                 "Failed to type text",
                 Some(json!({
@@ -180,16 +222,47 @@ impl DesktopWrapper {
         })?;
 
         let mut result_json = json!({
-            "action": "type",
+            "action": "type_into_element",
             "status": "success",
             "text_typed": args.text_to_type,
             "element": element_info,
-            "selector": args.selector,
-            "timestamp": chrono::Utc::now().to_rfc3339()
+            "selector_used": successful_selector,
+            "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
+                let mut all = vec![args.selector.clone()];
+                all.extend(alternatives.clone());
+                all
+            } else {
+                vec![args.selector.clone()]
+            },
+            "timestamp": chrono::Utc::now().to_rfc3339(),
         });
+
+        // Verification if requested
+        if args.verify_action.unwrap_or(true) {
+            // Create a new locator for verification using the successful selector
+            let verification_locator = self
+                .desktop
+                .locator(Selector::from(successful_selector.as_str()));
+            if let Ok(updated_element) = verification_locator
+                .wait(Some(std::time::Duration::from_millis(500)))
+                .await
+            {
+                let verification = json!({
+                    "element_focused": updated_element.is_focused().unwrap_or(false),
+                    "element_enabled": updated_element.is_enabled().unwrap_or(false),
+                    "verification_timestamp": chrono::Utc::now().to_rfc3339()
+                });
+                if let Some(obj) = result_json.as_object_mut() {
+                    obj.insert("verification".to_string(), verification);
+                }
+            }
+        }
+
+        // Always attach tree for better context, or if explicitly requested
         self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
+            args.include_tree
+                .unwrap_or(args.verify_action.unwrap_or(true)),
+            Some(pid),
             &mut result_json,
         );
 
@@ -201,16 +274,33 @@ impl DesktopWrapper {
         &self,
         #[tool(param)] args: LocatorArgs,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_ref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            let selectors_tried = if let Some(alternatives) = &args.alternative_selectors {
+                let mut all = vec![args.selector.clone()];
+                all.extend(alternatives.clone());
+                all
+            } else {
+                vec![args.selector.clone()]
+            };
+
+            McpError::internal_error(
+                "Failed to locate element with any selector",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": selectors_tried,
+                    "timeout_used": get_timeout(args.timeout_ms).map(|d| d.as_millis())
+                })),
+            )
+        })?;
 
         // Get element details before clicking for better feedback
         let element_info = json!({
@@ -239,7 +329,14 @@ impl DesktopWrapper {
             "action": "click",
             "status": "success",
             "element": element_info,
-            "selector": args.selector,
+            "selector_used": successful_selector,
+            "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
+                let mut all = vec![args.selector.clone()];
+                all.extend(alternatives.clone());
+                all
+            } else {
+                vec![args.selector.clone()]
+            },
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         // Attach tree if requested
@@ -623,10 +720,17 @@ impl DesktopWrapper {
         &self,
         #[tool(param)] args: ValidateElementArgs,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
+        use crate::utils::find_element_with_fallbacks;
 
-        match locator.wait(get_timeout(args.timeout_ms)).await {
-            Ok(element) => {
+        match find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_ref(),
+            args.timeout_ms,
+        )
+        .await
+        {
+            Ok((element, successful_selector)) => {
                 let element_info = json!({
                     "exists": true,
                     "name": element.name().unwrap_or_default(),
@@ -647,7 +751,14 @@ impl DesktopWrapper {
                     "action": "validate_element",
                     "status": "success",
                     "element": element_info,
-                    "selector": args.selector,
+                    "selector_used": successful_selector,
+                    "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
+                        let mut all = vec![args.selector.clone()];
+                        all.extend(alternatives.clone());
+                        all
+                    } else {
+                        vec![args.selector.clone()]
+                    },
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 });
                 self.maybe_attach_tree(
@@ -663,7 +774,13 @@ impl DesktopWrapper {
                 "status": "failed",
                 "exists": false,
                 "reason": e.to_string(),
-                "selector": args.selector,
+                "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
+                    let mut all = vec![args.selector.clone()];
+                    all.extend(alternatives.clone());
+                    all
+                } else {
+                    vec![args.selector.clone()]
+                },
                 "timestamp": chrono::Utc::now().to_rfc3339()
             }))?])),
         }
@@ -1034,10 +1151,28 @@ Your most reliable strategy is to inspect the application's UI structure *before
     *   `name`: The visible text or label of the element (e.g., \"Save\", \"File\").
     *   `role`: The type of the element (e.g., \"Button\", \"Window\", \"Edit\").
 
-4.  **Construct a Selector String:** Create a `selector` string to target the element:
-    *   **CRITICAL BEST PRACTICE:** When an element has an `id`, ALWAYS use JUST the ID with a hash prefix. For example, if ID is `12345`, use the selector `\"#12345\"`. Do NOT chain selectors when you have a reliable, unique ID.
-    *   **Fallback Chaining Example:** Only if NO ID exists, find a button named \"OK\" inside a window named \"My App\": `\"window:'My App' >> button:OK\"`.
-    *   **Context-Specific Selectors:** For web pages or complex applications, be more specific to avoid wrong elements. Use parent-child relationships when no ID is available.
+4.  **Construct Smart Selector Strategies:** You have powerful tools to create robust targeting strategies:
+    *   **Primary Strategy - ID When Available:** When an element has an `id`, use it with hash prefix: `\"#12345\"`. This is the most reliable.
+    *   **Multi-Selector Fallbacks:** Use the `alternative_selectors` parameter to provide 1-3 backup strategies. The system tries all selectors in parallel and uses the first successful match:
+        ```json
+        {{
+          \"selector\": \"#12345\",
+          \"alternative_selectors\": [\"name:Submit Button\", \"role:Document >> role:Button\"]
+        }}
+        ```
+    *   **Chain Selectors for Context:** Use `>>` to chain selectors for specificity. Examples:
+        - `\"role:Document >> name:Email\"` (find Email field within document content)
+        - `\"role:Window >> role:Document >> role:Button\"` (find button within document, not browser chrome)
+        - `\"name:Form >> role:Edit\"` (find edit field within a specific form)
+    *   **Intelligent Selector Design:** Consider the application context:
+        - **Web browsers:** Chain with `role:Document >>` to target page content, not browser UI
+        - **Forms:** Use parent containers to avoid ambiguity: `\"name:Contact Form >> name:Email\"`
+        - **Complex apps:** Navigate from window → document → specific element
+    *   **Smart Fallback Strategy:** Order selectors from most to least specific:
+        1. Exact ID: `\"#12345\"`
+        2. Contextual name: `\"role:Document >> name:Submit\"`
+        3. Contextual role: `\"role:Document >> role:Button\"`
+        4. Generic (last resort): `\"role:Button\"`
 
 5.  **Interact with the Element:** Once you have a reliable `selector`, use an action tool:
     *   `click_element`: To click buttons, links, etc.
@@ -1107,14 +1242,28 @@ Contextual information:
 - Current operating system: {}.
 - Current working directory: {}.
 
-**Golden Rules:** 
-1. Always call `get_window_tree` with `include_tree: true` to understand the UI landscape before you try to act on it. 
-2. When an element has an `id`, use ONLY that ID with a hash prefix as the selector (e.g., `#12345`).
-3. NEVER use broad, ambiguous selectors like `name:Search` - always be specific and context-aware.
-4. Always activate_element should include `include_tree: true` for next action planning.
-5. Always scroll pages to get full context when working with web pages or long documents.
-6. Always use highlight_element to show the user what you are doing.
-7. For web automation, use specific element IDs or combine parent-child selectors to avoid selecting wrong elements (e.g., search bars from different applications).
+**Smart Decision-Making Guidelines:**
+
+You are empowered to make intelligent decisions based on context. Use your understanding to:
+
+*   **Analyze Element Context:** When you see multiple elements with similar names/roles, use the UI tree structure to understand their relationships and choose the most appropriate target.
+*   **Adapt Selector Strategy:** If an element lacks an ID, intelligently craft chain selectors based on the application type and UI hierarchy.
+*   **Detect Potential Issues:** If selectors seem ambiguous (e.g., multiple \"Edit\" roles), proactively create more specific alternatives using parent containers.
+*   **Optimize for Reliability:** Consider the application context when choosing between different selector approaches - web content vs native apps have different best practices.
+
+**Technical Rules:** 
+1. **ALWAYS** set timeouts (timeout_ms: 3000 or less) to prevent hanging - never leave actions without timeouts.
+2. **ALWAYS** call `get_window_tree` with `include_tree: true` to understand the UI landscape before acting.
+3. **ALWAYS** verify important actions by checking the response for verification data or calling `get_window_tree` again.
+4. When an element has an `id`, prefer using that ID with hash prefix as the primary selector (e.g., `#12345`).
+5. Use chain selectors (`>>`) to add context and avoid targeting wrong elements (e.g., browser chrome vs page content).
+6. For text input, let `type_into_element` auto-choose clipboard vs direct typing (it's smart about large text).
+7. Use `press_key_global` for simple keyboard shortcuts like {{Ctrl}}c, {{Ctrl}}v, {{Enter}}, {{Tab}}.
+8. Always use `highlight_element` to show the user what you are targeting.
+9. Leverage `alternative_selectors` to provide robust fallback strategies - you decide what makes sense for the context.
+
+**Verification Workflow:**
+1. Get UI tree → 2. Act with timeout → 3. Check action response for verification data → 4. If unclear, get UI tree again to confirm state
 ",
         current_date_time, current_os, current_working_dir
     )

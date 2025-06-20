@@ -36,6 +36,10 @@ pub struct LocatorArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The primary selector is always preferred if it succeeds."
+    )]
+    pub alternative_selectors: Option<Vec<String>>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -48,12 +52,18 @@ pub struct TypeIntoElementArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The primary selector is always preferred if it succeeds."
+    )]
+    pub alternative_selectors: Option<Vec<String>>,
     #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
-    #[schemars(description = "Optional timeout in milliseconds for the action")]
+    #[schemars(description = "Optional timeout in milliseconds for the action (default: 3000ms)")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    #[schemars(description = "Whether to verify the action succeeded (default: true)")]
+    pub verify_action: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -123,6 +133,10 @@ pub struct ValidateElementArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The primary selector is always preferred if it succeeds."
+    )]
+    pub alternative_selectors: Option<Vec<String>>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -215,5 +229,117 @@ pub fn init_logging() -> Result<()> {
 }
 
 pub fn get_timeout(timeout_ms: Option<u64>) -> Option<Duration> {
-    timeout_ms.map(Duration::from_millis)
+    // Default to 3 seconds instead of indefinite wait to prevent hanging
+    let timeout = timeout_ms.unwrap_or(3000);
+    Some(Duration::from_millis(timeout))
+}
+
+/// Try multiple selectors with primary selector priority
+/// The primary selector is always preferred if it succeeds, even if alternatives also succeed
+pub async fn find_element_with_fallbacks(
+    desktop: &Desktop,
+    primary_selector: &str,
+    alternative_selectors: Option<&Vec<String>>,
+    timeout_ms: Option<u64>,
+) -> Result<(terminator::UIElement, String), terminator::AutomationError> {
+    use tokio::time::Duration;
+
+    let timeout_duration = get_timeout(timeout_ms).unwrap_or(Duration::from_millis(3000));
+
+    // Create primary task
+    let desktop_clone = desktop.clone();
+    let primary_clone = primary_selector.to_string();
+    let primary_task = tokio::spawn(async move {
+        let locator = desktop_clone.locator(terminator::Selector::from(primary_clone.as_str()));
+        match locator.first(Some(timeout_duration)).await {
+            Ok(element) => Ok((element, primary_clone)),
+            Err(e) => Err((primary_clone, e)),
+        }
+    });
+
+    // Create alternative tasks
+    let mut alternative_tasks = Vec::new();
+    if let Some(alternatives) = alternative_selectors {
+        for selector_str in alternatives {
+            let desktop_clone = desktop.clone();
+            let selector_clone = selector_str.clone();
+            let task = tokio::spawn(async move {
+                let locator =
+                    desktop_clone.locator(terminator::Selector::from(selector_clone.as_str()));
+                match locator.first(Some(timeout_duration)).await {
+                    Ok(element) => Ok((element, selector_clone)),
+                    Err(e) => Err((selector_clone, e)),
+                }
+            });
+            alternative_tasks.push(task);
+        }
+    }
+
+    // Wait for primary task first, then alternatives
+    let mut errors = Vec::new();
+    let mut completed_tasks = Vec::new();
+    completed_tasks.push(primary_task);
+    completed_tasks.extend(alternative_tasks);
+
+    // Use select_all but prioritize primary selector if multiple succeed
+    while !completed_tasks.is_empty() {
+        let (result, index, remaining_tasks) = futures::future::select_all(completed_tasks).await;
+
+        match result {
+            Ok(Ok((element, selector))) => {
+                // Cancel remaining tasks
+                for task in remaining_tasks {
+                    task.abort();
+                }
+
+                // Always prefer primary selector (index 0) if it succeeds
+                if index == 0 {
+                    return Ok((element, selector));
+                } else {
+                    // Alternative succeeded first, but give primary selector a brief grace period
+                    // in case it's about to succeed too (within 10ms)
+                    let desktop_clone = desktop.clone();
+                    let primary_clone = primary_selector.to_string();
+
+                    match tokio::time::timeout(Duration::from_millis(10), async move {
+                        let locator = desktop_clone
+                            .locator(terminator::Selector::from(primary_clone.as_str()));
+                        locator.first(Some(Duration::from_millis(1))).await
+                    })
+                    .await
+                    {
+                        Ok(Ok(primary_element)) => {
+                            // Primary also succeeded within grace period - prefer it
+                            return Ok((primary_element, primary_selector.to_string()));
+                        }
+                        _ => {
+                            // Primary didn't succeed quickly, use the alternative that worked
+                            return Ok((element, selector));
+                        }
+                    }
+                }
+            }
+            Ok(Err((selector, error))) => {
+                errors.push(format!("'{}': {}", selector, error));
+                completed_tasks = remaining_tasks;
+            }
+            Err(join_error) => {
+                errors.push(format!("Task error: {}", join_error));
+                completed_tasks = remaining_tasks;
+            }
+        }
+    }
+
+    // All selectors failed
+    let combined_error = if errors.is_empty() {
+        "No selectors provided".to_string()
+    } else {
+        format!(
+            "All {} selectors failed: [{}]",
+            errors.len(),
+            errors.join(", ")
+        )
+    };
+
+    Err(terminator::AutomationError::ElementNotFound(combined_error))
 }

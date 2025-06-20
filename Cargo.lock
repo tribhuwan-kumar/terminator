@@ -4210,6 +4210,7 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "chrono",
+ "futures",
  "rmcp",
  "serde",
  "serde_json",
