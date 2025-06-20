@@ -1,7 +1,45 @@
-# Terminator MCP Agent
+## Terminator MCP Agent
 
-This directory contains the Model Context Protocol (MCP) agent that allows AI assistants, like Cursor, Claude desktop, VS Code, VS Code Insiders, and Windsurf to interact with your desktop using the Terminator UI automation library.
+A Model Context Protocol (MCP) server that provides desktop GUI automation capabilities using the [Terminator](https://github.com/mediar-ai/terminator) library. This server enables LLMs and agentic clients to interact with Windows, macOS, and Linux applications through structured accessibility APIs—no vision models or screenshots required.
 
+### Key Features
+
+- **Fast and lightweight**. Uses OS-level accessibility APIs, not pixel-based input.
+- **LLM/agent-friendly**. No vision models needed, operates purely on structured data.
+- **Deterministic automation**. Avoids ambiguity common with screenshot-based approaches.
+- **Multi-platform**. Supports Windows (full), macOS (partial), Linux (partial).
+
+### Requirements
+- Node.js 16 or newer
+- VS Code, Cursor, Windsurf, Claude Desktop, or any other MCP client
+
+### Getting started
+
+First, install the Terminator MCP server with your client. A typical configuration looks like this:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "terminator-mcp-agent"
+      ]
+    }
+  }
+}
+```
+
+You can also use the CLI to configure your app automatically:
+
+```sh
+npx -y terminator-mcp-agent --add-to-app [app]
+```
+
+Replace `[app]` with one of: `cursor`, `claude`, `vscode`, `insiders`, `windsurf`.
+
+---
 
 
 <img width="1512" alt="Screenshot 2025-04-16 at 9 29 42 AM" src="https://github.com/user-attachments/assets/457ebaf2-640c-4f21-a236-fcb2b92748ab" />
@@ -10,66 +48,7 @@ MCP is useful to test out the `terminator` lib and see what you can do. You can 
 
 <br>
 
-## Quick Setup for Desktop Apps
 
-To configure Terminator MCP for use with supported desktop apps (Cursor, Claude, VS Code, VS Code Insiders, Windsurf), use the following CLI commands:
-
-### 1. Configure for an App
-
-Run this command in your terminal:
-
-```sh
-npx terminator-mcp-agent --add-to-app [app]
-```
-
-Replace `[app]` with one of:
-- `cursor`
-- `claude`
-- `vscode`
-- `insiders`
-- `windsurf`
-
-If you omit the app name, you will be prompted interactively to select one.
-
-**Examples:**
-```sh
-npx terminator-mcp-agent --add-to-app cursor
-npx terminator-mcp-agent --add-to-app
-```
-
-### 2. Start the MCP Agent
-
-To start the agent (normally handled by your app):
-
-```sh
-npx terminator-mcp-agent --start
-```
-
-Or simply:
-
-```sh
-npx terminator-mcp-agent
-```
-
----
-
-## How it Works
-
-- The CLI will automatically detect your platform and install the correct binary.
-- The `--add-to-app` command will update the appropriate configuration file for your selected app, so it knows how to launch the MCP agent using `npx terminator-mcp-agent`.
-- No PowerShell or manual JSON editing is required.
-
----
-
-## Supported Apps & Config Locations
-
-- **Cursor:** `%USERPROFILE%\.cursor\mcp.json` (Windows) or `~/.cursor/mcp.json` (macOS/Linux)
-- **Claude:** `%APPDATA%\Claude\claude_desktop_config.json`
-- **VS Code:** Registered via the `code` CLI
-- **VS Code Insiders:** Registered via the `code-insiders` CLI
-- **Windsurf:** `%USERPROFILE%\.codeium\windsurf\mcp_config.json`
-
----
 
 ## Development
 
