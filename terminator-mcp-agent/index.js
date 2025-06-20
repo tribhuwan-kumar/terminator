@@ -19,7 +19,7 @@ function getPlatformInfo() {
 function getMcpServerEntry() {
     return {
         command: 'npx',
-        args: ['-y', 'terminator-mcp-agent', '--start']
+        args: ['-y', 'terminator-mcp-agent']
     };
 }
 
