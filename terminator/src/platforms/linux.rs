@@ -1147,7 +1147,7 @@ impl AccessibilityEngine for LinuxEngine {
         }
     }
 
-    fn open_url(&self, _url: &str, _browser: Option<&str>) -> Result<UIElement, AutomationError> {
+    fn open_url(&self, _url: &str, _browser: Option<crate::Browser>) -> Result<UIElement, AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))
@@ -2335,6 +2335,10 @@ impl UIElementImpl for LinuxUIElement {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))
+    }
+
+    fn url(&self) -> Option<String> {
+        None
     }
 }
 
