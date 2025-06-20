@@ -4252,7 +4252,7 @@ dependencies = [
 
 [[package]]
 name = "terminator"
-version = "0.5.4"
+version = "0.5.3"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4289,7 +4289,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.5.4"
+version = "0.5.3"
 dependencies = [
  "clap",
  "serde_json",
@@ -4297,7 +4297,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.5.4"
+version = "0.5.3"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4314,7 +4314,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.5.4"
+version = "0.5.3"
 dependencies = [
  "napi",
  "napi-build",
@@ -4328,7 +4328,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.5.4"
+version = "0.5.3"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4343,7 +4343,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.5.4"
+version = "0.5.3"
 dependencies = [
  "anyhow",
  "arboard",

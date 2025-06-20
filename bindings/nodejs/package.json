@@ -1,40 +1,16 @@
 {
-  "name": "terminator.js",
-  "description": "Node.js/TypeScript bindings for the Terminator Rust library (via napi-rs)",
-  "main": "wrapper.js",
-  "types": "wrapper.d.ts",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/mediar-ai/terminator"
-  },
-  "homepage": "https://github.com/mediar-ai/terminator",
+  "author": "mediar-ai",
   "bugs": {
     "url": "https://github.com/mediar-ai/terminator/issues"
   },
-  "author": "mediar-ai",
-  "napi": {
-    "name": "terminator",
-    "triples": {
-      "additional": [
-        "aarch64-apple-darwin"
-      ]
-    }
-  },
+  "description": "Node.js/TypeScript bindings for the Terminator Rust library (via napi-rs)",
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4"
   },
   "engines": {
     "node": ">= 10"
   },
-  "scripts": {
-    "sync-version": "node sync-version.js",
-    "artifacts": "npx napi artifacts",
-    "build": "npm run sync-version && npx napi build --platform --release --strip",
-    "build:debug": "npm run sync-version && npx napi build --platform",
-    "prepublishOnly": "npm run sync-version && npx napi prepublish -t npm",
-    "test": "node node_example.js",
-    "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
-  },
+  "homepage": "https://github.com/mediar-ai/terminator",
   "keywords": [
     "napi",
     "rust",
@@ -49,11 +25,35 @@
     "macos",
     "linux"
   ],
-  "optionalDependencies": {
-    "terminator.js-darwin-arm64": "0.5.2",
-    "terminator.js-darwin-x64": "0.5.2",
-    "terminator.js-linux-x64-gnu": "0.5.2",
-    "terminator.js-win32-x64-msvc": "0.5.2"
+  "main": "wrapper.js",
+  "name": "terminator.js",
+  "napi": {
+    "name": "terminator",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin"
+      ]
+    }
   },
-  "version": "0.5.2"
+  "optionalDependencies": {
+    "terminator.js-darwin-arm64": "0.5.3",
+    "terminator.js-darwin-x64": "0.5.3",
+    "terminator.js-linux-x64-gnu": "0.5.3",
+    "terminator.js-win32-x64-msvc": "0.5.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/terminator"
+  },
+  "scripts": {
+    "artifacts": "npx napi artifacts",
+    "build": "npm run sync-version && npx napi build --platform --release --strip",
+    "build:debug": "npm run sync-version && npx napi build --platform",
+    "prepublishOnly": "npm run sync-version && npx napi prepublish -t npm",
+    "sync-version": "node sync-version.js",
+    "test": "node node_example.js",
+    "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
+  },
+  "types": "wrapper.d.ts",
+  "version": "0.5.3"
 }

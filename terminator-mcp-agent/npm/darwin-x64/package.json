@@ -1,21 +1,21 @@
 {
-  "name": "terminator-mcp-darwin-x64",
-  "version": "0.5.1",
-  "os": [
-    "darwin"
-  ],
   "cpu": [
     "x64"
   ],
-  "main": "terminator-mcp-agent",
+  "engines": {
+    "node": ">= 10"
+  },
   "files": [
     "terminator-mcp-agent"
+  ],
+  "main": "terminator-mcp-agent",
+  "name": "terminator-mcp-darwin-x64",
+  "os": [
+    "darwin"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/mediar-ai/terminator"
   },
-  "engines": {
-    "node": ">= 10"
-  }
+  "version": "0.5.3"
 }
