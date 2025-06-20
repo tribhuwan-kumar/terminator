@@ -9,6 +9,7 @@ sudo apt-get install -y \
     python3-pip \
     build-essential \
     pkg-config \
+    libgbm-dev \
     libegl1-mesa-dev \
     libwayland-dev \
     libxkbcommon-dev \
