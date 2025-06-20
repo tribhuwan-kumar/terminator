@@ -1,6 +1,51 @@
-# Terminator MCP Agent
+## Terminator MCP Agent
 
-This directory contains the Model Context Protocol (MCP) agent that allows AI assistants, like Cursor and Claude desktop to interact with your desktop using the Terminator UI automation library.
+<!-- BADGES:START -->
+
+[<img alt="Install in VS Code" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D)
+[<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D)
+[<img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20Server&color=22272e">](https://cursor.com/install-mcp?name=terminator-mcp-agent&config=eyJ0ZXJtaW5hdG9yLW1jcC1hZ2VudCI6eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50Il19fQ%3D%3D)
+
+<!-- BADGES:END -->
+
+A Model Context Protocol (MCP) server that provides desktop GUI automation capabilities using the [Terminator](https://github.com/mediar-ai/terminator) library. This server enables LLMs and agentic clients to interact with Windows, macOS, and Linux applications through structured accessibility APIs—no vision models or screenshots required.
+
+### Key Features
+
+- **Fast and lightweight**. Uses OS-level accessibility APIs, not pixel-based input.
+- **LLM/agent-friendly**. No vision models needed, operates purely on structured data.
+- **Deterministic automation**. Avoids ambiguity common with screenshot-based approaches.
+- **Multi-platform**. Supports Windows (full), macOS (partial), Linux (partial).
+
+### Requirements
+
+- Node.js 16 or newer
+- VS Code, Cursor, Windsurf, Claude Desktop, or any other MCP client
+
+### Getting started
+
+First, install the Terminator MCP server with your client. A typical configuration looks like this:
+
+```json
+{
+  "mcpServers": {
+    "terminator-mcp-agent": {
+      "command": "npx",
+      "args": ["-y", "terminator-mcp-agent"]
+    }
+  }
+}
+```
+
+You can also use the CLI to configure your app automatically:
+
+```sh
+npx -y terminator-mcp-agent --add-to-app [app]
+```
+
+Replace `[app]` with one of: `cursor`, `claude`, `vscode`, `insiders`, `windsurf`.
+
+---
 
 <img width="1512" alt="Screenshot 2025-04-16 at 9 29 42 AM" src="https://github.com/user-attachments/assets/457ebaf2-640c-4f21-a236-fcb2b92748ab" />
 
@@ -8,108 +53,26 @@ MCP is useful to test out the `terminator` lib and see what you can do. You can 
 
 <br>
 
-## For configuring Terminator MCP in desktop apps like [Cursor](https://www.cursor.com/) and [Claude](https://claude.ai/download):
-Open terminal and run this command:
+## Development
 
-```ps1
-iwr -useb https://raw.githubusercontent.com/mediar-ai/terminator/refs/heads/main/terminator-mcp-agent/install.ps1 | iex
+If you want to build and test the agent locally, clone the repo and run:
+
+```sh
+git clone https://github.com/mediar-ai/terminator
+cd terminator/terminator-mcp-agent
+npm install
+npm run build
+npm install --global .
 ```
-> it'll guide through the configuration, only for [Cursor](https://www.cursor.com/) and [Claude](https://claude.ai/download) desktop app
 
+You can then use the CLI as above.
 
-<br>
+---
 
-<details>
+## Troubleshooting
 
-<summary> 
+- Make sure you have Node.js installed (v16+ recommended).
+- For VS Code/Insiders, ensure the CLI (`code` or `code-insiders`) is available in your PATH.
+- If you encounter issues, try running with elevated permissions or check the config file paths above.
 
-## Manual Installation & Setup 
-
-</summary>
-
-Open a new terminal (like PowerShell or Command Prompt)
-
-1.  **Clone the Terminator locally**
-    If you haven't already, clone the repository:
-    ```bash
-    git clone https://github.com/mediar-ai/terminator
-    ```
-    Then build the terminator-mcp-agent:
-    ```
-    cargo build -p terminator-mcp-agent --release
-    ```
-
-2.  **Configure Cursor:**
-    You need to tell Cursor how to run this agent. Create a file named `mcp.json` in your Cursor configuration directory (`~/.cursor` on macOS/Linux, `%USERPROFILE%\.cursor` on Windows).
-
-    **macOS / Linux:**
-
-    ```bash
-    # Run this command inside the terminator/mcp directory
-    MCP_PATH="$(pwd)/target/release/terminator-mcp-agent.exe"
-    JSON_CONTENT=$(cat <<EOF
-    {
-      "mcpServers": {
-        "terminator-mcp-agent": {
-          "command": "$MCP_PATH",
-          "args": []
-        }
-      }
-    }
-    EOF
-    )
-    echo "--- Copy the JSON below and save it as mcp.json in your ~/.cursor directory ---"
-    echo "$JSON_CONTENT"
-    echo "------------------------------------------------------------------------------------------"
-    mkdir -p "$HOME/.cursor"
-    ```
-
-    **Windows (PowerShell):**
-
-    You can use this PowerShell command **while inside the `mcp` directory** to generate the correct JSON content:
-
-    ```powershell
-    # Run this command inside the terminator/mcp directory
-    $mcpPath = ($pwd).Path.Replace('\', '\\') + '\\target\\release\\terminator-mcp-agent.exe'
-    $jsonContent = @"
-    {
-      "mcpServers": {
-        "terminator-mcp-agent": {
-          "command": "$mcpPath",
-          "args": []
-        }
-      }
-    }
-    "@
-    Write-Host "--- Copy the JSON below and save it as mcp.json in your %USERPROFILE%\.cursor directory ---"
-    Write-Host $jsonContent
-    Write-Host "------------------------------------------------------------------------------------------"
-    # Optional: Try to automatically open the directory
-    Start-Process "$env:USERPROFILE\.cursor" -ErrorAction SilentlyContinue
-    ```
-
-    *   Run the appropriate command for your OS (PowerShell for Windows, Bash for macOS/Linux).
-    *   Copy the JSON output (starting with `{` and ending with `}`).
-    *   Create the `%USERPROFILE%\.cursor` (Windows) or `~/.cursor` (macOS/Linux) directory if it doesn't exist.
-    *   Create a new file named `mcp.json` inside that directory.
-    *   Paste the copied JSON content into `mcp.json` and save it.
-
-
-###  **Configure Claude Desktop app:**
-
-open the claude app and search for developer options then MCP. when you click on configure MCP button it'll open a json file where you have to edit a `claude_desktop_config.json` file
-
-```
-{
-  "mcpServers": {
-    "terminator-mcp-agent": {
-      "command": "path_to_terminator-mcp-agent.exe",
-      "args": []
-    }
-  }
-}
-```
-remember to replace `path_to_terminator` exe with actual path of terminator-mcp-agent binary, you can find the binary of terminator mcp in the target directory where you've build the project!
-</details>
-
-
+---
