@@ -206,25 +206,41 @@ fn sync_all_versions() {
     println!("✅ All versions synchronized!");
 }
 
-fn sync_nodejs_bindings(_version: &str) {
-    println!("📦 Syncing Node.js bindings...");
+fn sync_nodejs_bindings(version: &str) {
+    println!("📦 Syncing Node.js bindings to version {}...", version);
 
     if Path::new("bindings/nodejs").exists() {
+        // First, try to update the package.json directly
+        if let Err(e) = update_package_json("bindings/nodejs/package.json", version) {
+            eprintln!(
+                "⚠️  Warning: Failed to update Node.js package.json directly: {}",
+                e
+            );
+        } else {
+            println!("✅ Updated Node.js package.json to {}", version);
+        }
+
+        // Then run the sync script if it exists
         let mut success = false;
         if std::env::set_current_dir("bindings/nodejs").is_ok() {
+            println!("🔄 Running npm run sync-version...");
             #[allow(clippy::redundant_pattern_matching)]
             if let Ok(_) = run_command("npm", &["run", "sync-version"]) {
                 if std::env::set_current_dir("../..").is_ok() {
                     success = true;
+                    println!("✅ Node.js sync script completed");
                 }
+            } else {
+                eprintln!("⚠️  Warning: npm run sync-version failed");
+                let _ = std::env::set_current_dir("../..");
             }
         }
 
         if !success {
-            eprintln!("⚠️  Warning: Failed to sync Node.js versions");
-        } else {
-            println!("✅ Node.js bindings synced");
+            eprintln!("⚠️  Warning: Failed to run Node.js sync script, but package.json was updated directly");
         }
+    } else {
+        println!("⚠️  Node.js bindings directory not found, skipping");
     }
 }
 
