@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Read the workspace Cargo.toml
-const workspaceCargoPath = path.join(__dirname, '../Cargo.toml');
+const workspaceCargoPath = path.join(__dirname, '../../Cargo.toml');
 const cargoContent = fs.readFileSync(workspaceCargoPath, 'utf8');
 
 // Extract version from Cargo.toml
@@ -18,7 +18,7 @@ const version = versionMatch[1];
 console.log(`Found version: ${version}`);
 
 // Read package.json
-const packagePath = path.join(__dirname, 'package.json');
+const packagePath = path.join(__dirname, '../package.json');
 const packageContent = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 
 // Update version and optionalDependencies
@@ -34,7 +34,7 @@ fs.writeFileSync(packagePath, JSON.stringify(packageContent, null, 2) + '\n');
 console.log(`Updated package.json version to: ${version}`);
 
 // Also update platform packages
-const npmDir = path.join(__dirname, 'npm');
+const npmDir = path.join(__dirname, '../npm');
 if (fs.existsSync(npmDir)) {
     const platforms = fs.readdirSync(npmDir);
     for (const platform of platforms) {

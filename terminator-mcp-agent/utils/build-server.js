@@ -43,8 +43,8 @@ console.log(`Building for target ${target} (${buildType || 'debug'})`);
 execSync(`cargo build -p terminator-mcp-agent ${buildType} --target ${target}`, { stdio: 'inherit' });
 
 const buildDir = isRelease ? 'release' : 'debug';
-const binaryPath = path.join(__dirname, '..', 'target', target, buildDir, binName);
-const destDir = path.join(__dirname, 'npm', npmDir);
+const binaryPath = path.join(__dirname, '../../target', target, buildDir, binName);
+const destDir = path.join(__dirname, '../npm', npmDir);
 const destPath = path.join(destDir, binName);
 
 if (!fs.existsSync(destDir)) {

@@ -22,8 +22,8 @@
     "node": ">= 10"
   },
   "scripts": {
-    "sync-version": "node sync-version.js",
-    "build": "node ./move-binary.js --release",
-    "build:debug": "node ./move-binary.js --debug"
+    "sync-version": "node ./utils/sync-version.js",
+    "build": "node ./utils/build-server.js --release",
+    "build:debug": "node ./utils/build-server.js --debug"
   }
 }
