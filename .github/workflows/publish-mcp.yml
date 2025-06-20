@@ -37,6 +37,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: matrix.settings.host == 'ubuntu-latest'
+        run: bash scripts/install_linux_deps.sh
       - name: Setup node
         uses: actions/setup-node@v4
         with:
