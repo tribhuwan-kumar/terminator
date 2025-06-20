@@ -1195,6 +1195,67 @@ When using the press_key or press_key_global tools, use the following format:
 - Regular text: Just type the text directly, it will be sent as individual keystrokes
 - Examples: {{Ctrl}}c (copy), {{Ctrl}}v (paste), {{Alt}}{{Tab}} (switch windows), {{Win}}d (show desktop)
 
+**Complex Web Form Automation Strategies:**
+
+For challenging web automation tasks, apply these advanced techniques:
+
+*   **Post-Action Verification is MANDATORY:** After every critical action (typing, clicking, selecting), verify success:
+    - Check `verification` data in action responses
+    - Use `validate_element` to confirm current element state
+    - Re-examine UI tree to verify changes took effect
+
+*   **Progressive Form Filling Strategy:**
+    - Fill one field at a time, verify each step
+    - Use `capture_screen` periodically to visually confirm progress
+    - If a field fails to fill, try different role targeting (Edit vs TextArea)
+
+*   **Handle Dynamic Elements:** For complex components (dropdowns, multi-select):
+    - Try typing the value directly first (often triggers autocomplete)
+    - Use key navigation: type partial match + {{Down}} + {{Enter}}
+    - Fall back to clicking container then typing
+
+*   **Required Field Detection:** Before submitting forms:
+    - Verify all visible required fields have values
+    - Check form validation state in UI tree
+    - Handle client-side validation errors gracefully
+
+*   **Multi-Step Process Recovery:** For complex workflows:
+    - Save progress checkpoints using `get_window_tree`
+    - Implement rollback strategies for failed steps
+    - Break complex tasks into smaller, verifiable chunks
+
+**Element Role Recognition Patterns:**
+
+Different element roles require different interaction strategies:
+
+*   **`Edit` vs `TextArea`:** Both accept text input, but TextArea typically for longer content
+*   **`Button` vs `Link`:** Both clickable, but buttons often trigger actions, links navigate
+*   **`ComboBox` vs `ListBox`:** ComboBox allows typing + selection, ListBox is selection-only
+*   **`CheckBox` vs `RadioButton`:** CheckBox allows multiple selections, RadioButton is exclusive
+*   **`Document` role:** Indicates page content area - chain selectors from here for web content
+
+**Error Recovery and Debugging:**
+
+When automation fails, follow this diagnostic sequence:
+
+1.  **Selector Failure:** Element not found
+    - Refresh UI tree - element might have moved/changed
+    - Try more generic selectors (role-based instead of name-based)
+    - Check if element is inside a different parent container
+    - Verify application window is active and focused
+
+2.  **Action Failure:** Element found but action fails
+    - Confirm element is enabled and visible using `validate_element`
+    - Try activating the element's window first
+    - Check if element requires focus before interaction
+    - For form fields: clear existing content before typing new content
+
+3.  **Verification Failure:** Action seems to work but doesn't take effect
+    - Wait for UI to update (use `wait_for_element` with conditions)
+    - Check for JavaScript validation or async form processing
+    - Look for error messages or validation hints in UI tree
+    - Retry with slightly different timing or approach
+
 **Example Scenario:**
 1.  User: \"Type hello into Notepad.\"
 2.  AI: Calls `get_applications` -> Finds Notepad, gets `pid`.
@@ -1264,6 +1325,8 @@ You are empowered to make intelligent decisions based on context. Use your under
 
 **Verification Workflow:**
 1. Get UI tree → 2. Act with timeout → 3. Check action response for verification data → 4. If unclear, get UI tree again to confirm state
+
+**CRITICAL DEBUGGING PRINCIPLE:** When any action fails or produces unexpected results, IMMEDIATELY call `get_window_tree` again to understand the current state. The UI may have changed, and fresh context is essential for recovery.
 ",
         current_date_time, current_os, current_working_dir
     )
