@@ -1,0 +1,29 @@
+{
+  "name": "terminator-mcp-agent",
+  "version": "0.5.1",
+  "description": "Cross-platform Model Context Protocol (MCP) agent for Terminator",
+  "bin": {
+    "terminator-mcp-agent": "index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "optionalDependencies": {
+    "terminator-mcp-darwin-arm64": "0.5.1",
+    "terminator-mcp-darwin-x64": "0.5.1",
+    "terminator-mcp-linux-x64-gnu": "0.5.1",
+    "terminator-mcp-win32-x64-msvc": "0.5.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mediar-ai/terminator"
+  },
+  "engines": {
+    "node": ">= 10"
+  },
+  "scripts": {
+    "sync-version": "node sync-version.js",
+    "build": "node ./move-binary.js --release",
+    "build:debug": "node ./move-binary.js --debug"
+  }
+}
