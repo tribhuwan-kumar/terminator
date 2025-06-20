@@ -10,11 +10,15 @@ const generateLinksPath = path.join(__dirname, "generate-links.js");
 // Run generate-links.js and capture output
 const output = execSync(`node ${generateLinksPath}`).toString();
 const lines = output.split(/\r?\n/).filter(Boolean);
-const vscodeUrl = lines[1];
-const insidersUrl = lines[3];
+
+const vscodeUrl = lines[0];
+const insidersUrl = lines[1];
+const cursorUrl = lines[2];
 
 const badgeBlock = `<!-- BADGES:START -->
-[<img src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF" alt="Install in VS Code">](${vscodeUrl}) [<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](${insidersUrl})
+[<img alt="Install in VS Code" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF">](${vscodeUrl})
+[<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](${insidersUrl})
+[<img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20Server&color=22272e">](${cursorUrl})
 <!-- BADGES:END -->`;
 
 let readme = fs.readFileSync(readmePath, "utf8");

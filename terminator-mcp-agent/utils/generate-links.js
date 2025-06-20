@@ -1,20 +1,24 @@
 #!/usr/bin/env node
 
-const config = JSON.stringify({
-  name: "terminator-mcp-agent",
-  command: "npx",
-  args: ["-y", "terminator-mcp-agent"],
-});
+const configObj = {
+  "terminator-mcp-agent": {
+    command: "npx",
+    args: ["-y", "terminator-mcp-agent"],
+  },
+};
 
-// VS Code
-const urlForVSCode = `vscode:mcp/install?${encodeURIComponent(config)}`;
+const configJSON = JSON.stringify(configObj);
+const configBase64 = Buffer.from(configJSON).toString("base64");
+
+const cursorWebUrl = `https://cursor.com/install-mcp?name=terminator-mcp-agent&config=${encodeURIComponent(configBase64)}`;
+
+const urlForVSCode = `vscode:mcp/install?${encodeURIComponent(configJSON)}`;
 const urlForVSCodeGithub = `https://insiders.vscode.dev/redirect?url=${encodeURIComponent(urlForVSCode)}`;
 
-// VS Code Insiders
-const urlForVSCodeInsiders = `vscode-insiders:mcp/install?${encodeURIComponent(config)}`;
+const urlForVSCodeInsiders = `vscode-insiders:mcp/install?${encodeURIComponent(configJSON)}`;
 const urlForVSCodeInsidersGithub = `https://insiders.vscode.dev/redirect?url=${encodeURIComponent(urlForVSCodeInsiders)}`;
 
-console.log("VS Code Install Link:");
+// Just log the raw URLs, in order
 console.log(urlForVSCodeGithub);
-console.log("\nVS Code Insiders Install Link:");
 console.log(urlForVSCodeInsidersGithub);
+console.log(cursorWebUrl);
