@@ -2,6 +2,45 @@
 
 Welcome to Terminator! We appreciate your interest in contributing to this AI-native GUI automation framework. This guide will help you get started with contributing to the project.
 
+## 🚀 Release Management
+
+We use a **cross-platform Rust CLI** for version management. The cleanest commands:
+
+### Quick Release (Most Common)
+```bash
+terminator release                     # Bump patch version + tag + push for CI
+```
+
+### Manual Workflow
+```bash
+terminator status                      # Check current versions
+terminator patch                       # Bump patch version (x.y.Z+1)
+terminator sync                        # Sync all package versions
+terminator tag                         # Tag and push current version
+```
+
+### Installation (Run Once)
+```bash
+cargo install --path terminator-cli   # Install globally to PATH
+```
+
+### CLI Help
+```bash
+terminator --help                      # Show all commands and options
+```
+
+### Alternative Commands (More Verbose)
+```bash
+cargo terminator status               # Same as: terminator status
+cargo run --bin terminator -- status  # Same as: terminator status
+```
+
+### What It Does Automatically
+1. **Version bumping** - Semantic versioning (patch/minor/major)
+2. **Syncs all packages** - Workspace → Node.js bindings → MCP agent → Platform packages  
+3. **Git operations** - Auto-commit, tag creation, push to trigger CI
+4. **Status checking** - See all versions at a glance
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -203,5 +242,116 @@ All contributors will be recognized in our documentation and release notes. Than
 ---
 
 *Need help? Join our [Discord](https://discord.gg/dU9EBuw7Uq) or open an issue!*
+
+## 🚀 Release Management
+
+We use a **cross-platform Rust CLI** for version management. All commands run from the workspace root.
+
+### Quick Release (Most Common)
+```bash
+cargo terminator release                  # Bump patch version + tag + push for CI
+```
+
+### Manual Workflow
+```bash
+cargo terminator status                   # Check current versions
+cargo terminator patch                    # Bump patch version (x.y.Z+1)
+cargo terminator sync                     # Sync all package versions
+cargo terminator tag                      # Tag and push current version
+```
+
+### Alternative (Verbose) Commands
+```bash
+cargo run --bin terminator -- release    # Same as cargo terminator release
+cargo run --bin terminator -- status     # Same as cargo terminator status
+# etc...
+```
+
+### Available Commands
+- `patch` - Bump patch version (x.y.Z+1)
+- `minor` - Bump minor version (x.Y+1.0)  
+- `major` - Bump major version (X+1.0.0)
+- `sync` - Sync all package versions without bumping
+- `status` - Show current version status
+- `tag` - Tag current version and push (triggers CI)
+- `release` - Full release: bump patch + tag + push
+
+### CLI Help
+```bash
+cargo run --bin terminator -- --help     # Show all commands and options
+```
+
+### What It Does Automatically
+1. **Version bumping** - Semantic versioning (patch/minor/major)
+2. **Syncs all packages** - Workspace → Node.js bindings → MCP agent → Platform packages  
+3. **Git operations** - Auto-commit, tag creation, push to trigger CI
+4. **Status checking** - See all versions at a glance
+
+### Version Sync Target
+The tool syncs these package versions:
+- ✅ **Workspace version** (`Cargo.toml`) - Main source of truth
+- ✅ **Node.js bindings** (`bindings/nodejs/package.json`) 
+- ✅ **MCP agent** (`terminator-mcp-agent/package.json`)
+- ✅ **Platform packages** (all `npm/*/package.json` files)
+
+### CI/CD Triggers
+The release tool automatically triggers these workflows:
+- [publish-npm.yml](.github/workflows/publish-npm.yml) - Node.js packages
+- [publish-mcp.yml](.github/workflows/publish-mcp.yml) - MCP agent
+
+## 🛠️ Development Setup
+
+```bash
+# Setup
+cargo check
+
+# Run examples
+cd terminator/examples
+cargo run --example basic
+
+# Run tests
+cargo test
+
+# Format code (required)
+cargo fmt
+
+# Lint (required)
+cargo clippy
+```
+
+## 📝 Code Style
+
+- **Rust**: Follow `cargo fmt` and fix all `cargo clippy` warnings
+- **Documentation**: All public APIs need doc comments with examples
+- **Tests**: Add tests for new functionality
+- **Examples**: Complex features should have usage examples
+
+## 🧪 Testing
+
+Before submitting PRs:
+```bash
+cargo fmt && cargo clippy && cargo test
+```
+
+## 📦 Adding Dependencies
+
+- Use `workspace = true` for shared dependencies in `Cargo.toml`
+- Platform-specific deps should use `#[cfg(target_os = "...")]`
+- Minimize external dependencies and justify additions
+
+## 🎥 PR Requirements
+
+This project values video demos! When submitting changes:
+- Create a screen recording showing your changes (Cap.so, Screen.studio, etc.)
+- All tests must pass
+- Documentation updated if needed
+- Follow the pull request template
+
+## 💡 Why Rust Release Tool?
+✅ **Cross-platform** - Works on Windows, macOS, Linux  
+✅ **No external dependencies** - Just `cargo`  
+✅ **Type-safe** - Rust prevents runtime errors  
+✅ **No shell compatibility issues** - Same syntax everywhere  
+✅ **Fast** - Compiled binary vs interpreted scripts
 
 
