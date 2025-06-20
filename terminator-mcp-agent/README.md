@@ -2,15 +2,7 @@
 
 This directory contains the Model Context Protocol (MCP) agent that allows AI assistants, like Cursor, Claude desktop, VS Code, VS Code Insiders, and Windsurf to interact with your desktop using the Terminator UI automation library.
 
-> **NPM Package Usage**
->
-> This directory is also an npm package! You can install and run the MCP agent via Node.js:
->
-> ```sh
-> npx terminator-mcp-agent --start
-> ```
->
-> The correct binary for your platform will be installed automatically. Supported: Windows (x64), Linux (x64), macOS (x64, arm64).
+
 
 <img width="1512" alt="Screenshot 2025-04-16 at 9 29 42 AM" src="https://github.com/user-attachments/assets/457ebaf2-640c-4f21-a236-fcb2b92748ab" />
 
@@ -102,9 +94,5 @@ You can then use the CLI as above.
 - If you encounter issues, try running with elevated permissions or check the config file paths above.
 
 ---
-
-## License
-
-MIT
 
 
