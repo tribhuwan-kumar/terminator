@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { spawn, execSync, existsSync } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -317,7 +317,7 @@ if (argv.length === 0 || argv.includes("--start")) {
     }
   }
 
-  const child = spawn(binary, [], { stdio: ["pipe", "pipe", "inherit"] });
+  const child = spawn(binary, [], { stdio: ["pipe", "pipe", "pipe"], shell: true });
 
   process.stdin.pipe(child.stdin);
   child.stdout.pipe(process.stdout);
