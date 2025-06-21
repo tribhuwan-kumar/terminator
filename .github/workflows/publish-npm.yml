@@ -16,12 +16,12 @@ jobs:
               cd bindings/nodejs
               npm run build  
               cp terminator.win32-x64-msvc.node npm/win32-x64-msvc/
-          # - host: ubuntu-latest
-          #   target: x86_64-unknown-linux-gnu
-          #   build: |
-          #     cd bindings/nodejs
-          #     npm run build
-          #     cp terminator.linux-x64-gnu.node npm/linux-x64-gnu/
+          - host: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            build: |
+              cd bindings/nodejs
+              npm run build
+              cp terminator.linux-x64-gnu.node npm/linux-x64-gnu/
           - host: macos-latest
             target: x86_64-apple-darwin
             build: |
@@ -40,6 +40,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: matrix.settings.host == 'ubuntu-22.04'
+        run: bash scripts/install_linux_deps.sh
       - name: Setup node
         uses: actions/setup-node@v4
         with:
