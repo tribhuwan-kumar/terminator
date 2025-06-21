@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euxo pipefail
 
+# fix: unable to compile libspa, related issue: https://github.com/pop-os/cosmic-epoch/issues/280
+sudo add-apt-repository ppa:pipewire-debian/pipewire-upstream
+
+# Disable interactive prompts (e.g. tzdata)
+export DEBIAN_FRONTEND=noninteractive
+
 # Install all required system dependencies for Linux build (from .devcontainer/Dockerfile)
 sudo apt-get update
 sudo apt-get install -y \
