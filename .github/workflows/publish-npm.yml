@@ -16,6 +16,12 @@ jobs:
               cd bindings/nodejs
               npm run build  
               cp terminator.win32-x64-msvc.node npm/win32-x64-msvc/
+          - host: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            build: |
+              cd bindings/nodejs
+              npm run build
+              cp terminator.win32-arm64-msvc.node npm/win32-arm64-msvc/
           - host: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             build: |
@@ -43,7 +49,16 @@ jobs:
       - name: Install Linux dependencies
         if: matrix.settings.host == 'ubuntu-22.04'
         run: bash scripts/install_linux_deps.sh
-      - name: Setup node
+
+      - name: Setup node (Windows ARM64)
+        if: matrix.settings.host == 'windows-11-arm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup node (default)
+        if: matrix.settings.host != 'windows-11-arm'
         uses: actions/setup-node@v4
         with:
           node-version: 18
