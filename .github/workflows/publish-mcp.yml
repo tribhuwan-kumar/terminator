@@ -21,12 +21,12 @@ jobs:
             bin_name: terminator-mcp-agent
             npm_dir: linux-x64-gnu
 
-          - host: macos-latest
+          - host: macos-13
             target: x86_64-apple-darwin
             bin_name: terminator-mcp-agent
             npm_dir: darwin-x64
 
-          - host: macos-latest
+          - host: macos-14
             target: aarch64-apple-darwin
             bin_name: terminator-mcp-agent
             npm_dir: darwin-arm64
@@ -69,6 +69,12 @@ jobs:
           npm install
           npm run build
 
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.settings.npm_dir }}-binary
+          path: terminator-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}
+
   publish:
     name: Publish MCP NPM packages
     runs-on: ubuntu-latest
@@ -81,6 +87,22 @@ jobs:
         with:
           node-version: 18
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Move binaries to package locations
+        run: |
+          for dir in artifacts/*; do
+            if [ -f "$dir"/* ]; then
+              platform=$(echo $(basename "$dir") | sed 's/-binary//')
+              binary=$(ls "$dir")
+              echo "Moving $binary to terminator-mcp-agent/npm/$platform/"
+              mv "$dir"/* "terminator-mcp-agent/npm/$platform/"
+            fi
+          done
 
       - name: Publish platform packages
         run: |
