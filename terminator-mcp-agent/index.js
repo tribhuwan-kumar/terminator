@@ -308,9 +308,7 @@ if (argv.length === 0 || argv.includes("--start")) {
   } else {
     // 2. Try installed npm package
     try {
-      const pkgPath = require.resolve(`${pkg}/package.json`);
-      const binDir = path.dirname(pkgPath);
-      binary = path.join(binDir, bin);
+      binary = require.resolve(pkg);
     } catch (e) {
       console.error(`Failed to find platform binary: ${pkg}`);
       process.exit(1);
