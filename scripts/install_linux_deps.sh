@@ -22,6 +22,8 @@ sudo apt-get install -y \
     libudev-dev \
     libdbus-1-dev \
     libssl-dev \
+    libxi-dev \
+    libxtst-dev \
     libpipewire-0.3-dev \
     libclang-dev \
     clang \
