@@ -519,6 +519,8 @@ pub enum TextInputMethod {
     Pasted,
     /// Text was likely auto-filled or auto-completed
     AutoFilled,
+    /// Text was selected from autocomplete/suggestion dropdown
+    Suggestion,
     /// Mixed input methods
     Mixed,
 }

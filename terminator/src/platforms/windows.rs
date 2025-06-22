@@ -37,9 +37,7 @@ use windows::Win32::UI::Shell::{
     ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_NOASYNC,
     SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW, ShellExecuteW,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowThreadProcessId, SW_SHOWNORMAL,
-};
+use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 
 // Define a default timeout duration
@@ -449,34 +447,57 @@ impl AccessibilityEngine for WindowsEngine {
                 let window_name = e.get_name().unwrap_or_default();
                 let window_name_lower = window_name.to_lowercase();
 
-                // Simple browser matching logic
+                // Enhanced browser matching logic with better detection
                 let matches = match search_name_lower.as_str() {
-                    "chrome" => window_name_lower.contains("chrome"),
+                    "chrome" => {
+                        window_name_lower.contains("chrome")
+                            || window_name_lower.contains("google chrome")
+                            || (window_name_lower.contains("google")
+                                && window_name_lower.contains("browser"))
+                    }
                     "firefox" => {
                         window_name_lower.contains("firefox")
                             || window_name_lower.contains("mozilla")
+                            || window_name_lower.contains("mozilla firefox")
                     }
                     "msedge" | "edge" => {
-                        // Edge is tricky - check window title or process name
+                        // Enhanced Edge detection
                         if window_name_lower.contains("edge")
+                            || window_name_lower.contains("microsoft edge")
                             || window_name_lower.contains("microsoft")
                         {
                             true
                         } else if let Ok(pid) = e.get_process_id() {
                             get_process_name_by_pid(pid as i32)
-                                .map(|p| p.to_lowercase() == "msedge")
+                                .map(|p| {
+                                    let proc_name = p.to_lowercase();
+                                    proc_name == "msedge" || proc_name == "edge"
+                                })
                                 .unwrap_or(false)
                         } else {
                             false
                         }
                     }
-                    "brave" => window_name_lower.contains("brave"),
-                    "opera" => window_name_lower.contains("opera"),
-                    "vivaldi" => window_name_lower.contains("vivaldi"),
-                    "arc" => window_name_lower.contains("arc"),
+                    "brave" => {
+                        window_name_lower.contains("brave")
+                            || window_name_lower.contains("brave browser")
+                    }
+                    "opera" => {
+                        window_name_lower.contains("opera")
+                            || window_name_lower.contains("opera browser")
+                    }
+                    "vivaldi" => {
+                        window_name_lower.contains("vivaldi")
+                            || window_name_lower.contains("vivaldi browser")
+                    }
+                    "arc" => {
+                        window_name_lower.contains("arc")
+                            || window_name_lower.contains("arc browser")
+                    }
                     _ => {
-                        // For non-browsers, simple contains check
+                        // For non-browsers, use more flexible matching
                         window_name_lower.contains(&search_name_lower)
+                            || search_name_lower.contains(&window_name_lower)
                     }
                 };
                 Ok(matches)
@@ -1264,14 +1285,18 @@ impl AccessibilityEngine for WindowsEngine {
             )));
         }
 
-        // Poll for the browser window to appear instead of fixed sleep
+        // Enhanced polling for browser window with better reliability
         let start_time = std::time::Instant::now();
-        let timeout = std::time::Duration::from_millis(5000); // 5 second total timeout
-        let poll_interval = std::time::Duration::from_millis(100); // Check every 100ms
+        let timeout = std::time::Duration::from_millis(10000); // Increased to 10 seconds
+        let initial_poll_interval = std::time::Duration::from_millis(500); // Start with longer interval
+        let fast_poll_interval = std::time::Duration::from_millis(100); // Faster polling after initial delay
+
+        // Give browser more time to start up initially
+        std::thread::sleep(std::time::Duration::from_millis(1000));
 
         if browser_search_name.is_empty() {
-            // For default browser, poll for foreground window change
-            let initial_hwnd = unsafe { GetForegroundWindow() };
+            // For default browser, use a more robust approach
+            info!("Polling for default browser window to appear");
 
             loop {
                 if start_time.elapsed() > timeout {
@@ -1280,58 +1305,106 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                let current_hwnd = unsafe { GetForegroundWindow() };
+                // Try to find any browser process that appeared recently
+                let browser_apps: Vec<_> = KNOWN_BROWSER_PROCESS_NAMES
+                    .iter()
+                    .filter_map(|&browser_name| self.get_application_by_name(browser_name).ok())
+                    .collect();
 
-                // Check if foreground window changed
-                if current_hwnd != initial_hwnd && !current_hwnd.0.is_null() {
-                    let mut pid = 0;
-                    unsafe { GetWindowThreadProcessId(current_hwnd, Some(&mut pid)) };
-
-                    if pid != 0 {
-                        // Try to get the application element
-                        match self.get_application_by_pid(pid as i32, None) {
-                            Ok(app) => return Ok(app),
-                            Err(_) => {
-                                // Window might not be fully initialized yet, continue polling
-                            }
-                        }
-                    }
+                if !browser_apps.is_empty() {
+                    // Return the first browser we find
+                    info!("Found browser application via process enumeration");
+                    return Ok(browser_apps.into_iter().next().unwrap());
                 }
+
+                // Use adaptive polling - slower initially, then faster
+                let poll_interval = if start_time.elapsed() < std::time::Duration::from_millis(2000)
+                {
+                    initial_poll_interval
+                } else {
+                    fast_poll_interval
+                };
 
                 std::thread::sleep(poll_interval);
             }
         } else {
-            // For specific browser, poll for the application by name
+            // For specific browser, poll with more patience and better error handling
+            info!("Polling for {} browser to appear", browser_search_name);
+
             loop {
                 if start_time.elapsed() > timeout {
+                    // Before giving up, try a broader search
+                    for &fallback_name in KNOWN_BROWSER_PROCESS_NAMES {
+                        if fallback_name.contains(browser_search_name)
+                            || browser_search_name.contains(fallback_name)
+                        {
+                            if let Ok(app) = self.get_application_by_name(fallback_name) {
+                                info!("Found browser using fallback name: {}", fallback_name);
+                                return Ok(app);
+                            }
+                        }
+                    }
+
                     return Err(AutomationError::ElementNotFound(format!(
-                        "Timeout waiting for {} browser to open",
-                        browser_search_name
+                        "Timeout waiting for {} browser to open. Available browsers: {:?}",
+                        browser_search_name,
+                        KNOWN_BROWSER_PROCESS_NAMES
+                            .iter()
+                            .filter_map(|&name| self
+                                .get_application_by_name(name)
+                                .ok()
+                                .map(|_| name))
+                            .collect::<Vec<_>>()
                     )));
                 }
 
-                // Try to find the browser window
+                // Try to find the browser window with better error handling
                 match self.get_application_by_name(browser_search_name) {
                     Ok(app) => {
-                        // Verify it's actually ready by checking if it has a valid window
-                        if app.window().is_ok() {
-                            debug!("Found {} browser window, returning", browser_search_name);
+                        // Check if the app is actually usable
+                        match app.window() {
+                            Ok(Some(_)) => {
+                                info!("Found and verified {} browser window", browser_search_name);
+                                return Ok(app);
+                            }
+                            Ok(None) => {
+                                debug!(
+                                    "{} app found but no window detected, continuing",
+                                    browser_search_name
+                                );
+                            }
+                            Err(_) => {
+                                debug!(
+                                    "{} app found but window check failed, continuing",
+                                    browser_search_name
+                                );
+                            }
+                        }
+
+                        // Even if window check fails, try to use the app if it's been a while
+                        if start_time.elapsed() > std::time::Duration::from_millis(3000) {
+                            info!(
+                                "Using {} browser app despite window check issues",
+                                browser_search_name
+                            );
                             return Ok(app);
                         }
-                        // Window exists but might not be fully ready, continue polling
-                        debug!(
-                            "{} window found but not ready yet, continuing poll",
-                            browser_search_name
-                        );
                     }
                     Err(e) => {
-                        // Browser not found yet, continue polling
                         debug!(
                             "{} browser not found yet: {}, continuing poll",
                             browser_search_name, e
                         );
                     }
                 }
+
+                // Use adaptive polling
+                let poll_interval = if start_time.elapsed() < std::time::Duration::from_millis(2000)
+                {
+                    initial_poll_interval
+                } else {
+                    fast_poll_interval
+                };
 
                 std::thread::sleep(poll_interval);
             }

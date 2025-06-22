@@ -301,6 +301,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         terminator_workflow_recorder::TextInputMethod::AutoFilled => {
                             "🤖 Auto-filled"
                         }
+                        terminator_workflow_recorder::TextInputMethod::Suggestion => {
+                            "💡 Suggestion"
+                        }
                         terminator_workflow_recorder::TextInputMethod::Mixed => "🔀 Mixed",
                     };
                     println!("     └─ Method: {}", method_icon);

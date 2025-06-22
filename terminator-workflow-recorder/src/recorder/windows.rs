@@ -26,6 +26,202 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
 };
 
+/// Text input tracking state
+#[derive(Debug, Clone)]
+struct TextInputTracker {
+    /// The UI element being tracked
+    element: UIElement,
+    /// When tracking started
+    start_time: Instant,
+    /// Number of typing keystrokes (excludes navigation keys)
+    keystroke_count: u32,
+    /// Initial text value when tracking started (unused in current implementation)
+    #[allow(dead_code)]
+    initial_text: String,
+    /// Whether we've detected any actual typing
+    has_typing_activity: bool,
+    /// Whether we're in the middle of autocomplete navigation (arrow keys active)
+    in_autocomplete_navigation: bool,
+    /// Last time we detected autocomplete navigation activity
+    last_autocomplete_activity: Instant,
+    /// Text value before autocomplete selection (for change detection)
+    text_before_autocomplete: Option<String>,
+}
+
+impl TextInputTracker {
+    fn new(element: UIElement) -> Self {
+        // Don't try to get initial text to avoid potential access violations
+        Self {
+            element,
+            start_time: Instant::now(),
+            keystroke_count: 0,
+            initial_text: String::new(), // Keep empty to avoid element access issues
+            has_typing_activity: false,
+            in_autocomplete_navigation: false,
+            last_autocomplete_activity: Instant::now(),
+            text_before_autocomplete: None,
+        }
+    }
+
+    fn add_keystroke(&mut self, key_code: u32) {
+        // Check for autocomplete navigation keys (arrow keys, escape)
+        if Self::is_autocomplete_navigation_key(key_code) {
+            self.in_autocomplete_navigation = true;
+            self.last_autocomplete_activity = Instant::now();
+            debug!(
+                "🔽 Autocomplete navigation detected: key {} (Arrow/Escape)",
+                key_code
+            );
+
+            // Capture current text value before potential autocomplete selection
+            if self.text_before_autocomplete.is_none() {
+                self.text_before_autocomplete = Self::get_element_text_value_safe(&self.element);
+                debug!(
+                    "📝 Captured text before autocomplete: {:?}",
+                    self.text_before_autocomplete
+                );
+            }
+            return;
+        }
+
+        // Only count actual typing keys, not navigation/modifier keys
+        if Self::is_typing_key(key_code) {
+            self.keystroke_count += 1;
+            self.has_typing_activity = true;
+            // Reset autocomplete state on new typing
+            self.in_autocomplete_navigation = false;
+        }
+    }
+
+    fn is_autocomplete_navigation_key(key_code: u32) -> bool {
+        matches!(
+            key_code,
+            0x26 |  // Up arrow
+            0x28 |  // Down arrow  
+            0x25 |  // Left arrow (less common in autocomplete but possible)
+            0x27 |  // Right arrow (less common in autocomplete but possible)
+            0x1B // Escape (cancel autocomplete)
+        )
+    }
+
+    fn is_typing_key(key_code: u32) -> bool {
+        // Letters, numbers, space, punctuation - actual content input
+        matches!(key_code,
+            0x30..=0x39 |  // Numbers 0-9
+            0x41..=0x5A |  // Letters A-Z
+            0x20 |         // Space
+            0x08 |         // Backspace
+            0x2E |         // Delete
+            // Common punctuation and symbols
+            0xBA..=0xC0 |  // ;=,-./`
+            0xDB..=0xDE    // [\]'
+        )
+    }
+
+    fn handle_enter_key(&mut self) -> bool {
+        // If we're in autocomplete navigation, Enter likely selects a suggestion
+        if self.in_autocomplete_navigation {
+            let time_since_nav = self.last_autocomplete_activity.elapsed();
+            if time_since_nav < Duration::from_millis(5000) {
+                // 5 second window
+                debug!("🔥 Enter pressed during autocomplete navigation - suggestion selection detected!");
+                self.has_typing_activity = true;
+                self.keystroke_count += 1; // Count as one interaction
+                self.in_autocomplete_navigation = false; // Reset state
+                return true; // Indicates this is a suggestion selection
+            }
+        }
+        false
+    }
+
+    fn should_emit_completion(&self, reason: &str) -> bool {
+        // For trigger keys (Enter/Tab), require both activity and keystrokes
+        if reason == "trigger_key" || reason == "suggestion_enter" {
+            return self.has_typing_activity && self.keystroke_count > 0;
+        }
+
+        // For focus changes, be more lenient - emit if there was any activity
+        if reason == "focus_change" {
+            return self.has_typing_activity || self.keystroke_count > 0;
+        }
+
+        // For suggestion clicks, check if we have activity
+        if reason == "suggestion_click" {
+            return self.has_typing_activity || self.keystroke_count > 0;
+        }
+
+        // Default: require activity
+        self.has_typing_activity && self.keystroke_count > 0
+    }
+
+    #[allow(dead_code)]
+    fn text_changed(&self) -> bool {
+        // Always return false to avoid accessing element properties
+        // We'll rely on keystroke counting instead
+        false
+    }
+
+    fn get_completion_event(
+        &self,
+        input_method: Option<crate::TextInputMethod>,
+    ) -> Option<crate::TextInputCompletedEvent> {
+        // Only proceed if we have typing activity
+        if !self.has_typing_activity && self.keystroke_count == 0 {
+            debug!("❌ No typing activity or keystrokes");
+            return None;
+        }
+
+        let typing_duration_ms = self.start_time.elapsed().as_millis() as u64;
+
+        // Use safe fallbacks for element properties
+        let field_name = self.element.name();
+        let field_type = self.element.role();
+
+        // Try to get actual text value from the element
+        let text_value = match Self::get_element_text_value_safe(&self.element) {
+            Some(actual_text) if !actual_text.trim().is_empty() => {
+                debug!("✅ Got actual text value: '{}'", actual_text);
+                actual_text
+            }
+            Some(empty_text) => {
+                debug!(
+                    "⚠️ Got empty text value: '{}', using placeholder",
+                    empty_text
+                );
+                format!(
+                    "(text input completed, {} keystrokes)",
+                    self.keystroke_count
+                )
+            }
+            None => {
+                debug!("⚠️ Could not get text value, using placeholder");
+                format!(
+                    "(text input completed, {} keystrokes)",
+                    self.keystroke_count
+                )
+            }
+        };
+
+        // Determine input method
+        let final_input_method = input_method.unwrap_or(crate::TextInputMethod::Typed);
+
+        Some(crate::TextInputCompletedEvent {
+            text_value,
+            field_name,
+            field_type,
+            input_method: final_input_method,
+            typing_duration_ms,
+            keystroke_count: self.keystroke_count,
+            metadata: EventMetadata::with_ui_element_and_timestamp(Some(self.element.clone())),
+        })
+    }
+
+    // Safe wrapper for getting element text value
+    fn get_element_text_value_safe(element: &UIElement) -> Option<String> {
+        WindowsRecorder::get_element_text_value(element)
+    }
+}
+
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
     /// The event sender
@@ -67,8 +263,8 @@ pub struct WindowsRecorder {
     /// Event counter for rate limiting
     events_this_second: Arc<Mutex<(u32, std::time::Instant)>>,
 
-    /// Currently focused text input element tracking
-    current_text_input: Arc<Mutex<Option<(UIElement, Instant)>>>,
+    /// Currently focused text input element tracking with keystroke counting
+    current_text_input: Arc<Mutex<Option<TextInputTracker>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -377,6 +573,7 @@ impl WindowsRecorder {
         let config = self.config.clone();
         let performance_last_event_time = Arc::clone(&self.last_event_time);
         let performance_events_counter = Arc::clone(&self.events_this_second);
+        let current_text_input = Arc::clone(&self.current_text_input);
 
         thread::spawn(move || {
             let track_modifiers = config.track_modifier_states;
@@ -409,6 +606,96 @@ impl WindowsRecorder {
                     EventType::KeyPress(key) => {
                         let key_code = key_to_u32(&key);
                         active_keys.insert(key_code, true);
+
+                        // Track keystrokes for text input completion
+                        if config.record_text_input_completion {
+                            if let Ok(mut tracker) = current_text_input.try_lock() {
+                                if let Some(ref mut text_input) = tracker.as_mut() {
+                                    text_input.add_keystroke(key_code);
+                                    debug!(
+                                        "📝 Added keystroke {} to text input tracking (total: {}) for element: '{}'",
+                                        key_code, text_input.keystroke_count, text_input.element.name_or_empty()
+                                    );
+
+                                    // Check for completion trigger keys (Enter, Tab)
+                                    if key_code == 0x0D || key_code == 0x09 {
+                                        // Handle Enter key specially for autocomplete detection
+                                        let is_suggestion_enter = if key_code == 0x0D {
+                                            text_input.handle_enter_key()
+                                        } else {
+                                            false
+                                        };
+
+                                        let completion_reason = if is_suggestion_enter {
+                                            "suggestion_enter"
+                                        } else {
+                                            "trigger_key"
+                                        };
+
+                                        debug!(
+                                            "🔑 Trigger key detected: {} (Enter=13, Tab=9), suggestion_enter: {}",
+                                            key_code, is_suggestion_enter
+                                        );
+
+                                        if text_input.should_emit_completion(completion_reason) {
+                                            debug!(
+                                                "✅ Should emit completion for {}",
+                                                completion_reason
+                                            );
+
+                                            let input_method = if is_suggestion_enter {
+                                                Some(crate::TextInputMethod::Suggestion)
+                                            } else {
+                                                None
+                                            };
+
+                                            if let Some(text_event) =
+                                                text_input.get_completion_event(input_method)
+                                            {
+                                                debug!("🔥 Emitting text input completion for {}: '{}'", completion_reason, text_event.text_value);
+                                                let _ = event_tx.send(
+                                                    WorkflowEvent::TextInputCompleted(text_event),
+                                                );
+                                                // Reset the tracker after emitting
+                                                if let Some(element) =
+                                                    &tracker.as_ref().map(|t| t.element.clone())
+                                                {
+                                                    *tracker = Some(TextInputTracker::new(
+                                                        element.clone(),
+                                                    ));
+                                                    debug!("🔄 Reset text input tracker after completion");
+                                                }
+                                            } else {
+                                                debug!(
+                                                    "❌ get_completion_event returned None for {}",
+                                                    completion_reason
+                                                );
+                                            }
+                                        } else {
+                                            debug!(
+                                                "❌ Should NOT emit completion for {}",
+                                                completion_reason
+                                            );
+                                        }
+                                    }
+                                } else {
+                                    debug!(
+                                        "❌ No text input currently being tracked for keystroke {} (char: {:?})",
+                                        key_code,
+                                        if (32..=126).contains(&key_code) {
+                                            Some(key_code as u8 as char)
+                                        } else {
+                                            None
+                                        }
+                                    );
+                                }
+                            } else {
+                                debug!(
+                                    "❌ Could not lock text input tracker for keystroke {}",
+                                    key_code
+                                );
+                            }
+                        }
 
                         // Update modifier states
                         if track_modifiers {
@@ -546,7 +833,242 @@ impl WindowsRecorder {
                                 }
                             }
 
-                            // No need to store pending clicks - we'll use focus events
+                            // Check if this is a click on a clickable element and emit button event immediately
+                            if let Some(ref element) = ui_element {
+                                if mouse_button == MouseButton::Left {
+                                    let element_role = element.role().to_lowercase();
+                                    let element_name = element.name_or_empty();
+
+                                    // Debug: Log all mouse clicks on elements for debugging
+                                    debug!("🖱️ Mouse click on element: '{}' (role: '{}') - checking if text input...", element_name, element_role);
+
+                                    // Check if this is a click on a text input element and start tracking
+                                    let is_text_input = Self::is_text_input_element(element);
+                                    debug!(
+                                        "🔍 is_text_input_element('{}', '{}') = {}",
+                                        element_name, element_role, is_text_input
+                                    );
+
+                                    if config.record_text_input_completion && is_text_input {
+                                        debug!("🎯 Detected mouse click on text input element: '{}' (role: '{}') - STARTING TRACKING", element_name, element_role);
+
+                                        // Use centralized text input tracking logic
+                                        Self::handle_text_input_transition(
+                                            &current_text_input,
+                                            &event_tx,
+                                            &Some(element.clone()),
+                                            "mouse_click",
+                                            &config,
+                                        );
+                                    }
+
+                                    // Enhanced autocomplete/suggestion detection
+                                    let is_suggestion_click = element_role.contains("listitem")
+                                        || element_role.contains("menuitem")
+                                        || element_role.contains("option")
+                                        || element_role.contains("comboboxitem")
+                                        || element_role.contains("item")  // Generic item roles
+                                        || element_role.contains("cell")  // Grid/table cells in dropdowns
+                                        || element_role == "text"  // Plain text elements in dropdowns
+                                        || element_name.to_lowercase().contains("suggestion")
+                                        || element_name.to_lowercase().contains("complete")
+                                        || element_name.to_lowercase().contains("autocomplete")
+                                        || element_name.to_lowercase().contains("dropdown")
+                                        // Common autocomplete patterns
+                                        || (element_role == "pane" && !element_name.is_empty())
+                                        || (element_role == "document" && element_name.len() < 100); // Short text in documents could be suggestions
+
+                                    // Debug logging for suggestion detection
+                                    debug!("🔍 Checking suggestion click: element='{}', role='{}', is_suggestion={}, config_enabled={}", 
+                                           element_name, element_role, is_suggestion_click, config.record_text_input_completion);
+
+                                    if is_suggestion_click && config.record_text_input_completion {
+                                        debug!("🎯 Detected potential autocomplete/suggestion click: '{}' (role: '{}') - SUGGESTION SELECTED", element_name, element_role);
+
+                                        // Check if we have an active text input tracker that might be affected
+                                        if let Ok(mut tracker) = current_text_input.try_lock() {
+                                            debug!("🔒 Successfully locked text input tracker, checking for active tracker...");
+                                            if let Some(ref mut text_input) = tracker.as_mut() {
+                                                debug!("✅ Found active text input tracker for element: '{}'", text_input.element.name_or_empty());
+                                                // Mark as having activity (suggestion selection counts as significant input)
+                                                text_input.has_typing_activity = true;
+                                                text_input.keystroke_count += 1; // Count suggestion click as one interaction
+
+                                                debug!("📝 Marking text input as having suggestion selection activity (total keystrokes: {})", text_input.keystroke_count);
+
+                                                // Give the UI time to update after suggestion click
+                                                std::thread::sleep(
+                                                    std::time::Duration::from_millis(150),
+                                                );
+
+                                                // Emit suggestion completion with updated text value
+                                                if text_input
+                                                    .should_emit_completion("suggestion_click")
+                                                {
+                                                    let completion_time = Instant::now();
+                                                    let typing_duration = completion_time
+                                                        .duration_since(text_input.start_time);
+
+                                                    // Use the name of the clicked suggestion element as the final text.
+                                                    let suggested_text = element_name.clone();
+
+                                                    let text_event =
+                                                        crate::TextInputCompletedEvent {
+                                                            text_value: suggested_text,
+                                                            field_name: text_input.element.name(),
+                                                            field_type: text_input
+                                                                .element
+                                                                .role()
+                                                                .to_string(),
+                                                            keystroke_count: text_input
+                                                                .keystroke_count,
+                                                            typing_duration_ms: typing_duration
+                                                                .as_millis()
+                                                                as u64,
+                                                            input_method: crate::TextInputMethod::
+                                                                Suggestion,
+                                                            metadata: EventMetadata::
+                                                                with_ui_element_and_timestamp(
+                                                                Some(text_input.element.clone()),
+                                                            ),
+                                                        };
+
+                                                    debug!("🔥 Emitting text input completion for suggestion click: '{}'", text_event.text_value);
+                                                    if let Err(e) = event_tx.send(
+                                                        WorkflowEvent::TextInputCompleted(
+                                                            text_event,
+                                                        ),
+                                                    ) {
+                                                        debug!("Failed to send text input completion event: {}", e);
+                                                    } else {
+                                                        debug!("✅ Text input completion event sent successfully for suggestion");
+                                                    }
+
+                                                    // Reset tracker after emitting - clear but keep the element for potential continued typing
+                                                    let element_for_continuation =
+                                                        text_input.element.clone();
+                                                    *tracker = Some(TextInputTracker::new(
+                                                        element_for_continuation,
+                                                    ));
+                                                    debug!("🔄 Reset text input tracker after suggestion completion but keep tracking the same element");
+                                                } else {
+                                                    debug!("❌ Should not emit completion for suggestion click");
+                                                }
+                                            } else {
+                                                debug!("⚠️ Suggestion click detected but no active text input tracker found");
+                                                debug!("💡 Attempting to create temporary tracker for suggestion completion...");
+
+                                                // Try to find the text input element that was recently active
+                                                // Look for text input elements on the page
+                                                if let Some(automation) = automation.as_ref() {
+                                                    if let Some(text_element) =
+                                                        Self::find_recent_text_input(automation)
+                                                    {
+                                                        debug!("🔍 Found recent text input element: '{}'", text_element.name_or_empty());
+
+                                                        // Create a temporary tracker for this suggestion completion
+                                                        let temp_tracker = TextInputTracker::new(
+                                                            text_element.clone(),
+                                                        );
+
+                                                        // Give the UI time to update after suggestion click
+                                                        std::thread::sleep(
+                                                            std::time::Duration::from_millis(150),
+                                                        );
+
+                                                        let completion_time = Instant::now();
+                                                        let typing_duration = completion_time
+                                                            .duration_since(
+                                                                temp_tracker.start_time,
+                                                            );
+                                                        let suggested_text = element_name.clone();
+
+                                                        let text_event = crate::TextInputCompletedEvent {
+                                                            text_value: suggested_text,
+                                                            field_name: temp_tracker.element.name(),
+                                                            field_type: temp_tracker.element.role().to_string(),
+                                                            keystroke_count: 1, // just the click
+                                                            typing_duration_ms: typing_duration.as_millis() as u64,
+                                                            input_method: crate::TextInputMethod::Suggestion,
+                                                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(temp_tracker.element.clone())),
+                                                        };
+
+                                                        debug!("🔥 Emitting text input completion from temp tracker: '{}'", text_event.text_value);
+                                                        if let Err(e) = event_tx.send(
+                                                            WorkflowEvent::TextInputCompleted(
+                                                                text_event,
+                                                            ),
+                                                        ) {
+                                                            debug!("Failed to send temp tracker completion event: {}", e);
+                                                        } else {
+                                                            debug!("✅ Temp tracker completion event sent successfully");
+                                                        }
+
+                                                        // Create new tracker for potential continued typing
+                                                        *tracker = Some(TextInputTracker::new(
+                                                            text_element,
+                                                        ));
+                                                        debug!("🔄 Created new tracker after temp completion");
+                                                    } else {
+                                                        debug!("❌ Could not find recent text input element for suggestion completion");
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            debug!("❌ Could not lock text input tracker for suggestion click");
+                                        }
+                                    }
+
+                                    let is_clickable = element_role.contains("button")
+                                        || element_role.contains("menuitem")
+                                        || element_role.contains("listitem")
+                                        || element_role.contains("hyperlink")
+                                        || element_role.contains("link")
+                                        || element_role.contains("checkbox")
+                                        || element_role.contains("radiobutton")
+                                        || element_role.contains("togglebutton");
+
+                                    if is_clickable {
+                                        debug!(
+                                            "🖱️ Mouse click on clickable element: '{}' (role: '{}')",
+                                            element_name, element_role
+                                        );
+
+                                        let element_desc =
+                                            element.attributes().description.unwrap_or_default();
+                                        let interaction_type =
+                                            Self::determine_button_interaction_type(
+                                                &element_name,
+                                                &element_desc,
+                                                &element_role,
+                                            );
+
+                                        let button_event = ButtonClickEvent {
+                                            button_text: element_name,
+                                            interaction_type,
+                                            button_role: element_role.clone(),
+                                            was_enabled: element.is_enabled().unwrap_or(true),
+                                            click_position: Some(Position { x, y }),
+                                            button_description: if element_desc.is_empty() {
+                                                None
+                                            } else {
+                                                Some(element_desc)
+                                            },
+                                            metadata: EventMetadata::with_ui_element_and_timestamp(
+                                                Some(element.clone()),
+                                            ),
+                                        };
+
+                                        if let Err(e) =
+                                            event_tx.send(WorkflowEvent::ButtonClick(button_event))
+                                        {
+                                            debug!("Failed to send button click event: {}", e);
+                                        } else {
+                                            debug!("✅ Button click event sent successfully");
+                                        }
+                                    }
+                                }
+                            }
 
                             let mouse_event = MouseEvent {
                                 event_type: MouseEventType::Down,
@@ -858,7 +1380,7 @@ impl WindowsRecorder {
         &self,
         current_application: Arc<Mutex<Option<ApplicationState>>>,
         browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
-        current_text_input: Arc<Mutex<Option<(UIElement, Instant)>>>,
+        current_text_input: Arc<Mutex<Option<TextInputTracker>>>,
         handle: tokio::runtime::Handle,
     ) -> Result<()> {
         let event_tx = self.event_tx.clone();
@@ -1242,6 +1764,11 @@ impl WindowsRecorder {
         let desc_lower = description.to_lowercase();
         let role_lower = role.to_lowercase();
 
+        // Check for hyperlinks/links first
+        if role_lower.contains("hyperlink") || role_lower.contains("link") {
+            return ButtonInteractionType::Click; // Hyperlinks are just clicks
+        }
+
         // Check for dropdown indicators
         if name_lower.contains("dropdown")
             || name_lower.contains("▼")
@@ -1272,8 +1799,10 @@ impl WindowsRecorder {
             return ButtonInteractionType::Cancel;
         }
 
-        // Check for toggle buttons
+        // Check for toggle elements
         if role_lower.contains("toggle")
+            || role_lower.contains("checkbox")
+            || role_lower.contains("radiobutton")
             || name_lower.contains("toggle")
             || desc_lower.contains("toggle")
         {
@@ -1338,15 +1867,15 @@ impl WindowsRecorder {
                     // Filter key-down events and non-printable keys
                     if keyboard_event.is_key_down {
                         // Keep printable characters (32-126) and common editing keys
-                        !(keyboard_event.key_code >= 32 && keyboard_event.key_code <= 126)
-                            && !matches!(
+                        !((keyboard_event.key_code >= 32 && keyboard_event.key_code <= 126)
+                            || matches!(
                                 keyboard_event.key_code,
                                 0x08 | // Backspace
                             0x2E | // Delete
                             0x20 | // Space  
                             0x0D | // Enter
                             0x09 // Tab
-                            )
+                            ))
                     } else {
                         false
                     }
@@ -1381,27 +1910,79 @@ impl WindowsRecorder {
 
         if let Some(element) = ui_element {
             let app_name = element.application_name();
+            let app_name_lower = app_name.to_lowercase();
 
             let is_browser = {
                 let tracker_guard = tracker.lock().unwrap();
                 tracker_guard
                     .known_browsers
                     .iter()
-                    .any(|b| app_name.to_lowercase().contains(b))
+                    .any(|b| app_name_lower.contains(b))
             };
+
+            debug!(
+                "Checking browser navigation for app: '{}', is_browser: {}",
+                app_name, is_browser
+            );
 
             if !is_browser {
                 return;
             }
 
-            if let Some(url) = element.url() {
-                let new_title = &app_name; // not sure app name is window title
-                let new_url = url;
+            // Try multiple methods to get URL information
+            let url_info = element
+                .url()
+                .or_else(|| {
+                    // Try to get URL from element attributes or text
+                    if let Ok(text) = element.text(0) {
+                        if text.starts_with("http") {
+                            Some(text)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| {
+                    // Try to extract URL from window title (common in browsers)
+                    let window_title = element.window_title();
+                    if window_title.contains("http") {
+                        // Extract URL from title
+                        window_title
+                            .split_whitespace()
+                            .find(|s| s.starts_with("http"))
+                            .map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                });
+
+            if let Some(new_url) = url_info {
+                // Use window title as page title, fallback to app name
+                let new_title = {
+                    let window_title = element.window_title();
+                    if window_title.is_empty() {
+                        app_name.clone()
+                    } else {
+                        window_title
+                    }
+                };
+
+                debug!(
+                    "Browser navigation detected - URL: '{}', Title: '{}'",
+                    new_url, new_title
+                );
 
                 let mut tracker_guard = tracker.lock().unwrap();
 
                 let is_switch = new_url != tracker_guard.current_url.clone().unwrap_or_default()
-                    || new_title != &tracker_guard.current_title.clone().unwrap_or_default();
+                    || new_title != tracker_guard.current_title.clone().unwrap_or_default();
+
+                debug!(
+                    "Is switch: {}, current_url: {:?}, current_title: {:?}",
+                    is_switch, tracker_guard.current_url, tracker_guard.current_title
+                );
 
                 if is_switch {
                     let now = Instant::now();
@@ -1426,16 +2007,26 @@ impl WindowsRecorder {
                         )),
                     };
 
+                    debug!("Sending browser navigation event: {:?}", nav_event);
+
                     if event_tx
                         .send(WorkflowEvent::BrowserTabNavigation(nav_event))
                         .is_ok()
                     {
+                        debug!("✅ Browser navigation event sent successfully");
                         tracker_guard.current_browser = Some(app_name.clone());
                         tracker_guard.current_url = Some(new_url);
-                        tracker_guard.current_title = Some(new_title.clone());
+                        tracker_guard.current_title = Some(new_title);
                         tracker_guard.last_navigation_time = now;
+                    } else {
+                        debug!("❌ Failed to send browser navigation event");
                     }
                 }
+            } else {
+                debug!(
+                    "No URL information found for browser element: '{}'",
+                    element.name_or_empty()
+                );
             }
         }
     }
@@ -1446,11 +2037,25 @@ impl WindowsRecorder {
         let element_name = element.name_or_empty();
         let element_role = element.role().to_lowercase();
 
-        // Check if the focused element is a button, menu item, or list item
+        debug!(
+            "Button focus check - element: '{}', role: '{}'",
+            element_name, element_role
+        );
+
+        // Check if the focused element is clickable (button, menu item, list item, hyperlink, etc.)
         if element_role.contains("button")
             || element_role.contains("menuitem")
             || element_role.contains("listitem")
+            || element_role.contains("hyperlink")
+            || element_role.contains("link")
+            || element_role.contains("checkbox")
+            || element_role.contains("radiobutton")
+            || element_role.contains("togglebutton")
         {
+            debug!(
+                "✅ Detected clickable element: '{}' (role: '{}')",
+                element_name, element_role
+            );
             let element_desc = element.attributes().description.unwrap_or_default();
 
             let interaction_type = Self::determine_button_interaction_type(
@@ -1504,35 +2109,107 @@ impl WindowsRecorder {
     }
 
     /// Get the text value from a UI element
-    fn get_element_text_value(element: &UIElement) -> Option<String> {
-        // Try multiple methods to get the text value
-
-        // First try the value attribute (most reliable for input fields)
-        if let Some(value) = element.attributes().value {
-            if !value.trim().is_empty() {
-                return Some(value);
+    /// Try to find a recently active text input element for suggestion completion
+    fn find_recent_text_input(automation: &UIAutomation) -> Option<UIElement> {
+        // Try to find the currently focused element first
+        if let Some(focused_element) = Self::get_focused_ui_element_with_timeout(automation) {
+            if Self::is_text_input_element(&focused_element) {
+                debug!(
+                    "🎯 Found focused text input element: '{}'",
+                    focused_element.name_or_empty()
+                );
+                return Some(focused_element);
             }
         }
 
-        // Then try the text() method which gets the actual text content
-        if let Ok(text) = element.text(0) {
-            if !text.trim().is_empty() {
-                return Some(text);
+        debug!("❌ Could not find any recent text input elements using focused element approach");
+        None
+    }
+
+    fn get_element_text_value(element: &UIElement) -> Option<String> {
+        // Try multiple methods to get the text value with multiple attempts for timing issues
+
+        for attempt in 0..3 {
+            if attempt > 0 {
+                // Small delay between attempts to allow UI updates
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+
+            // First try the value attribute (most reliable for input fields)
+            if let Some(value) = element.attributes().value {
+                if !value.trim().is_empty() {
+                    debug!(
+                        "✅ Got text value from 'value' attribute (attempt {}): '{}'",
+                        attempt + 1,
+                        value
+                    );
+                    return Some(value);
+                }
+            }
+
+            // Then try the text() method which gets the actual text content
+            if let Ok(text) = element.text(0) {
+                if !text.trim().is_empty() {
+                    debug!(
+                        "✅ Got text value from text() method (attempt {}): '{}'",
+                        attempt + 1,
+                        text
+                    );
+                    return Some(text);
+                }
+            }
+
+            // Try enhanced text methods for better coverage
+            if let Ok(text) = element.text(1) {
+                if !text.trim().is_empty() {
+                    debug!(
+                        "✅ Got text value from text(1) method (attempt {}): '{}'",
+                        attempt + 1,
+                        text
+                    );
+                    return Some(text);
+                }
+            }
+
+            // Check for description which might contain the value
+            if let Some(description) = element.attributes().description {
+                if !description.trim().is_empty() && description.len() < 200 {
+                    debug!(
+                        "✅ Got text value from description (attempt {}): '{}'",
+                        attempt + 1,
+                        description
+                    );
+                    return Some(description);
+                }
+            }
+
+            // Check the label which might contain the value
+            if let Some(label) = element.attributes().label {
+                if !label.trim().is_empty() && label.len() < 200 {
+                    debug!(
+                        "✅ Got text value from label (attempt {}): '{}'",
+                        attempt + 1,
+                        label
+                    );
+                    return Some(label);
+                }
             }
         }
 
         // Finally try the name as last resort
         let name = element.name_or_empty();
-        if !name.trim().is_empty() {
+        if !name.trim().is_empty() && name.len() < 200 {
+            debug!("✅ Got text value from name (fallback): '{}'", name);
             Some(name)
         } else {
+            debug!("❌ Could not extract text value from element after all attempts");
             None
         }
     }
 
     /// Handles text input focus changes to detect text input completion
     fn handle_text_input_focus_change(
-        current_text_input: &Arc<Mutex<Option<(UIElement, Instant)>>>,
+        current_text_input: &Arc<Mutex<Option<TextInputTracker>>>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         new_element: &Option<UIElement>,
         config: &WorkflowRecorderConfig,
@@ -1541,43 +2218,143 @@ impl WindowsRecorder {
             return;
         }
 
-        let mut tracker = current_text_input.lock().unwrap();
+        // Use centralized text input tracking logic
+        Self::handle_text_input_transition(
+            current_text_input,
+            event_tx,
+            new_element,
+            "focus_change",
+            config,
+        );
+    }
+
+    /// Centralized text input tracking logic to avoid conflicts between mouse and focus handlers
+    fn handle_text_input_transition(
+        current_text_input: &Arc<Mutex<Option<TextInputTracker>>>,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+        new_element: &Option<UIElement>,
+        trigger_reason: &str,
+        config: &WorkflowRecorderConfig,
+    ) {
+        if !config.record_text_input_completion {
+            return;
+        }
+
+        let mut tracker = match current_text_input.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                debug!("❌ Could not lock text input tracker for transition");
+                return;
+            }
+        };
+
+        // Check if the new element is a potential autocomplete suggestion
+        let is_potential_autocomplete_element = if let Some(element) = new_element {
+            let element_role = element.role().to_lowercase();
+            let element_name = element.name_or_empty();
+
+            element_role.contains("listitem")
+                || element_role.contains("menuitem")
+                || element_role.contains("option")
+                || element_role.contains("comboboxitem")
+                || element_role.contains("item")
+                || element_role.contains("cell")
+                || element_role == "text"
+                || element_name.to_lowercase().contains("suggestion")
+                || element_name.to_lowercase().contains("complete")
+                || element_name.to_lowercase().contains("autocomplete")
+                || element_name.to_lowercase().contains("dropdown")
+                || (element_role == "pane" && !element_name.is_empty())
+                || (element_role == "document" && element_name.len() < 100)
+        } else {
+            false
+        };
+
+        // If we're focusing on a potential autocomplete element, preserve the existing tracker
+        if is_potential_autocomplete_element && tracker.is_some() {
+            if let Some(element) = new_element {
+                debug!(
+                    "🔽 Focus moved to potential autocomplete element: '{}' (role: '{}') - PRESERVING text input tracker",
+                    element.name_or_empty(), element.role()
+                );
+            }
+            return; // Don't modify the tracker when focusing on autocomplete elements
+        }
 
         // Check if we're leaving a text input field
-        if let Some((previous_input, start_time)) = tracker.take() {
-            // We had a text input focused, and now focus is changing
-            // Get the text value before we lose focus
-            if let Some(text_value) = Self::get_element_text_value(&previous_input) {
-                if !text_value.trim().is_empty() {
-                    let now = Instant::now();
-                    let typing_duration_ms = now.duration_since(start_time).as_millis() as u64;
+        if let Some(existing_tracker) = tracker.as_ref() {
+            let element_name = existing_tracker.element.name_or_empty();
 
-                    let text_event = crate::TextInputCompletedEvent {
-                        text_value,
-                        field_name: previous_input.name(),
-                        field_type: previous_input.role(),
-                        input_method: crate::TextInputMethod::Typed, // TODO: Detect paste/autofill
-                        typing_duration_ms,
-                        keystroke_count: 0, // TODO: Track actual keystrokes
-                        metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                            previous_input,
-                        )),
-                    };
+            // Only remove tracker if we're truly leaving for a non-autocomplete element
+            let should_remove_tracker = if let Some(element) = new_element {
+                Self::is_text_input_element(element) || !is_potential_autocomplete_element
+            } else {
+                true // Remove if no focus
+            };
 
-                    if let Err(e) = event_tx.send(WorkflowEvent::TextInputCompleted(text_event)) {
-                        debug!("Failed to send text input completed event: {}", e);
+            if should_remove_tracker {
+                debug!(
+                    "🔄 Leaving text input field: '{}' (reason: {})",
+                    element_name, trigger_reason
+                );
+
+                // Take the tracker to check for completion
+                let existing_tracker = tracker.take().unwrap();
+
+                // Check if we should emit a completion event
+                if existing_tracker.should_emit_completion(trigger_reason) {
+                    debug!("✅ Should emit completion event for {}", trigger_reason);
+                    if let Some(text_event) = existing_tracker.get_completion_event(None) {
+                        debug!(
+                            "🔥 Emitting text input completion event: '{}' (reason: {})",
+                            text_event.text_value, trigger_reason
+                        );
+                        if let Err(e) = event_tx.send(WorkflowEvent::TextInputCompleted(text_event))
+                        {
+                            debug!("Failed to send text input completed event: {}", e);
+                        }
+                    } else {
+                        debug!("❌ get_completion_event returned None");
                     }
+                } else {
+                    debug!("❌ Should NOT emit completion event for {}", trigger_reason);
                 }
+            } else {
+                debug!(
+                    "🔽 Staying in text input context: '{}' (reason: {})",
+                    element_name, trigger_reason
+                );
             }
         }
 
-        // Check if the new element is a text input field
+        // Check if the new element is a text input field (and we don't already have a tracker)
         if let Some(element) = new_element {
-            if Self::is_text_input_element(element) {
+            let element_name = element.name_or_empty();
+            let element_role = element.role();
+            debug!(
+                "🔍 Checking new element: '{}' (role: '{}') for text input",
+                element_name, element_role
+            );
+
+            if Self::is_text_input_element(element) && tracker.is_none() {
+                debug!(
+                    "✅ New element is a text input field, starting tracking (reason: {})",
+                    trigger_reason
+                );
                 // Store the new text input element with current time
-                *tracker = Some((element.clone(), Instant::now()));
-                debug!("Started tracking text input: {}", element.name_or_empty());
+                *tracker = Some(TextInputTracker::new(element.clone()));
+                debug!(
+                    "🎯 Started tracking text input: '{}' ({})",
+                    element_name, element_role
+                );
+            } else if !Self::is_text_input_element(element) && !is_potential_autocomplete_element {
+                debug!(
+                    "❌ New element is NOT a text input field: '{}' ({})",
+                    element_name, element_role
+                );
             }
+        } else {
+            debug!("🔍 New element is None (no focus)");
         }
     }
 }
