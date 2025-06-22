@@ -96,32 +96,67 @@ fn ensure_project_root() {
 
 fn get_workspace_version() -> Result<String, Box<dyn std::error::Error>> {
     let cargo_toml = fs::read_to_string("Cargo.toml")?;
+    let mut in_workspace_package = false;
 
     for line in cargo_toml.lines() {
-        if line.trim().starts_with("version = ") {
-            let version = line.split('"').nth(1).ok_or("Invalid version format")?;
-            return Ok(version.to_string());
+        let trimmed_line = line.trim();
+        if trimmed_line == "[workspace.package]" {
+            in_workspace_package = true;
+            continue;
+        }
+
+        if in_workspace_package {
+            if trimmed_line.starts_with('[') {
+                // We've left the workspace.package section
+                break;
+            }
+            if trimmed_line.starts_with("version") {
+                if let Some(version_part) = trimmed_line.split('=').nth(1) {
+                    if let Some(version) = version_part.trim().split('"').nth(1) {
+                        return Ok(version.to_string());
+                    }
+                }
+            }
         }
     }
 
-    Err("Version not found in Cargo.toml".into())
+    Err("Version not found in [workspace.package] in Cargo.toml".into())
 }
 
 fn set_workspace_version(new_version: &str) -> Result<(), Box<dyn std::error::Error>> {
     let cargo_toml = fs::read_to_string("Cargo.toml")?;
     let mut lines: Vec<String> = cargo_toml.lines().map(|s| s.to_string()).collect();
+    let mut in_workspace_package = false;
+    let mut version_found = false;
 
     for line in &mut lines {
-        if line.trim().starts_with("version = ") {
-            *line = format!(
-                "version = \"{}\" # From your original Cargo.toml",
-                new_version
-            );
-            break;
+        let trimmed_line = line.trim();
+        if trimmed_line == "[workspace.package]" {
+            in_workspace_package = true;
+            continue;
+        }
+        if in_workspace_package {
+            if trimmed_line.starts_with('[') {
+                break;
+            }
+            if line.trim().starts_with("version") {
+                if let Some(key) = line.split('=').next() {
+                    if key.trim() == "version" {
+                        let indentation = line.len() - line.trim_start().len();
+                        *line = format!("{}version = \"{}\"", " ".repeat(indentation), new_version);
+                        version_found = true;
+                        break;
+                    }
+                }
+            }
         }
     }
 
-    fs::write("Cargo.toml", lines.join("\n"))?;
+    if !version_found {
+        return Err("version key not found in [workspace.package] in Cargo.toml".into());
+    }
+
+    fs::write("Cargo.toml", lines.join("\n") + "\n")?;
     Ok(())
 }
 
@@ -209,45 +244,53 @@ fn sync_all_versions() {
 fn sync_nodejs_bindings(version: &str) {
     println!("📦 Syncing Node.js bindings to version {}...", version);
 
-    if Path::new("bindings/nodejs").exists() {
-        // First, try to update the package.json directly
-        if let Err(e) = update_package_json("bindings/nodejs/package.json", version) {
-            eprintln!(
-                "⚠️  Warning: Failed to update Node.js package.json directly: {}",
-                e
-            );
+    let nodejs_dir = Path::new("bindings/nodejs");
+    if !nodejs_dir.exists() {
+        println!("⚠️  Node.js bindings directory not found, skipping");
+        return;
+    }
+
+    // Update package.json directly
+    if let Err(e) = update_package_json("bindings/nodejs/package.json", version) {
+        eprintln!(
+            "⚠️  Warning: Failed to update Node.js package.json directly: {}",
+            e
+        );
+    } else {
+        println!("✅ Updated Node.js package.json to {}", version);
+    }
+
+    // Run sync script if it exists
+    let original_dir = match env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("❌ Could not get current directory: {}", e);
+            return;
+        }
+    };
+
+    if env::set_current_dir(nodejs_dir).is_ok() {
+        println!("🔄 Running npm run sync-version...");
+        if run_command("npm", &["run", "sync-version"]).is_ok() {
+            println!("✅ Node.js sync script completed");
         } else {
-            println!("✅ Updated Node.js package.json to {}", version);
+            eprintln!("⚠️  Warning: npm run sync-version failed");
         }
-
-        // Then run the sync script if it exists
-        let mut success = false;
-        if std::env::set_current_dir("bindings/nodejs").is_ok() {
-            println!("🔄 Running npm run sync-version...");
-            #[allow(clippy::redundant_pattern_matching)]
-            if let Ok(_) = run_command("npm", &["run", "sync-version"]) {
-                if std::env::set_current_dir("../..").is_ok() {
-                    success = true;
-                    println!("✅ Node.js sync script completed");
-                }
-            } else {
-                eprintln!("⚠️  Warning: npm run sync-version failed");
-                let _ = std::env::set_current_dir("../..");
-            }
-        }
-
-        if !success {
-            eprintln!("⚠️  Warning: Failed to run Node.js sync script, but package.json was updated directly");
+        // Always change back to the original directory
+        if let Err(e) = env::set_current_dir(&original_dir) {
+            eprintln!("❌ Failed to restore original directory: {}", e);
+            std::process::exit(1); // Exit if we can't get back, to avoid further errors
         }
     } else {
-        println!("⚠️  Node.js bindings directory not found, skipping");
+        eprintln!("⚠️  Warning: Could not switch to Node.js directory");
     }
 }
 
 fn sync_mcp_agent(version: &str) {
     println!("📦 Syncing MCP agent...");
 
-    if !Path::new("terminator-mcp-agent").exists() {
+    let mcp_dir = Path::new("terminator-mcp-agent");
+    if !mcp_dir.exists() {
         return;
     }
 
@@ -261,7 +304,7 @@ fn sync_mcp_agent(version: &str) {
     }
 
     // Update platform packages
-    let npm_dir = Path::new("terminator-mcp-agent/npm");
+    let npm_dir = mcp_dir.join("npm");
     if npm_dir.exists() {
         if let Ok(entries) = fs::read_dir(npm_dir) {
             for entry in entries.flatten() {
@@ -286,18 +329,25 @@ fn sync_mcp_agent(version: &str) {
     }
 
     // Update package-lock.json
-    let mut success = false;
-    if std::env::set_current_dir("terminator-mcp-agent").is_ok() {
-        #[allow(clippy::redundant_pattern_matching)]
-        if let Ok(_) = run_command("npm", &["install", "--package-lock-only", "--silent"]) {
-            if std::env::set_current_dir("..").is_ok() {
-                success = true;
-            }
+    let original_dir = match env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("❌ Could not get current directory: {}", e);
+            return;
         }
-    }
+    };
 
-    if !success {
-        eprintln!("⚠️  Warning: Failed to update MCP agent package-lock.json");
+    if env::set_current_dir(mcp_dir).is_ok() {
+        if run_command("npm", &["install", "--package-lock-only", "--silent"]).is_ok() {
+            println!("✅ MCP package-lock.json updated.");
+        } else {
+            eprintln!("⚠️  Warning: Failed to update MCP agent package-lock.json");
+        }
+        // Always change back to the original directory
+        if let Err(e) = env::set_current_dir(&original_dir) {
+            eprintln!("❌ Failed to restore original directory: {}", e);
+            std::process::exit(1);
+        }
     }
 
     println!("✅ MCP agent synced");
