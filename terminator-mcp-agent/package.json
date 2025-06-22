@@ -1,6 +1,6 @@
 {
   "bin": {
-    "terminator-mcp": "index.js"
+    "terminator-mcp-agent": "index.js"
   },
   "description": "Cross-platform Model Context Protocol (MCP) agent for Terminator",
   "engines": {
