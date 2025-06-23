@@ -1,8 +1,8 @@
 use crate::utils::{
-    get_timeout, ClipboardArgs, DesktopWrapper, EmptyArgs, GetClipboardArgs, GetWindowTreeArgs,
-    GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs, MouseDragArgs,
-    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    get_timeout, ActivateElementArgs, ClipboardArgs, DesktopWrapper, EmptyArgs, GetClipboardArgs,
+    GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
+    MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
+    ScrollElementArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use rmcp::model::{
@@ -491,7 +491,7 @@ impl DesktopWrapper {
     )]
     async fn activate_element(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        #[tool(param)] args: ActivateElementArgs,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -537,7 +537,7 @@ impl DesktopWrapper {
 
         // Always attach UI tree for activated elements to help with next actions
         self.maybe_attach_tree(
-            args.include_tree.unwrap_or(true), // Default to true for activate_element
+            true, // Always attach tree for activate_element since it's important for next actions
             Some(pid),
             &mut result_json,
         );

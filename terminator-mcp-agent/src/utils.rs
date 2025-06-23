@@ -208,6 +208,16 @@ pub struct ScrollElementArgs {
     pub include_tree: Option<bool>,
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ActivateElementArgs {
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
+    #[schemars(description = "Optional timeout in milliseconds for the action")]
+    pub timeout_ms: Option<u64>,
+}
+
 pub fn init_logging() -> Result<()> {
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
