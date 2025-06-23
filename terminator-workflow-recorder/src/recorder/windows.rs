@@ -610,19 +610,6 @@ impl WindowsRecorder {
                 return; // Don't start this thread if UI elements are not needed.
             }
 
-            // Initialize COM and UIAutomation for this dedicated thread
-            let automation = match Self::create_configured_automation_instance(
-                &uia_processor_config,
-            ) {
-                Ok(auto) => auto,
-                Err(e) => {
-                    error!(
-                        "Could not create UIAutomation instance in processor thread: {}. UI context for input events will be missing.",
-                        e
-                    );
-                    return;
-                }
-            };
             info!("✅ UIA processor thread for input events started.");
 
             // Process events from the rdev listener
@@ -632,7 +619,6 @@ impl WindowsRecorder {
                         Self::handle_button_press_request(
                             button,
                             &position,
-                            &automation,
                             &uia_processor_config,
                             &uia_processor_text_input,
                             &uia_processor_event_tx,
@@ -644,7 +630,6 @@ impl WindowsRecorder {
                         Self::handle_button_release_request(
                             button,
                             &position,
-                            &automation,
                             &uia_processor_config,
                             &uia_processor_event_tx,
                             &uia_processor_last_event_time,
@@ -654,7 +639,6 @@ impl WindowsRecorder {
                     UIAInputRequest::MouseMove { position } => {
                         Self::handle_mouse_move_request(
                             &position,
-                            &automation,
                             &uia_processor_config,
                             &uia_processor_event_tx,
                             &uia_processor_last_event_time,
@@ -665,7 +649,6 @@ impl WindowsRecorder {
                         Self::handle_wheel_request(
                             delta,
                             &position,
-                            &automation,
                             &uia_processor_config,
                             &uia_processor_event_tx,
                             &uia_processor_last_event_time,
@@ -1052,19 +1035,6 @@ impl WindowsRecorder {
                 }
             };
 
-            // Use configured automation instance
-            let automation = if capture_ui_elements {
-                match Self::create_configured_automation_instance(&config) {
-                    Ok(auto) => Some(auto),
-                    Err(e) => {
-                        warn!("⚠️ Failed to create UIAutomation for clipboard monitor: {}. UI context will be missing.", e);
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
             // Initialize the clipboard hash with current content to avoid false initial events
             if let Ok(initial_content) = clipboard.get_text() {
                 let initial_hash = Self::calculate_hash(&initial_content);
@@ -1093,9 +1063,7 @@ impl WindowsRecorder {
 
                         // Capture UI element if enabled
                         let ui_element = if capture_ui_elements {
-                            automation
-                                .as_ref()
-                                .and_then(Self::get_focused_ui_element_with_timeout)
+                            Self::get_focused_ui_element_with_timeout(&config, 200)
                         } else {
                             None
                         };
@@ -1133,30 +1101,34 @@ impl WindowsRecorder {
         hasher.finish()
     }
 
-    /// Get focused UI element with timeout protection to prevent hanging
-    fn get_focused_ui_element_with_timeout(automation: &UIAutomation) -> Option<UIElement> {
-        // Use panic catching to handle any COM/threading issues gracefully
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            automation.get_focused_element()
-        })) {
-            Ok(Ok(element)) => {
-                // Successfully got element, now safely convert it
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    convert_uiautomation_element_to_terminator(element)
-                })) {
-                    Ok(ui_element) => Some(ui_element),
-                    Err(_) => {
-                        debug!("Failed to convert UI element safely");
-                        None
-                    }
-                }
-            }
-            Ok(Err(e)) => {
-                debug!("UI Automation call failed: {}", e);
-                None
-            }
+    /// Get focused UI element with a hard timeout to prevent hanging.
+    fn get_focused_ui_element_with_timeout(
+        config: &WorkflowRecorderConfig,
+        timeout_ms: u64,
+    ) -> Option<UIElement> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config_clone = config.clone();
+
+        // Spawn a thread to do the blocking UIA work.
+        thread::spawn(move || {
+            let result = (|| {
+                let automation = Self::create_configured_automation_instance(&config_clone).ok()?;
+                let element = automation.get_focused_element().ok()?;
+                Some(convert_uiautomation_element_to_terminator(element))
+            })();
+            // The receiver might have timed out and disconnected, so `send` can fail.
+            // We can ignore the result.
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+            Ok(Some(element)) => Some(element),
+            Ok(None) => None,
             Err(_) => {
-                debug!("UI Automation call panicked, handled gracefully");
+                debug!(
+                    "UIA call to get focused element timed out after {}ms.",
+                    timeout_ms
+                );
                 None
             }
         }
@@ -1299,21 +1271,11 @@ impl WindowsRecorder {
             let processing_handle = handle;
 
             std::thread::spawn(move || {
-                // This thread needs its own UIA instance.
-                let automation = match Self::create_configured_automation_instance(
-                    &focus_processing_config,
-                ) {
-                    Ok(auto) => auto,
-                    Err(e) => {
-                        error!("❌ Failed to create UIA instance in focus processor thread: {}. Focus events will not be processed.", e);
-                        return;
-                    }
-                };
-
                 while focus_rx.recv().is_ok() {
                     // Received a signal. Now, get the currently focused element.
                     // This is the main blocking call, now safely on a dedicated thread.
-                    let ui_element = Self::get_focused_ui_element_with_timeout(&automation);
+                    let ui_element =
+                        Self::get_focused_ui_element_with_timeout(&focus_processing_config, 200);
 
                     if let Some(element) = ui_element {
                         let element_name = element.name_or_empty();
@@ -1890,9 +1852,9 @@ impl WindowsRecorder {
 
     /// Get the text value from a UI element
     /// Try to find a recently active text input element for suggestion completion
-    fn find_recent_text_input(automation: &UIAutomation) -> Option<UIElement> {
+    fn find_recent_text_input(config: &WorkflowRecorderConfig) -> Option<UIElement> {
         // Try to find the currently focused element first
-        if let Some(focused_element) = Self::get_focused_ui_element_with_timeout(automation) {
+        if let Some(focused_element) = Self::get_focused_ui_element_with_timeout(config, 200) {
             if Self::is_text_input_element(&focused_element) {
                 debug!(
                     "🎯 Found focused text input element: '{}'",
@@ -2144,14 +2106,13 @@ impl WindowsRecorder {
     fn handle_button_press_request(
         button: MouseButton,
         position: &Position,
-        automation: &UIAutomation,
         config: &WorkflowRecorderConfig,
         current_text_input: &Arc<Mutex<Option<TextInputTracker>>>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(automation);
+        let ui_element = Self::get_focused_ui_element_with_timeout(config, 200);
 
         // Debug: Log what UI element we captured at mouse down
         if let Some(ref element) = ui_element {
@@ -2307,7 +2268,7 @@ impl WindowsRecorder {
 
                             // Try to find the text input element that was recently active
                             // Look for text input elements on the page
-                            if let Some(text_element) = Self::find_recent_text_input(automation) {
+                            if let Some(text_element) = Self::find_recent_text_input(config) {
                                 debug!(
                                     "🔍 Found recent text input element: '{}'",
                                     text_element.name_or_empty()
@@ -2387,7 +2348,7 @@ impl WindowsRecorder {
                         interaction_type,
                         button_role: element_role.clone(),
                         was_enabled: element.is_enabled().unwrap_or(true),
-                        click_position: Some(position.clone()),
+                        click_position: Some(*position),
                         button_description: if element_desc.is_empty() {
                             None
                         } else {
@@ -2410,7 +2371,7 @@ impl WindowsRecorder {
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Down,
             button,
-            position: position.clone(),
+            position: *position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
@@ -2432,18 +2393,17 @@ impl WindowsRecorder {
     fn handle_button_release_request(
         button: MouseButton,
         position: &Position,
-        automation: &UIAutomation,
         config: &WorkflowRecorderConfig,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(automation);
+        let ui_element = Self::get_focused_ui_element_with_timeout(config, 200);
 
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Up,
             button,
-            position: position.clone(),
+            position: *position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
@@ -2464,7 +2424,6 @@ impl WindowsRecorder {
     #[allow(clippy::too_many_arguments)]
     fn handle_mouse_move_request(
         position: &Position,
-        _automation: &UIAutomation,
         config: &WorkflowRecorderConfig,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
@@ -2478,7 +2437,7 @@ impl WindowsRecorder {
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Move,
             button: MouseButton::Left, // Inactive for move
-            position: position.clone(),
+            position: *position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
@@ -2500,18 +2459,17 @@ impl WindowsRecorder {
     fn handle_wheel_request(
         delta: (i32, i32),
         position: &Position,
-        automation: &UIAutomation,
         config: &WorkflowRecorderConfig,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(automation);
+        let ui_element = Self::get_focused_ui_element_with_timeout(config, 200);
 
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Wheel,
             button: MouseButton::Middle, // Common for wheel
-            position: position.clone(),
+            position: *position,
             scroll_delta: Some(delta),
             drag_start: None,
             metadata: EventMetadata {
