@@ -14,8 +14,10 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
+
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
+use uiautomation::types::Point;
 use uiautomation::UIAutomation;
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::System::Com::{
@@ -2112,7 +2114,11 @@ impl WindowsRecorder {
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(config, 200);
+        let ui_element = if config.capture_ui_elements {
+            Self::get_element_from_point_with_timeout(config, *position, 100)
+        } else {
+            None
+        };
 
         // Debug: Log what UI element we captured at mouse down
         if let Some(ref element) = ui_element {
@@ -2398,7 +2404,11 @@ impl WindowsRecorder {
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(config, 200);
+        let ui_element = if config.capture_ui_elements {
+            Self::get_element_from_point_with_timeout(config, *position, 100)
+        } else {
+            None
+        };
 
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Up,
@@ -2464,7 +2474,11 @@ impl WindowsRecorder {
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(config, 200);
+        let ui_element = if config.capture_ui_elements {
+            Self::get_element_from_point_with_timeout(config, *position, 100)
+        } else {
+            None
+        };
 
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Wheel,
@@ -2484,6 +2498,38 @@ impl WindowsRecorder {
             performance_events_counter,
             WorkflowEvent::Mouse(mouse_event),
         );
+    }
+
+    /// Get element from a specific point with a hard timeout.
+    fn get_element_from_point_with_timeout(
+        config: &WorkflowRecorderConfig,
+        position: Position,
+        timeout_ms: u64,
+    ) -> Option<UIElement> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config_clone = config.clone();
+
+        thread::spawn(move || {
+            let result = (|| {
+                let automation = Self::create_configured_automation_instance(&config_clone).ok()?;
+                let point = Point::new(position.x, position.y);
+                let element = automation.element_from_point(point).ok()?;
+                Some(convert_uiautomation_element_to_terminator(element))
+            })();
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+            Ok(Some(element)) => Some(element),
+            Ok(None) => None,
+            Err(_) => {
+                debug!(
+                    "UIA call to get element from point timed out after {}ms.",
+                    timeout_ms
+                );
+                None
+            }
+        }
     }
 }
 
