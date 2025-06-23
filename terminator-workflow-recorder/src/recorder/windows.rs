@@ -1258,38 +1258,19 @@ impl WindowsRecorder {
             info!("Setting up focus change event handler");
             let focus_event_tx = event_tx.clone();
 
-            // Create a channel for thread-safe communication
-            let (focus_tx, focus_rx) = std::sync::mpsc::channel::<Option<UIElement>>();
+            // Create a channel to signal focus changes, without sending data to avoid blocking.
+            let (focus_tx, focus_rx) = std::sync::mpsc::channel::<()>();
 
-            // Create a focus changed event handler struct
             struct FocusHandler {
-                sender: std::sync::mpsc::Sender<Option<UIElement>>,
+                sender: std::sync::mpsc::Sender<()>,
             }
 
             impl uiautomation::events::CustomFocusChangedEventHandler for FocusHandler {
-                fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
-                    // Perform the absolute minimum work on this thread.
-                    // Convert to our thread-safe UIElement wrapper and send it to the worker thread.
-                    let ui_element =
-                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            convert_uiautomation_element_to_terminator(sender.clone())
-                        })) {
-                            Ok(element) => Some(element),
-                            Err(_) => {
-                                debug!(
-                                "Failed to convert focused UI element safely during event handling"
-                            );
-                                None
-                            }
-                        };
-
-                    // Send the wrapped element to the processing thread.
-                    if self.sender.send(ui_element).is_err() {
-                        debug!(
-                            "Failed to send focus change data to worker thread; it may have shut down."
-                        );
-                    }
-
+                fn handle(&self, _sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
+                    // This handler is on a critical UIA thread.
+                    // DO NOT perform any blocking operations here.
+                    // Just send a signal to the processor thread to do the work.
+                    self.sender.send(()).ok(); // Disregard error if receiver is gone.
                     Ok(())
                 }
             }
@@ -1305,13 +1286,12 @@ impl WindowsRecorder {
                 Err(e) => error!("❌ Failed to register focus change event handler: {}", e),
             }
 
-            // Spawn a thread to process the focus change data safely
+            // This thread receives signals and performs the blocking UI Automation work safely.
             let focus_event_tx_clone = focus_event_tx.clone();
             let focus_current_app = Arc::clone(&current_application);
             let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
             let focus_current_text_input = Arc::clone(&current_text_input);
 
-            // Clone the necessary variables for the focus-processing thread to take ownership of.
             let focus_processing_config = config_clone.clone();
             let focus_processing_ignore_patterns = ignore_focus_patterns.clone();
             let focus_processing_ignore_window_titles = ignore_window_titles.clone();
@@ -1319,7 +1299,22 @@ impl WindowsRecorder {
             let processing_handle = handle;
 
             std::thread::spawn(move || {
-                while let Ok(ui_element) = focus_rx.recv() {
+                // This thread needs its own UIA instance.
+                let automation = match Self::create_configured_automation_instance(
+                    &focus_processing_config,
+                ) {
+                    Ok(auto) => auto,
+                    Err(e) => {
+                        error!("❌ Failed to create UIA instance in focus processor thread: {}. Focus events will not be processed.", e);
+                        return;
+                    }
+                };
+
+                while focus_rx.recv().is_ok() {
+                    // Received a signal. Now, get the currently focused element.
+                    // This is the main blocking call, now safely on a dedicated thread.
+                    let ui_element = Self::get_focused_ui_element_with_timeout(&automation);
+
                     if let Some(element) = ui_element {
                         let element_name = element.name_or_empty();
                         let element_role = element.role().to_lowercase();
@@ -1337,8 +1332,6 @@ impl WindowsRecorder {
                                 &button_focus_event_tx,
                             );
                         });
-
-                        // Offload slow checks to separate async tasks to avoid blocking the queue
 
                         // Task for application switch check
                         let app_switch_current_app = Arc::clone(&focus_current_app);
