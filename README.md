@@ -62,6 +62,56 @@ Terminator is the Playwright-style SDK for automating Windows GUI apps.
 
 For detailed information on features, installation, usage, and the API, please visit the **[Official Documentation](https://docs.screenpi.pe/terminator/introduction)**.
 
+Here's a section you can add under your `README.md` to document tools for inspecting accessibility elements across Windows, macOS, and Linux — tailored to Terminator users trying to find correct selectors:
+
+---
+
+## 🕵️ How to Inspect Accessibility Elements (like `name:Seven`)
+
+To create reliable selectors (e.g. `name:Seven`, `role:Button`, `window:Calculator`), you need to inspect the Accessibility Tree of your OS. Here’s how to explore UI elements on each platform:
+
+### 🪟 Windows
+
+* **Tool:** [Accessibility Insights for Windows](https://accessibilityinsights.io/downloads/)
+* **Alt:** [Inspect.exe](https://learn.microsoft.com/en-us/windows/win32/winauto/inspect-objects) (comes with Windows SDK)
+* **Usage:** Open the app you want to inspect → launch Accessibility Insights → hover or use keyboard navigation to explore the UI tree (Name, Role, ControlType, AutomationId).
+
+> These tools show you the `Name`, `Role`, `ControlType`, and other metadata used in Terminator selectors.
+
+---
+
+### 🍎 macOS
+
+* **Tool:** [Accessibility Inspector](https://developer.apple.com/documentation/xcode/accessibility_inspector)
+* **Usage:** Comes with Xcode → Open `Xcode > Open Developer Tool > Accessibility Inspector` → Use the target icon to explore UI elements on screen.
+
+---
+
+### 🐧 Linux
+
+* **Tool:** [Accerciser](https://wiki.gnome.org/Apps/Accerciser)
+* **Install:**
+
+  ```bash
+  sudo apt install accerciser
+  ```
+* **Usage:** Launch Accerciser → Select the window/app → Browse the accessible widget tree.
+
+---
+
+### 💡 Tip
+
+Once you identify the structure of your UI:
+
+```python
+# Sample pattern
+desktop.locator('window:Calculator')
+       .locator('role:Button')
+       .locator('name:Seven')
+```
+
+You can build and debug selector paths incrementally using `.locator()` chaining.
+
 ## Explore Further
 
 - https://github.com/mediar-ai/terminator-typescript-examples
