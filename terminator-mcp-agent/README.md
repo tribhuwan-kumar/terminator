@@ -43,7 +43,22 @@ You can also use the CLI to configure your app automatically:
 npx -y terminator-mcp-agent --add-to-app [app]
 ```
 
-Replace `[app]` with one of: `cursor`, `claude`, `vscode`, `insiders`, `windsurf`.
+Replace `[app]` with one of:
+
+- cursor
+- claude
+- vscode
+- insiders
+- windsurf
+- cline
+- roocode
+- witsy
+- enconvo
+- boltai
+- amazon-bedrock
+- amazonq
+
+If you omit `[app]`, the CLI will prompt you to select from all available options.
 
 ---
 
