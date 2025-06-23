@@ -1,7 +1,4 @@
 {
-  "bin": {
-    "terminator-mcp-agent": "index.js"
-  },
   "cpu": [
     "x64"
   ],
