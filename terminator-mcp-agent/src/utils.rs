@@ -2,14 +2,40 @@ use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::sync::Arc;
 use std::time::Duration;
 use terminator::Desktop;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct EmptyArgs {}
+
+fn default_desktop() -> Arc<Desktop> {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let desktop = Desktop::new(false, false).expect("Failed to create default desktop");
+    #[cfg(target_os = "macos")]
+    let desktop = Desktop::new(true, true).expect("Failed to create default desktop");
+    Arc::new(desktop)
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DesktopWrapper {
-    pub desktop: Desktop,
+    #[serde(skip, default = "default_desktop")]
+    pub desktop: Arc<Desktop>,
+}
+
+impl Default for DesktopWrapper {
+    fn default() -> Self {
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        let desktop = Desktop::new(false, false).expect("Failed to create default desktop");
+        #[cfg(target_os = "macos")]
+        let desktop = Desktop::new(true, true).expect("Failed to create default desktop");
+
+        Self {
+            desktop: Arc::new(desktop),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -101,9 +127,6 @@ pub struct RunCommandArgs {
     #[schemars(description = "The command to run on Linux/macOS")]
     pub unix_command: Option<String>,
 }
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct EmptyArgs {}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetClipboardArgs {
