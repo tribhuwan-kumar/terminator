@@ -978,13 +978,19 @@ impl DesktopWrapper {
             })).unwrap_or(json!(null)),
         });
 
+        let tree = self
+            .desktop
+            .get_window_tree(ui_element.process_id().unwrap_or(0), None, None)
+            .unwrap_or_default();
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "navigate_browser",
             "status": "success",
             "url": args.url,
             "browser": args.browser,
             "element": element_info,
-            "timestamp": chrono::Utc::now().to_rfc3339()
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "ui_tree": tree
         }))?]))
     }
 

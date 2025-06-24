@@ -96,7 +96,7 @@ impl Monitor {
 }
 
 /// Represents a node in the UI tree, containing its attributes and children.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct UINode {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
