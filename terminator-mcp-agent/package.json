@@ -7,7 +7,8 @@
     "node": ">= 10"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "config.js"
   ],
   "name": "terminator-mcp-agent",
   "optionalDependencies": {
