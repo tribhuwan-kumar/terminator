@@ -750,8 +750,6 @@ version = "0.5.0"
 source = "git+https://github.com/mediar-ai/cidre.git?rev=efb9e060c6f8edc48551365c2e80d3e8c6887433#efb9e060c6f8edc48551365c2e80d3e8c6887433"
 dependencies = [
  "cidre-macros",
- "parking_lot",
- "tokio",
 ]
 
 [[package]]
@@ -4252,7 +4250,7 @@ dependencies = [
 
 [[package]]
 name = "terminator"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4289,7 +4287,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "clap",
  "serde_json",
@@ -4297,7 +4295,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4314,7 +4312,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "napi",
  "napi-build",
@@ -4328,7 +4326,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4343,7 +4341,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.5.13"
+version = "0.5.14"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4739,7 +4737,7 @@ dependencies = [
 [[package]]
 name = "uni-ocr"
 version = "0.1.0"
-source = "git+https://github.com/mediar-ai/uniOCR?branch=main#51993e2f08ec0144ccc111abbee656a70cdd4c13"
+source = "git+https://github.com/mediar-ai/uniOCR?rev=4a9e0df#4a9e0df3f03667fa033691dc9f9b7fe27a07871f"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

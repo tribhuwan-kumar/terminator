@@ -12,8 +12,8 @@ members = [
 
 # Shared metadata for workspace members
 [workspace.package]
-version = "0.5.13"
-edition = "2021"  # From your original Cargo.toml
+version = "0.5.14"
+edition = "2021"   # From your original Cargo.toml
 
 # Centralized dependency definitions
 # Member crates can use these by specifying, e.g., `tokio = { workspace = true }`
@@ -33,7 +33,7 @@ tokio = { version = "1.44.2", features = ["full"] }
 # OCR / Vision
 xcap = "0.6.0"
 image = "0.25.6"
-uni-ocr = { git = "https://github.com/mediar-ai/uniOCR", branch = "main" }
+uni-ocr = { git = "https://github.com/mediar-ai/uniOCR", rev = "4a9e0df" }
 tempfile = "3.10.1"
 async-trait = "0.1.88"
 base64 = "0.22.1"
