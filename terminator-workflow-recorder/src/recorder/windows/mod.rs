@@ -354,6 +354,7 @@ impl WindowsRecorder {
                             &uia_processor_events_counter,
                         );
                     }
+                    // TODO we never are going to capture ui element for mouse movement and scroll, too noisy?
                     UIAInputRequest::MouseMove { position } => {
                         Self::handle_mouse_move_request(
                             &position,
@@ -371,6 +372,13 @@ impl WindowsRecorder {
                             &uia_processor_event_tx,
                             &uia_processor_last_event_time,
                             &uia_processor_events_counter,
+                        );
+                    }
+                    UIAInputRequest::KeyPressForCompletion { key_code } => {
+                        Self::handle_key_press_for_completion_request(
+                            key_code,
+                            &uia_processor_text_input,
+                            &uia_processor_event_tx,
                         );
                     }
                 }
@@ -405,37 +413,11 @@ impl WindowsRecorder {
 
                                     // Check for completion trigger keys (Enter, Tab)
                                     if key_code == 0x0D || key_code == 0x09 {
-                                        let is_suggestion_enter = if key_code == 0x0D {
-                                            text_input.handle_enter_key()
-                                        } else {
-                                            false
-                                        };
-                                        let completion_reason = if is_suggestion_enter {
-                                            "suggestion_enter"
-                                        } else {
-                                            "trigger_key"
-                                        };
-
-                                        if text_input.should_emit_completion(completion_reason) {
-                                            let input_method = if is_suggestion_enter {
-                                                Some(crate::TextInputMethod::Suggestion)
-                                            } else {
-                                                None
-                                            };
-                                            if let Some(text_event) =
-                                                text_input.get_completion_event(input_method)
-                                            {
-                                                let _ = event_tx.send(
-                                                    WorkflowEvent::TextInputCompleted(text_event),
-                                                );
-                                                if let Some(element) =
-                                                    &tracker.as_ref().map(|t| t.element.clone())
-                                                {
-                                                    *tracker = Some(TextInputTracker::new(
-                                                        element.clone(),
-                                                    ));
-                                                }
-                                            }
+                                        // Offload the blocking work to the UIA thread
+                                        let request =
+                                            UIAInputRequest::KeyPressForCompletion { key_code };
+                                        if uia_event_tx.send(request).is_err() {
+                                            debug!("Failed to send key press completion request to UIA thread");
                                         }
                                     }
                                 }
@@ -632,62 +614,49 @@ impl WindowsRecorder {
 
                         if should_record {
                             let position = Position { x, y };
-                            if capture_ui_elements_rdev {
-                                let request = UIAInputRequest::MouseMove { position };
-                                let _ = uia_event_tx.send(request);
-                            } else {
-                                let mouse_event = MouseEvent {
-                                    event_type: MouseEventType::Move,
-                                    button: MouseButton::Left,
-                                    position,
-                                    scroll_delta: None,
-                                    drag_start: None,
-                                    metadata: EventMetadata {
-                                        ui_element: None,
-                                        timestamp: Some(Self::capture_timestamp()),
-                                    },
-                                };
-                                Self::send_filtered_event_static(
-                                    &event_tx,
-                                    &config,
-                                    &performance_last_event_time,
-                                    &performance_events_counter,
-                                    WorkflowEvent::Mouse(mouse_event),
-                                );
-                            }
+
+                            let mouse_event = MouseEvent {
+                                event_type: MouseEventType::Move,
+                                button: MouseButton::Left,
+                                position,
+                                scroll_delta: None,
+                                drag_start: None,
+                                metadata: EventMetadata {
+                                    ui_element: None,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
+                            };
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::Wheel { delta_x, delta_y } => {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
                             let position = Position { x, y };
-                            if capture_ui_elements_rdev {
-                                let request = UIAInputRequest::Wheel {
-                                    delta: (delta_x as i32, delta_y as i32),
-                                    position,
-                                };
-                                if uia_event_tx.send(request).is_err() {
-                                    debug!("Failed to send wheel event to UIA processor thread");
-                                }
-                            } else {
-                                let mouse_event = MouseEvent {
-                                    event_type: MouseEventType::Wheel,
-                                    button: MouseButton::Middle, // Common for wheel
-                                    position,
-                                    scroll_delta: Some((delta_x as i32, delta_y as i32)),
-                                    drag_start: None,
-                                    metadata: EventMetadata {
-                                        ui_element: None,
-                                        timestamp: Some(Self::capture_timestamp()),
-                                    },
-                                };
-                                Self::send_filtered_event_static(
-                                    &event_tx,
-                                    &config,
-                                    &performance_last_event_time,
-                                    &performance_events_counter,
-                                    WorkflowEvent::Mouse(mouse_event),
-                                );
-                            }
+
+                            let mouse_event = MouseEvent {
+                                event_type: MouseEventType::Wheel,
+                                button: MouseButton::Middle, // Common for wheel
+                                position,
+                                scroll_delta: Some((delta_x as i32, delta_y as i32)),
+                                drag_start: None,
+                                metadata: EventMetadata {
+                                    ui_element: None,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
+                            };
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                 }
@@ -2166,81 +2135,42 @@ impl WindowsRecorder {
             }
         }
     }
-}
 
-/// Convert a Key to a u32
-fn key_to_u32(key: &Key) -> u32 {
-    match key {
-        Key::KeyA => 0x41,
-        Key::KeyB => 0x42,
-        Key::KeyC => 0x43,
-        Key::KeyD => 0x44,
-        Key::KeyE => 0x45,
-        Key::KeyF => 0x46,
-        Key::KeyG => 0x47,
-        Key::KeyH => 0x48,
-        Key::KeyI => 0x49,
-        Key::KeyJ => 0x4A,
-        Key::KeyK => 0x4B,
-        Key::KeyL => 0x4C,
-        Key::KeyM => 0x4D,
-        Key::KeyN => 0x4E,
-        Key::KeyO => 0x4F,
-        Key::KeyP => 0x50,
-        Key::KeyQ => 0x51,
-        Key::KeyR => 0x52,
-        Key::KeyS => 0x53,
-        Key::KeyT => 0x54,
-        Key::KeyU => 0x55,
-        Key::KeyV => 0x56,
-        Key::KeyW => 0x57,
-        Key::KeyX => 0x58,
-        Key::KeyY => 0x59,
-        Key::KeyZ => 0x5A,
-        Key::Num0 => 0x30,
-        Key::Num1 => 0x31,
-        Key::Num2 => 0x32,
-        Key::Num3 => 0x33,
-        Key::Num4 => 0x34,
-        Key::Num5 => 0x35,
-        Key::Num6 => 0x36,
-        Key::Num7 => 0x37,
-        Key::Num8 => 0x38,
-        Key::Num9 => 0x39,
-        Key::Escape => 0x1B,
-        Key::Backspace => 0x08,
-        Key::Tab => 0x09,
-        Key::Return => 0x0D,
-        Key::Space => 0x20,
-        Key::LeftArrow => 0x25,
-        Key::UpArrow => 0x26,
-        Key::RightArrow => 0x27,
-        Key::DownArrow => 0x28,
-        Key::Delete => 0x2E,
-        Key::Home => 0x24,
-        Key::End => 0x23,
-        Key::PageUp => 0x21,
-        Key::PageDown => 0x22,
-        Key::F1 => 0x70,
-        Key::F2 => 0x71,
-        Key::F3 => 0x72,
-        Key::F4 => 0x73,
-        Key::F5 => 0x74,
-        Key::F6 => 0x75,
-        Key::F7 => 0x76,
-        Key::F8 => 0x77,
-        Key::F9 => 0x78,
-        Key::F10 => 0x79,
-        Key::F11 => 0x7A,
-        Key::F12 => 0x7B,
-        Key::ShiftLeft => 0xA0,
-        Key::ShiftRight => 0xA1,
-        Key::ControlLeft => 0xA2,
-        Key::ControlRight => 0xA3,
-        Key::Alt => 0xA4,
-        Key::AltGr => 0xA5,
-        Key::MetaLeft => 0x5B,
-        Key::MetaRight => 0x5C,
-        _ => 0,
+    /// Handles a key press completion request from the input listener thread.
+    /// This function performs the UI Automation calls and is expected to run on a dedicated UIA thread.
+    fn handle_key_press_for_completion_request(
+        key_code: u32,
+        current_text_input: &Arc<Mutex<Option<TextInputTracker>>>,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+    ) {
+        if let Ok(mut tracker) = current_text_input.lock() {
+            if let Some(ref mut text_input) = tracker.as_mut() {
+                let is_suggestion_enter = if key_code == 0x0D {
+                    text_input.handle_enter_key()
+                } else {
+                    false
+                };
+                let completion_reason = if is_suggestion_enter {
+                    "suggestion_enter"
+                } else {
+                    "trigger_key"
+                };
+
+                if text_input.should_emit_completion(completion_reason) {
+                    let input_method = if is_suggestion_enter {
+                        Some(crate::TextInputMethod::Suggestion)
+                    } else {
+                        None
+                    };
+                    if let Some(text_event) = text_input.get_completion_event(input_method) {
+                        let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_event));
+                        // Reset the tracker to continue tracking on the same element
+                        if let Some(element) = &tracker.as_ref().map(|t| t.element.clone()) {
+                            *tracker = Some(TextInputTracker::new(element.clone()));
+                        }
+                    }
+                }
+            }
+        }
     }
 }
