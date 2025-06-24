@@ -33,7 +33,7 @@ tokio = { version = "1.44.2", features = ["full"] }
 # OCR / Vision
 xcap = "0.6.0"
 image = "0.25.6"
-uni-ocr = { git = "https://github.com/mediar-ai/uniOCR", rev = "4a9e0df" }
+uni-ocr = { git = "https://github.com/mediar-ai/uniOCR", rev = "f7a408f" }
 tempfile = "3.10.1"
 async-trait = "0.1.88"
 base64 = "0.22.1"

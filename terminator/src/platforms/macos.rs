@@ -1,15 +1,15 @@
 use crate::platforms::AccessibilityEngine;
 use crate::{
-    AutomationError, Locator, Selector, UIElement, UIElementAttributes, element::UIElementImpl,
+    element::UIElementImpl, AutomationError, Locator, Selector, UIElement, UIElementAttributes,
 };
 use crate::{ClickResult, ScreenshotResult};
 
 use accessibility::AXUIElementAttributes;
 use accessibility::{AXAttribute, AXUIElement};
-use accessibility_sys::{AXError, AXValueType, error_string};
+use accessibility_sys::{error_string, AXError, AXValueType};
 use anyhow::Result;
 use core_foundation::array::{
-    __CFArray, CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex,
+    CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex, __CFArray,
 };
 use core_foundation::base::{CFGetTypeID, TCFType};
 use core_foundation::boolean::CFBoolean;
@@ -20,13 +20,13 @@ use core_graphics::event::{CGEvent, CGEventFlags, CGKeyCode};
 use core_graphics::event_source::CGEventSource;
 use image::{DynamicImage, ImageBuffer, Rgba};
 use serde_json::{self, Value};
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{Level, debug, info, instrument, warn};
+use tracing::{debug, info, instrument, warn, Level};
 use tracing_subscriber::field::debug;
 use uni_ocr::{OcrEngine, OcrProvider};
 
@@ -176,7 +176,7 @@ impl MacOSEngine {
                             if let accessibility::Error::Ax(code) = e {
                                 if code != -25204 {
                                     // kAXErrorNoValue
-                                    let err_str = unsafe { error_string(code) };
+                                    let err_str = error_string(code);
                                     debug!(
                                         "Warning: Potentially invalid AXUIElement: {:?} (error: {})",
                                         e, err_str
@@ -200,7 +200,7 @@ impl MacOSEngine {
             }
             Err(e) => {
                 let err_str = if let accessibility::Error::Ax(code) = e {
-                    unsafe { error_string(code) }
+                    error_string(code)
                 } else {
                     "<not an AX error>"
                 };
@@ -1739,7 +1739,7 @@ impl UIElementImpl for MacOSUIElement {
         ))
     }
 
-    fn set_transparency(&self, percentage: u8) -> Result<(), AutomationError> {
+    fn set_transparency(&self, _percentage: u8) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "set_transparency is not implemented for macOS yet".to_string(),
         ))
@@ -1837,7 +1837,7 @@ fn parse_ax_attribute_value(
     use core_foundation::number::CFNumber;
     use core_foundation::string::CFString;
     use core_graphics::geometry::{CGPoint, CGSize};
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
 
     // Handle different types based on known attribute names and value types
     match name {
@@ -2439,7 +2439,7 @@ impl AccessibilityEngine for MacOSEngine {
             }
 
             // If no match, try matching by AXUIElement's .name attribute (expensive)
-            for (i, pid, app_name) in &candidates {
+            for (i, pid, _app_name) in &candidates {
                 let ax_element = ThreadSafeAXUIElement::application(*pid);
                 let ui_element = self.wrap_element(ax_element);
                 let short_name = ui_element.attributes().name.unwrap_or_default();
@@ -2946,7 +2946,7 @@ impl AccessibilityEngine for MacOSEngine {
                                 s.to_string().to_lowercase().contains(&name_lower)
                             })
                 }); // Ensure only 2 arguments
-                // Find all matching elements and return the first one found
+                    // Find all matching elements and return the first one found
                 match collector.find_all().into_iter().next() {
                     Some(e) => Ok(self.wrap_element(ThreadSafeAXUIElement::new(e))),
                     None => Err(AutomationError::ElementNotFound(format!(
@@ -2960,7 +2960,7 @@ impl AccessibilityEngine for MacOSEngine {
                 let collector = ElementsCollectorWithWindows::new(&start_element.0, move |e| {
                     element_contains_text(e, &text_lower)
                 }); // Add None for implicit_wait
-                // Find all matching elements and return the first one found
+                    // Find all matching elements and return the first one found
                 match collector.find_all().into_iter().next() {
                     Some(e) => Ok(self.wrap_element(ThreadSafeAXUIElement::new(e))),
                     None => Err(AutomationError::ElementNotFound(format!(
@@ -3618,7 +3618,11 @@ impl AccessibilityEngine for MacOSEngine {
                 }
                 let mut pid: i32 = 0;
                 let result = AXUIElementGetPid(element_ref, &mut pid);
-                if result == 0 { pid } else { -1 }
+                if result == 0 {
+                    pid
+                } else {
+                    -1
+                }
             }
         };
         if pid == -1 {
@@ -3745,8 +3749,8 @@ impl AccessibilityEngine for MacOSEngine {
         title: Option<&str>,
         config: crate::platforms::TreeBuildConfig,
     ) -> Result<crate::UINode, AutomationError> {
-        use crate::UINode;
         use crate::platforms::{PropertyLoadingMode, TreeBuildConfig};
+        use crate::UINode;
         use std::time::Instant;
         use tracing::{debug, info, warn};
 
@@ -3768,9 +3772,9 @@ impl AccessibilityEngine for MacOSEngine {
 
         // 2. Collect all AXWindow elements for this application
         let windows_collector = ElementsCollectorWithWindows::new(&app_ax_element, |e| {
-            e.role().map_or(false, |r| r.to_string() == "AXWindow")
+            e.role().is_ok_and(|r| r.to_string() == "AXWindow")
         });
-        let mut windows = windows_collector.find_all();
+        let windows = windows_collector.find_all();
         debug!(
             "[macOS] Found {} AXWindow elements for PID {}",
             windows.len(),

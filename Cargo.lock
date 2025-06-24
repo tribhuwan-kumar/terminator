@@ -746,8 +746,8 @@ dependencies = [
 
 [[package]]
 name = "cidre"
-version = "0.5.0"
-source = "git+https://github.com/mediar-ai/cidre.git?rev=efb9e060c6f8edc48551365c2e80d3e8c6887433#efb9e060c6f8edc48551365c2e80d3e8c6887433"
+version = "0.7.0"
+source = "git+https://github.com/yury/cidre?rev=c68b1e9#c68b1e9e0f1dc8f37af7c6bad6887375c89bbb23"
 dependencies = [
  "cidre-macros",
 ]
@@ -755,7 +755,7 @@ dependencies = [
 [[package]]
 name = "cidre-macros"
 version = "0.1.0"
-source = "git+https://github.com/mediar-ai/cidre.git?rev=efb9e060c6f8edc48551365c2e80d3e8c6887433#efb9e060c6f8edc48551365c2e80d3e8c6887433"
+source = "git+https://github.com/yury/cidre?rev=c68b1e9#c68b1e9e0f1dc8f37af7c6bad6887375c89bbb23"
 
 [[package]]
 name = "clang-sys"
@@ -1109,27 +1109,6 @@ dependencies = [
  "lock_api",
  "once_cell",
  "parking_lot_core",
-]
-
-[[package]]
-name = "dirs"
-version = "5.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
-name = "dirs-sys"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
-dependencies = [
- "libc",
- "option-ext",
- "redox_users",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1678,15 +1657,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-
-[[package]]
-name = "home"
-version = "0.5.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
-dependencies = [
- "windows-sys 0.59.0",
-]
 
 [[package]]
 name = "http"
@@ -3007,12 +2977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "option-ext"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
-
-[[package]]
 name = "ordered-stream"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3595,17 +3559,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redox_users"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
-dependencies = [
- "getrandom 0.2.16",
- "libredox",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "regex"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3834,16 +3787,14 @@ checksum = "8a0d197bd2c9dc6e53b84da9556a69ba4cdfab8619eb41a8bd1cc2027a0f6b1d"
 [[package]]
 name = "rusty-tesseract"
 version = "1.1.10"
-source = "git+https://github.com/louis030195/rusty-tesseract.git?branch=main#08346c1de08d122c7121425abc79081c30dbf778"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "781e2d6ed8bb85607de972e6c174902953da1f682b1d43004f0e66bf419b798f"
 dependencies = [
- "dirs",
  "image",
- "log",
  "subprocess",
  "substring",
  "tempfile",
  "thiserror 1.0.69",
- "which",
 ]
 
 [[package]]
@@ -4736,8 +4687,8 @@ dependencies = [
 
 [[package]]
 name = "uni-ocr"
-version = "0.1.0"
-source = "git+https://github.com/mediar-ai/uniOCR?rev=4a9e0df#4a9e0df3f03667fa033691dc9f9b7fe27a07871f"
+version = "0.1.4"
+source = "git+https://github.com/mediar-ai/uniOCR?rev=f7a408f#f7a408f69e8b0ef0631f4098f43a0eea699cfe52"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5046,18 +4997,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a751b3277700db47d3e574514de2eced5e54dc8a5436a3bf7a0b248b2cee16f3"
 
 [[package]]
-name = "which"
-version = "6.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
-dependencies = [
- "either",
- "home",
- "rustix 0.38.44",
- "winsafe",
-]
-
-[[package]]
 name = "widestring"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5281,15 +5220,6 @@ dependencies = [
 
 [[package]]
 name = "windows-sys"
-version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
-dependencies = [
- "windows-targets 0.48.5",
-]
-
-[[package]]
-name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
@@ -5508,12 +5438,6 @@ checksum = "c06928c8748d81b05c9be96aad92e1b6ff01833332f281e8cfca3be4b35fc9ec"
 dependencies = [
  "memchr",
 ]
-
-[[package]]
-name = "winsafe"
-version = "0.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen-rt"
