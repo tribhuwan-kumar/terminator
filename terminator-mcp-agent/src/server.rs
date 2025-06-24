@@ -13,6 +13,25 @@ use serde_json::{json, Value};
 use std::env;
 use terminator::{Browser, Desktop, Selector};
 
+/// Helper function to parse comma-separated alternative selectors into a Vec<String>
+fn parse_alternative_selectors(alternatives: Option<&str>) -> Vec<String> {
+    alternatives
+        .map(|alts| {
+            alts.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Helper function to get all selectors tried (primary + alternatives) for error reporting
+fn get_selectors_tried(primary: &str, alternatives: Option<&str>) -> Vec<String> {
+    let mut all = vec![primary.to_string()];
+    all.extend(parse_alternative_selectors(alternatives));
+    all
+}
+
 #[tool(tool_box)]
 impl DesktopWrapper {
     pub async fn new() -> Result<Self, McpError> {
@@ -104,6 +123,7 @@ impl DesktopWrapper {
                     "id": id,
                     "role": app.role(),
                     "pid": app.process_id().unwrap_or(0),
+                    "is_focused": app.is_focused().unwrap_or(false),
                     "suggested_selector": format!("#{}", id),
                     "alternative_selectors": [
                         format!("#{}", id),
@@ -170,18 +190,13 @@ impl DesktopWrapper {
         let (element, successful_selector) = find_element_with_fallbacks(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_ref(),
+            args.alternative_selectors.as_deref(),
             args.timeout_ms,
         )
         .await
         .map_err(|e| {
-            let selectors_tried = if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            };
+            let selectors_tried =
+                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
 
             McpError::internal_error(
                 "Failed to locate element with any selector",
@@ -227,13 +242,7 @@ impl DesktopWrapper {
             "text_typed": args.text_to_type,
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            },
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
@@ -279,18 +288,13 @@ impl DesktopWrapper {
         let (element, successful_selector) = find_element_with_fallbacks(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_ref(),
+            args.alternative_selectors.as_deref(),
             args.timeout_ms,
         )
         .await
         .map_err(|e| {
-            let selectors_tried = if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            };
+            let selectors_tried =
+                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
 
             McpError::internal_error(
                 "Failed to locate element with any selector",
@@ -330,13 +334,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            },
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         // Attach tree if requested
@@ -725,7 +723,7 @@ impl DesktopWrapper {
         match find_element_with_fallbacks(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_ref(),
+            args.alternative_selectors.as_deref(),
             args.timeout_ms,
         )
         .await
@@ -752,13 +750,7 @@ impl DesktopWrapper {
                     "status": "success",
                     "element": element_info,
                     "selector_used": successful_selector,
-                    "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                        let mut all = vec![args.selector.clone()];
-                        all.extend(alternatives.clone());
-                        all
-                    } else {
-                        vec![args.selector.clone()]
-                    },
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 });
                 self.maybe_attach_tree(
@@ -774,13 +766,7 @@ impl DesktopWrapper {
                 "status": "failed",
                 "exists": false,
                 "reason": e.to_string(),
-                "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                    let mut all = vec![args.selector.clone()];
-                    all.extend(alternatives.clone());
-                    all
-                } else {
-                    vec![args.selector.clone()]
-                },
+                "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
                 "timestamp": chrono::Utc::now().to_rfc3339()
             }))?])),
         }

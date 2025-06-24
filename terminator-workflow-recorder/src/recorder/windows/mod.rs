@@ -5,7 +5,7 @@ use crate::{
     MouseEventType, Position, Result, WorkflowEvent, WorkflowRecorderConfig,
 };
 use arboard::Clipboard;
-use rdev::{Button, EventType, Key};
+use rdev::{Button, EventType};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},

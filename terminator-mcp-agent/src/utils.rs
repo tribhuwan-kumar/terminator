@@ -37,9 +37,9 @@ pub struct LocatorArgs {
     )]
     pub selector: String,
     #[schemars(
-        description = "Optional alternative selectors to try in parallel. The primary selector is always preferred if it succeeds."
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
-    pub alternative_selectors: Option<Vec<String>>,
+    pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -53,9 +53,9 @@ pub struct TypeIntoElementArgs {
     )]
     pub selector: String,
     #[schemars(
-        description = "Optional alternative selectors to try in parallel. The primary selector is always preferred if it succeeds."
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
-    pub alternative_selectors: Option<Vec<String>>,
+    pub alternative_selectors: Option<String>,
     #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
     #[schemars(description = "Optional timeout in milliseconds for the action (default: 3000ms)")]
@@ -74,6 +74,10 @@ pub struct PressKeyArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -121,6 +125,10 @@ pub struct MouseDragArgs {
     pub end_x: f64,
     #[schemars(description = "End Y coordinate")]
     pub end_y: f64,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -134,9 +142,9 @@ pub struct ValidateElementArgs {
     )]
     pub selector: String,
     #[schemars(
-        description = "Optional alternative selectors to try in parallel. The primary selector is always preferred if it succeeds."
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
-    pub alternative_selectors: Option<Vec<String>>,
+    pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -149,6 +157,10 @@ pub struct HighlightElementArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
     #[schemars(description = "BGR color code (optional, default red)")]
     pub color: Option<u32>,
     #[schemars(description = "Duration in milliseconds (optional, default 1000ms)")]
@@ -165,6 +177,10 @@ pub struct WaitForElementArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
     #[schemars(description = "Condition to wait for: 'visible', 'enabled', 'focused', 'exists'")]
     pub condition: String,
     #[schemars(description = "Optional timeout in milliseconds")]
@@ -197,6 +213,10 @@ pub struct ClipboardArgs {
 #[schemars(description = "Arguments for scrolling an element")]
 pub struct ScrollElementArgs {
     pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
     #[serde(default)]
     #[schemars(description = "Direction to scroll: 'up', 'down', 'left', 'right'")]
     pub direction: String,
@@ -249,12 +269,20 @@ pub fn get_timeout(timeout_ms: Option<u64>) -> Option<Duration> {
 pub async fn find_element_with_fallbacks(
     desktop: &Desktop,
     primary_selector: &str,
-    alternative_selectors: Option<&Vec<String>>,
+    alternative_selectors: Option<&str>,
     timeout_ms: Option<u64>,
 ) -> Result<(terminator::UIElement, String), terminator::AutomationError> {
     use tokio::time::Duration;
 
     let timeout_duration = get_timeout(timeout_ms).unwrap_or(Duration::from_millis(3000));
+
+    // Parse comma-separated alternative selectors
+    let alternative_selectors_vec: Option<Vec<String>> = alternative_selectors.map(|alts| {
+        alts.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    });
 
     // Create primary task
     let desktop_clone = desktop.clone();
@@ -269,7 +297,7 @@ pub async fn find_element_with_fallbacks(
 
     // Create alternative tasks
     let mut alternative_tasks = Vec::new();
-    if let Some(alternatives) = alternative_selectors {
+    if let Some(alternatives) = alternative_selectors_vec.as_ref() {
         for selector_str in alternatives {
             let desktop_clone = desktop.clone();
             let selector_clone = selector_str.clone();

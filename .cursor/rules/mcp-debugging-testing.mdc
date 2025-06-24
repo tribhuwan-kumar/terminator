@@ -8,15 +8,10 @@ alwaysApply: false
 ## MCP Development Workflow
 
 ### Proper Development Process
-```bash
-# Build the MCP agent (Cursor IDE will run it automatically)
-cargo build --release --bin terminator-mcp-agent
-```
 
 **Important**: Cursor IDE manages the MCP server lifecycle automatically:
 - No need to manually start/stop the server
-- Cursor automatically restarts the server when you rebuild
-- Just focus on building with cargo - Cursor handles the rest
+- Cursor automatically restarts the server 
 
 ### Debugging Server Issues
 If MCP tools aren't working:
@@ -45,7 +40,6 @@ Error: no result from tool. The user likely interrupted the tool call
 ```
 
 **Debugging Steps**:
-1. Rebuild the MCP agent: `cargo build --release --bin terminator-mcp-agent`
 2. Check for compilation errors in cargo output
 3. Test individual components (shell commands) manually  
 4. Verify parameter formats are correct
