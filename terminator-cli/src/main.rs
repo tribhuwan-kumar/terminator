@@ -127,33 +127,51 @@ fn set_workspace_version(new_version: &str) -> Result<(), Box<dyn std::error::Er
     let cargo_toml = fs::read_to_string("Cargo.toml")?;
     let mut lines: Vec<String> = cargo_toml.lines().map(|s| s.to_string()).collect();
     let mut in_workspace_package = false;
-    let mut version_found = false;
+    let mut in_workspace_deps = false;
+    let mut package_version_updated = false;
+    let mut deps_version_updated = false;
 
-    for line in &mut lines {
-        let trimmed_line = line.trim();
-        if trimmed_line == "[workspace.package]" {
-            in_workspace_package = true;
+    let tmp = 0..lines.len();
+    for i in tmp {
+        let line_is_section = lines[i].trim().starts_with('[');
+        if line_is_section {
+            in_workspace_package = lines[i].trim() == "[workspace.package]";
+            in_workspace_deps = lines[i].trim() == "[workspace.dependencies]";
             continue;
         }
-        if in_workspace_package {
-            if trimmed_line.starts_with('[') {
-                break;
-            }
-            if line.trim().starts_with("version") {
-                if let Some(key) = line.split('=').next() {
-                    if key.trim() == "version" {
-                        let indentation = line.len() - line.trim_start().len();
-                        *line = format!("{}version = \"{}\"", " ".repeat(indentation), new_version);
-                        version_found = true;
-                        break;
-                    }
-                }
+
+        if in_workspace_package && lines[i].trim().starts_with("version =") {
+            let indentation = lines[i].len() - lines[i].trim_start().len();
+            lines[i] = format!("{}version = \"{}\"", " ".repeat(indentation), new_version);
+            package_version_updated = true;
+        }
+
+        if in_workspace_deps && lines[i].trim().starts_with("terminator =") {
+            let line_clone = lines[i].clone();
+            let version_range = if let Some(start) = line_clone.find("version = \"") {
+                let version_start = start + "version = \"".len();
+                line_clone[version_start..]
+                    .find('"')
+                    .map(|end_quote_offset| version_start..(version_start + end_quote_offset))
+            } else {
+                None
+            };
+
+            if let Some(range) = version_range {
+                lines[i].replace_range(range, new_version);
+                deps_version_updated = true;
             }
         }
     }
 
-    if !version_found {
+    if !package_version_updated {
         return Err("version key not found in [workspace.package] in Cargo.toml".into());
+    }
+
+    if !deps_version_updated {
+        eprintln!(
+            "⚠️  Warning: Could not find and update version for 'terminator' in [workspace.dependencies]."
+        );
     }
 
     fs::write("Cargo.toml", lines.join("\n") + "\n")?;
