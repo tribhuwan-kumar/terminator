@@ -146,55 +146,82 @@ fn get_workspace_version() -> Result<String, Box<dyn std::error::Error>> {
     Err("Version not found in [workspace.package] in Cargo.toml".into())
 }
 
+fn sync_cargo_versions() -> Result<(), Box<dyn std::error::Error>> {
+    println!("📦 Syncing Cargo.toml dependency versions...");
+    let workspace_version = get_workspace_version()?;
+
+    let cargo_toml = fs::read_to_string("Cargo.toml")?;
+    let mut lines: Vec<String> = cargo_toml.lines().map(|s| s.to_string()).collect();
+    let mut in_workspace_deps = false;
+    let mut deps_version_updated = false;
+
+    for i in 0..lines.len() {
+        let line = &lines[i];
+        let trimmed_line = line.trim();
+
+        if trimmed_line.starts_with('[') {
+            in_workspace_deps = trimmed_line == "[workspace.dependencies]";
+            continue;
+        }
+
+        if in_workspace_deps && trimmed_line.starts_with("terminator =") {
+            let line_clone = line.clone();
+            if let Some(start) = line_clone.find("version = \"") {
+                let version_start = start + "version = \"".len();
+                if let Some(end_quote_offset) = line_clone[version_start..].find('"') {
+                    let range = version_start..(version_start + end_quote_offset);
+                    if &line_clone[range.clone()] != workspace_version.as_str() {
+                        lines[i].replace_range(range, &workspace_version);
+                        println!(
+                            "✅ Updated 'terminator' dependency version to {}.",
+                            workspace_version
+                        );
+                        deps_version_updated = true;
+                    } else {
+                        println!("✅ 'terminator' dependency version is already up to date.");
+                        deps_version_updated = true; // Mark as done
+                    }
+                }
+            }
+            break; // Assume only one terminator dependency to update
+        }
+    }
+
+    if deps_version_updated {
+        fs::write("Cargo.toml", lines.join("\n") + "\n")?;
+    } else {
+        eprintln!(
+            "⚠️  Warning: Could not find 'terminator' in [workspace.dependencies] to sync version."
+        );
+    }
+    Ok(())
+}
+
 fn set_workspace_version(new_version: &str) -> Result<(), Box<dyn std::error::Error>> {
     let cargo_toml = fs::read_to_string("Cargo.toml")?;
     let mut lines: Vec<String> = cargo_toml.lines().map(|s| s.to_string()).collect();
     let mut in_workspace_package = false;
-    let mut in_workspace_deps = false;
     let mut package_version_updated = false;
-    let mut deps_version_updated = false;
 
-    let tmp = 0..lines.len();
-    for i in tmp {
-        let line_is_section = lines[i].trim().starts_with('[');
-        if line_is_section {
-            in_workspace_package = lines[i].trim() == "[workspace.package]";
-            in_workspace_deps = lines[i].trim() == "[workspace.dependencies]";
+    for i in 0..lines.len() {
+        let line = &lines[i];
+        let trimmed_line = line.trim();
+
+        if trimmed_line.starts_with('[') {
+            in_workspace_package = trimmed_line == "[workspace.package]";
             continue;
         }
 
-        if in_workspace_package && lines[i].trim().starts_with("version =") {
-            let indentation = lines[i].len() - lines[i].trim_start().len();
+        if in_workspace_package && trimmed_line.starts_with("version =") {
+            let indentation = line.len() - line.trim_start().len();
             lines[i] = format!("{}version = \"{}\"", " ".repeat(indentation), new_version);
             package_version_updated = true;
-        }
-
-        if in_workspace_deps && lines[i].trim().starts_with("terminator =") {
-            let line_clone = lines[i].clone();
-            let version_range = if let Some(start) = line_clone.find("version = \"") {
-                let version_start = start + "version = \"".len();
-                line_clone[version_start..]
-                    .find('"')
-                    .map(|end_quote_offset| version_start..(version_start + end_quote_offset))
-            } else {
-                None
-            };
-
-            if let Some(range) = version_range {
-                lines[i].replace_range(range, new_version);
-                deps_version_updated = true;
-            }
+            break; // Exit after finding and updating the version
         }
     }
 
     if !package_version_updated {
         return Err("version key not found in [workspace.package] in Cargo.toml".into());
-    }
-
-    if !deps_version_updated {
-        eprintln!(
-            "⚠️  Warning: Could not find and update version for 'terminator' in [workspace.dependencies]."
-        );
     }
 
     fs::write("Cargo.toml", lines.join("\n") + "\n")?;
@@ -256,6 +283,12 @@ fn bump_version(bump_type: &str) {
 
 fn sync_all_versions() {
     println!("🔄 Syncing all package versions...");
+
+    // First, sync versions within Cargo.toml
+    if let Err(e) = sync_cargo_versions() {
+        eprintln!("❌ Failed to sync versions in Cargo.toml: {}", e);
+        return;
+    }
 
     let workspace_version = match get_workspace_version() {
         Ok(v) => v,
