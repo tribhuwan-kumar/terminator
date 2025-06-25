@@ -1,8 +1,8 @@
 use crate::utils::{
-    get_timeout, ClipboardArgs, DesktopWrapper, EmptyArgs, GetClipboardArgs, GetWindowTreeArgs,
-    GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs, MouseDragArgs,
-    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    get_timeout, ActivateElementArgs, ClipboardArgs, DesktopWrapper, EmptyArgs, GetClipboardArgs,
+    GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
+    MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
+    ScrollElementArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use rmcp::model::{
@@ -11,7 +11,27 @@ use rmcp::model::{
 use rmcp::{tool, Error as McpError, ServerHandler};
 use serde_json::{json, Value};
 use std::env;
+use std::sync::Arc;
 use terminator::{Browser, Desktop, Selector};
+
+/// Helper function to parse comma-separated alternative selectors into a Vec<String>
+fn parse_alternative_selectors(alternatives: Option<&str>) -> Vec<String> {
+    alternatives
+        .map(|alts| {
+            alts.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Helper function to get all selectors tried (primary + alternatives) for error reporting
+fn get_selectors_tried(primary: &str, alternatives: Option<&str>) -> Vec<String> {
+    let mut all = vec![primary.to_string()];
+    all.extend(parse_alternative_selectors(alternatives));
+    all
+}
 
 #[tool(tool_box)]
 impl DesktopWrapper {
@@ -38,7 +58,9 @@ impl DesktopWrapper {
             }
         };
 
-        Ok(Self { desktop })
+        Ok(Self {
+            desktop: Arc::new(desktop),
+        })
     }
 
     #[tool(
@@ -83,7 +105,7 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Get all applications currently running.")]
+    #[tool(description = "Get all applications currently running and their state.")]
     async fn get_applications(
         &self,
         #[tool(param)] _args: EmptyArgs,
@@ -95,28 +117,53 @@ impl DesktopWrapper {
             )
         })?;
 
-        let app_info: Vec<_> = apps
+        let app_info_futures: Vec<_> = apps
             .iter()
             .map(|app| {
-                let id = app.id().unwrap_or_default();
-                json!({
-                    "name": app.name().unwrap_or_default(),
-                    "id": id,
-                    "role": app.role(),
-                    "pid": app.process_id().unwrap_or(0),
-                    "suggested_selector": format!("#{}", id),
-                    "alternative_selectors": [
-                        format!("#{}", id),
-                        format!("name:{}", app.name().unwrap_or_default())
-                    ]
+                let desktop = self.desktop.clone();
+                let app_name = app.name().unwrap_or_default();
+                let app_id = app.id().unwrap_or_default();
+                let app_role = app.role();
+                let app_pid = app.process_id().unwrap_or(0);
+                let is_focused = app.is_focused().unwrap_or(false);
+
+                tokio::task::spawn_blocking(move || {
+                    let tree = if app_pid > 0 {
+                        desktop
+                            .get_window_tree(app_pid, None, None)
+                            .ok()
+                            .and_then(|t| serde_json::to_value(t).ok())
+                    } else {
+                        None
+                    };
+
+                    json!({
+                        "name": app_name,
+                        "id": app_id,
+                        "role": app_role,
+                        "pid": app_pid,
+                        "is_focused": is_focused,
+                        "suggested_selector": format!("#{}", app_id),
+                        "alternative_selectors": [
+                            format!("#{}", app_id),
+                            format!("name:{}", app_name)
+                        ],
+                        "ui_tree": tree
+                    })
                 })
             })
             .collect();
 
+        let app_info_results = futures::future::join_all(app_info_futures).await;
+        let app_info: Vec<Value> = app_info_results
+            .into_iter()
+            .filter_map(|res| res.ok())
+            .collect();
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "applications": app_info,
-            "count": apps.len(),
-            "recommendation": "Always prefer using ID selectors (e.g., '#12345') over name selectors for reliability. Use get_window_tree with include_tree=true to get the full UI structure and find specific element IDs."
+            "count": app_info.len(),
+            "recommendation": "Always prefer using ID selectors (e.g., '#12345') over name selectors for reliability. The UI tree for each application is now included."
         }))?]))
     }
 
@@ -170,18 +217,13 @@ impl DesktopWrapper {
         let (element, successful_selector) = find_element_with_fallbacks(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_ref(),
+            args.alternative_selectors.as_deref(),
             args.timeout_ms,
         )
         .await
         .map_err(|e| {
-            let selectors_tried = if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            };
+            let selectors_tried =
+                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
 
             McpError::internal_error(
                 "Failed to locate element with any selector",
@@ -199,6 +241,10 @@ impl DesktopWrapper {
         // Get element details before typing for better feedback
         let element_info = json!({
             "name": element.name().unwrap_or_default(),
+            "application": element.application_name(),
+            "window": element.window_title(),
+            "process_id": element.process_id().unwrap_or(0),
+            "is_focused": element.is_focused().unwrap_or(false),
             "role": element.role(),
             "id": id,
             "pid": pid,
@@ -227,13 +273,7 @@ impl DesktopWrapper {
             "text_typed": args.text_to_type,
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            },
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
@@ -279,18 +319,13 @@ impl DesktopWrapper {
         let (element, successful_selector) = find_element_with_fallbacks(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_ref(),
+            args.alternative_selectors.as_deref(),
             args.timeout_ms,
         )
         .await
         .map_err(|e| {
-            let selectors_tried = if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            };
+            let selectors_tried =
+                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
 
             McpError::internal_error(
                 "Failed to locate element with any selector",
@@ -330,13 +365,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                let mut all = vec![args.selector.clone()];
-                all.extend(alternatives.clone());
-                all
-            } else {
-                vec![args.selector.clone()]
-            },
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         // Attach tree if requested
@@ -371,6 +400,10 @@ impl DesktopWrapper {
             "name": element.name().unwrap_or_default(),
             "role": element.role(),
             "id": element.id().unwrap_or_default(),
+            "application": element.application_name(),
+            "window_title": element.window_title(),
+            "process_id": element.process_id().unwrap_or(0),
+            "is_focused": element.is_focused().unwrap_or(false),
             "bounds": element.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
@@ -426,6 +459,10 @@ impl DesktopWrapper {
             "name": focused.name().unwrap_or_default(),
             "role": focused.role(),
             "id": focused.id().unwrap_or_default(),
+            "application": focused.application_name(),
+            "window_title": focused.window_title(),
+            "process_id": focused.process_id().unwrap_or(0),
+            "is_focused": focused.is_focused().unwrap_or(false),
             "bounds": focused.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
@@ -491,7 +528,7 @@ impl DesktopWrapper {
     )]
     async fn activate_element(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        #[tool(param)] args: ActivateElementArgs,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -512,6 +549,9 @@ impl DesktopWrapper {
             "role": element.role(),
             "id": id,
             "pid": pid,
+            "application": element.application_name(),
+            "window_title": element.window_title(),
+            "is_focused": element.is_focused().unwrap_or(false),
             "bounds": element.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
@@ -537,7 +577,7 @@ impl DesktopWrapper {
 
         // Always attach UI tree for activated elements to help with next actions
         self.maybe_attach_tree(
-            args.include_tree.unwrap_or(true), // Default to true for activate_element
+            true, // Always attach tree for activate_element since it's important for next actions
             Some(pid),
             &mut result_json,
         );
@@ -585,6 +625,7 @@ impl DesktopWrapper {
         &self,
         #[tool(param)] args: ClipboardArgs,
     ) -> Result<CallToolResult, McpError> {
+        // todo use native clipbaord feature we implemented
         let result = if cfg!(target_os = "windows") {
             // Windows: echo "text" | clip
             let command = format!("echo \"{}\" | clip", args.text.replace("\"", "\\\""));
@@ -674,6 +715,10 @@ impl DesktopWrapper {
             "name": element.name().unwrap_or_default(),
             "role": element.role(),
             "id": element.id().unwrap_or_default(),
+            "application": element.application_name(),
+            "window_title": element.window_title(),
+            "process_id": element.process_id().unwrap_or(0),
+            "is_focused": element.is_focused().unwrap_or(false),
             "bounds": element.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
@@ -725,7 +770,7 @@ impl DesktopWrapper {
         match find_element_with_fallbacks(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_ref(),
+            args.alternative_selectors.as_deref(),
             args.timeout_ms,
         )
         .await
@@ -736,6 +781,10 @@ impl DesktopWrapper {
                     "name": element.name().unwrap_or_default(),
                     "role": element.role(),
                     "id": element.id().unwrap_or_default(),
+                    "application": element.application_name(),
+                    "window_title": element.window_title(),
+                    "process_id": element.process_id().unwrap_or(0),
+                    "is_focused": element.is_focused().unwrap_or(false),
                     "bounds": element.bounds().map(|b| json!({
                         "x": b.0, "y": b.1, "width": b.2, "height": b.3
                     })).unwrap_or(json!(null)),
@@ -752,13 +801,7 @@ impl DesktopWrapper {
                     "status": "success",
                     "element": element_info,
                     "selector_used": successful_selector,
-                    "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                        let mut all = vec![args.selector.clone()];
-                        all.extend(alternatives.clone());
-                        all
-                    } else {
-                        vec![args.selector.clone()]
-                    },
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 });
                 self.maybe_attach_tree(
@@ -774,13 +817,7 @@ impl DesktopWrapper {
                 "status": "failed",
                 "exists": false,
                 "reason": e.to_string(),
-                "selectors_tried": if let Some(alternatives) = &args.alternative_selectors {
-                    let mut all = vec![args.selector.clone()];
-                    all.extend(alternatives.clone());
-                    all
-                } else {
-                    vec![args.selector.clone()]
-                },
+                "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
                 "timestamp": chrono::Utc::now().to_rfc3339()
             }))?])),
         }
@@ -814,6 +851,10 @@ impl DesktopWrapper {
             "name": element.name().unwrap_or_default(),
             "role": element.role(),
             "id": element.id().unwrap_or_default(),
+            "application": element.application_name(),
+            "window_title": element.window_title(),
+            "process_id": element.process_id().unwrap_or(0),
+            "is_focused": element.is_focused().unwrap_or(false),
             "bounds": element.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
@@ -917,19 +958,39 @@ impl DesktopWrapper {
         #[tool(param)] args: NavigateBrowserArgs,
     ) -> Result<CallToolResult, McpError> {
         let browser = args.browser.clone().map(Browser::Custom);
-        self.desktop.open_url(&args.url, browser).map_err(|e| {
+        let ui_element = self.desktop.open_url(&args.url, browser).map_err(|e| {
             McpError::internal_error(
                 "Failed to open URL",
                 Some(json!({"reason": e.to_string(), "url": args.url, "browser": args.browser})),
             )
         })?;
 
+        let element_info = json!({
+            "name": ui_element.name().unwrap_or_default(),
+            "role": ui_element.role(),
+            "id": ui_element.id().unwrap_or_default(),
+            "application": ui_element.application_name(),
+            "window_title": ui_element.window_title(),
+            "process_id": ui_element.process_id().unwrap_or(0),
+            "is_focused": ui_element.is_focused().unwrap_or(false),
+            "bounds": ui_element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
+        });
+
+        let tree = self
+            .desktop
+            .get_window_tree(ui_element.process_id().unwrap_or(0), None, None)
+            .unwrap_or_default();
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "navigate_browser",
             "status": "success",
             "url": args.url,
             "browser": args.browser,
-            "timestamp": chrono::Utc::now().to_rfc3339()
+            "element": element_info,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "ui_tree": tree
         }))?]))
     }
 
@@ -938,26 +999,26 @@ impl DesktopWrapper {
         &self,
         #[tool(param)] args: OpenApplicationArgs,
     ) -> Result<CallToolResult, McpError> {
-        let result = self.desktop.open_application(&args.app_name).map_err(|e| {
+        let ui_element = self.desktop.open_application(&args.app_name).map_err(|e| {
             McpError::internal_error(
                 "Failed to open application",
                 Some(json!({"reason": e.to_string(), "app_name": args.app_name})),
             )
         })?;
 
-        let pid = result.process_id().unwrap_or(0);
-        let id = result.id().unwrap_or_default();
+        let process_id = ui_element.process_id().unwrap_or(0);
 
         let element_info = json!({
-            "name": result.name().unwrap_or_default(),
-            "role": result.role(),
-            "id": id,
-            "pid": pid,
-            "suggested_selector": format!("#{}", id),
-            "alternative_selectors": [
-                format!("#{}", id),
-                format!("name:{}", result.name().unwrap_or_default())
-            ]
+            "name": ui_element.name().unwrap_or_default(),
+            "role": ui_element.role(),
+            "id": ui_element.id().unwrap_or_default(),
+            "application": ui_element.application_name(),
+            "window_title": ui_element.window_title(),
+            "process_id": process_id,
+            "is_focused": ui_element.is_focused().unwrap_or(false),
+            "bounds": ui_element.bounds().map(|b| json!({
+                "x": b.0, "y": b.1, "width": b.2, "height": b.3
+            })).unwrap_or(json!(null)),
         });
 
         let mut result_json = json!({
@@ -970,8 +1031,8 @@ impl DesktopWrapper {
         });
 
         // Always attach the full UI tree for newly opened applications
-        if pid > 0 {
-            if let Ok(tree) = self.desktop.get_window_tree(pid, None, None) {
+        if process_id > 0 {
+            if let Ok(tree) = self.desktop.get_window_tree(process_id, None, None) {
                 if let Ok(tree_val) = serde_json::to_value(tree) {
                     if let Some(obj) = result_json.as_object_mut() {
                         obj.insert("ui_tree".to_string(), tree_val);
@@ -1006,6 +1067,8 @@ impl DesktopWrapper {
             "name": element.name().unwrap_or_default(),
             "role": element.role(),
             "id": element.id().unwrap_or_default(),
+            "process_id": element.process_id().unwrap_or(0),
+            "is_focused": element.is_focused().unwrap_or(false),
             "bounds": element.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
@@ -1054,6 +1117,10 @@ impl DesktopWrapper {
             "name": element.name().unwrap_or_default(),
             "role": element.role(),
             "id": element.id().unwrap_or_default(),
+            "application": element.application_name(),
+            "window_title": element.window_title(),
+            "process_id": element.process_id().unwrap_or(0),
+            "is_focused": element.is_focused().unwrap_or(false),
             "bounds": element.bounds().map(|b| json!({
                 "x": b.0, "y": b.1, "width": b.2, "height": b.3
             })).unwrap_or(json!(null)),
@@ -1134,9 +1201,15 @@ fn get_server_instructions() -> String {
         "
 You are an AI assistant designed to control a computer desktop. Your primary goal is to understand the user's request and translate it into a sequence of tool calls to automate GUI interactions.
 
-**CRITICAL: ID-First Selector Strategy**
+**Golden Rules for Robust Automation**
 
-**GOLDEN RULE:** When any UI element has an `id` field, ALWAYS use ONLY that ID as the selector with the format `#[ID]`. This is the most reliable targeting method and prevents ambiguity.
+1.  **CHECK FOCUS FIRST:** Before any `click`, `type`, or `press_key` action, you **MUST** verify the target application `is_focused` using `get_applications`. If it's not, you **MUST** call `activate_element` before proceeding. This is the #1 way to prevent sending commands to the wrong window.
+
+2.  **WAIT AFTER NAVIGATION:** After actions like `click_element` on a link or `navigate_browser`, the UI needs time to load. You **MUST** explicitly wait. The best method is to use `wait_for_element` targeting a known element on the new page. Do not call `get_window_tree` immediately.
+
+3.  **VERIFY EVERY ACTION:** After every significant action, call `get_window_tree` to get fresh UI state and confirm your action had the intended effect. Do not trust a 'success' status alone.
+
+4.  **USE IDs OVER NAMES:** When an element has an `id` in the UI tree, you **MUST** use it as the primary selector (e.g., `selector: \"#12345\"`). It is the most reliable method. Use name-based selectors as fallbacks.
 
 **Core Workflow: Discover, then Act with ID Priority**
 
@@ -1147,7 +1220,7 @@ Your most reliable strategy is to inspect the application's UI structure *before
 2.  **Get the UI Tree:** This is the most important step. Once you have the `pid` of your target application, call `get_window_tree` with `include_tree: true`. This returns a complete, JSON-like structure of all UI elements in that application.
 
 3.  **Find Your Target Element in the Tree:** Parse the tree to locate the element you need. MANDATORY priority order:
-    *   **`id`: HIGHEST PRIORITY** - This is the most reliable way to find an element. It's a unique identifier.
+    *   `id`: HIGHEST PRIORITY - This is the most reliable way to find an element. It's a unique identifier.
     *   `name`: The visible text or label of the element (e.g., \"Save\", \"File\").
     *   `role`: The type of the element (e.g., \"Button\", \"Window\", \"Edit\").
 
@@ -1228,11 +1301,11 @@ For challenging web automation tasks, apply these advanced techniques:
 
 Different element roles require different interaction strategies:
 
-*   **`Edit` vs `TextArea`:** Both accept text input, but TextArea typically for longer content
-*   **`Button` vs `Link`:** Both clickable, but buttons often trigger actions, links navigate
-*   **`ComboBox` vs `ListBox`:** ComboBox allows typing + selection, ListBox is selection-only
-*   **`CheckBox` vs `RadioButton`:** CheckBox allows multiple selections, RadioButton is exclusive
-*   **`Document` role:** Indicates page content area - chain selectors from here for web content
+*   `Edit` vs `TextArea`:** Both accept text input, but TextArea typically for longer content
+*   `Button` vs `Link`:** Both clickable, but buttons often trigger actions, links navigate
+*   `ComboBox` vs `ListBox`:** ComboBox allows typing + selection, ListBox is selection-only
+*   `CheckBox` vs `RadioButton`:** CheckBox allows multiple selections, RadioButton is exclusive
+*   `Document` role:** Indicates page content area - chain selectors from here for web content
 
 **Error Recovery and Debugging:**
 

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Instant;
 use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::signal::ctrl_c;
 use tokio_stream::StreamExt;
@@ -26,22 +27,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Basic input recording
         record_mouse: true,
         record_keyboard: true,
-        record_window: true,
         capture_ui_elements: true, // PERFORMANCE: Set to false for max speed if you don't need UI context
 
         // Advanced workflow features
         record_clipboard: true,
-        record_text_selection: true,
-        record_drag_drop: true,
         record_hotkeys: true,
 
         // High-level semantic events
         record_text_input_completion: true, // 🔥 NEW: High-level text input events
-        text_input_completion_timeout_ms: 2000, // Complete typing after 2s pause OR focus change
 
         // Configuration tuning
         max_clipboard_content_length: 2048, // 2KB max for clipboard content
-        max_text_selection_length: 512,     // 512 chars max for text selections
         track_modifier_states: true,
         mouse_move_throttle_ms: 100, // PERFORMANCE: Increase throttle to reduce event spam
         min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
@@ -123,7 +119,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Process and display events from the stream
     let event_display_task = tokio::spawn(async move {
         let mut event_count = 0;
+        let mut last_event_time = Instant::now();
         while let Some(event) = event_stream.next().await {
+            let now = Instant::now();
+            let latency = now.duration_since(last_event_time);
+            last_event_time = now;
             event_count += 1;
 
             // Display different event types with appropriate detail levels
@@ -138,11 +138,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
 
                     println!(
-                        "{} BUTTON CLICK {}: \"{}\" ({:?})",
+                        "{} BUTTON CLICK {}: \"{}\" ({:?}) (Latency: {:?})",
                         interaction_icon,
                         event_count,
                         button_event.button_text,
-                        button_event.interaction_type
+                        button_event.interaction_type,
+                        latency
                     );
 
                     if let Some(position) = button_event.click_position {
@@ -171,11 +172,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
 
                         if let Some(ch) = kb_event.character {
-                            println!("⌨️  Keyboard {}: {}'{}'", event_count, modifiers, ch);
+                            println!(
+                                "⌨️  Keyboard {}: {}'{}' (Latency: {:?})",
+                                event_count, modifiers, ch, latency
+                            );
                         } else {
                             println!(
-                                "⌨️  Keyboard {}: {}Key({})",
-                                event_count, modifiers, kb_event.key_code
+                                "⌨️  Keyboard {}: {}Key({}) (Latency: {:?})",
+                                event_count, modifiers, kb_event.key_code, latency
                             );
                         }
 
@@ -277,11 +281,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     text_input_event,
                 ) => {
                     println!(
-                        "🔥 TEXT INPUT COMPLETED {}: \"{}\" ({} keystrokes in {}ms)",
+                        "🔥 TEXT INPUT COMPLETED {}: \"{}\" ({} keystrokes in {}ms) (Latency: {:?})",
                         event_count,
                         text_input_event.text_value,
                         text_input_event.keystroke_count,
-                        text_input_event.typing_duration_ms
+                        text_input_event.typing_duration_ms,
+                        latency
                     );
 
                     // Show field details
@@ -324,13 +329,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     app_switch_event,
                 ) => {
                     println!(
-                        "🔄 APPLICATION SWITCH {}: {} → {}",
+                        "🔄 APPLICATION SWITCH {}: {} → {} (Latency: {:?})",
                         event_count,
                         app_switch_event
                             .from_application
                             .as_ref()
                             .unwrap_or(&"(unknown)".to_string()),
-                        app_switch_event.to_application
+                        app_switch_event.to_application,
+                        latency
                     );
 
                     // Show switch method
@@ -385,12 +391,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
 
                         println!(
-                            "🖱️  Mouse {} {}: {} button at ({}, {})",
+                            "🖱️  Mouse {} {}: {} button at ({}, {}) (Latency: {:?})",
                             event_type_name,
                             event_count,
                             button_name,
                             mouse_event.position.x,
-                            mouse_event.position.y
+                            mouse_event.position.y,
+                            latency
                         );
 
                         if let Some(ref ui_element) = mouse_event.metadata.ui_element {
@@ -424,8 +431,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tab_nav_event,
                 ) => {
                     println!(
-                        "🌐 BROWSER TAB NAVIGATION {}: {:?} in {}",
-                        event_count, tab_nav_event.action, tab_nav_event.browser
+                        "🌐 BROWSER TAB NAVIGATION {}: {:?} in {} (Latency: {:?})",
+                        event_count, tab_nav_event.action, tab_nav_event.browser, latency
                     );
 
                     // Show FROM → TO navigation clearly

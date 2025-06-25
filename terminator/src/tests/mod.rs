@@ -7,7 +7,7 @@ mod test_serialization;
 
 // Initialize tracing for tests
 pub fn init_tracing() {
-    use tracing_subscriber::{EnvFilter, fmt};
+    use tracing_subscriber::{fmt, EnvFilter};
     fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
         .with_target(true)

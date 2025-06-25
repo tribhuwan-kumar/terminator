@@ -14,31 +14,31 @@ use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
-use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
+use uiautomation::UIAutomation;
 use uni_ocr::{OcrEngine, OcrProvider};
 
 // windows imports
+use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE, HWND};
 use windows::Win32::System::Com::{
-    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Registry::HKEY;
 use windows::Win32::System::Threading::GetProcessId;
 use windows::Win32::UI::Shell::{
-    ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_NOASYNC,
-    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW, ShellExecuteW,
+    ApplicationActivationManager, IApplicationActivationManager, ShellExecuteExW, ShellExecuteW,
+    ACTIVATEOPTIONS, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
 };
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -2601,7 +2601,7 @@ impl UIElementImpl for WindowsUIElement {
 
     fn activate_window(&self) -> Result<(), AutomationError> {
         use windows::Win32::UI::WindowsAndMessaging::{
-            BringWindowToTop, IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow,
+            BringWindowToTop, IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE,
         };
 
         debug!(
@@ -2649,7 +2649,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn minimize_window(&self) -> Result<(), AutomationError> {
-        use windows::Win32::UI::WindowsAndMessaging::{SW_MINIMIZE, ShowWindow};
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_MINIMIZE};
 
         debug!("Minimizing window for element: {:?}", self.element.0);
 
@@ -2977,8 +2977,8 @@ impl UIElementImpl for WindowsUIElement {
     // New mouse control methods
     fn mouse_click_and_hold(&self, x: f64, y: f64) -> Result<(), AutomationError> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
-            MOUSEEVENTF_MOVE, MOUSEINPUT, SendInput,
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
+            MOUSEEVENTF_MOVE, MOUSEINPUT,
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         fn to_absolute(x: f64, y: f64) -> (i32, i32) {
@@ -3023,8 +3023,8 @@ impl UIElementImpl for WindowsUIElement {
     }
     fn mouse_move(&self, x: f64, y: f64) -> Result<(), AutomationError> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEINPUT,
-            SendInput,
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE,
+            MOUSEINPUT,
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         fn to_absolute(x: f64, y: f64) -> (i32, i32) {
@@ -3055,7 +3055,7 @@ impl UIElementImpl for WindowsUIElement {
     }
     fn mouse_release(&self) -> Result<(), AutomationError> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTUP, MOUSEINPUT, SendInput,
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTUP, MOUSEINPUT,
         };
         let up_input = INPUT {
             r#type: INPUT_MOUSE,
@@ -3168,8 +3168,8 @@ impl UIElementImpl for WindowsUIElement {
         use std::time::Instant;
         use windows::Win32::Foundation::{COLORREF, POINT};
         use windows::Win32::Graphics::Gdi::{
-            CreatePen, DeleteObject, GetDC, GetStockObject, HGDIOBJ, NULL_BRUSH, PS_SOLID,
-            Rectangle, ReleaseDC, SelectObject,
+            CreatePen, DeleteObject, GetDC, GetStockObject, Rectangle, ReleaseDC, SelectObject,
+            HGDIOBJ, NULL_BRUSH, PS_SOLID,
         };
         use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
@@ -3481,9 +3481,16 @@ impl UIElementImpl for WindowsUIElement {
     fn url(&self) -> Option<String> {
         let automation = match create_ui_automation_with_com_init() {
             Ok(a) => a,
-            Err(_) => return None,
+            Err(e) => {
+                debug!(
+                    "Failed to create UIAutomation instance for URL detection: {}",
+                    e
+                );
+                return None;
+            }
         };
 
+        // Find the root window for the element.
         let search_root = if let Ok(Some(window)) = self.window() {
             window
                 .as_any()
@@ -3494,58 +3501,68 @@ impl UIElementImpl for WindowsUIElement {
             self.element.0.clone()
         };
 
-        // Detect browser type from window title or process name
-        let window_title = search_root.get_name().unwrap_or_default().to_lowercase();
-        let process_name = if let Ok(pid) = self.element.0.get_process_id() {
-            get_process_name_by_pid(pid as i32)
-                .unwrap_or_default()
-                .to_lowercase()
-        } else {
-            String::new()
-        };
+        debug!(
+            "URL search root: {}",
+            search_root.get_name().unwrap_or_default()
+        );
 
-        // Select address bar names based on detected browser
-        let address_bar_names: &[&str] =
-            if window_title.contains("firefox") || process_name.contains("firefox") {
-                &[
-                    "Search with Google or enter address", // Most common Firefox
-                    "Search or enter address",             // Firefox alternative
-                ]
-            } else {
-                &["Address and search bar"] // Chrome and default
-            };
+        // Try to find address bar using a more flexible filter function.
+        let address_bar_keywords = ["address", "location", "url", "website", "search", "go to"];
 
-        // Try to find the address bar with reduced timeout and optimized search
-        for name in address_bar_names {
-            match automation
-                .create_matcher()
-                .from_ref(&search_root)
-                .control_type(ControlType::Edit)
-                .match_name(*name)
-                .timeout(5000) // Reduced from 2000ms to 500ms
-                .depth(10) // Reduced from 15 to 10 for faster search
-                .find_first()
-            {
-                Ok(element) => {
-                    // The URL is in the ValuePattern.
-                    if let Ok(value_pattern) = element.get_pattern::<patterns::UIValuePattern>() {
-                        if let Ok(value) = value_pattern.get_value() {
-                            if !value.is_empty() {
-                                return Some(value);
-                            }
-                        }
-                    }
-                    // Fallback to name, though less likely for this specific element.
-                    if let Ok(element_name) = element.get_name() {
-                        if element_name.starts_with("http") {
-                            return Some(element_name);
-                        }
+        let matcher = automation
+            .create_matcher()
+            .from_ref(&search_root)
+            .control_type(ControlType::Edit)
+            .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                if let Ok(name) = e.get_name() {
+                    let name_lower = name.to_lowercase();
+                    if address_bar_keywords
+                        .iter()
+                        .any(|&keyword| name_lower.contains(keyword))
+                    {
+                        return Ok(true);
                     }
                 }
-                Err(_) => continue,
+                Ok(false)
+            }))
+            .timeout(200) // Quick search for the best case
+            .depth(10);
+
+        if let Ok(element) = matcher.find_first() {
+            if let Ok(value_pattern) = element.get_pattern::<patterns::UIValuePattern>() {
+                if let Ok(value) = value_pattern.get_value() {
+                    if value.starts_with("http") {
+                        debug!("Found URL via keyword search for address bar: {}", value);
+                        return Some(value);
+                    }
+                }
             }
         }
 
+        // Fallback: If no specifically named address bar is found,
+        // search for ANY edit control with a URL in it, as a broader but still constrained search.
+        // This can help with non-standard browsers or updated UI.
+        let edit_condition = automation
+            .create_property_condition(
+                UIProperty::ControlType,
+                Variant::from(ControlType::Edit as i32),
+                None,
+            )
+            .unwrap();
+        if let Ok(candidates) = search_root.find_all(TreeScope::Descendants, &edit_condition) {
+            for candidate in candidates {
+                if let Ok(value_pattern) = candidate.get_pattern::<patterns::UIValuePattern>() {
+                    if let Ok(url) = value_pattern.get_value() {
+                        if url.starts_with("http") {
+                            debug!("Found URL in fallback search of Edit controls: {}", url);
+                            return Some(url);
+                        }
+                    }
+                }
+            }
+        }
+
+        debug!("Could not find URL in any address bar candidate.");
         None
     }
 }
@@ -3820,7 +3837,7 @@ fn launch_app(
                 }
 
                 let pid = GetProcessId(process_handle);
-                let _ = CloseHandle(process_handle); // we can use HandleGuard too 
+                let _ = CloseHandle(process_handle); // we can use HandleGuard too
 
                 pid
             }

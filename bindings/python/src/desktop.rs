@@ -123,23 +123,6 @@ impl Desktop {
         Ok(Locator { inner: locator })
     }
 
-    #[pyo3(name = "capture_screen", text_signature = "($self)")]
-    /// (async) Capture a screenshot of the primary monitor.
-    ///
-    /// Returns:
-    ///     ScreenshotResult: The screenshot data.
-    pub fn capture_screen<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
-            let result = desktop
-                .capture_screen()
-                .await
-                .map_err(automation_error_to_pyerr)?;
-            let py_result = ScreenshotResult::from(result);
-            Ok(py_result)
-        })
-    }
-
     #[pyo3(name = "run_command", signature = (windows_command=None, unix_command=None))]
     #[pyo3(text_signature = "($self, windows_command, unix_command)")]
     /// (async) Run a shell command.
@@ -163,47 +146,6 @@ impl Desktop {
                 .await
                 .map_err(automation_error_to_pyerr)?;
             let py_result = CommandOutput::from(result);
-            Ok(py_result)
-        })
-    }
-
-    #[pyo3(name = "get_active_monitor_name", text_signature = "($self)")]
-    /// (async) Get the name of the currently active monitor.
-    ///
-    /// Returns:
-    ///     str: The name of the active monitor.
-    pub fn get_active_monitor_name<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
-            let result = desktop
-                .get_active_monitor_name()
-                .await
-                .map_err(automation_error_to_pyerr)?;
-            Ok(result)
-        })
-    }
-
-    #[pyo3(name = "capture_monitor_by_name", text_signature = "($self, name)")]
-    /// (async) Capture a screenshot of a specific monitor.
-    ///
-    /// Args:
-    ///     name (str): The name of the monitor to capture.
-    ///
-    /// Returns:
-    ///     ScreenshotResult: The screenshot data.
-    pub fn capture_monitor_by_name<'py>(
-        &self,
-        py: Python<'py>,
-        name: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let desktop = self.inner.clone();
-        let name = name.to_string();
-        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
-            let result = desktop
-                .capture_monitor_by_name(&name)
-                .await
-                .map_err(automation_error_to_pyerr)?;
-            let py_result = ScreenshotResult::from(result);
             Ok(py_result)
         })
     }

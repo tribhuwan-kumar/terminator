@@ -94,23 +94,6 @@ impl Desktop {
         self.inner.activate_application(&name).map_err(map_error)
     }
 
-    /// (async) Capture a screenshot of the primary monitor.
-    ///
-    /// @returns {Promise<ScreenshotResult>} The screenshot data.
-    #[napi]
-    pub async fn capture_screen(&self) -> napi::Result<ScreenshotResult> {
-        self.inner
-            .capture_screen()
-            .await
-            .map(|r| ScreenshotResult {
-                width: r.width,
-                height: r.height,
-                image_data: r.image_data,
-                monitor: r.monitor.map(crate::types::Monitor::from),
-            })
-            .map_err(map_error)
-    }
-
     /// (async) Run a shell command.
     ///
     /// @param {string} [windowsCommand] - Command to run on Windows.
@@ -129,35 +112,6 @@ impl Desktop {
                 exit_status: r.exit_status,
                 stdout: r.stdout,
                 stderr: r.stderr,
-            })
-            .map_err(map_error)
-    }
-
-    /// (async) Get the name of the currently active monitor.
-    ///
-    /// @returns {Promise<string>} The name of the active monitor.
-    #[napi]
-    pub async fn get_active_monitor_name(&self) -> napi::Result<String> {
-        self.inner
-            .get_active_monitor_name()
-            .await
-            .map_err(map_error)
-    }
-
-    /// (async) Capture a screenshot of a specific monitor.
-    ///
-    /// @param {string} name - The name of the monitor to capture.
-    /// @returns {Promise<ScreenshotResult>} The screenshot data.
-    #[napi]
-    pub async fn capture_monitor_by_name(&self, name: String) -> napi::Result<ScreenshotResult> {
-        self.inner
-            .capture_monitor_by_name(&name)
-            .await
-            .map(|r| ScreenshotResult {
-                width: r.width,
-                height: r.height,
-                image_data: r.image_data,
-                monitor: r.monitor.map(crate::types::Monitor::from),
             })
             .map_err(map_error)
     }

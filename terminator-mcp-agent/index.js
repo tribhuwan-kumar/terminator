@@ -5,6 +5,8 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const readline = require("readline");
+const config = require("./config");
+const { supportedClients } = require("./config");
 
 function getPlatformInfo() {
   const platform = process.platform;
@@ -36,206 +38,21 @@ function getPlatformInfo() {
   throw new Error(`Unsupported platform: ${platform} ${arch}`);
 }
 
-function getMcpServerEntry() {
-  return {
-    command: "npx",
-    args: ["-y", "terminator-mcp-agent"],
-  };
-}
-
-function addToCursorConfig() {
-  const home = os.homedir();
-  const configDir = path.join(home, ".cursor");
-  const configFile = path.join(configDir, "mcp.json");
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true });
-  }
-  let config = {};
-  if (fs.existsSync(configFile)) {
-    try {
-      config = JSON.parse(fs.readFileSync(configFile, "utf8"));
-    } catch (e) {
-      config = {};
-    }
-  }
-  if (!config.mcpServers || typeof config.mcpServers !== "object") {
-    config.mcpServers = {};
-  }
-  config.mcpServers["terminator-mcp-agent"] = getMcpServerEntry();
-  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
-  console.log(`Cursor configuration saved to ${configFile}`);
-}
-
-function addToClaudeConfig() {
-  const platform = process.platform;
-  let configDir, configFile;
-  if (platform === "win32") {
-    const appData =
-      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-    configDir = path.join(appData, "Claude");
-    configFile = path.join(configDir, "claude_desktop_config.json");
-  } else if (platform === "darwin") {
-    configDir = path.join(
-      os.homedir(),
-      "Library",
-      "Application Support",
-      "Claude",
-    );
-    configFile = path.join(configDir, "claude_desktop_config.json");
-  } else {
-    console.error("Claude desktop is only supported on Windows and macOS.");
-    process.exit(1);
-  }
-  if (!fs.existsSync(configDir)) {
-    console.error(
-      `Claude desktop config directory does not exist: ${configDir}\nPlease make sure the Claude desktop app is installed for your platform.`,
-    );
-    process.exit(1);
-  }
-  let config = {};
-  if (fs.existsSync(configFile)) {
-    try {
-      config = JSON.parse(fs.readFileSync(configFile, "utf8"));
-    } catch (e) {
-      config = {};
-    }
-  }
-  if (!config.mcpServers || typeof config.mcpServers !== "object") {
-    config.mcpServers = {};
-  }
-  config.mcpServers["terminator-mcp-agent"] = getMcpServerEntry();
-  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
-  console.log(`Claude configuration saved to ${configFile}`);
-}
-
-function buildVSCodeMcpJsonArg(mcpJson) {
-  // VS Code expects: --add-mcp "{\"name\":\"...\",...}"
-  return `"${JSON.stringify(mcpJson).replace(/"/g, '\\"')}"`;
-}
-
-function addToVSCodeConfig() {
-  // VS Code CLI-based setup
-  console.log("Adding Terminator MCP to VS Code via code CLI...");
-  const mcpJson = {
-    name: "terminator-mcp-agent",
-    command: "npx",
-    args: ["-y", "terminator-mcp-agent"],
-  };
-  const jsonArg = buildVSCodeMcpJsonArg(mcpJson);
-  const vscodeCmd = "code";
-  try {
-    const { spawnSync } = require("child_process");
-    const result = spawnSync(`${vscodeCmd} --add-mcp ${jsonArg}`, [], {
-      stdio: "inherit",
-      shell: true,
-    });
-    if (result.error) {
-      if (result.error.code === "ENOENT") {
-        console.error(
-          "'code' command not found in PATH. Make sure VS Code CLI is installed and available.",
-        );
-      } else {
-        console.error("Failed to launch VS Code CLI:", result.error.message);
-      }
-      process.exit(1);
-    }
-    if (result.status !== 0) {
-      console.error(`VS Code CLI exited with code ${result.status}`);
-      process.exit(1);
-    }
-    console.log("Successfully added Terminator MCP to VS Code.");
-  } catch (e) {
-    console.error("Failed to add MCP to VS Code:", e.message);
-    process.exit(1);
-  }
-}
-
-function addToVSCodeInsidersConfig() {
-  // VS Code Insiders CLI-based setup
-  console.log(
-    "Adding Terminator MCP to VS Code Insiders via code-insiders CLI...",
-  );
-  const mcpJson = {
-    name: "terminator-mcp-agent",
-    command: "npx",
-    args: ["-y", "terminator-mcp-agent"],
-  };
-  const jsonArg = buildVSCodeMcpJsonArg(mcpJson);
-  const codeInsidersCmd = "code-insiders";
-  try {
-    const { spawnSync } = require("child_process");
-    const result = spawnSync(`${codeInsidersCmd} --add-mcp ${jsonArg}`, [], {
-      stdio: "inherit",
-      shell: true,
-    });
-    if (result.error) {
-      if (result.error.code === "ENOENT") {
-        console.error(
-          "'code-insiders' command not found in PATH. Make sure VS Code Insiders CLI is installed and available.",
-        );
-      } else {
-        console.error(
-          "Failed to launch VS Code Insiders CLI:",
-          result.error.message,
-        );
-      }
-      process.exit(1);
-    }
-    if (result.status !== 0) {
-      console.error(`VS Code Insiders CLI exited with code ${result.status}`);
-      process.exit(1);
-    }
-    console.log("Successfully added Terminator MCP to VS Code Insiders.");
-  } catch (e) {
-    console.error("Failed to add MCP to VS Code Insiders:", e.message);
-    process.exit(1);
-  }
-}
-
-function addToWindsurfConfig() {
-  // Windsurf config: %USERPROFILE%/.codeium/windsurf/mcp_config.json
-  const home = os.homedir();
-  const configDir = path.join(home, ".codeium", "windsurf");
-  const configFile = path.join(configDir, "mcp_config.json");
-  if (!fs.existsSync(configDir)) {
-    fs.mkdirSync(configDir, { recursive: true });
-  }
-  let config = {};
-  if (fs.existsSync(configFile)) {
-    try {
-      config = JSON.parse(fs.readFileSync(configFile, "utf8"));
-    } catch (e) {
-      config = {};
-    }
-  }
-  if (!config.mcpServers || typeof config.mcpServers !== "object") {
-    config.mcpServers = {};
-  }
-  config.mcpServers["terminator-mcp-agent"] = getMcpServerEntry();
-  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
-  console.log(`Windsurf configuration saved to ${configFile}`);
-}
-
 function addToApp(app) {
-  switch ((app || "").toLowerCase()) {
-    case "cursor":
-      addToCursorConfig();
-      break;
-    case "claude":
-      addToClaudeConfig();
-      break;
-    case "vscode":
-      addToVSCodeConfig();
-      break;
-    case "insiders":
-      addToVSCodeInsidersConfig();
-      break;
-    case "windsurf":
-      addToWindsurfConfig();
-      break;
-    default:
-      console.error("Unknown app: " + app);
-      process.exit(1);
+  try {
+    const client = (app || "").toLowerCase();
+    const mcpServer = {
+      command: "npx",
+      args: ["-y", "terminator-mcp-agent"],
+    };
+    const currentConfig = config.readConfig(client);
+    currentConfig.mcpServers = currentConfig.mcpServers || {};
+    currentConfig.mcpServers["terminator-mcp-agent"] = mcpServer;
+    config.writeConfig(currentConfig, client);
+    console.log(`Configured MCP for ${client}`);
+  } catch (e) {
+    console.error(`Failed to configure MCP for ${app}:`, e.message);
+    process.exit(1);
   }
 }
 
@@ -256,39 +73,27 @@ if (argv.includes("--add-to-app")) {
     console.log("========== Terminator MCP Setup ==========");
     console.log("Which app do you want to configure Terminator MCP for?");
     console.log("");
-    console.log("  1. Cursor");
-    console.log("  2. Claude");
-    console.log("  3. VS Code");
-    console.log("  4. VS Code Insiders");
-    console.log("  5. Windsurf");
+    const pad = (n) =>
+      String(n).padStart(String(supportedClients.length).length, " ");
+    supportedClients.forEach((client, idx) => {
+      console.log(`  ${pad(idx + 1)}. ${client.label}`);
+    });
     console.log("");
-    rl.question("Enter your choice (1-5): ", (answer) => {
-      let selectedApp = null;
-      switch (answer.trim()) {
-        case "1":
-          selectedApp = "cursor";
-          break;
-        case "2":
-          selectedApp = "claude";
-          break;
-        case "3":
-          selectedApp = "vscode";
-          break;
-        case "4":
-          selectedApp = "insiders";
-          break;
-        case "5":
-          selectedApp = "windsurf";
-          break;
-        default:
+    rl.question(
+      `Enter your choice (1-${supportedClients.length}): `,
+      (answer) => {
+        const idx = parseInt(answer.trim(), 10) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= supportedClients.length) {
           console.error("Invalid choice. Skipping app configuration.");
           rl.close();
           process.exit(1);
-      }
-      rl.close();
-      addToApp(selectedApp);
-      process.exit(0);
-    });
+        }
+        const selectedApp = supportedClients[idx].key;
+        rl.close();
+        addToApp(selectedApp);
+        process.exit(0);
+      },
+    );
     return;
   } else {
     addToApp(app);
@@ -315,7 +120,10 @@ if (argv.length === 0 || argv.includes("--start")) {
     }
   }
 
-  const child = spawn(binary, [], { stdio: ["pipe", "pipe", "pipe"], shell: true });
+  const child = spawn(binary, [], {
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: true,
+  });
 
   process.stdin.pipe(child.stdin);
   child.stdout.pipe(process.stdout);

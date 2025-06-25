@@ -5,7 +5,7 @@ use crate::{
     MouseEventType, Position, Result, WorkflowEvent, WorkflowRecorderConfig,
 };
 use arboard::Clipboard;
-use rdev::{Button, EventType, Key};
+use rdev::{Button, EventType};
 use std::{
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering},
@@ -14,8 +14,10 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
+
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
+use uiautomation::types::Point;
 use uiautomation::UIAutomation;
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::System::Com::{
@@ -26,220 +28,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetMessageW, PostThreadMessageW, TranslateMessage, MSG, WM_QUIT,
 };
 
-/// Represents an input event that requires UI Automation processing.
-enum UIAInputRequest {
-    ButtonPress {
-        button: MouseButton,
-        position: Position,
-    },
-    ButtonRelease {
-        button: MouseButton,
-        position: Position,
-    },
-    MouseMove {
-        position: Position,
-    },
-    Wheel {
-        delta: (i32, i32),
-        position: Position,
-    },
-}
-
-/// Text input tracking state
-#[derive(Debug, Clone)]
-struct TextInputTracker {
-    /// The UI element being tracked
-    element: UIElement,
-    /// When tracking started
-    start_time: Instant,
-    /// Number of typing keystrokes (excludes navigation keys)
-    keystroke_count: u32,
-    /// Initial text value when tracking started (unused in current implementation)
-    #[allow(dead_code)]
-    initial_text: String,
-    /// Whether we've detected any actual typing
-    has_typing_activity: bool,
-    /// Whether we're in the middle of autocomplete navigation (arrow keys active)
-    in_autocomplete_navigation: bool,
-    /// Last time we detected autocomplete navigation activity
-    last_autocomplete_activity: Instant,
-    /// Text value before autocomplete selection (for change detection)
-    text_before_autocomplete: Option<String>,
-}
-
-impl TextInputTracker {
-    fn new(element: UIElement) -> Self {
-        // Don't try to get initial text to avoid potential access violations
-        Self {
-            element,
-            start_time: Instant::now(),
-            keystroke_count: 0,
-            initial_text: String::new(), // Keep empty to avoid element access issues
-            has_typing_activity: false,
-            in_autocomplete_navigation: false,
-            last_autocomplete_activity: Instant::now(),
-            text_before_autocomplete: None,
-        }
-    }
-
-    fn add_keystroke(&mut self, key_code: u32) {
-        // Check for autocomplete navigation keys (arrow keys, escape)
-        if Self::is_autocomplete_navigation_key(key_code) {
-            self.in_autocomplete_navigation = true;
-            self.last_autocomplete_activity = Instant::now();
-            debug!(
-                "🔽 Autocomplete navigation detected: key {} (Arrow/Escape)",
-                key_code
-            );
-
-            // Capture current text value before potential autocomplete selection
-            if self.text_before_autocomplete.is_none() {
-                self.text_before_autocomplete = Self::get_element_text_value_safe(&self.element);
-                debug!(
-                    "📝 Captured text before autocomplete: {:?}",
-                    self.text_before_autocomplete
-                );
-            }
-            return;
-        }
-
-        // Only count actual typing keys, not navigation/modifier keys
-        if Self::is_typing_key(key_code) {
-            self.keystroke_count += 1;
-            self.has_typing_activity = true;
-            // Reset autocomplete state on new typing
-            self.in_autocomplete_navigation = false;
-        }
-    }
-
-    fn is_autocomplete_navigation_key(key_code: u32) -> bool {
-        matches!(
-            key_code,
-            0x26 |  // Up arrow
-            0x28 |  // Down arrow  
-            0x25 |  // Left arrow (less common in autocomplete but possible)
-            0x27 |  // Right arrow (less common in autocomplete but possible)
-            0x1B // Escape (cancel autocomplete)
-        )
-    }
-
-    fn is_typing_key(key_code: u32) -> bool {
-        // Letters, numbers, space, punctuation - actual content input
-        matches!(key_code,
-            0x30..=0x39 |  // Numbers 0-9
-            0x41..=0x5A |  // Letters A-Z
-            0x20 |         // Space
-            0x08 |         // Backspace
-            0x2E |         // Delete
-            // Common punctuation and symbols
-            0xBA..=0xC0 |  // ;=,-./`
-            0xDB..=0xDE    // [\]'
-        )
-    }
-
-    fn handle_enter_key(&mut self) -> bool {
-        // If we're in autocomplete navigation, Enter likely selects a suggestion
-        if self.in_autocomplete_navigation {
-            let time_since_nav = self.last_autocomplete_activity.elapsed();
-            if time_since_nav < Duration::from_millis(5000) {
-                // 5 second window
-                debug!("🔥 Enter pressed during autocomplete navigation - suggestion selection detected!");
-                self.has_typing_activity = true;
-                self.keystroke_count += 1; // Count as one interaction
-                self.in_autocomplete_navigation = false; // Reset state
-                return true; // Indicates this is a suggestion selection
-            }
-        }
-        false
-    }
-
-    fn should_emit_completion(&self, reason: &str) -> bool {
-        // For trigger keys (Enter/Tab), require both activity and keystrokes
-        if reason == "trigger_key" || reason == "suggestion_enter" {
-            return self.has_typing_activity && self.keystroke_count > 0;
-        }
-
-        // For focus changes, be more lenient - emit if there was any activity
-        if reason == "focus_change" {
-            return self.has_typing_activity || self.keystroke_count > 0;
-        }
-
-        // For suggestion clicks, check if we have activity
-        if reason == "suggestion_click" {
-            return self.has_typing_activity || self.keystroke_count > 0;
-        }
-
-        // Default: require activity
-        self.has_typing_activity && self.keystroke_count > 0
-    }
-
-    #[allow(dead_code)]
-    fn text_changed(&self) -> bool {
-        // Always return false to avoid accessing element properties
-        // We'll rely on keystroke counting instead
-        false
-    }
-
-    fn get_completion_event(
-        &self,
-        input_method: Option<crate::TextInputMethod>,
-    ) -> Option<crate::TextInputCompletedEvent> {
-        // Only proceed if we have typing activity
-        if !self.has_typing_activity && self.keystroke_count == 0 {
-            debug!("❌ No typing activity or keystrokes");
-            return None;
-        }
-
-        let typing_duration_ms = self.start_time.elapsed().as_millis() as u64;
-
-        // Use safe fallbacks for element properties
-        let field_name = self.element.name();
-        let field_type = self.element.role();
-
-        // Try to get actual text value from the element
-        let text_value = match Self::get_element_text_value_safe(&self.element) {
-            Some(actual_text) if !actual_text.trim().is_empty() => {
-                debug!("✅ Got actual text value: '{}'", actual_text);
-                actual_text
-            }
-            Some(empty_text) => {
-                debug!(
-                    "⚠️ Got empty text value: '{}', using placeholder",
-                    empty_text
-                );
-                format!(
-                    "(text input completed, {} keystrokes)",
-                    self.keystroke_count
-                )
-            }
-            None => {
-                debug!("⚠️ Could not get text value, using placeholder");
-                format!(
-                    "(text input completed, {} keystrokes)",
-                    self.keystroke_count
-                )
-            }
-        };
-
-        // Determine input method
-        let final_input_method = input_method.unwrap_or(crate::TextInputMethod::Typed);
-
-        Some(crate::TextInputCompletedEvent {
-            text_value,
-            field_name,
-            field_type,
-            input_method: final_input_method,
-            typing_duration_ms,
-            keystroke_count: self.keystroke_count,
-            metadata: EventMetadata::with_ui_element_and_timestamp(Some(self.element.clone())),
-        })
-    }
-
-    // Safe wrapper for getting element text value
-    fn get_element_text_value_safe(element: &UIElement) -> Option<String> {
-        WindowsRecorder::get_element_text_value(element)
-    }
-}
+pub mod structs;
+use structs::*;
 
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
@@ -284,78 +74,6 @@ pub struct WindowsRecorder {
 
     /// Currently focused text input element tracking with keystroke counting
     current_text_input: Arc<Mutex<Option<TextInputTracker>>>,
-}
-
-#[derive(Debug, Clone)]
-struct ModifierStates {
-    ctrl: bool,
-    alt: bool,
-    shift: bool,
-    win: bool,
-}
-
-#[derive(Debug, Clone)]
-struct HotkeyPattern {
-    action: String,
-    keys: Vec<u32>,
-}
-
-/// Tracks the current application state for switch detection
-#[derive(Debug, Clone)]
-struct ApplicationState {
-    /// Application name/title
-    name: String,
-    /// Process ID
-    process_id: u32,
-    /// When the application became active
-    start_time: Instant,
-}
-
-/// Tracks browser tab navigation state
-#[derive(Debug, Clone)]
-struct BrowserTabTracker {
-    /// Current browser application
-    current_browser: Option<String>,
-    /// Current URL (best effort detection)
-    current_url: Option<String>,
-    /// Current page title
-    current_title: Option<String>,
-    /// Known browser process names
-    known_browsers: Vec<String>,
-    /// When the current page was last accessed
-    last_navigation_time: Instant,
-}
-
-impl Default for BrowserTabTracker {
-    fn default() -> Self {
-        Self {
-            current_browser: None,
-            current_url: None,
-            current_title: None,
-            known_browsers: vec![
-                // Executable names
-                "chrome.exe".to_string(),
-                "firefox.exe".to_string(),
-                "msedge.exe".to_string(),
-                "brave.exe".to_string(),
-                "opera.exe".to_string(),
-                "vivaldi.exe".to_string(),
-                "iexplore.exe".to_string(),
-                // Display names
-                "google chrome".to_string(),
-                "chrome".to_string(),
-                "firefox".to_string(),
-                "mozilla firefox".to_string(),
-                "microsoft edge".to_string(),
-                "edge".to_string(),
-                "brave".to_string(),
-                "opera".to_string(),
-                "vivaldi".to_string(),
-                "internet explorer".to_string(),
-            ],
-            last_navigation_time: Instant::now(),
-        }
-    }
 }
 
 impl WindowsRecorder {
@@ -610,19 +328,6 @@ impl WindowsRecorder {
                 return; // Don't start this thread if UI elements are not needed.
             }
 
-            // Initialize COM and UIAutomation for this dedicated thread
-            let automation = match Self::create_configured_automation_instance(
-                &uia_processor_config,
-            ) {
-                Ok(auto) => auto,
-                Err(e) => {
-                    error!(
-                        "Could not create UIAutomation instance in processor thread: {}. UI context for input events will be missing.",
-                        e
-                    );
-                    return;
-                }
-            };
             info!("✅ UIA processor thread for input events started.");
 
             // Process events from the rdev listener
@@ -632,7 +337,6 @@ impl WindowsRecorder {
                         Self::handle_button_press_request(
                             button,
                             &position,
-                            &automation,
                             &uia_processor_config,
                             &uia_processor_text_input,
                             &uia_processor_event_tx,
@@ -644,32 +348,17 @@ impl WindowsRecorder {
                         Self::handle_button_release_request(
                             button,
                             &position,
-                            &automation,
                             &uia_processor_config,
                             &uia_processor_event_tx,
                             &uia_processor_last_event_time,
                             &uia_processor_events_counter,
                         );
                     }
-                    UIAInputRequest::MouseMove { position } => {
-                        Self::handle_mouse_move_request(
-                            &position,
-                            &automation,
-                            &uia_processor_config,
+                    UIAInputRequest::KeyPressForCompletion { key_code } => {
+                        Self::handle_key_press_for_completion_request(
+                            key_code,
+                            &uia_processor_text_input,
                             &uia_processor_event_tx,
-                            &uia_processor_last_event_time,
-                            &uia_processor_events_counter,
-                        );
-                    }
-                    UIAInputRequest::Wheel { delta, position } => {
-                        Self::handle_wheel_request(
-                            delta,
-                            &position,
-                            &automation,
-                            &uia_processor_config,
-                            &uia_processor_event_tx,
-                            &uia_processor_last_event_time,
-                            &uia_processor_events_counter,
                         );
                     }
                 }
@@ -704,37 +393,11 @@ impl WindowsRecorder {
 
                                     // Check for completion trigger keys (Enter, Tab)
                                     if key_code == 0x0D || key_code == 0x09 {
-                                        let is_suggestion_enter = if key_code == 0x0D {
-                                            text_input.handle_enter_key()
-                                        } else {
-                                            false
-                                        };
-                                        let completion_reason = if is_suggestion_enter {
-                                            "suggestion_enter"
-                                        } else {
-                                            "trigger_key"
-                                        };
-
-                                        if text_input.should_emit_completion(completion_reason) {
-                                            let input_method = if is_suggestion_enter {
-                                                Some(crate::TextInputMethod::Suggestion)
-                                            } else {
-                                                None
-                                            };
-                                            if let Some(text_event) =
-                                                text_input.get_completion_event(input_method)
-                                            {
-                                                let _ = event_tx.send(
-                                                    WorkflowEvent::TextInputCompleted(text_event),
-                                                );
-                                                if let Some(element) =
-                                                    &tracker.as_ref().map(|t| t.element.clone())
-                                                {
-                                                    *tracker = Some(TextInputTracker::new(
-                                                        element.clone(),
-                                                    ));
-                                                }
-                                            }
+                                        // Offload the blocking work to the UIA thread
+                                        let request =
+                                            UIAInputRequest::KeyPressForCompletion { key_code };
+                                        if uia_event_tx.send(request).is_err() {
+                                            debug!("Failed to send key press completion request to UIA thread");
                                         }
                                     }
                                 }
@@ -931,62 +594,49 @@ impl WindowsRecorder {
 
                         if should_record {
                             let position = Position { x, y };
-                            if capture_ui_elements_rdev {
-                                let request = UIAInputRequest::MouseMove { position };
-                                let _ = uia_event_tx.send(request);
-                            } else {
-                                let mouse_event = MouseEvent {
-                                    event_type: MouseEventType::Move,
-                                    button: MouseButton::Left,
-                                    position,
-                                    scroll_delta: None,
-                                    drag_start: None,
-                                    metadata: EventMetadata {
-                                        ui_element: None,
-                                        timestamp: Some(Self::capture_timestamp()),
-                                    },
-                                };
-                                Self::send_filtered_event_static(
-                                    &event_tx,
-                                    &config,
-                                    &performance_last_event_time,
-                                    &performance_events_counter,
-                                    WorkflowEvent::Mouse(mouse_event),
-                                );
-                            }
+
+                            let mouse_event = MouseEvent {
+                                event_type: MouseEventType::Move,
+                                button: MouseButton::Left,
+                                position,
+                                scroll_delta: None,
+                                drag_start: None,
+                                metadata: EventMetadata {
+                                    ui_element: None,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
+                            };
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                     EventType::Wheel { delta_x, delta_y } => {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
                             let position = Position { x, y };
-                            if capture_ui_elements_rdev {
-                                let request = UIAInputRequest::Wheel {
-                                    delta: (delta_x as i32, delta_y as i32),
-                                    position,
-                                };
-                                if uia_event_tx.send(request).is_err() {
-                                    debug!("Failed to send wheel event to UIA processor thread");
-                                }
-                            } else {
-                                let mouse_event = MouseEvent {
-                                    event_type: MouseEventType::Wheel,
-                                    button: MouseButton::Middle, // Common for wheel
-                                    position,
-                                    scroll_delta: Some((delta_x as i32, delta_y as i32)),
-                                    drag_start: None,
-                                    metadata: EventMetadata {
-                                        ui_element: None,
-                                        timestamp: Some(Self::capture_timestamp()),
-                                    },
-                                };
-                                Self::send_filtered_event_static(
-                                    &event_tx,
-                                    &config,
-                                    &performance_last_event_time,
-                                    &performance_events_counter,
-                                    WorkflowEvent::Mouse(mouse_event),
-                                );
-                            }
+
+                            let mouse_event = MouseEvent {
+                                event_type: MouseEventType::Wheel,
+                                button: MouseButton::Middle, // Common for wheel
+                                position,
+                                scroll_delta: Some((delta_x as i32, delta_y as i32)),
+                                drag_start: None,
+                                metadata: EventMetadata {
+                                    ui_element: None,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
+                            };
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
                         }
                     }
                 }
@@ -1052,19 +702,6 @@ impl WindowsRecorder {
                 }
             };
 
-            // Use configured automation instance
-            let automation = if capture_ui_elements {
-                match Self::create_configured_automation_instance(&config) {
-                    Ok(auto) => Some(auto),
-                    Err(e) => {
-                        warn!("⚠️ Failed to create UIAutomation for clipboard monitor: {}. UI context will be missing.", e);
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-
             // Initialize the clipboard hash with current content to avoid false initial events
             if let Ok(initial_content) = clipboard.get_text() {
                 let initial_hash = Self::calculate_hash(&initial_content);
@@ -1093,9 +730,7 @@ impl WindowsRecorder {
 
                         // Capture UI element if enabled
                         let ui_element = if capture_ui_elements {
-                            automation
-                                .as_ref()
-                                .and_then(Self::get_focused_ui_element_with_timeout)
+                            Self::get_focused_ui_element_with_timeout(&config, 200)
                         } else {
                             None
                         };
@@ -1133,30 +768,34 @@ impl WindowsRecorder {
         hasher.finish()
     }
 
-    /// Get focused UI element with timeout protection to prevent hanging
-    fn get_focused_ui_element_with_timeout(automation: &UIAutomation) -> Option<UIElement> {
-        // Use panic catching to handle any COM/threading issues gracefully
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            automation.get_focused_element()
-        })) {
-            Ok(Ok(element)) => {
-                // Successfully got element, now safely convert it
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    convert_uiautomation_element_to_terminator(element)
-                })) {
-                    Ok(ui_element) => Some(ui_element),
-                    Err(_) => {
-                        debug!("Failed to convert UI element safely");
-                        None
-                    }
-                }
-            }
-            Ok(Err(e)) => {
-                debug!("UI Automation call failed: {}", e);
-                None
-            }
+    /// Get focused UI element with a hard timeout to prevent hanging.
+    fn get_focused_ui_element_with_timeout(
+        config: &WorkflowRecorderConfig,
+        timeout_ms: u64,
+    ) -> Option<UIElement> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config_clone = config.clone();
+
+        // Spawn a thread to do the blocking UIA work.
+        thread::spawn(move || {
+            let result = (|| {
+                let automation = Self::create_configured_automation_instance(&config_clone).ok()?;
+                let element = automation.get_focused_element().ok()?;
+                Some(convert_uiautomation_element_to_terminator(element))
+            })();
+            // The receiver might have timed out and disconnected, so `send` can fail.
+            // We can ignore the result.
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+            Ok(Some(element)) => Some(element),
+            Ok(None) => None,
             Err(_) => {
-                debug!("UI Automation call panicked, handled gracefully");
+                debug!(
+                    "UIA call to get focused element timed out after {}ms.",
+                    timeout_ms
+                );
                 None
             }
         }
@@ -1258,38 +897,19 @@ impl WindowsRecorder {
             info!("Setting up focus change event handler");
             let focus_event_tx = event_tx.clone();
 
-            // Create a channel for thread-safe communication
-            let (focus_tx, focus_rx) = std::sync::mpsc::channel::<Option<UIElement>>();
+            // Create a channel to signal focus changes, without sending data to avoid blocking.
+            let (focus_tx, focus_rx) = std::sync::mpsc::channel::<()>();
 
-            // Create a focus changed event handler struct
             struct FocusHandler {
-                sender: std::sync::mpsc::Sender<Option<UIElement>>,
+                sender: std::sync::mpsc::Sender<()>,
             }
 
             impl uiautomation::events::CustomFocusChangedEventHandler for FocusHandler {
-                fn handle(&self, sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
-                    // Perform the absolute minimum work on this thread.
-                    // Convert to our thread-safe UIElement wrapper and send it to the worker thread.
-                    let ui_element =
-                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            convert_uiautomation_element_to_terminator(sender.clone())
-                        })) {
-                            Ok(element) => Some(element),
-                            Err(_) => {
-                                debug!(
-                                "Failed to convert focused UI element safely during event handling"
-                            );
-                                None
-                            }
-                        };
-
-                    // Send the wrapped element to the processing thread.
-                    if self.sender.send(ui_element).is_err() {
-                        debug!(
-                            "Failed to send focus change data to worker thread; it may have shut down."
-                        );
-                    }
-
+                fn handle(&self, _sender: &uiautomation::UIElement) -> uiautomation::Result<()> {
+                    // This handler is on a critical UIA thread.
+                    // DO NOT perform any blocking operations here.
+                    // Just send a signal to the processor thread to do the work.
+                    self.sender.send(()).ok(); // Disregard error if receiver is gone.
                     Ok(())
                 }
             }
@@ -1305,13 +925,12 @@ impl WindowsRecorder {
                 Err(e) => error!("❌ Failed to register focus change event handler: {}", e),
             }
 
-            // Spawn a thread to process the focus change data safely
+            // This thread receives signals and performs the blocking UI Automation work safely.
             let focus_event_tx_clone = focus_event_tx.clone();
             let focus_current_app = Arc::clone(&current_application);
             let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
             let focus_current_text_input = Arc::clone(&current_text_input);
 
-            // Clone the necessary variables for the focus-processing thread to take ownership of.
             let focus_processing_config = config_clone.clone();
             let focus_processing_ignore_patterns = ignore_focus_patterns.clone();
             let focus_processing_ignore_window_titles = ignore_window_titles.clone();
@@ -1319,7 +938,12 @@ impl WindowsRecorder {
             let processing_handle = handle;
 
             std::thread::spawn(move || {
-                while let Ok(ui_element) = focus_rx.recv() {
+                while focus_rx.recv().is_ok() {
+                    // Received a signal. Now, get the currently focused element.
+                    // This is the main blocking call, now safely on a dedicated thread.
+                    let ui_element =
+                        Self::get_focused_ui_element_with_timeout(&focus_processing_config, 200);
+
                     if let Some(element) = ui_element {
                         let element_name = element.name_or_empty();
                         let element_role = element.role().to_lowercase();
@@ -1337,8 +961,6 @@ impl WindowsRecorder {
                                 &button_focus_event_tx,
                             );
                         });
-
-                        // Offload slow checks to separate async tasks to avoid blocking the queue
 
                         // Task for application switch check
                         let app_switch_current_app = Arc::clone(&focus_current_app);
@@ -1659,7 +1281,7 @@ impl WindowsRecorder {
                                 keyboard_event.key_code,
                                 0x08 | // Backspace
                             0x2E | // Delete
-                            0x20 | // Space  
+                            0x20 | // Space
                             0x0D | // Enter
                             0x09 // Tab
                             ))
@@ -1897,9 +1519,9 @@ impl WindowsRecorder {
 
     /// Get the text value from a UI element
     /// Try to find a recently active text input element for suggestion completion
-    fn find_recent_text_input(automation: &UIAutomation) -> Option<UIElement> {
+    fn find_recent_text_input(config: &WorkflowRecorderConfig) -> Option<UIElement> {
         // Try to find the currently focused element first
-        if let Some(focused_element) = Self::get_focused_ui_element_with_timeout(automation) {
+        if let Some(focused_element) = Self::get_focused_ui_element_with_timeout(config, 200) {
             if Self::is_text_input_element(&focused_element) {
                 debug!(
                     "🎯 Found focused text input element: '{}'",
@@ -1911,87 +1533,6 @@ impl WindowsRecorder {
 
         debug!("❌ Could not find any recent text input elements using focused element approach");
         None
-    }
-
-    fn get_element_text_value(element: &UIElement) -> Option<String> {
-        // Try multiple methods to get the text value with multiple attempts for timing issues
-
-        for attempt in 0..3 {
-            if attempt > 0 {
-                // Small delay between attempts to allow UI updates
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-
-            // First try the value attribute (most reliable for input fields)
-            if let Some(value) = element.attributes().value {
-                if !value.trim().is_empty() {
-                    debug!(
-                        "✅ Got text value from 'value' attribute (attempt {}): '{}'",
-                        attempt + 1,
-                        value
-                    );
-                    return Some(value);
-                }
-            }
-
-            // Then try the text() method which gets the actual text content
-            if let Ok(text) = element.text(0) {
-                if !text.trim().is_empty() {
-                    debug!(
-                        "✅ Got text value from text() method (attempt {}): '{}'",
-                        attempt + 1,
-                        text
-                    );
-                    return Some(text);
-                }
-            }
-
-            // Try enhanced text methods for better coverage
-            if let Ok(text) = element.text(1) {
-                if !text.trim().is_empty() {
-                    debug!(
-                        "✅ Got text value from text(1) method (attempt {}): '{}'",
-                        attempt + 1,
-                        text
-                    );
-                    return Some(text);
-                }
-            }
-
-            // Check for description which might contain the value
-            if let Some(description) = element.attributes().description {
-                if !description.trim().is_empty() && description.len() < 200 {
-                    debug!(
-                        "✅ Got text value from description (attempt {}): '{}'",
-                        attempt + 1,
-                        description
-                    );
-                    return Some(description);
-                }
-            }
-
-            // Check the label which might contain the value
-            if let Some(label) = element.attributes().label {
-                if !label.trim().is_empty() && label.len() < 200 {
-                    debug!(
-                        "✅ Got text value from label (attempt {}): '{}'",
-                        attempt + 1,
-                        label
-                    );
-                    return Some(label);
-                }
-            }
-        }
-
-        // Finally try the name as last resort
-        let name = element.name_or_empty();
-        if !name.trim().is_empty() && name.len() < 200 {
-            debug!("✅ Got text value from name (fallback): '{}'", name);
-            Some(name)
-        } else {
-            debug!("❌ Could not extract text value from element after all attempts");
-            None
-        }
     }
 
     /// Handles text input focus changes to detect text input completion
@@ -2147,18 +1688,20 @@ impl WindowsRecorder {
 
     /// Handles a button press request from the input listener thread.
     /// This function performs the UI Automation calls and is expected to run on a dedicated UIA thread.
-    #[allow(clippy::too_many_arguments)]
     fn handle_button_press_request(
         button: MouseButton,
         position: &Position,
-        automation: &UIAutomation,
         config: &WorkflowRecorderConfig,
         current_text_input: &Arc<Mutex<Option<TextInputTracker>>>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(automation);
+        let ui_element = if config.capture_ui_elements {
+            Self::get_element_from_point_with_timeout(config, *position, 100)
+        } else {
+            None
+        };
 
         // Debug: Log what UI element we captured at mouse down
         if let Some(ref element) = ui_element {
@@ -2314,7 +1857,7 @@ impl WindowsRecorder {
 
                             // Try to find the text input element that was recently active
                             // Look for text input elements on the page
-                            if let Some(text_element) = Self::find_recent_text_input(automation) {
+                            if let Some(text_element) = Self::find_recent_text_input(config) {
                                 debug!(
                                     "🔍 Found recent text input element: '{}'",
                                     text_element.name_or_empty()
@@ -2394,7 +1937,7 @@ impl WindowsRecorder {
                         interaction_type,
                         button_role: element_role.clone(),
                         was_enabled: element.is_enabled().unwrap_or(true),
-                        click_position: Some(position.clone()),
+                        click_position: Some(*position),
                         button_description: if element_desc.is_empty() {
                             None
                         } else {
@@ -2417,7 +1960,7 @@ impl WindowsRecorder {
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Down,
             button,
-            position: position.clone(),
+            position: *position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
@@ -2435,22 +1978,24 @@ impl WindowsRecorder {
     }
 
     /// Handles a button release request from the input listener thread.
-    #[allow(clippy::too_many_arguments)]
     fn handle_button_release_request(
         button: MouseButton,
         position: &Position,
-        automation: &UIAutomation,
         config: &WorkflowRecorderConfig,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(automation);
+        let ui_element = if config.capture_ui_elements {
+            Self::get_element_from_point_with_timeout(config, *position, 100)
+        } else {
+            None
+        };
 
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Up,
             button,
-            position: position.clone(),
+            position: *position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
@@ -2467,148 +2012,73 @@ impl WindowsRecorder {
         );
     }
 
-    /// Handles a mouse move request from the input listener thread.
-    #[allow(clippy::too_many_arguments)]
-    fn handle_mouse_move_request(
-        position: &Position,
-        _automation: &UIAutomation,
+    /// Get element from a specific point with a hard timeout.
+    fn get_element_from_point_with_timeout(
         config: &WorkflowRecorderConfig,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        performance_last_event_time: &Arc<Mutex<Instant>>,
-        performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
-    ) {
-        // For performance, we don't get the UI element on every mouse move,
-        // but it's an option if high-fidelity tracking is needed.
-        // For now, we pass None to avoid high-frequency UIA calls.
-        let ui_element = None;
+        position: Position,
+        timeout_ms: u64,
+    ) -> Option<UIElement> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config_clone = config.clone();
 
-        let mouse_event = MouseEvent {
-            event_type: MouseEventType::Move,
-            button: MouseButton::Left, // Inactive for move
-            position: position.clone(),
-            scroll_delta: None,
-            drag_start: None,
-            metadata: EventMetadata {
-                ui_element,
-                timestamp: Some(Self::capture_timestamp()),
-            },
-        };
-        Self::send_filtered_event_static(
-            event_tx,
-            config,
-            performance_last_event_time,
-            performance_events_counter,
-            WorkflowEvent::Mouse(mouse_event),
-        );
+        thread::spawn(move || {
+            let result = (|| {
+                let automation = Self::create_configured_automation_instance(&config_clone).ok()?;
+                let point = Point::new(position.x, position.y);
+                let element = automation.element_from_point(point).ok()?;
+                Some(convert_uiautomation_element_to_terminator(element))
+            })();
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+            Ok(Some(element)) => Some(element),
+            Ok(None) => None,
+            Err(_) => {
+                debug!(
+                    "UIA call to get element from point timed out after {}ms.",
+                    timeout_ms
+                );
+                None
+            }
+        }
     }
 
-    /// Handles a mouse wheel request from the input listener thread.
-    #[allow(clippy::too_many_arguments)]
-    fn handle_wheel_request(
-        delta: (i32, i32),
-        position: &Position,
-        automation: &UIAutomation,
-        config: &WorkflowRecorderConfig,
+    /// Handles a key press completion request from the input listener thread.
+    /// This function performs the UI Automation calls and is expected to run on a dedicated UIA thread.
+    fn handle_key_press_for_completion_request(
+        key_code: u32,
+        current_text_input: &Arc<Mutex<Option<TextInputTracker>>>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
-        performance_last_event_time: &Arc<Mutex<Instant>>,
-        performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
     ) {
-        let ui_element = Self::get_focused_ui_element_with_timeout(automation);
+        if let Ok(mut tracker) = current_text_input.lock() {
+            if let Some(ref mut text_input) = tracker.as_mut() {
+                let is_suggestion_enter = if key_code == 0x0D {
+                    text_input.handle_enter_key()
+                } else {
+                    false
+                };
+                let completion_reason = if is_suggestion_enter {
+                    "suggestion_enter"
+                } else {
+                    "trigger_key"
+                };
 
-        let mouse_event = MouseEvent {
-            event_type: MouseEventType::Wheel,
-            button: MouseButton::Middle, // Common for wheel
-            position: position.clone(),
-            scroll_delta: Some(delta),
-            drag_start: None,
-            metadata: EventMetadata {
-                ui_element,
-                timestamp: Some(Self::capture_timestamp()),
-            },
-        };
-        Self::send_filtered_event_static(
-            event_tx,
-            config,
-            performance_last_event_time,
-            performance_events_counter,
-            WorkflowEvent::Mouse(mouse_event),
-        );
-    }
-}
-
-/// Convert a Key to a u32
-fn key_to_u32(key: &Key) -> u32 {
-    match key {
-        Key::KeyA => 0x41,
-        Key::KeyB => 0x42,
-        Key::KeyC => 0x43,
-        Key::KeyD => 0x44,
-        Key::KeyE => 0x45,
-        Key::KeyF => 0x46,
-        Key::KeyG => 0x47,
-        Key::KeyH => 0x48,
-        Key::KeyI => 0x49,
-        Key::KeyJ => 0x4A,
-        Key::KeyK => 0x4B,
-        Key::KeyL => 0x4C,
-        Key::KeyM => 0x4D,
-        Key::KeyN => 0x4E,
-        Key::KeyO => 0x4F,
-        Key::KeyP => 0x50,
-        Key::KeyQ => 0x51,
-        Key::KeyR => 0x52,
-        Key::KeyS => 0x53,
-        Key::KeyT => 0x54,
-        Key::KeyU => 0x55,
-        Key::KeyV => 0x56,
-        Key::KeyW => 0x57,
-        Key::KeyX => 0x58,
-        Key::KeyY => 0x59,
-        Key::KeyZ => 0x5A,
-        Key::Num0 => 0x30,
-        Key::Num1 => 0x31,
-        Key::Num2 => 0x32,
-        Key::Num3 => 0x33,
-        Key::Num4 => 0x34,
-        Key::Num5 => 0x35,
-        Key::Num6 => 0x36,
-        Key::Num7 => 0x37,
-        Key::Num8 => 0x38,
-        Key::Num9 => 0x39,
-        Key::Escape => 0x1B,
-        Key::Backspace => 0x08,
-        Key::Tab => 0x09,
-        Key::Return => 0x0D,
-        Key::Space => 0x20,
-        Key::LeftArrow => 0x25,
-        Key::UpArrow => 0x26,
-        Key::RightArrow => 0x27,
-        Key::DownArrow => 0x28,
-        Key::Delete => 0x2E,
-        Key::Home => 0x24,
-        Key::End => 0x23,
-        Key::PageUp => 0x21,
-        Key::PageDown => 0x22,
-        Key::F1 => 0x70,
-        Key::F2 => 0x71,
-        Key::F3 => 0x72,
-        Key::F4 => 0x73,
-        Key::F5 => 0x74,
-        Key::F6 => 0x75,
-        Key::F7 => 0x76,
-        Key::F8 => 0x77,
-        Key::F9 => 0x78,
-        Key::F10 => 0x79,
-        Key::F11 => 0x7A,
-        Key::F12 => 0x7B,
-        Key::ShiftLeft => 0xA0,
-        Key::ShiftRight => 0xA1,
-        Key::ControlLeft => 0xA2,
-        Key::ControlRight => 0xA3,
-        Key::Alt => 0xA4,
-        Key::AltGr => 0xA5,
-        Key::MetaLeft => 0x5B,
-        Key::MetaRight => 0x5C,
-        _ => 0,
+                if text_input.should_emit_completion(completion_reason) {
+                    let input_method = if is_suggestion_enter {
+                        Some(crate::TextInputMethod::Suggestion)
+                    } else {
+                        None
+                    };
+                    if let Some(text_event) = text_input.get_completion_event(input_method) {
+                        let _ = event_tx.send(WorkflowEvent::TextInputCompleted(text_event));
+                        // Reset the tracker to continue tracking on the same element
+                        if let Some(element) = &tracker.as_ref().map(|t| t.element.clone()) {
+                            *tracker = Some(TextInputTracker::new(element.clone()));
+                        }
+                    }
+                }
+            }
+        }
     }
 }

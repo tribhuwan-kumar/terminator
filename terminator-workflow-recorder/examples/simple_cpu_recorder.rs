@@ -73,10 +73,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = WorkflowRecorderConfig {
         record_mouse: true,
         record_keyboard: true,
-        record_window: true,
         capture_ui_elements: true,
         record_clipboard: true,
-        record_text_selection: true,
         ..Default::default()
     };
 

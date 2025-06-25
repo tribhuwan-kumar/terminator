@@ -1,7 +1,4 @@
 {
-  "bin": {
-    "terminator-mcp-agent": "index.js"
-  },
   "cpu": [
     "x64"
   ],
@@ -20,5 +17,5 @@
     "type": "git",
     "url": "https://github.com/mediar-ai/terminator"
   },
-  "version": "0.5.11"
+  "version": "0.5.15"
 }

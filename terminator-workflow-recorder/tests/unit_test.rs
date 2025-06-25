@@ -24,7 +24,6 @@ mod tests {
             record_mouse: false, // Disable to focus on keyboard performance
             record_keyboard: true,
             record_text_input_completion: true,
-            text_input_completion_timeout_ms: 1000,
             capture_ui_elements: true, // This might be causing lag
             record_clipboard: false,
             ..Default::default()

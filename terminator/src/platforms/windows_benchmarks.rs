@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod performance_benchmarks {
     use super::super::windows::WindowsEngine;
-    use crate::Browser;
     use crate::platforms::AccessibilityEngine;
+    use crate::Browser;
     use std::process::Command;
     use std::time::{Duration, Instant};
 
