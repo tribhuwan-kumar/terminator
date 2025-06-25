@@ -1,8 +1,60 @@
 use std::time::Duration;
 use terminator::Desktop;
-use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
+use terminator_workflow_recorder::{
+    ButtonClickEvent, TextInputCompletedEvent, TextInputMethod, WorkflowEvent, WorkflowRecorder,
+    WorkflowRecorderConfig,
+};
+use tokio::sync::broadcast;
 use tokio::time::sleep;
-use tokio_stream::StreamExt;
+use tokio_stream::{Stream, StreamExt};
+
+/// Helper function to expect a specific event within a timeout.
+/// Panics if the event is not found.
+async fn expect_event<S, F>(event_stream: &mut S, description: &str, predicate: F) -> WorkflowEvent
+where
+    S: Stream<Item = WorkflowEvent> + Unpin + ?Sized,
+    F: Fn(&WorkflowEvent) -> bool,
+{
+    let timeout = Duration::from_secs(5);
+    match tokio::time::timeout(timeout, async {
+        while let Some(event) = event_stream.next().await {
+            if predicate(&event) {
+                println!("✅ {}: Found expected event.", description);
+                return Some(event);
+            }
+        }
+        None
+    })
+    .await
+    {
+        Ok(Some(event)) => event,
+        Ok(None) => panic!("❌ {}: Stream ended before event was found.", description),
+        Err(_) => panic!("❌ {}: Timed out waiting for event.", description),
+    }
+}
+
+/// Helper function to assert that a specific event does NOT occur within a short time frame.
+/// This function is simple and will consume at most one event from the stream.
+async fn assert_no_event<S, F>(event_stream: &mut S, description: &str, predicate: F)
+where
+    S: Stream<Item = WorkflowEvent> + Unpin + ?Sized, //example
+    F: Fn(&WorkflowEvent) -> bool,
+{
+    let check_duration = Duration::from_millis(500); // Check for a short period
+    match tokio::time::timeout(check_duration, event_stream.next()).await {
+        Ok(Some(event)) => {
+            if predicate(&event) {
+                panic!("❌ {}: Unexpected event found: {:?}", description, event);
+            }
+            // An event we didn't care about was consumed. In a real scenario, this might need to be buffered and re-emitted.
+            // For this test's purpose, we assume the unexpected event won't appear as the very next item.
+        }
+        _ => {
+            // Timeout or stream ended, which means no immediate event was found. This is good.
+            println!("✅ {}: No unexpected event found.", description);
+        }
+    }
+}
 
 /// Test text input completion events with proper keystroke counting and timing
 #[tokio::test]
@@ -597,5 +649,97 @@ async fn test_text_input_run_dialog() -> Result<(), Box<dyn std::error::Error>> 
 
     println!("✅ TEXT INPUT COMPLETION TEST PASSED!");
 
+    Ok(())
+}
+
+/// Test autocomplete suggestion selection
+#[tokio::test]
+#[ignore] // Run manually with: cargo test test_autocomplete_suggestion_selection -- --ignored --nocapture
+async fn test_autocomplete_suggestion_selection() -> Result<(), Box<dyn std::error::Error>> {
+    println!("\n🧪 Starting Autocomplete Suggestion Selection Test");
+    println!("===================================================");
+
+    let config = WorkflowRecorderConfig {
+        record_mouse: true,
+        record_keyboard: true,
+        capture_ui_elements: true,
+        record_text_input_completion: true,
+        ..Default::default()
+    };
+
+    let mut recorder =
+        WorkflowRecorder::new("Autocomplete Suggestion Test".to_string(), config.clone());
+    let mut event_stream = recorder.event_stream();
+
+    recorder.start().await?;
+    sleep(Duration::from_millis(500)).await;
+
+    let desktop = Desktop::new(false, false)?;
+
+    let html_path = std::fs::canonicalize("tests/autocomplete_test.html")?
+        .to_string_lossy()
+        .to_string()
+        .replace("\\\\?\\", ""); // Fix for Windows long paths
+
+    let url = format!("file:///{}", html_path);
+
+    println!("📄 Opening test page: {}", url);
+    let browser = desktop.open_url(&url, None)?;
+    sleep(Duration::from_secs(2)).await;
+
+    println!("📝 Typing to trigger autocomplete...");
+    let input = browser
+        .locator("name:ice-cream-choice")
+        .unwrap()
+        .first(Some(Duration::from_secs(5)))
+        .await?;
+    input.click()?;
+    sleep(Duration::from_millis(200)).await;
+    input.type_text("Co", false)?;
+    sleep(Duration::from_millis(500)).await; // Give time for suggestions to appear
+
+    println!("🖱️ Selecting suggestion 'Coconut'...");
+    // We simulate user selecting via arrow keys and enter, which is more robust.
+    input.press_key("{Down}")?;
+    sleep(Duration::from_millis(200)).await;
+    input.press_key("{Enter}")?; // This should select 'Coconut'
+    sleep(Duration::from_millis(500)).await;
+
+    let event = expect_event(
+        &mut event_stream,
+        "Wait for autocomplete suggestion event",
+        |e| {
+            if let WorkflowEvent::TextInputCompleted(evt) = e {
+                // Wait for the specific suggestion completion
+                evt.input_method == TextInputMethod::Suggestion
+            } else {
+                false
+            }
+        },
+    )
+    .await;
+
+    if let WorkflowEvent::TextInputCompleted(TextInputCompletedEvent {
+        text_value,
+        input_method,
+        ..
+    }) = event
+    {
+        assert_eq!(text_value, "Coconut");
+        assert_eq!(input_method, TextInputMethod::Suggestion);
+    } else {
+        panic!("Expected TextInputCompletedEvent for autocomplete");
+    }
+
+    // Ensure no spurious ButtonClick event was fired from interacting with the suggestion list
+    assert_no_event(&mut event_stream, "Check for spurious button click", |e| {
+        matches!(e, WorkflowEvent::ButtonClick(_))
+    })
+    .await;
+
+    recorder.stop().await?;
+    let _ = browser.close();
+
+    println!("\n✅ Autocomplete Suggestion Selection Test PASSED!");
     Ok(())
 }

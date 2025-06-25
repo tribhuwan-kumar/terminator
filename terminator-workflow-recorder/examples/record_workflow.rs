@@ -27,22 +27,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Basic input recording
         record_mouse: true,
         record_keyboard: true,
-        record_window: true,
         capture_ui_elements: true, // PERFORMANCE: Set to false for max speed if you don't need UI context
 
         // Advanced workflow features
         record_clipboard: true,
-        record_text_selection: true,
-        record_drag_drop: true,
         record_hotkeys: true,
 
         // High-level semantic events
         record_text_input_completion: true, // 🔥 NEW: High-level text input events
-        text_input_completion_timeout_ms: 2000, // Complete typing after 2s pause OR focus change
 
         // Configuration tuning
         max_clipboard_content_length: 2048, // 2KB max for clipboard content
-        max_text_selection_length: 512,     // 512 chars max for text selections
         track_modifier_states: true,
         mouse_move_throttle_ms: 100, // PERFORMANCE: Increase throttle to reduce event spam
         min_drag_distance: 5.0,      // 5 pixels minimum for drag detection

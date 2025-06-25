@@ -15,13 +15,6 @@ pub enum UIAInputRequest {
         button: crate::events::MouseButton,
         position: crate::events::Position,
     },
-    MouseMove {
-        position: crate::events::Position,
-    },
-    Wheel {
-        delta: (i32, i32),
-        position: crate::events::Position,
-    },
     KeyPressForCompletion {
         key_code: u32,
     },

@@ -354,26 +354,6 @@ impl WindowsRecorder {
                             &uia_processor_events_counter,
                         );
                     }
-                    // TODO we never are going to capture ui element for mouse movement and scroll, too noisy?
-                    UIAInputRequest::MouseMove { position } => {
-                        Self::handle_mouse_move_request(
-                            &position,
-                            &uia_processor_config,
-                            &uia_processor_event_tx,
-                            &uia_processor_last_event_time,
-                            &uia_processor_events_counter,
-                        );
-                    }
-                    UIAInputRequest::Wheel { delta, position } => {
-                        Self::handle_wheel_request(
-                            delta,
-                            &position,
-                            &uia_processor_config,
-                            &uia_processor_event_tx,
-                            &uia_processor_last_event_time,
-                            &uia_processor_events_counter,
-                        );
-                    }
                     UIAInputRequest::KeyPressForCompletion { key_code } => {
                         Self::handle_key_press_for_completion_request(
                             key_code,
@@ -1708,7 +1688,6 @@ impl WindowsRecorder {
 
     /// Handles a button press request from the input listener thread.
     /// This function performs the UI Automation calls and is expected to run on a dedicated UIA thread.
-    #[allow(clippy::too_many_arguments)]
     fn handle_button_press_request(
         button: MouseButton,
         position: &Position,
@@ -1999,7 +1978,6 @@ impl WindowsRecorder {
     }
 
     /// Handles a button release request from the input listener thread.
-    #[allow(clippy::too_many_arguments)]
     fn handle_button_release_request(
         button: MouseButton,
         position: &Position,
@@ -2019,76 +1997,6 @@ impl WindowsRecorder {
             button,
             position: *position,
             scroll_delta: None,
-            drag_start: None,
-            metadata: EventMetadata {
-                ui_element,
-                timestamp: Some(Self::capture_timestamp()),
-            },
-        };
-        Self::send_filtered_event_static(
-            event_tx,
-            config,
-            performance_last_event_time,
-            performance_events_counter,
-            WorkflowEvent::Mouse(mouse_event),
-        );
-    }
-
-    /// Handles a mouse move request from the input listener thread.
-    #[allow(clippy::too_many_arguments)]
-    fn handle_mouse_move_request(
-        position: &Position,
-        config: &WorkflowRecorderConfig,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        performance_last_event_time: &Arc<Mutex<Instant>>,
-        performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
-    ) {
-        // For performance, we don't get the UI element on every mouse move,
-        // but it's an option if high-fidelity tracking is needed.
-        // For now, we pass None to avoid high-frequency UIA calls.
-        let ui_element = None;
-
-        let mouse_event = MouseEvent {
-            event_type: MouseEventType::Move,
-            button: MouseButton::Left, // Inactive for move
-            position: *position,
-            scroll_delta: None,
-            drag_start: None,
-            metadata: EventMetadata {
-                ui_element,
-                timestamp: Some(Self::capture_timestamp()),
-            },
-        };
-        Self::send_filtered_event_static(
-            event_tx,
-            config,
-            performance_last_event_time,
-            performance_events_counter,
-            WorkflowEvent::Mouse(mouse_event),
-        );
-    }
-
-    /// Handles a mouse wheel request from the input listener thread.
-    #[allow(clippy::too_many_arguments)]
-    fn handle_wheel_request(
-        delta: (i32, i32),
-        position: &Position,
-        config: &WorkflowRecorderConfig,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        performance_last_event_time: &Arc<Mutex<Instant>>,
-        performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
-    ) {
-        let ui_element = if config.capture_ui_elements {
-            Self::get_element_from_point_with_timeout(config, *position, 100)
-        } else {
-            None
-        };
-
-        let mouse_event = MouseEvent {
-            event_type: MouseEventType::Wheel,
-            button: MouseButton::Middle, // Common for wheel
-            position: *position,
-            scroll_delta: Some(delta),
             drag_start: None,
             metadata: EventMetadata {
                 ui_element,

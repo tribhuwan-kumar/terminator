@@ -82,28 +82,16 @@ pub struct WorkflowRecorderConfig {
     /// Whether to record keyboard events
     pub record_keyboard: bool,
 
-    /// Whether to record window events
-    pub record_window: bool,
-
     /// Whether to capture UI element information
     pub capture_ui_elements: bool,
 
     /// Whether to record clipboard operations
     pub record_clipboard: bool,
 
-    /// Whether to record text selection events
-    pub record_text_selection: bool,
-
-    /// Whether to record drag and drop operations
-    pub record_drag_drop: bool,
-
     /// Whether to record hotkey/shortcut events
     pub record_hotkeys: bool,
 
     pub record_text_input_completion: bool,
-
-    /// Minimum time between keystrokes to consider a typing session complete (milliseconds)
-    pub text_input_completion_timeout_ms: u64,
 
     /// Whether to record high-level application switch events
     pub record_application_switches: bool,
@@ -119,9 +107,6 @@ pub struct WorkflowRecorderConfig {
 
     /// Maximum clipboard content length to record (longer content will be truncated)
     pub max_clipboard_content_length: usize,
-
-    /// Maximum text selection length to record (longer selections will be truncated)
-    pub max_text_selection_length: usize,
 
     /// Whether to track modifier key states accurately
     pub track_modifier_states: bool,
@@ -187,20 +172,15 @@ impl Default for WorkflowRecorderConfig {
         Self {
             record_mouse: true,
             record_keyboard: true, // TODO not used
-            record_window: false,  // noise
             capture_ui_elements: true,
             record_clipboard: true,
-            record_text_selection: true,
-            record_drag_drop: false, // noise
             record_hotkeys: true,
             record_text_input_completion: true,
-            text_input_completion_timeout_ms: 2000, // 2 second pause indicates typing completion
             record_application_switches: true, // High-level semantic events, enabled by default
             record_browser_tab_navigation: true, // High-level semantic events, enabled by default
             app_switch_dwell_time_threshold_ms: 100, // 100ms minimum dwell time to record
             browser_detection_timeout_ms: 1000, // 1 second to detect URL/title changes
             max_clipboard_content_length: 10240, // 10KB max
-            max_text_selection_length: 5120,   // 5120 chars max for selections
             track_modifier_states: true,
             mouse_move_throttle_ms: 100, // PERFORMANCE: Increased from 50ms to 100ms (10 FPS max for mouse moves)
             min_drag_distance: 5.0,      // 5 pixels minimum for drag detection

@@ -1,7 +1,36 @@
 use std::time::Duration;
 use terminator::Desktop;
-use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
-use tokio_stream::StreamExt;
+use terminator_workflow_recorder::{
+    BrowserTabNavigationEvent, ButtonClickEvent, TextInputCompletedEvent, WorkflowEvent,
+    WorkflowRecorder, WorkflowRecorderConfig,
+};
+use tokio::sync::broadcast;
+use tokio_stream::{Stream, StreamExt};
+
+/// Helper function to expect a specific event within a timeout.
+/// Panics if the event is not found.
+async fn expect_event<S, F>(event_stream: &mut S, description: &str, predicate: F) -> WorkflowEvent
+where
+    S: Stream<Item = WorkflowEvent> + Unpin + ?Sized,
+    F: Fn(&WorkflowEvent) -> bool,
+{
+    let timeout = Duration::from_secs(5);
+    match tokio::time::timeout(timeout, async {
+        while let Some(event) = event_stream.next().await {
+            if predicate(&event) {
+                println!("✅ {}: Found expected event.", description);
+                return Some(event);
+            }
+        }
+        None
+    })
+    .await
+    {
+        Ok(Some(event)) => event,
+        Ok(None) => panic!("❌ {}: Stream ended before event was found.", description),
+        Err(_) => panic!("❌ {}: Timed out waiting for event.", description),
+    }
+}
 
 /// Integration test for browser navigation events through keyboard shortcuts
 /// Tests that browser shortcuts and navigation are properly captured
@@ -189,172 +218,197 @@ async fn test_browser_navigation_shortcuts() {
 #[tokio::test]
 #[ignore] // Run with: cargo test test_browser_form_interactions -- --ignored --nocapture
 async fn test_browser_form_interactions() {
-    println!("\n📝 Starting Browser Form Interactions Integration Test");
-    println!("====================================================");
+    println!("\n📝 Starting Complex Browser Form Interactions Integration Test");
+    println!("============================================================");
 
     let config = WorkflowRecorderConfig {
         record_mouse: true,
         record_keyboard: true,
         capture_ui_elements: true,
         record_text_input_completion: true,
-        text_input_completion_timeout_ms: 1500,
+        text_input_completion_timeout_ms: 2000,
         record_browser_tab_navigation: true,
-        record_clipboard: false,
-        record_hotkeys: false,
         ..Default::default()
     };
 
-    let mut recorder = WorkflowRecorder::new("Browser Form Test".to_string(), config);
+    let mut recorder = WorkflowRecorder::new("Complex Browser Form Test".to_string(), config);
     let mut event_stream = recorder.event_stream();
 
-    println!("✅ Workflow recorder configured for form interactions");
+    println!("✅ Workflow recorder configured for complex form interactions");
 
-    // Start recording
     recorder.start().await.expect("Failed to start recording");
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Initialize desktop
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
 
-    // Open a test form page
-    println!("📄 Opening test form page...");
+    println!("📄 Opening test form page: https://pages.dataiku.com/guide-to-ai-agents");
     let browser = desktop
-        .open_url("https://httpbin.org/forms/post", None)
+        .open_url("https://pages.dataiku.com/guide-to-ai-agents", None)
         .expect("Failed to open form page");
 
+    tokio::time::sleep(Duration::from_secs(5)).await; // Wait for page and form to load
+
+    // 1. Open a new tab to example.com
+    println!("🌐 Opening new tab to https://example.com");
+    browser.press_key("{Ctrl}t").unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    browser.press_key("{Ctrl}l").unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    browser
+        .type_text("https://example.com", false)
+        .expect("Failed to type URL");
+    browser.press_key("{Enter}").unwrap();
     tokio::time::sleep(Duration::from_secs(3)).await;
 
-    // Test form interactions
-    println!("📝 Testing form field interactions...");
+    // Assert BrowserTabNavigationEvent for example.com
+    let nav_event = expect_event(&mut event_stream, "Wait for example.com navigation", |e| {
+        if let WorkflowEvent::BrowserTabNavigation(nav) = e {
+            nav.to_url.as_deref() == Some("https://example.com/")
+        } else {
+            false
+        }
+    })
+    .await;
 
-    // Try to find and fill form fields using the correct pattern
-    if let Ok(inputs) = browser
-        .locator("role:Edit")
-        .unwrap()
-        .all(Some(Duration::from_secs(5)), None)
-        .await
+    if let WorkflowEvent::BrowserTabNavigation(BrowserTabNavigationEvent {
+        to_url, to_title, ..
+    }) = nav_event
     {
-        for (i, input) in inputs.iter().enumerate().take(3) {
-            let test_value = format!("test_value_{}", i + 1);
-            println!("   Filling input {}: '{}'", i + 1, test_value);
+        assert_eq!(to_url.as_deref(), Some("https://example.com/"));
+        assert!(to_title.as_deref().unwrap_or("").contains("Example Domain"));
+    } else {
+        panic!("Expected BrowserTabNavigationEvent");
+    }
 
-            let _ = input.click();
-            tokio::time::sleep(Duration::from_millis(300)).await;
-            let _ = input.type_text(&test_value, true);
-            tokio::time::sleep(Duration::from_millis(1500)).await; // Longer wait for text completion
-            let _ = input.press_key("{Tab}");
-            tokio::time::sleep(Duration::from_millis(500)).await;
+    // 2. Switch back to the original tab
+    println!("🔄 Switching back to the form tab");
+    browser.press_key("{Ctrl}{Shift}{Tab}").unwrap();
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // Assert BrowserTabNavigationEvent for dataiku page
+    let nav_event_back = expect_event(&mut event_stream, "Wait for dataiku.com navigation", |e| {
+        if let WorkflowEvent::BrowserTabNavigation(nav) = e {
+            nav.to_url
+                .as_deref()
+                .unwrap_or("")
+                .contains("dataiku.com/guide-to-ai-agents")
+        } else {
+            false
+        }
+    })
+    .await;
+
+    if let WorkflowEvent::BrowserTabNavigation(BrowserTabNavigationEvent { to_url, .. }) =
+        nav_event_back
+    {
+        assert!(to_url
+            .as_deref()
+            .unwrap_or("")
+            .contains("dataiku.com/guide-to-ai-agents"));
+    } else {
+        panic!("Expected BrowserTabNavigationEvent");
+    }
+
+    // 3. Fill out the form
+    println!("📝 Filling out the form...");
+
+    // The form is inside an iframe, so we need to locate it first.
+    println!("🔍 Locating the form iframe...");
+    let iframe = browser
+        .locator("role:pane") // iframes are often exposed as panes or documents
+        .unwrap()
+        .first(Some(Duration::from_secs(10)))
+        .await
+        .expect("Could not find the form iframe.");
+
+    let form_data = vec![
+        ("firstname", "John"),
+        ("lastname", "Doe"),
+        ("email", "john.doe@example.com"),
+        ("company", "ACME Corp"),
+    ];
+
+    for (field_name, value) in form_data {
+        println!("   Filling '{}' with '{}'", field_name, value);
+        let locator_str = format!("name:{}", field_name);
+        // Search for the input within the iframe
+        let input = iframe
+            .locator(locator_str.as_str())
+            .unwrap()
+            .first(Some(Duration::from_secs(5)))
+            .await
+            .expect(&format!("Could not find input for {}", field_name));
+
+        input.click().unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        input
+            .type_text(value, true)
+            .expect(&format!("Failed to type into {}", field_name));
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        input.press_key("{Tab}").unwrap(); // Trigger completion
+
+        let text_event = expect_event(
+            &mut event_stream,
+            &format!("Wait for '{}' text input completion", field_name),
+            |e| {
+                if let WorkflowEvent::TextInputCompleted(evt) = e {
+                    evt.field_name.as_deref().unwrap_or("").contains(field_name)
+                } else {
+                    false
+                }
+            },
+        )
+        .await;
+
+        if let WorkflowEvent::TextInputCompleted(TextInputCompletedEvent {
+            text_value,
+            field_name: event_field_name,
+            ..
+        }) = text_event
+        {
+            assert_eq!(text_value, value);
+            assert!(event_field_name
+                .as_deref()
+                .unwrap_or("")
+                .contains(field_name));
+        } else {
+            panic!("Expected TextInputCompletedEvent for {}", field_name);
         }
     }
 
-    // Try to find and click submit button
-    println!("🚀 Testing form submission...");
-    if let Ok(submit_button) = browser
-        .locator("role:button")
+    // 4. Click the submit button
+    println!("🚀 Clicking submit button...");
+    // The submit button is also within the iframe
+    let submit_button = iframe
+        .locator("role:button >> name:Download the report")
         .unwrap()
-        .first(Some(Duration::from_secs(3)))
+        .first(Some(Duration::from_secs(5)))
         .await
-    {
-        let _ = submit_button.click();
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        .expect("Could not find submit button");
+    submit_button.click().unwrap();
+
+    let button_event = expect_event(&mut event_stream, "Wait for submit button click", |e| {
+        if let WorkflowEvent::ButtonClick(evt) = e {
+            evt.button_text.contains("Download the report")
+        } else {
+            false
+        }
+    })
+    .await;
+
+    if let WorkflowEvent::ButtonClick(ButtonClickEvent { button_text, .. }) = button_event {
+        assert!(button_text.contains("Download the report"));
+    } else {
+        panic!("Expected ButtonClickEvent for submit");
     }
 
     // Stop recording
+    println!("⏹️  Stopping recording...");
     recorder.stop().await.expect("Failed to stop recording");
-    tokio::time::sleep(Duration::from_millis(1000)).await;
 
-    // Collect events
-    let mut captured_events = Vec::new();
-    let mut timeout_count = 0;
-    const MAX_TIMEOUTS: usize = 15;
-
-    while timeout_count < MAX_TIMEOUTS {
-        tokio::select! {
-            event = event_stream.next() => {
-                if let Some(event) = event {
-                    captured_events.push(event);
-                    timeout_count = 0;
-                } else {
-                    break;
-                }
-            }
-            _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                timeout_count += 1;
-            }
-        }
-    }
-
-    // Analyze form interaction events
-    let mut text_input_events = Vec::new();
-    let mut button_click_events = Vec::new();
-    let mut keyboard_events = 0;
-
-    for event in &captured_events {
-        match event {
-            WorkflowEvent::TextInputCompleted(text_event) => {
-                text_input_events.push(text_event);
-            }
-            WorkflowEvent::ButtonClick(button_event) => {
-                button_click_events.push(button_event);
-            }
-            WorkflowEvent::Keyboard(_) => keyboard_events += 1,
-            _ => {}
-        }
-    }
-
-    println!("📊 Form Interaction Analysis:");
-    println!("   - Text input completions: {}", text_input_events.len());
-    println!("   - Button clicks: {}", button_click_events.len());
-    println!("   - Keyboard events: {}", keyboard_events);
-
-    // Verify form events
-    println!("\n🔍 Verifying Form Interaction Events:");
-
-    // Should have captured some interactions
-    let total_interactions = text_input_events.len() + button_click_events.len();
-    assert!(
-        total_interactions > 0 || keyboard_events > 0,
-        "❌ No form interaction events captured!"
-    );
-
-    // Verify text input events if any were captured
-    if !text_input_events.is_empty() {
-        println!("✅ Text input events captured:");
-        for (i, event) in text_input_events.iter().enumerate() {
-            println!(
-                "   Input {}: '{}' (method: {:?})",
-                i + 1,
-                event.text_value,
-                event.input_method
-            );
-            assert!(
-                !event.text_value.trim().is_empty(),
-                "❌ Text input event {} has empty value",
-                i + 1
-            );
-        }
-    }
-
-    // Verify button click events if any were captured
-    if !button_click_events.is_empty() {
-        println!("✅ Button click events captured:");
-        for (i, event) in button_click_events.iter().enumerate() {
-            println!(
-                "   Button {}: '{}' (type: {:?})",
-                i + 1,
-                event.button_text,
-                event.interaction_type
-            );
-        }
-    }
-
-    // Clean up
     let _ = browser.close();
 
-    println!("\n✅ Browser Form Interactions Test PASSED!");
-    println!("   - Text inputs: {}", text_input_events.len());
-    println!("   - Button clicks: {}", button_click_events.len());
-    println!("   - Keyboard events: {}", keyboard_events);
+    println!("\n✅ Complex Browser Form Interactions Test PASSED!");
 }
 
 /// Integration test for mouse click events in browser
