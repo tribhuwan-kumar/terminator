@@ -1,4 +1,3 @@
-
 use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio_stream::StreamExt;
 
