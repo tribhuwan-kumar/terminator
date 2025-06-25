@@ -6,9 +6,9 @@
 
 #![cfg_attr(not(target_os = "windows"), allow(unused))]
 
-pub mod error;
-pub mod events;
-pub mod recorder;
+mod error;
+mod events;
+mod recorder;
 
 pub use error::*;
 pub use events::{
@@ -19,3 +19,8 @@ pub use events::{
     TextInputCompletedEvent, TextInputMethod, TextSelectionEvent, WorkflowEvent,
 };
 pub use recorder::*;
+
+#[cfg(target_os = "windows")]
+pub mod structs {
+    pub use crate::recorder::windows::structs::*;
+}

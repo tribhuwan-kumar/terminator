@@ -242,7 +242,7 @@ impl fmt::Debug for UIElementAttributes {
 }
 
 /// Interface for platform-specific element implementations
-pub(crate) trait UIElementImpl: Send + Sync + Debug {
+pub trait UIElementImpl: Send + Sync + Debug {
     fn object_id(&self) -> usize;
     fn id(&self) -> Option<String>;
     fn role(&self) -> String;
@@ -461,7 +461,7 @@ pub(crate) trait UIElementImpl: Send + Sync + Debug {
 
 impl UIElement {
     /// Create a new UI element from a platform-specific implementation
-    pub(crate) fn new(impl_: Box<dyn UIElementImpl>) -> Self {
+    pub fn new(impl_: Box<dyn UIElementImpl>) -> Self {
         Self { inner: impl_ }
     }
 
