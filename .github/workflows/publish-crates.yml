@@ -13,7 +13,7 @@ env:
 
 jobs:
   publish-crates:
-    name: Publish Rust crates (DISABLED)
+    name: Publish Rust crates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,15 +53,15 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: |
           echo "Publishing disabled for now"
-          # cd terminator
-          # cargo publish --no-verify
-          # echo "Waiting for crates.io to index..."
-          # sleep 30
+          cd terminator
+          cargo publish --no-verify
+          echo "Waiting for crates.io to index..."
+          sleep 30
       
       - name: Publish terminator-workflow-recorder crate (DISABLED)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
         run: |
           echo "Publishing disabled for now"
-          # cd terminator-workflow-recorder
-          # cargo publish --no-verify
+          cd terminator-workflow-recorder
+          cargo publish --no-verify

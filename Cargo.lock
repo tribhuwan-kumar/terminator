@@ -746,16 +746,18 @@ dependencies = [
 
 [[package]]
 name = "cidre"
-version = "0.7.0"
-source = "git+https://github.com/yury/cidre?rev=c68b1e9#c68b1e9e0f1dc8f37af7c6bad6887375c89bbb23"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55907ae48537e9e728bdbba0700329dda249c8d67305a318187f8f4bf9517542"
 dependencies = [
  "cidre-macros",
 ]
 
 [[package]]
 name = "cidre-macros"
-version = "0.1.0"
-source = "git+https://github.com/yury/cidre?rev=c68b1e9#c68b1e9e0f1dc8f37af7c6bad6887375c89bbb23"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f07a383a232853874a9b0b3e80e6eefe9bea73495b8ab4bdd960bc7c1db4c6d"
 
 [[package]]
 name = "clang-sys"
@@ -4201,7 +4203,7 @@ dependencies = [
 
 [[package]]
 name = "terminator"
-version = "0.5.15"
+version = "0.5.16"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4238,7 +4240,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.5.15"
+version = "0.5.16"
 dependencies = [
  "clap",
  "serde_json",
@@ -4246,7 +4248,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.5.15"
+version = "0.5.16"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4263,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.5.15"
+version = "0.5.16"
 dependencies = [
  "napi",
  "napi-build",
@@ -4277,7 +4279,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.5.15"
+version = "0.5.16"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4292,7 +4294,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.5.15"
+version = "0.5.16"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4687,8 +4689,9 @@ dependencies = [
 
 [[package]]
 name = "uni-ocr"
-version = "0.1.4"
-source = "git+https://github.com/mediar-ai/uniOCR?rev=f7a408f#f7a408f69e8b0ef0631f4098f43a0eea699cfe52"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "178bf90f870928ef5b0080bcc9c7271321f97844b025c4937f72f3f84a2aa665"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
