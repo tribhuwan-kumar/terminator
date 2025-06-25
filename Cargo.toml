@@ -12,7 +12,7 @@ members = [
 
 # Shared metadata for workspace members
 [workspace.package]
-version = "0.5.16" # From your original Cargo.toml
+version = "0.5.17" # From your original Cargo.toml
 edition = "2021"   # From your original Cargo.toml
 
 # Centralized dependency definitions
@@ -39,9 +39,6 @@ async-trait = "0.1.88"
 base64 = "0.22.1"
 
 # macOS specific dependencies
-# These can be conditionally included in member crates' Cargo.toml like:
-# [target.'cfg(target_os = "macos")'.dependencies]
-# accessibility = { workspace = true }
 accessibility-sys = "0.2.0"
 accessibility = "0.2.0"
 objc = "0.2.7"
@@ -50,9 +47,6 @@ core-foundation = { version = "0.10.0" }
 core-graphics = { version = "0.24.0", features = ["highsierra"] }
 
 # Windows specific dependencies
-# These can be conditionally included in member crates' Cargo.toml like:
-# [target.'cfg(target_os = "windows")'.dependencies]
-# uiautomation = { workspace = true }
 uiautomation = { version = "0.18.0" }
 sysinfo = "0.34.2"
 

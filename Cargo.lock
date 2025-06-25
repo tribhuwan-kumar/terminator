@@ -5,12 +5,12 @@ version = 4
 [[package]]
 name = "accessibility"
 version = "0.2.0"
-source = "git+https://github.com/eiz/accessibility.git?branch=master#1f68a658f5a3828b4b607b1916786b614778177e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ac9f33ffc1ef16eddb2451c03c983e56a5182ac760c3f2733da55ba8f48eac4"
 dependencies = [
  "accessibility-sys",
  "cocoa 0.26.1",
  "core-foundation 0.10.1",
- "core-graphics-types 0.1.3",
  "objc",
  "thiserror 1.0.69",
 ]
@@ -18,7 +18,8 @@ dependencies = [
 [[package]]
 name = "accessibility-sys"
 version = "0.2.0"
-source = "git+https://github.com/eiz/accessibility.git?branch=master#1f68a658f5a3828b4b607b1916786b614778177e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46a6a8e90a1d8b96a48249e7c8f5b4058447bea8847280db7bfccb6dcab6b8e1"
 dependencies = [
  "core-foundation-sys 0.8.7",
 ]
@@ -859,7 +860,7 @@ dependencies = [
  "bitflags 2.9.1",
  "block",
  "core-foundation 0.10.1",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "objc",
 ]
 
@@ -976,19 +977,8 @@ checksum = "fa95a34622365fa5bbf40b20b75dba8dfa8c94c734aea8ac9a5ca38af14316f1"
 dependencies = [
  "bitflags 2.9.1",
  "core-foundation 0.10.1",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "foreign-types 0.5.0",
- "libc",
-]
-
-[[package]]
-name = "core-graphics-types"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
-dependencies = [
- "bitflags 1.3.2",
- "core-foundation 0.9.4",
  "libc",
 ]
 
@@ -4203,7 +4193,7 @@ dependencies = [
 
 [[package]]
 name = "terminator"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4240,7 +4230,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "clap",
  "serde_json",
@@ -4248,7 +4238,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4265,7 +4255,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "napi",
  "napi-build",
@@ -4279,7 +4269,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4294,7 +4284,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.5.16"
+version = "0.5.17"
 dependencies = [
  "anyhow",
  "arboard",
