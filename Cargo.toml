@@ -12,9 +12,9 @@ members = [
 
 # Shared metadata for workspace members
 [workspace.package]
-version = "0.5.18" # From your original Cargo.toml
+version = "0.5.19" # From your original Cargo.toml
 edition = "2021"   # From your original Cargo.toml
-license-file = "LICENSE.md"
+license-file = "LICENSE"
 
 # Centralized dependency definitions
 # Member crates can use these by specifying, e.g., `tokio = { workspace = true }`
