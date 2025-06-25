@@ -18,6 +18,9 @@ pub enum UIAInputRequest {
     KeyPressForCompletion {
         key_code: u32,
     },
+    ActivationKeyPress {
+        key_code: u32,
+    },
 }
 
 /// Text input tracking state
@@ -29,9 +32,6 @@ pub struct TextInputTracker {
     pub start_time: Instant,
     /// Number of typing keystrokes (excludes navigation keys)
     pub keystroke_count: u32,
-    /// Initial text value when tracking started (unused in current implementation)
-    #[allow(dead_code)]
-    pub initial_text: String,
     /// Whether we've detected any actual typing
     pub has_typing_activity: bool,
     /// Whether we're in the middle of autocomplete navigation (arrow keys active)
@@ -49,7 +49,6 @@ impl TextInputTracker {
             element,
             start_time: Instant::now(),
             keystroke_count: 0,
-            initial_text: String::new(), // Keep empty to avoid element access issues
             has_typing_activity: false,
             in_autocomplete_navigation: false,
             last_autocomplete_activity: Instant::now(),

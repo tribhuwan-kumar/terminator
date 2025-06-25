@@ -361,6 +361,12 @@ impl WindowsRecorder {
                             &uia_processor_event_tx,
                         );
                     }
+                    UIAInputRequest::ActivationKeyPress { key_code: _ } => {
+                        Self::handle_activation_key_press_request(
+                            &uia_processor_config,
+                            &uia_processor_event_tx,
+                        );
+                    }
                 }
             }
         });
@@ -401,6 +407,14 @@ impl WindowsRecorder {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        // If Enter or Space is pressed, treat it as a potential activation
+                        if key_code == 0x0D || key_code == 0x20 {
+                            let request = UIAInputRequest::ActivationKeyPress { key_code };
+                            if uia_event_tx.send(request).is_err() {
+                                debug!("Failed to send activation key press request to UIA thread");
                             }
                         }
 
@@ -952,16 +966,6 @@ impl WindowsRecorder {
                             element_name, element_role
                         );
 
-                        // Task for button focus check
-                        let button_focus_event_tx = focus_event_tx_clone.clone();
-                        let button_element = element.clone();
-                        processing_handle.spawn(async move {
-                            WindowsRecorder::handle_button_focus_event(
-                                &button_element,
-                                &button_focus_event_tx,
-                            );
-                        });
-
                         // Task for application switch check
                         let app_switch_current_app = Arc::clone(&focus_current_app);
                         let app_switch_event_tx_clone = focus_event_tx_clone.clone();
@@ -1224,16 +1228,16 @@ impl WindowsRecorder {
 
     /// Maps a browser keyword (like 'chrome') to a display name (like 'Google Chrome').
     fn map_keyword_to_browser_name(keyword: &str) -> String {
-        match keyword {
-            "chrome" => "Google Chrome".to_string(),
-            "firefox" => "Mozilla Firefox".to_string(),
-            "edge" | "msedge" => "Microsoft Edge".to_string(),
-            "iexplore" => "Internet Explorer".to_string(),
+        match keyword.to_lowercase().as_str() {
+            "chrome" | "google chrome" => "Google Chrome".to_string(),
+            "firefox" | "mozilla firefox" => "Mozilla Firefox".to_string(),
+            "edge" | "msedge" | "microsoft edge" => "Microsoft Edge".to_string(),
+            "iexplore" | "internet explorer" => "Internet Explorer".to_string(),
             "safari" => "Safari".to_string(),
             "opera" => "Opera".to_string(),
-            _ => {
+            other => {
                 // Capitalize the first letter as a fallback
-                let mut c = keyword.chars();
+                let mut c = other.chars();
                 match c.next() {
                     None => String::new(),
                     Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
@@ -1462,72 +1466,6 @@ impl WindowsRecorder {
         }
     }
 
-    /// Handles a focus event to determine if it's a button-like interaction and sends an event.
-    /// This is run in a separate task to avoid blocking the main focus event processing loop.
-    fn handle_button_focus_event(element: &UIElement, event_tx: &broadcast::Sender<WorkflowEvent>) {
-        let element_name = element.name_or_empty();
-        let element_role = element.role().to_lowercase();
-
-        debug!(
-            "Button focus check - element: '{}', role: '{}'",
-            element_name, element_role
-        );
-
-        // Check if the focused element is clickable (button, menu item, list item, hyperlink, etc.)
-        if element_role.contains("button")
-            || element_role.contains("menuitem")
-            || element_role.contains("listitem")
-            || element_role.contains("hyperlink")
-            || element_role.contains("link")
-            || element_role.contains("checkbox")
-            || element_role.contains("radiobutton")
-            || element_role.contains("togglebutton")
-        {
-            debug!(
-                "✅ Detected clickable element: '{}' (role: '{}')",
-                element_name, element_role
-            );
-            let element_desc = element.attributes().description.unwrap_or_default();
-
-            let interaction_type = Self::determine_button_interaction_type(
-                &element_name,
-                &element_desc,
-                &element_role,
-            );
-            let is_enabled = element.is_enabled().unwrap_or(true);
-            let bounds = element.bounds().unwrap_or_default();
-
-            let button_event = ButtonClickEvent {
-                button_text: element_name.clone(),
-                interaction_type,
-                button_role: element_role.clone(),
-                was_enabled: is_enabled,
-                click_position: Some(Position {
-                    x: bounds.0 as i32,
-                    y: bounds.1 as i32,
-                }),
-                button_description: if element_desc.is_empty() {
-                    None
-                } else {
-                    Some(element_desc.clone())
-                },
-                metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
-            };
-
-            let result = event_tx.send(WorkflowEvent::ButtonClick(button_event));
-
-            if result.is_ok() {
-                debug!("Successfully sent ButtonClickEvent for '{}'", element_name);
-            } else {
-                warn!(
-                    "Failed to send ButtonClickEvent for '{}': {:?}",
-                    element_name,
-                    result.err()
-                );
-            }
-        }
-    }
-
     /// Check if a UI element is a text input field
     fn is_text_input_element(element: &UIElement) -> bool {
         let role = element.role().to_lowercase();
@@ -1609,13 +1547,11 @@ impl WindowsRecorder {
                 || element_role.contains("comboboxitem")
                 || element_role.contains("item")
                 || element_role.contains("cell")
-                || element_role == "text"
+                // || element_role == "text" // This is too broad and causes incorrect detections
                 || element_name.to_lowercase().contains("suggestion")
                 || element_name.to_lowercase().contains("complete")
                 || element_name.to_lowercase().contains("autocomplete")
                 || element_name.to_lowercase().contains("dropdown")
-                || (element_role == "pane" && !element_name.is_empty())
-                || (element_role == "document" && element_name.len() < 100)
         } else {
             false
         };
@@ -1783,14 +1719,11 @@ impl WindowsRecorder {
                     || element_role.contains("comboboxitem")
                     || element_role.contains("item") // Generic item roles
                     || element_role.contains("cell") // Grid/table cells in dropdowns
-                    || element_role == "text" // Plain text elements in dropdowns
+                    // || element_role == "text" // Plain text elements in dropdowns - TOO BROAD
                     || element_name.to_lowercase().contains("suggestion")
                     || element_name.to_lowercase().contains("complete")
                     || element_name.to_lowercase().contains("autocomplete")
-                    || element_name.to_lowercase().contains("dropdown")
-                    // Common autocomplete patterns
-                    || (element_role == "pane" && !element_name.is_empty())
-                    || (element_role == "document" && element_name.len() < 100); // Short text in documents could be suggestions
+                    || element_name.to_lowercase().contains("dropdown"); // Common autocomplete patterns
 
                 // Debug logging for suggestion detection
                 debug!(
@@ -2099,6 +2032,67 @@ impl WindowsRecorder {
                             *tracker = Some(TextInputTracker::new(element.clone()));
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// Handles an activation key press (Enter/Space) to check for button clicks.
+    fn handle_activation_key_press_request(
+        config: &WorkflowRecorderConfig,
+        event_tx: &broadcast::Sender<WorkflowEvent>,
+    ) {
+        // Get the currently focused element
+        if let Some(element) = Self::get_focused_ui_element_with_timeout(config, 200) {
+            let element_name = element.name_or_empty();
+            let element_role = element.role().to_lowercase();
+
+            // Check if the focused element is clickable
+            if element_role.contains("button")
+                || element_role.contains("menuitem")
+                || element_role.contains("listitem")
+                || element_role.contains("hyperlink")
+                || element_role.contains("link")
+                || element_role.contains("checkbox")
+                || element_role.contains("radiobutton")
+                || element_role.contains("togglebutton")
+            {
+                debug!(
+                    "✅ Detected clickable element on activation key press: '{}' (role: '{}')",
+                    element_name, element_role
+                );
+                let element_desc = element.attributes().description.unwrap_or_default();
+
+                let interaction_type = Self::determine_button_interaction_type(
+                    &element_name,
+                    &element_desc,
+                    &element_role,
+                );
+                let is_enabled = element.is_enabled().unwrap_or(true);
+                let bounds = element.bounds().unwrap_or_default();
+
+                let button_event = ButtonClickEvent {
+                    button_text: element_name.clone(),
+                    interaction_type,
+                    button_role: element_role.clone(),
+                    was_enabled: is_enabled,
+                    click_position: Some(Position {
+                        x: bounds.0 as i32,
+                        y: bounds.1 as i32,
+                    }),
+                    button_description: if element_desc.is_empty() {
+                        None
+                    } else {
+                        Some(element_desc.clone())
+                    },
+                    metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
+                };
+
+                if let Err(e) = event_tx.send(WorkflowEvent::ButtonClick(button_event)) {
+                    debug!(
+                        "Failed to send button click event from key press for '{}': {}",
+                        element_name, e
+                    );
                 }
             }
         }
