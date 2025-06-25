@@ -13,8 +13,9 @@
 //!   cargo run --bin terminator -- status     # Show current status
 //!   cargo run --bin terminator -- tag        # Tag and push current version
 //!   cargo run --bin terminator -- release    # Full release: bump patch + tag + push
+//!   cargo run --bin terminator -- release minor # Full release: bump minor + tag + push
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -31,6 +32,28 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(ValueEnum, Clone, Copy, Debug, Default)]
+#[clap(rename_all = "lower")]
+enum BumpLevel {
+    #[default]
+    Patch,
+    Minor,
+    Major,
+}
+
+impl std::fmt::Display for BumpLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{:?}", self).to_lowercase())
+    }
+}
+
+#[derive(Parser, Debug)]
+struct ReleaseArgs {
+    /// The part of the version to bump: patch, minor, or major.
+    #[clap(value_enum, default_value_t = BumpLevel::Patch)]
+    level: BumpLevel,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Bump patch version (x.y.Z+1)
@@ -45,8 +68,8 @@ enum Commands {
     Status,
     /// Tag current version and push (triggers CI)
     Tag,
-    /// Full release: bump patch + tag + push
-    Release,
+    /// Full release: bump version + tag + push
+    Release(ReleaseArgs),
 }
 
 fn main() {
@@ -62,7 +85,7 @@ fn main() {
         Commands::Sync => sync_all_versions(),
         Commands::Status => show_status(),
         Commands::Tag => tag_and_push(),
-        Commands::Release => full_release(),
+        Commands::Release(args) => full_release(&args.level.to_string()),
     }
 }
 
@@ -504,9 +527,12 @@ fn tag_and_push() {
     println!("🔗 Check CI: https://github.com/mediar-ai/terminator/actions");
 }
 
-fn full_release() {
-    println!("🚀 Starting full release process...");
-    bump_version("patch");
+fn full_release(bump_type: &str) {
+    println!(
+        "🚀 Starting full release process with {} bump...",
+        bump_type
+    );
+    bump_version(bump_type);
     tag_and_push();
 }
 
