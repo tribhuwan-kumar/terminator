@@ -473,6 +473,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("     └─ TO Title: \"{}\"", to_title_display);
                     }
 
+                    // print browser name
+                    println!("     └─ Browser: {}", tab_nav_event.browser);
+
                     // Show navigation method
                     let method_icon = match tab_nav_event.method {
                         terminator_workflow_recorder::TabNavigationMethod::KeyboardShortcut => {

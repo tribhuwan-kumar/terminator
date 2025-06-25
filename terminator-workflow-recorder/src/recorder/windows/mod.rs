@@ -1222,6 +1222,26 @@ impl WindowsRecorder {
         ButtonInteractionType::Click
     }
 
+    /// Maps a browser keyword (like 'chrome') to a display name (like 'Google Chrome').
+    fn map_keyword_to_browser_name(keyword: &str) -> String {
+        match keyword {
+            "chrome" => "Google Chrome".to_string(),
+            "firefox" => "Mozilla Firefox".to_string(),
+            "edge" | "msedge" => "Microsoft Edge".to_string(),
+            "iexplore" => "Internet Explorer".to_string(),
+            "safari" => "Safari".to_string(),
+            "opera" => "Opera".to_string(),
+            _ => {
+                // Capitalize the first letter as a fallback
+                let mut c = keyword.chars();
+                match c.next() {
+                    None => String::new(),
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                }
+            }
+        }
+    }
+
     /// Static version for use in event listeners where self is not available
     fn send_filtered_event_static(
         event_tx: &broadcast::Sender<WorkflowEvent>,
@@ -1321,121 +1341,123 @@ impl WindowsRecorder {
             let app_name = element.application_name();
             let app_name_lower = app_name.to_lowercase();
 
-            let is_browser = {
+            let matched_browser_keyword = {
                 let tracker_guard = tracker.lock().unwrap();
                 tracker_guard
                     .known_browsers
                     .iter()
-                    .any(|b| app_name_lower.contains(b))
+                    .find(|b| app_name_lower.contains(*b))
+                    .cloned()
             };
 
             debug!(
-                "Checking browser navigation for app: '{}', is_browser: {}",
-                app_name, is_browser
+                "Checking browser navigation for app: '{}', matched browser keyword: {:?}",
+                app_name, matched_browser_keyword
             );
 
-            if !is_browser {
-                return;
-            }
+            if let Some(keyword) = matched_browser_keyword {
+                let browser_display_name = Self::map_keyword_to_browser_name(&keyword);
 
-            // Try multiple methods to get URL information
-            let url_info = element
-                .url()
-                .or_else(|| {
-                    // Try to get URL from element attributes or text
-                    if let Ok(text) = element.text(0) {
-                        if text.starts_with("http") {
-                            Some(text)
+                // Try multiple methods to get URL information
+                let url_info = element
+                    .url()
+                    .or_else(|| {
+                        // Try to get URL from element attributes or text
+                        if let Ok(text) = element.text(0) {
+                            if text.starts_with("http") {
+                                Some(text)
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
-                    } else {
-                        None
-                    }
-                })
-                .or_else(|| {
-                    // Try to extract URL from window title (common in browsers)
-                    let window_title = element.window_title();
-                    if window_title.contains("http") {
-                        // Extract URL from title
-                        window_title
-                            .split_whitespace()
-                            .find(|s| s.starts_with("http"))
-                            .map(|s| s.to_string())
-                    } else {
-                        None
-                    }
-                });
+                    })
+                    .or_else(|| {
+                        // Try to extract URL from window title (common in browsers)
+                        let window_title = element.window_title();
+                        if window_title.contains("http") {
+                            // Extract URL from title
+                            window_title
+                                .split_whitespace()
+                                .find(|s| s.starts_with("http"))
+                                .map(|s| s.to_string())
+                        } else {
+                            None
+                        }
+                    });
 
-            if let Some(new_url) = url_info {
-                // Use window title as page title, fallback to app name
-                let new_title = {
-                    let window_title = element.window_title();
-                    if window_title.is_empty() {
-                        app_name.clone()
-                    } else {
-                        window_title
-                    }
-                };
-
-                debug!(
-                    "Browser navigation detected - URL: '{}', Title: '{}'",
-                    new_url, new_title
-                );
-
-                let mut tracker_guard = tracker.lock().unwrap();
-
-                let is_switch = new_url != tracker_guard.current_url.clone().unwrap_or_default()
-                    || new_title != tracker_guard.current_title.clone().unwrap_or_default();
-
-                debug!(
-                    "Is switch: {}, current_url: {:?}, current_title: {:?}",
-                    is_switch, tracker_guard.current_url, tracker_guard.current_title
-                );
-
-                if is_switch {
-                    let now = Instant::now();
-                    let dwell_time = now
-                        .duration_since(tracker_guard.last_navigation_time)
-                        .as_millis() as u64;
-
-                    let nav_event = BrowserTabNavigationEvent {
-                        action: crate::TabAction::Switched,
-                        method: crate::TabNavigationMethod::Other, // Updated from focus change
-                        to_url: Some(new_url.clone()),
-                        from_url: tracker_guard.current_url.clone(),
-                        to_title: Some(new_title.clone()),
-                        from_title: tracker_guard.current_title.clone(),
-                        browser: app_name.clone(),
-                        tab_index: None,
-                        total_tabs: None,
-                        page_dwell_time_ms: Some(dwell_time),
-                        is_back_forward: false,
-                        metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                            element.clone(),
-                        )),
+                if let Some(new_url) = url_info {
+                    // Use window title as page title, fallback to app name
+                    let new_title = {
+                        let window_title = element.window_title();
+                        if window_title.is_empty() {
+                            app_name.clone()
+                        } else {
+                            window_title
+                        }
                     };
 
-                    debug!("Sending browser navigation event: {:?}", nav_event);
+                    debug!(
+                        "Browser navigation detected - URL: '{}', Title: '{}'",
+                        new_url, new_title
+                    );
 
-                    if event_tx
-                        .send(WorkflowEvent::BrowserTabNavigation(nav_event))
-                        .is_ok()
-                    {
-                        debug!("✅ Browser navigation event sent successfully");
-                        tracker_guard.current_browser = Some(app_name.clone());
-                        tracker_guard.current_url = Some(new_url);
-                        tracker_guard.current_title = Some(new_title);
-                        tracker_guard.last_navigation_time = now;
-                    } else {
-                        debug!("❌ Failed to send browser navigation event");
+                    let mut tracker_guard = tracker.lock().unwrap();
+
+                    let is_switch = new_url
+                        != tracker_guard.current_url.clone().unwrap_or_default()
+                        || new_title != tracker_guard.current_title.clone().unwrap_or_default();
+
+                    debug!(
+                        "Is switch: {}, current_url: {:?}, current_title: {:?}",
+                        is_switch, tracker_guard.current_url, tracker_guard.current_title
+                    );
+
+                    if is_switch {
+                        let now = Instant::now();
+                        let dwell_time = now
+                            .duration_since(tracker_guard.last_navigation_time)
+                            .as_millis() as u64;
+
+                        let nav_event = BrowserTabNavigationEvent {
+                            action: crate::TabAction::Switched,
+                            method: crate::TabNavigationMethod::Other, // Updated from focus change
+                            to_url: Some(new_url.clone()),
+                            from_url: tracker_guard.current_url.clone(),
+                            to_title: Some(new_title.clone()),
+                            from_title: tracker_guard.current_title.clone(),
+                            browser: browser_display_name.clone(),
+                            tab_index: None,
+                            total_tabs: None,
+                            page_dwell_time_ms: Some(dwell_time),
+                            is_back_forward: false,
+                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                element.clone(),
+                            )),
+                        };
+
+                        debug!("Sending browser navigation event: {:?}", nav_event);
+
+                        if event_tx
+                            .send(WorkflowEvent::BrowserTabNavigation(nav_event))
+                            .is_ok()
+                        {
+                            debug!("✅ Browser navigation event sent successfully");
+                            tracker_guard.current_browser = Some(browser_display_name);
+                            tracker_guard.current_url = Some(new_url);
+                            tracker_guard.current_title = Some(new_title);
+                            tracker_guard.last_navigation_time = now;
+                        } else {
+                            debug!("❌ Failed to send browser navigation event");
+                        }
                     }
+                } else {
+                    debug!(
+                        "No URL information found for browser element: '{}'",
+                        element.name_or_empty()
+                    );
                 }
-            } else {
-                debug!(
-                    "No URL information found for browser element: '{}'",
-                    element.name_or_empty()
-                );
             }
         }
     }
