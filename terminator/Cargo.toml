@@ -10,6 +10,7 @@ documentation = "https://docs.rs/terminator"
 readme = "../README.md"
 keywords = ["automation", "gui", "desktop", "accessibility", "testing"]
 categories = ["accessibility", "api-bindings", "development-tools::testing"]
+license-file = { workspace = true }
 
 [dependencies]
 serde = { workspace = true }
