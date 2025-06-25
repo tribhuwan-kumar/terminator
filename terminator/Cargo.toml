@@ -1,5 +1,5 @@
 [package]
-name = "terminator"
+name = "terminator-rs"
 version = { workspace = true }
 edition = "2021"
 description = "A Playwright-style SDK for automating desktop GUI applications"

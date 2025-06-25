@@ -4192,8 +4192,62 @@ dependencies = [
 ]
 
 [[package]]
-name = "terminator"
-version = "0.5.19"
+name = "terminator-cli"
+version = "0.5.20"
+dependencies = [
+ "clap",
+ "serde_json",
+]
+
+[[package]]
+name = "terminator-mcp-agent"
+version = "0.5.20"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "futures",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "terminator-rs",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "typed-builder",
+]
+
+[[package]]
+name = "terminator-node-bindings"
+version = "0.5.20"
+dependencies = [
+ "napi",
+ "napi-build",
+ "napi-derive",
+ "serde",
+ "serde_json",
+ "terminator-rs",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "terminator-py-bindings"
+version = "0.5.20"
+dependencies = [
+ "pyo3",
+ "pyo3-async-runtimes",
+ "pyo3-stub-gen",
+ "serde",
+ "serde_json",
+ "terminator-rs",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "terminator-rs"
+version = "0.5.20"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4229,62 +4283,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "terminator-cli"
-version = "0.5.19"
-dependencies = [
- "clap",
- "serde_json",
-]
-
-[[package]]
-name = "terminator-mcp-agent"
-version = "0.5.19"
-dependencies = [
- "anyhow",
- "chrono",
- "futures",
- "rmcp",
- "serde",
- "serde_json",
- "terminator",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "typed-builder",
-]
-
-[[package]]
-name = "terminator-node-bindings"
-version = "0.5.19"
-dependencies = [
- "napi",
- "napi-build",
- "napi-derive",
- "serde",
- "serde_json",
- "terminator",
- "tokio",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "terminator-py-bindings"
-version = "0.5.19"
-dependencies = [
- "pyo3",
- "pyo3-async-runtimes",
- "pyo3-stub-gen",
- "serde",
- "serde_json",
- "terminator",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "terminator-workflow-recorder"
-version = "0.5.19"
+version = "0.5.20"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4302,7 +4302,7 @@ dependencies = [
  "serde_json",
  "sysinfo 0.30.13",
  "tempfile",
- "terminator",
+ "terminator-rs",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
