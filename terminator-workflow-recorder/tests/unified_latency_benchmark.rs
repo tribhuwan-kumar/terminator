@@ -8,20 +8,16 @@ use tokio_stream::StreamExt;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
-    Foundation::POINT,
     UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
         KEYEVENTF_KEYUP, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
         MOUSEEVENTF_MOVE, MOUSEINPUT, VIRTUAL_KEY, VK_A,
     },
-    UI::WindowsAndMessaging::{GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN},
+    UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN},
 };
 
 #[derive(Debug, Clone)]
 struct LatencyMeasurement {
-    event_type: String,
-    sent_at: Instant,
-    received_at: Instant,
     latency_ms: f64,
 }
 
@@ -129,7 +125,7 @@ impl LatencyStats {
 #[cfg(target_os = "windows")]
 fn send_keyboard_event(vk_code: VIRTUAL_KEY, key_up: bool) -> Result<(), String> {
     unsafe {
-        let mut input = INPUT {
+        let input = INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
                 ki: KEYBDINPUT {
@@ -163,8 +159,8 @@ fn send_mouse_click(x: i32, y: i32) -> Result<(), String> {
         let screen_height = GetSystemMetrics(SM_CYSCREEN);
 
         // Convert to absolute coordinates (0-65535 range)
-        let abs_x = (x * 65535 / screen_width) as i32;
-        let abs_y = (y * 65535 / screen_height) as i32;
+        let abs_x = x * 65535 / screen_width;
+        let abs_y = y * 65535 / screen_height;
 
         // Move mouse to position
         let move_input = INPUT {
@@ -230,8 +226,8 @@ fn send_mouse_move(x: i32, y: i32) -> Result<(), String> {
         let screen_height = GetSystemMetrics(SM_CYSCREEN);
 
         // Convert to absolute coordinates (0-65535 range)
-        let abs_x = (x * 65535 / screen_width) as i32;
-        let abs_y = (y * 65535 / screen_height) as i32;
+        let abs_x = x * 65535 / screen_width;
+        let abs_y = y * 65535 / screen_height;
 
         let input = INPUT {
             r#type: INPUT_MOUSE,
@@ -553,12 +549,7 @@ async fn run_latency_test(
             if recv_time > send_time && recv_type == event_type {
                 let latency_ms = recv_time.duration_since(*send_time).as_secs_f64() * 1000.0;
 
-                let measurement = LatencyMeasurement {
-                    event_type: event_type.clone(),
-                    sent_at: *send_time,
-                    received_at: *recv_time,
-                    latency_ms,
-                };
+                let measurement = LatencyMeasurement { latency_ms };
 
                 match event_type.as_str() {
                     "keyboard" => keyboard_measurements.push(measurement),
@@ -642,7 +633,7 @@ async fn test_mouse_movement_verification() {
 
     // Generate movements in a pattern
     println!("Generating mouse movements in a square pattern...");
-    let positions = vec![
+    let positions = [
         (500.0, 500.0),
         (700.0, 500.0),
         (700.0, 700.0),
@@ -659,7 +650,7 @@ async fn test_mouse_movement_verification() {
     tokio::time::sleep(Duration::from_millis(500)).await;
     recorder.stop().await.expect("Failed to stop recorder");
 
-    let (move_count, recorded_positions) = event_collector.await.unwrap();
+    let (move_count, _) = event_collector.await.unwrap();
 
     println!("\n📊 Results:");
     println!("  Mouse movements sent: {}", positions.len());

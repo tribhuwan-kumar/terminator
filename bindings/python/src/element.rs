@@ -405,43 +405,6 @@ impl UIElement {
         Ok(crate::locator::Locator { inner: locator })
     }
 
-    #[pyo3(name = "explore", text_signature = "($self)")]
-    /// Explore this element and its direct children.
-    ///
-    /// Returns:
-    ///     ExploreResponse: Details about the element and its children.
-    pub fn explore(&self) -> PyResult<crate::types::ExploreResponse> {
-        self.inner
-            .explore()
-            .map(|response| crate::types::ExploreResponse {
-                parent: UIElement {
-                    inner: response.parent,
-                },
-                children: response
-                    .children
-                    .into_iter()
-                    .map(|child| crate::types::ExploredElementDetail {
-                        role: child.role,
-                        name: child.name,
-                        id: child.id,
-                        bounds: child.bounds.map(|(x, y, width, height)| Bounds {
-                            x,
-                            y,
-                            width,
-                            height,
-                        }),
-                        value: child.value,
-                        description: child.description,
-                        text: child.text,
-                        parent_id: child.parent_id,
-                        children_ids: child.children_ids,
-                        suggested_selector: child.suggested_selector,
-                    })
-                    .collect(),
-            })
-            .map_err(automation_error_to_pyerr)
-    }
-
     #[pyo3(name = "process_id", text_signature = "($self)")]
     /// Get the process ID of the application containing this element.
     ///

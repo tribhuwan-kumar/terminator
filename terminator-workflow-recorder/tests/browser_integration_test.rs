@@ -4,7 +4,6 @@ use terminator_workflow_recorder::{
     BrowserTabNavigationEvent, ButtonClickEvent, TextInputCompletedEvent, WorkflowEvent,
     WorkflowRecorder, WorkflowRecorderConfig,
 };
-use tokio::sync::broadcast;
 use tokio_stream::{Stream, StreamExt};
 
 /// Helper function to expect a specific event within a timeout.
@@ -226,7 +225,6 @@ async fn test_browser_form_interactions() {
         record_keyboard: true,
         capture_ui_elements: true,
         record_text_input_completion: true,
-        text_input_completion_timeout_ms: 2000,
         record_browser_tab_navigation: true,
         ..Default::default()
     };

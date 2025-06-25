@@ -4,7 +4,6 @@ use terminator_workflow_recorder::{
     ButtonClickEvent, TextInputCompletedEvent, TextInputMethod, WorkflowEvent, WorkflowRecorder,
     WorkflowRecorderConfig,
 };
-use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tokio_stream::{Stream, StreamExt};
 

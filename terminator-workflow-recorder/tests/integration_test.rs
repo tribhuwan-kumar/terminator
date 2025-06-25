@@ -16,7 +16,6 @@ async fn test_e2e_text_input_completion() {
     // Step 1: Initialize the workflow recorder with text input completion enabled
     let config = WorkflowRecorderConfig {
         record_text_input_completion: true,
-        text_input_completion_timeout_ms: 1500, // 1.5 seconds timeout
         capture_ui_elements: true,
         record_keyboard: true,
         record_mouse: true,
@@ -275,7 +274,6 @@ async fn test_text_input_event_latency() {
     // 1. Setup the recorder
     let config = WorkflowRecorderConfig {
         record_text_input_completion: true,
-        text_input_completion_timeout_ms: 1000,
         ..Default::default()
     };
     let mut recorder = WorkflowRecorder::new("Latency Test".to_string(), config);

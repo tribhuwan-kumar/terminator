@@ -1,4 +1,4 @@
-use terminator::{AutomationError, Selector, platforms};
+use terminator::{platforms, AutomationError, Selector};
 use tracing::Level;
 
 #[tokio::main]

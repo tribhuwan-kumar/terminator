@@ -14,31 +14,31 @@ use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
-use uiautomation::UIAutomation;
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
+use uiautomation::UIAutomation;
 use uni_ocr::{OcrEngine, OcrProvider};
 
 // windows imports
+use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE, HWND};
 use windows::Win32::System::Com::{
-    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Registry::HKEY;
 use windows::Win32::System::Threading::GetProcessId;
 use windows::Win32::UI::Shell::{
-    ACTIVATEOPTIONS, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_NOASYNC,
-    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW, ShellExecuteW,
+    ApplicationActivationManager, IApplicationActivationManager, ShellExecuteExW, ShellExecuteW,
+    ACTIVATEOPTIONS, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
 };
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -2601,7 +2601,7 @@ impl UIElementImpl for WindowsUIElement {
 
     fn activate_window(&self) -> Result<(), AutomationError> {
         use windows::Win32::UI::WindowsAndMessaging::{
-            BringWindowToTop, IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow,
+            BringWindowToTop, IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE,
         };
 
         debug!(
@@ -2649,7 +2649,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn minimize_window(&self) -> Result<(), AutomationError> {
-        use windows::Win32::UI::WindowsAndMessaging::{SW_MINIMIZE, ShowWindow};
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_MINIMIZE};
 
         debug!("Minimizing window for element: {:?}", self.element.0);
 
@@ -2977,8 +2977,8 @@ impl UIElementImpl for WindowsUIElement {
     // New mouse control methods
     fn mouse_click_and_hold(&self, x: f64, y: f64) -> Result<(), AutomationError> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
-            MOUSEEVENTF_MOVE, MOUSEINPUT, SendInput,
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
+            MOUSEEVENTF_MOVE, MOUSEINPUT,
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         fn to_absolute(x: f64, y: f64) -> (i32, i32) {
@@ -3023,8 +3023,8 @@ impl UIElementImpl for WindowsUIElement {
     }
     fn mouse_move(&self, x: f64, y: f64) -> Result<(), AutomationError> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEINPUT,
-            SendInput,
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE,
+            MOUSEINPUT,
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         fn to_absolute(x: f64, y: f64) -> (i32, i32) {
@@ -3055,7 +3055,7 @@ impl UIElementImpl for WindowsUIElement {
     }
     fn mouse_release(&self) -> Result<(), AutomationError> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTUP, MOUSEINPUT, SendInput,
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTUP, MOUSEINPUT,
         };
         let up_input = INPUT {
             r#type: INPUT_MOUSE,
@@ -3168,8 +3168,8 @@ impl UIElementImpl for WindowsUIElement {
         use std::time::Instant;
         use windows::Win32::Foundation::{COLORREF, POINT};
         use windows::Win32::Graphics::Gdi::{
-            CreatePen, DeleteObject, GetDC, GetStockObject, HGDIOBJ, NULL_BRUSH, PS_SOLID,
-            Rectangle, ReleaseDC, SelectObject,
+            CreatePen, DeleteObject, GetDC, GetStockObject, Rectangle, ReleaseDC, SelectObject,
+            HGDIOBJ, NULL_BRUSH, PS_SOLID,
         };
         use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 

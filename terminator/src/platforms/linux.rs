@@ -11,21 +11,20 @@ use std::hash::{Hash, Hasher};
 use std::pin::Pin;
 use std::process::Command;
 use std::sync::Arc;
-use std::sync::{OnceLock, mpsc};
+use std::sync::{mpsc, OnceLock};
 use std::thread;
 use std::time::Duration;
 use tracing::debug;
 
 use atspi::{
-    AccessibilityConnection, Role,
     connection::set_session_accessibility,
     proxy::accessible::{AccessibleProxy, ObjectRefExt},
-    zbus::{Connection, proxy::CacheProperties},
+    zbus::{proxy::CacheProperties, Connection},
+    AccessibilityConnection, Role,
 };
 use atspi_common::{
-    CoordType,
     object_match::{MatchType, ObjectMatchRule, SortOrder},
-    state,
+    state, CoordType,
 };
 use atspi_proxies::{
     action::ActionProxy,
@@ -287,8 +286,8 @@ fn get_worker() -> &'static std::sync::mpsc::Sender<(Request, std::sync::mpsc::S
     })
 }
 
-fn get_usize_worker()
--> &'static std::sync::mpsc::Sender<(UsizeRequest, std::sync::mpsc::Sender<UsizeResponse>)> {
+fn get_usize_worker(
+) -> &'static std::sync::mpsc::Sender<(UsizeRequest, std::sync::mpsc::Sender<UsizeResponse>)> {
     USIZE_WORKER.get_or_init(|| {
         let (tx, rx) = mpsc::channel::<(UsizeRequest, mpsc::Sender<UsizeResponse>)>();
         thread::spawn(move || {

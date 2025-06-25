@@ -1,6 +1,6 @@
-use crate::ScreenshotResult;
 use crate::errors::AutomationError;
 use crate::selector::Selector;
+use crate::ScreenshotResult;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
@@ -788,7 +788,11 @@ impl UIElement {
                             .iter()
                             .map(|child| build(child, depth + 1, max_depth))
                             .collect();
-                        if v.is_empty() { None } else { Some(v) }
+                        if v.is_empty() {
+                            None
+                        } else {
+                            Some(v)
+                        }
                     }
                     Err(_) => None,
                 }

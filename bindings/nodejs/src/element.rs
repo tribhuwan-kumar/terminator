@@ -5,11 +5,7 @@ use terminator::{
     UIElement as TerminatorUIElement, UIElementAttributes as TerminatorUIElementAttributes,
 };
 
-use crate::{
-    map_error,
-    types::{ExploreResponse, ExploredElementDetail},
-    Bounds, ClickResult, Locator, ScreenshotResult, UIElementAttributes,
-};
+use crate::{map_error, Bounds, ClickResult, Locator, ScreenshotResult, UIElementAttributes};
 
 use crate::Selector;
 use napi::bindgen_prelude::Either;
@@ -331,35 +327,6 @@ impl Element {
         self.inner
             .window()
             .map(|opt| opt.map(Element::from))
-            .map_err(map_error)
-    }
-
-    /// Explore this element and its direct children.
-    ///
-    /// @returns {ExploreResponse} Details about the element and its children.
-    #[napi]
-    pub fn explore(&self) -> napi::Result<ExploreResponse> {
-        self.inner
-            .explore()
-            .map(|response| ExploreResponse {
-                parent: Element::from(response.parent),
-                children: response
-                    .children
-                    .into_iter()
-                    .map(|child| ExploredElementDetail {
-                        role: child.role,
-                        name: child.name,
-                        id: child.id,
-                        bounds: child.bounds.map(Bounds::from),
-                        value: child.value,
-                        description: child.description,
-                        text: child.text,
-                        parent_id: child.parent_id,
-                        children_ids: child.children_ids,
-                        suggested_selector: child.suggested_selector,
-                    })
-                    .collect(),
-            })
             .map_err(map_error)
     }
 

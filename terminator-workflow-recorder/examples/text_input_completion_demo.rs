@@ -1,4 +1,4 @@
-use std::time::Duration;
+
 use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio_stream::StreamExt;
 
@@ -25,9 +25,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = WorkflowRecorderConfig {
         // Enable text input completion feature
         record_text_input_completion: true,
-
-        // Set timeout for text input completion (2 seconds of inactivity)
-        text_input_completion_timeout_ms: 2000,
 
         // Enable UI element capture to identify input fields
         capture_ui_elements: true,
