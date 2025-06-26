@@ -2796,6 +2796,9 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::ClassName(_) => Err(AutomationError::UnsupportedOperation(
                 "ClassName selector is not yet supported for macOS".to_string(),
             )),
+            Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
+                "LocalizedRole selector is not yet supported for macOS".to_string(),
+            )),
         }
     }
 
