@@ -58,14 +58,42 @@ await desktop.locator('name:Edit').typeText('hello world')
 ```
 
 ### 🧠 What is Terminator?
+
 Terminator is the Playwright-style SDK for automating Windows GUI apps.
 
 - 🪟 Built for Windows, works on Linux & macOS (partial)
 - 🤖 Uses RLHF'd human screen recording as context
 - 🧠 Designed for AI agents, not humans
-- ⚡ Uses OS-level accessibility (not vision)
-- 🧩 TS, Python, and Rust support
+- ⚡ Uses OS-level accessibility, can fallback to OCR/Vision
+- 🧩 TS, Python, MCP, and Rust support
 - 📈 80ms UI scans, 10000x faster and cheaper than humans
+
+Terminator operates "headless" by default—it doesn't need a visible screen. It uses OS-level accessibility services (like UI Automation on Windows) to interact with applications programmatically. This makes it extremely fast, reliable, and suitable for automation in CI/CD pipelines or on servers without a graphical session.
+
+## Feature Support
+
+While Terminator aims for full cross-platform support, current capabilities vary by OS. Windows is the primary development target and has the most complete feature set.
+
+| Feature                  | Windows | macOS | Linux | Notes                                        |
+| ------------------------ | :-----: | :---: | :---: | -------------------------------------------- |
+| **Core Automation**      |         |       |       |                                              |
+| Element Locators         |    ✅   |  🟡   |  🟡   | Find elements by `name`, `role`, `window`, etc. |
+| UI Actions (`click`, `type`) |    ✅   |  🟡   |  🟡   | Core interactions with UI elements.          |
+| Application Management   |    ✅   |  🟡   |  🟡   | Launch, list, and manage applications. |
+| Window Management        |    ✅   |  🟡   |  🟡   | Get active window, list windows.             |
+| **Advanced Features**    |         |       |       |                                              |
+| Workflow Recording       |    ✅   |  ❌   |  ❌   | Record user actions to generate scripts.     |
+| Monitor Management       |    ✅   |  🟡   |  🟡   | Multi-display support.                       |
+| Screen & Element Capture |    ✅   |  ✅   |  🟡   | Take screenshots of displays or elements.     |
+| **Language Bindings**    |         |       |       |                                              |
+| Python (`terminator.py`) |    ✅   |  ✅   |  ✅   | `pip install terminator.py`                  |
+| TypeScript (`terminator.js`) |    ✅   |  ✅   |  ✅   | `npm i terminator.js`                        |
+| MCP (`terminator-mcp-agent`) |    ✅   |  ✅   |  ✅   | `npx -y terminator-mcp-agent --add-to-app [app]`                        |
+
+**Legend:**
+- ✅: **Supported** - The feature is stable and well-tested.
+- 🟡: **Partial / Experimental** - The feature is in development and may have limitations.
+- ❌: **Not Supported** - The feature is not yet available on this platform.
 
 ## Documentation
 
@@ -77,7 +105,7 @@ Here's a section you can add under your `README.md` to document tools for inspec
 
 ## 🕵️ How to Inspect Accessibility Elements (like `name:Seven`)
 
-To create reliable selectors (e.g. `name:Seven`, `role:Button`, `window:Calculator`), you need to inspect the Accessibility Tree of your OS. Here’s how to explore UI elements on each platform:
+To create reliable selectors (e.g. `name:Seven`, `role:Button`, `window:Calculator`), you need to inspect the Accessibility Tree of your OS. Here's how to explore UI elements on each platform:
 
 ### 🪟 Windows
 
