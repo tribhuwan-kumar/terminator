@@ -919,6 +919,39 @@ impl AccessibilityEngine for WindowsEngine {
                     })
                     .collect())
             }
+            Selector::LocalizedRole(localized_role) => {
+                debug!("searching elements by localized role: {}", localized_role);
+                let lr = localized_role.clone();
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        match e.get_localized_control_type() {
+                            Ok(lct) => Ok(lct == lr),
+                            Err(_) => Ok(false),
+                        }
+                    }))
+                    .depth(depth.unwrap_or(50) as u32)
+                    .timeout(timeout_ms as u64);
+
+                let elements = matcher.find_all().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "LocalizedRole: '{}', Err: {}",
+                        localized_role, e
+                    ))
+                })?;
+
+                Ok(elements
+                    .into_iter()
+                    .map(|ele| {
+                        UIElement::new(Box::new(WindowsUIElement {
+                            element: ThreadSafeWinUIElement(Arc::new(ele)),
+                        }))
+                    })
+                    .collect())
+            }
         }
     }
 
@@ -1205,11 +1238,66 @@ impl AccessibilityEngine for WindowsEngine {
                     element: ThreadSafeWinUIElement(Arc::new(element)),
                 })))
             }
+            Selector::LocalizedRole(localized_role) => {
+                debug!("searching element by localized role: {}", localized_role);
+                let lr = localized_role.clone();
+                let matcher = self
+                    .automation
+                    .0
+                    .create_matcher()
+                    .from_ref(root_ele)
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        match e.get_localized_control_type() {
+                            Ok(lct) => Ok(lct == lr),
+                            Err(_) => Ok(false),
+                        }
+                    }))
+                    .depth(50)
+                    .timeout(timeout_ms as u64);
+                let element = matcher.find_first().map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "LocalizedRole: '{}', Err: {}",
+                        localized_role, e
+                    ))
+                })?;
+                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
+                Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: arc_ele,
+                })))
+            }
         }
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
         info!("Opening application on Windows: {}", app_name);
+
+        // Handle modern ms-settings apps
+        if app_name.starts_with("ms-settings:") {
+            info!("Launching ms-settings URI: {}", app_name);
+            unsafe {
+                let app_name_hstring = HSTRING::from(app_name);
+                let verb_hstring = HSTRING::from("open");
+                let result = ShellExecuteW(
+                    None,
+                    PCWSTR(verb_hstring.as_ptr()),
+                    PCWSTR(app_name_hstring.as_ptr()),
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                );
+                // A value > 32 indicates success for ShellExecuteW
+                if result.0 as isize <= 32 {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Failed to open ms-settings URI: {}. Error code: {:?}",
+                        app_name, result.0
+                    )));
+                }
+            }
+            // After launching, wait a bit for the app to initialize.
+            std::thread::sleep(Duration::from_secs(2));
+            // The window name for settings is just "Settings"
+            return self.get_application_by_name("Settings");
+        }
 
         // Try to get app info from StartApps first
         if let Ok((app_id, display_name)) = get_app_info_from_startapps(app_name) {
@@ -1295,38 +1383,23 @@ impl AccessibilityEngine for WindowsEngine {
         std::thread::sleep(std::time::Duration::from_millis(1000));
 
         if browser_search_name.is_empty() {
-            // For default browser, use a more robust approach
-            info!("Polling for default browser window to appear");
+            // For default browser, we assume the foreground window is the browser that just opened.
+            info!("No specific browser requested, getting the current focused application.");
+            // This is a synchronous block inside an async-compatible function.
+            // We need to get the current application. Since `get_current_application` is async,
+            // we will replicate its logic here in a sync way.
+            let focused_element_raw = self.automation.0.get_focused_element().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get focused element: {}", e))
+            })?;
 
-            loop {
-                if start_time.elapsed() > timeout {
-                    return Err(AutomationError::ElementNotFound(
-                        "Timeout waiting for browser window to open".to_string(),
-                    ));
-                }
+            let pid = focused_element_raw.get_process_id().map_err(|e| {
+                AutomationError::PlatformError(format!(
+                    "Failed to get PID for focused element: {}",
+                    e
+                ))
+            })?;
 
-                // Try to find any browser process that appeared recently
-                let browser_apps: Vec<_> = KNOWN_BROWSER_PROCESS_NAMES
-                    .iter()
-                    .filter_map(|&browser_name| self.get_application_by_name(browser_name).ok())
-                    .collect();
-
-                if !browser_apps.is_empty() {
-                    // Return the first browser we find
-                    info!("Found browser application via process enumeration");
-                    return Ok(browser_apps.into_iter().next().unwrap());
-                }
-
-                // Use adaptive polling - slower initially, then faster
-                let poll_interval = if start_time.elapsed() < std::time::Duration::from_millis(2000)
-                {
-                    initial_poll_interval
-                } else {
-                    fast_poll_interval
-                };
-
-                std::thread::sleep(poll_interval);
-            }
+            self.get_application_by_pid(pid as i32, Some(Duration::from_millis(5000)))
         } else {
             // For specific browser, poll with more patience and better error handling
             info!("Polling for {} browser to appear", browser_search_name);
@@ -1361,34 +1434,8 @@ impl AccessibilityEngine for WindowsEngine {
                 // Try to find the browser window with better error handling
                 match self.get_application_by_name(browser_search_name) {
                     Ok(app) => {
-                        // Check if the app is actually usable
-                        match app.window() {
-                            Ok(Some(_)) => {
-                                info!("Found and verified {} browser window", browser_search_name);
-                                return Ok(app);
-                            }
-                            Ok(None) => {
-                                debug!(
-                                    "{} app found but no window detected, continuing",
-                                    browser_search_name
-                                );
-                            }
-                            Err(_) => {
-                                debug!(
-                                    "{} app found but window check failed, continuing",
-                                    browser_search_name
-                                );
-                            }
-                        }
-
-                        // Even if window check fails, try to use the app if it's been a while
-                        if start_time.elapsed() > std::time::Duration::from_millis(3000) {
-                            info!(
-                                "Using {} browser app despite window check issues",
-                                browser_search_name
-                            );
-                            return Ok(app);
-                        }
+                        info!("Found {} browser window, returning.", browser_search_name);
+                        return Ok(app);
                     }
                     Err(e) => {
                         debug!(
@@ -3562,6 +3609,373 @@ impl UIElementImpl for WindowsUIElement {
 
         debug!("Could not find URL in any address bar candidate.");
         None
+    }
+
+    fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
+        // Expand the dropdown/combobox first
+        if let Ok(expand_collapse_pattern) = self
+            .element
+            .0
+            .get_pattern::<patterns::UIExpandCollapsePattern>()
+        {
+            expand_collapse_pattern.expand().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to expand element: {}", e))
+            })?;
+        }
+
+        // Wait a moment for options to appear
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // Find the specific option by name
+        let automation = UIAutomation::new_direct()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        let option_element = self
+            .element
+            .0
+            .find_first(
+                TreeScope::Descendants,
+                &automation
+                    .create_property_condition(
+                        uiautomation::types::UIProperty::Name,
+                        option_name.into(),
+                        None,
+                    )
+                    .unwrap(),
+            )
+            .map_err(|e| {
+                AutomationError::ElementNotFound(format!(
+                    "Option '{}' not found: {}",
+                    option_name, e
+                ))
+            })?;
+
+        // Select the option
+        if let Ok(selection_item_pattern) =
+            option_element.get_pattern::<patterns::UISelectionItemPattern>()
+        {
+            selection_item_pattern.select().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to select option: {}", e))
+            })?;
+        } else {
+            // Fallback to click if selection pattern is not available
+            option_element.click().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to click option: {}", e))
+            })?;
+        }
+
+        // Try to collapse the dropdown again
+        if let Ok(expand_collapse_pattern) = self
+            .element
+            .0
+            .get_pattern::<patterns::UIExpandCollapsePattern>()
+        {
+            let _ = expand_collapse_pattern.collapse();
+        }
+
+        Ok(())
+    }
+
+    fn list_options(&self) -> Result<Vec<String>, AutomationError> {
+        let mut options = Vec::new();
+        // Ensure the element is expanded to reveal options
+        if let Ok(expand_collapse_pattern) = self
+            .element
+            .0
+            .get_pattern::<patterns::UIExpandCollapsePattern>()
+        {
+            let state_variant = self
+                .element
+                .0
+                .get_property_value(UIProperty::ExpandCollapseExpandCollapseState)
+                .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+
+            let state_val: i32 = state_variant.try_into().map_err(|_| {
+                AutomationError::PlatformError(
+                    "Failed to convert expand/collapse state variant to i32".to_string(),
+                )
+            })?;
+            let state = match state_val {
+                0 => uiautomation::types::ExpandCollapseState::Collapsed,
+                1 => uiautomation::types::ExpandCollapseState::Expanded,
+                2 => uiautomation::types::ExpandCollapseState::PartiallyExpanded,
+                3 => uiautomation::types::ExpandCollapseState::LeafNode,
+                _ => uiautomation::types::ExpandCollapseState::Collapsed, // Default case
+            };
+
+            if state != uiautomation::types::ExpandCollapseState::Expanded {
+                expand_collapse_pattern.expand().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to expand element: {}", e))
+                })?;
+                std::thread::sleep(std::time::Duration::from_millis(200)); // Wait for animation
+            }
+        }
+
+        // Search for ListItem children
+        let children = self.children()?;
+        for child in children {
+            if child.role() == "ListItem" {
+                if let Some(name) = child.name() {
+                    options.push(name);
+                }
+            }
+        }
+        Ok(options)
+    }
+
+    fn is_toggled(&self) -> Result<bool, AutomationError> {
+        let toggle_pattern = self
+            .element
+            .0
+            .get_pattern::<patterns::UITogglePattern>()
+            .map_err(|e| {
+                AutomationError::UnsupportedOperation(format!(
+                    "Element does not support TogglePattern: {}",
+                    e
+                ))
+            })?;
+
+        let state = toggle_pattern.get_toggle_state().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get toggle state: {}", e))
+        })?;
+
+        Ok(state == uiautomation::types::ToggleState::On)
+    }
+
+    fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
+        let current_state = self.is_toggled()?;
+        if current_state == state {
+            return Ok(()); // Already in the desired state
+        }
+
+        let toggle_pattern = self
+            .element
+            .0
+            .get_pattern::<patterns::UITogglePattern>()
+            .map_err(|e| {
+                AutomationError::UnsupportedOperation(format!(
+                    "Element does not support TogglePattern to set state: {}",
+                    e
+                ))
+            })?;
+
+        toggle_pattern
+            .toggle()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to toggle: {}", e)))
+    }
+
+    fn get_range_value(&self) -> Result<f64, AutomationError> {
+        let range_pattern = self
+            .element
+            .0
+            .get_pattern::<patterns::UIRangeValuePattern>()
+            .map_err(|e| {
+                AutomationError::UnsupportedOperation(format!(
+                    "Element does not support RangeValue pattern: {}",
+                    e
+                ))
+            })?;
+        range_pattern.get_value().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get range value: {}", e))
+        })
+    }
+
+    fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
+        self.focus()?; // Always focus first for keyboard interaction
+
+        let range_pattern = self
+            .element
+            .0
+            .get_pattern::<patterns::UIRangeValuePattern>()
+            .map_err(|e| {
+                AutomationError::UnsupportedOperation(format!(
+                    "Element does not support RangeValue pattern: {}",
+                    e
+                ))
+            })?;
+
+        // Try setting value directly first, as it's the most efficient method.
+        if range_pattern.set_value(value).is_ok() {
+            // Optional: Short sleep to allow UI to update.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Ok(new_value) = range_pattern.get_value() {
+                // Use a tolerance for floating-point comparison.
+                if (new_value - value).abs() < 1.0 {
+                    debug!("Direct set_value for RangeValuePattern succeeded.");
+                    return Ok(());
+                }
+                debug!(
+                    "Direct set_value was inaccurate, new value: {}. Expected: {}",
+                    new_value, value
+                );
+            }
+        }
+
+        // Fallback to keyboard simulation.
+        debug!("Direct set_value for RangeValuePattern failed or was inaccurate, falling back to keyboard simulation.");
+
+        let min_value = range_pattern.get_minimum().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get min value: {}", e))
+        })?;
+        let max_value = range_pattern.get_maximum().map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to get max value: {}", e))
+        })?;
+
+        let mut small_change = range_pattern.get_small_change().unwrap_or(0.0);
+
+        if small_change <= 0.0 {
+            debug!("Slider small_change is not positive, calculating fallback step.");
+            let range = max_value - min_value;
+            if range > 0.0 {
+                // Use 1% of the range as a reasonable step, or a minimum of 1.0
+                small_change = (range / 100.0).max(1.0);
+            } else {
+                // If range is zero or negative, we can't do much.
+                return Err(AutomationError::PlatformError(
+                    "Slider range is zero or negative, cannot use keyboard fallback.".to_string(),
+                ));
+            }
+        }
+
+        // Clamp the target value to be within the allowed range.
+        let target_value = value.clamp(min_value, max_value);
+
+        debug!(
+            "Slider properties: min={}, max={}, small_change={}, target={}",
+            min_value, max_value, small_change, target_value
+        );
+
+        // Decide whether to move from min or max.
+        let from_min_dist = (target_value - min_value).abs();
+        let from_max_dist = (max_value - target_value).abs();
+
+        if from_min_dist <= from_max_dist {
+            // Go to min and step up.
+            debug!("Moving from min. Resetting to HOME.");
+            self.press_key("{home}")?;
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let num_steps = (from_min_dist / small_change).round() as u32;
+            debug!(
+                "Pressing RIGHT {} times to reach {}",
+                num_steps, target_value
+            );
+            for i in 0..num_steps {
+                self.press_key("{right}")?;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                debug!("Step {}/{}: Pressed RIGHT", i + 1, num_steps);
+            }
+        } else {
+            // Go to max and step down.
+            debug!("Moving from max. Resetting to END.");
+            self.press_key("{end}")?;
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let num_steps = (from_max_dist / small_change).round() as u32;
+            debug!(
+                "Pressing LEFT {} times to reach {}",
+                num_steps, target_value
+            );
+            for i in 0..num_steps {
+                self.press_key("{left}")?;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                debug!("Step {}/{}: Pressed LEFT", i + 1, num_steps);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn is_selected(&self) -> Result<bool, AutomationError> {
+        // First, try SelectionItemPattern, which is the primary meaning of "selected".
+        if let Ok(selection_item_pattern) = self
+            .element
+            .0
+            .get_pattern::<patterns::UISelectionItemPattern>()
+        {
+            if selection_item_pattern.is_selected().unwrap_or(false) {
+                return Ok(true);
+            }
+        }
+
+        // As a fallback for convenience, check if it's a "toggled" control like a checkbox.
+        if let Ok(toggle_pattern) = self.element.0.get_pattern::<patterns::UITogglePattern>() {
+            if let Ok(state) = toggle_pattern.get_toggle_state() {
+                if state == uiautomation::types::ToggleState::On {
+                    return Ok(true);
+                }
+            }
+        }
+
+        // Final fallback: for some controls (like calendar dates), selection is indicated by focus.
+        if self.is_focused().unwrap_or(false) {
+            return Ok(true);
+        }
+
+        // If we've reached here, none of the positive checks passed.
+        // Return false if any of the patterns were supported, otherwise error.
+        if self
+            .element
+            .0
+            .get_pattern::<patterns::UISelectionItemPattern>()
+            .is_ok()
+            || self
+                .element
+                .0
+                .get_pattern::<patterns::UITogglePattern>()
+                .is_ok()
+        {
+            Ok(false)
+        } else {
+            Err(AutomationError::UnsupportedOperation(
+                "Element supports neither SelectionItemPattern nor TogglePattern, and is not focused."
+                    .to_string(),
+            ))
+        }
+    }
+
+    fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
+        // First, try SelectionItemPattern, which is the primary meaning of "selected".
+        if let Ok(selection_item_pattern) = self
+            .element
+            .0
+            .get_pattern::<patterns::UISelectionItemPattern>()
+        {
+            let is_currently_selected = selection_item_pattern.is_selected().unwrap_or(false);
+
+            if state && !is_currently_selected {
+                // If we need to select it, and it's not selected yet.
+                return selection_item_pattern.select().map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to select item: {}", e))
+                });
+            } else if !state && is_currently_selected {
+                // If we need to deselect it, and it's currently selected.
+                // This is for multi-select controls; for single-select this may fail.
+                return selection_item_pattern.remove_from_selection().map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to remove item from selection: {}",
+                        e
+                    ))
+                });
+            }
+            return Ok(()); // Already in the desired state.
+        }
+
+        // As a fallback for convenience, check if it's a "toggled" control like a checkbox.
+        if self
+            .element
+            .0
+            .get_pattern::<patterns::UITogglePattern>()
+            .is_ok()
+        {
+            return self.set_toggled(state);
+        }
+
+        // Final fallback: if we want to select, try clicking.
+        if state {
+            return self.click().map(|_| ());
+        }
+
+        Err(AutomationError::UnsupportedOperation(
+            "Element cannot be deselected as it supports neither SelectionItemPattern nor TogglePattern.".to_string(),
+        ))
     }
 }
 

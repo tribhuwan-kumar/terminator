@@ -36,7 +36,7 @@ pub enum Browser {
 }
 
 #[cfg(target_os = "windows")]
-pub use platforms::windows::convert_uiautomation_element_to_terminator;
+pub use platforms::windows::{convert_uiautomation_element_to_terminator, get_process_name_by_pid};
 
 // Define a new struct to hold click result information - move to module level
 pub struct ClickResult {

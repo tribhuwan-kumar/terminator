@@ -25,6 +25,8 @@ pub enum Selector {
     ClassName(String),
     /// Filter by visibility on screen
     Visible(bool),
+    /// Select by localized role
+    LocalizedRole(String),
 }
 
 impl From<&str> for Selector {
@@ -33,6 +35,15 @@ impl From<&str> for Selector {
         let parts: Vec<&str> = s.split(">>").map(|p| p.trim()).collect();
         if parts.len() > 1 {
             return Selector::Chain(parts.into_iter().map(Selector::from).collect());
+        }
+
+        // if using pipe, use it for the role plus name 
+        if s.contains('|') {
+            let parts: Vec<&str> = s.split('|').collect();
+            return Selector::Role {
+                role: parts[0].trim().to_string(),
+                name: Some(parts[1].trim().to_string()),
+            };
         }
 
         // Make common UI roles like "window", "button", etc. default to Role selectors

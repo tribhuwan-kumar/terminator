@@ -55,17 +55,18 @@ use atspi::*;
 # Fast iteration
 cargo check && cargo clippy && cargo test
 
-# With bindings  
-TERMINATOR_BUILD_BINDINGS=1 cargo build --release
+cargo build --release
 
 # Before PR
 cargo fmt && cargo clippy -- -D warnings && cargo test
 ```
 
+Always use terminator-mcp-agent during the development process to inspect different app trees or interact with them, by calling the tools of the MCP. Do not try to build the MCP, it's aready installed ready to use.
+
 ## Performance Targets
 - UI scans: <80ms
-- Screenshots: <200ms  
-- Memory: <50MB baseline
+- Screenshots: <100ms  
+- Memory: <10MB baseline
 - Use `Arc<dyn Trait>`, `#[instrument]`, profile with `criterion`
 
 ## Dependencies
@@ -78,6 +79,7 @@ cargo fmt && cargo clippy -- -D warnings && cargo test
 - Integration tests (15%): Component interaction
 - Examples (5%): Real-world scenarios
 - Test error cases, not just happy paths
+- Do not fucking run all tests if we're working on a specific part of the code, it will blow up the computer otherwise
 
 ## PR Requirements
 - Video demo for UI changes (Cap.so/Screen.studio)

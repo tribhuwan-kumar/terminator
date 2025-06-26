@@ -2343,6 +2343,54 @@ impl UIElementImpl for LinuxUIElement {
     fn url(&self) -> Option<String> {
         None
     }
+
+    fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "select_option is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn list_options(&self) -> Result<Vec<String>, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "list_options is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn is_toggled(&self) -> Result<bool, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "is_toggled is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_toggled is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn get_range_value(&self) -> Result<f64, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "get_range_value is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_range_value is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn is_selected(&self) -> Result<bool, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "is_selected is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_selected is not implemented for Linux yet".to_string(),
+        ))
+    }
 }
 
 #[cfg(test)]

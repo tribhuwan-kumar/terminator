@@ -149,7 +149,31 @@ mod text_input_tracker_tests {
             unimplemented!()
         }
         fn url(&self) -> Option<String> {
-            None
+            todo!()
+        }
+        fn select_option(&self, _option_name: &str) -> Result<(), AutomationError> {
+            todo!()
+        }
+        fn list_options(&self) -> Result<Vec<String>, AutomationError> {
+            todo!()
+        }
+        fn is_toggled(&self) -> Result<bool, AutomationError> {
+            todo!()
+        }
+        fn set_toggled(&self, _state: bool) -> Result<(), AutomationError> {
+            todo!()
+        }
+        fn get_range_value(&self) -> Result<f64, AutomationError> {
+            todo!()
+        }
+        fn set_range_value(&self, _value: f64) -> Result<(), AutomationError> {
+            todo!()
+        }
+        fn is_selected(&self) -> Result<bool, AutomationError> {
+            Ok(false)
+        }
+        fn set_selected(&self, _state: bool) -> Result<(), AutomationError> {
+            todo!()
         }
     }
 

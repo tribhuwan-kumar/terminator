@@ -324,6 +324,16 @@ pub trait UIElementImpl: Send + Sync + Debug {
     // New method to get the URL if the element is in a browser window
     fn url(&self) -> Option<String>;
 
+    // New high-level input functions
+    fn select_option(&self, option_name: &str) -> Result<(), AutomationError>;
+    fn list_options(&self) -> Result<Vec<String>, AutomationError>;
+    fn is_toggled(&self) -> Result<bool, AutomationError>;
+    fn set_toggled(&self, state: bool) -> Result<(), AutomationError>;
+    fn get_range_value(&self) -> Result<f64, AutomationError>;
+    fn set_range_value(&self, value: f64) -> Result<(), AutomationError>;
+    fn is_selected(&self) -> Result<bool, AutomationError>;
+    fn set_selected(&self, state: bool) -> Result<(), AutomationError>;
+
     /// Returns the `Monitor` object that contains this element.
     ///
     /// By default this implementation uses the element's bounding box and
@@ -664,6 +674,47 @@ impl UIElement {
     /// Get the URL if the element is in a browser window
     pub fn url(&self) -> Option<String> {
         self.inner.url()
+    }
+
+    /// Selects an option in a dropdown or combobox by its visible text.
+    pub fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
+        self.inner.select_option(option_name)
+    }
+
+    /// Lists all available option strings from a dropdown or list box.
+    pub fn list_options(&self) -> Result<Vec<String>, AutomationError> {
+        self.inner.list_options()
+    }
+
+    /// Checks if a control (like a checkbox or toggle switch) is currently toggled on.
+    pub fn is_toggled(&self) -> Result<bool, AutomationError> {
+        self.inner.is_toggled()
+    }
+
+    /// Sets the state of a toggleable control.
+    /// It only performs an action if the control is not already in the desired state.
+    pub fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
+        self.inner.set_toggled(state)
+    }
+
+    /// Gets the current value from a range-based control like a slider or progress bar.
+    pub fn get_range_value(&self) -> Result<f64, AutomationError> {
+        self.inner.get_range_value()
+    }
+
+    /// Sets the value of a range-based control like a slider.
+    pub fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
+        self.inner.set_range_value(value)
+    }
+
+    /// Checks if a selectable item (e.g., in a calendar, list, or tab) is currently selected.
+    pub fn is_selected(&self) -> Result<bool, AutomationError> {
+        self.inner.is_selected()
+    }
+
+    /// Sets the selection state of a selectable item.
+    pub fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
+        self.inner.set_selected(state)
     }
 
     /// Return the `Monitor` that contains this UI element.
