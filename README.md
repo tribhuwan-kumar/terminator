@@ -89,6 +89,7 @@ While Terminator aims for full cross-platform support, current capabilities vary
 | Python (`terminator.py`) |    ✅   |  ✅   |  ✅   | `pip install terminator.py`                  |
 | TypeScript (`terminator.js`) |    ✅   |  ✅   |  ✅   | `npm i terminator.js`                        |
 | MCP (`terminator-mcp-agent`) |    ✅   |  ✅   |  ✅   | `npx -y terminator-mcp-agent --add-to-app [app]`                        |
+| Rust (`terminator-rs`) |    ✅   |  ✅   |  ✅   | `cargo add terminator-rs`                        |
 
 **Legend:**
 - ✅: **Supported** - The feature is stable and well-tested.
