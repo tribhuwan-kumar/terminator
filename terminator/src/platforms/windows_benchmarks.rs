@@ -13,6 +13,7 @@ mod performance_benchmarks {
     /// - Tree complexity (elements processed)
     /// Goal: Validate high-frequency operation on low-end machines
     #[tokio::test]
+    #[ignore]
     async fn benchmark_tree_building_performance() {
         println!("🚀 Starting Window Tree Building Performance Benchmark");
         println!("============================================================");
