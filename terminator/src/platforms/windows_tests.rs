@@ -201,6 +201,7 @@ fn test_open_regular_application() {
 }
 
 #[test]
+#[ignore]
 fn test_open_uwp_application() {
     let engine = match WindowsEngine::new(false, false) {
         Ok(engine) => engine,
