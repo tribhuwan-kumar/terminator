@@ -590,7 +590,7 @@ fn find_elements_inner<'a>(
                 return Ok(current_elements);
             }
             Selector::Role { .. } | Selector::Name(_) => {
-                // Supported
+                // Supported - continue to processing below
             }
         }
         // Only Role and Name selectors are supported below
