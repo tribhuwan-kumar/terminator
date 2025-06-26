@@ -3531,10 +3531,8 @@ impl UIElementImpl for WindowsUIElement {
         if let Ok(element) = matcher.find_first() {
             if let Ok(value_pattern) = element.get_pattern::<patterns::UIValuePattern>() {
                 if let Ok(value) = value_pattern.get_value() {
-                    if value.starts_with("http") {
-                        debug!("Found URL via keyword search for address bar: {}", value);
-                        return Some(value);
-                    }
+                    debug!("Found URL via keyword search for address bar: {}", value);
+                    return Some(value);
                 }
             }
         }

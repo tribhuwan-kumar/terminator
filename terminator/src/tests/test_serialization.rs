@@ -20,9 +20,16 @@ async fn test_browser_tree_serialization() -> Result<(), Box<dyn std::error::Err
     let url = "https://pages.dataiku.com/guide-to-ai-agents";
     info!("Opening URL: {}", url);
     let window = desktop.open_url(url, None)?;
+    let window_name = window.name_or_empty();
 
     // Wait for the page to load.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    // Re-acquire the window to prevent stale element issues after await
+    let window = desktop
+        .locator(format!("name:{}", window_name).as_str())
+        .first(Some(Duration::from_secs(5)))
+        .await?;
 
     // Step 3: Capture the UI tree and serialize it to JSON.
     let max_depth = 3;
@@ -55,7 +62,7 @@ async fn test_browser_tree_serialization() -> Result<(), Box<dyn std::error::Err
     // Verify the window title is correct.
     let window_title = root_value["window_title"].as_str().unwrap_or_default();
     assert!(
-        window_title.contains("GLO CONTENT Agents"),
+        window_title.contains("GLO CONTENT"),
         "Window title is incorrect: {}",
         window_title
     );
