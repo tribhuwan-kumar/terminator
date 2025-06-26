@@ -82,7 +82,7 @@ While Terminator aims for full cross-platform support, current capabilities vary
 | Application Management   |    ✅   |  🟡   |  🟡   | Launch, list, and manage applications. |
 | Window Management        |    ✅   |  🟡   |  🟡   | Get active window, list windows.             |
 | **Advanced Features**    |         |       |       |                                              |
-| Workflow Recording       |    ✅   |  ❌   |  ❌   | Record user actions to generate scripts.     |
+| Workflow Recording       |    ✅   |  ❌   |  ❌   | Record human workflows for deterministic automation.     |
 | Monitor Management       |    ✅   |  🟡   |  🟡   | Multi-display support.                       |
 | Screen & Element Capture |    ✅   |  ✅   |  🟡   | Take screenshots of displays or elements.     |
 | **Language Bindings**    |         |       |       |                                              |
