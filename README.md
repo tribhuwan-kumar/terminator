@@ -59,16 +59,16 @@ await desktop.locator('name:Edit').typeText('hello world')
 
 ### 🧠 What is Terminator?
 
-Terminator is the Playwright-style SDK for automating Windows GUI apps.
+Terminator is a Playwright-style SDK for automating Windows GUI applications.
 
-- 🪟 Built for Windows, works on Linux & macOS (partial)
-- 🤖 Uses RLHF'd human screen recording as context
-- 🧠 Designed for AI agents, not humans
-- ⚡ Uses OS-level accessibility, can fallback to OCR/Vision
-- 🧩 TS, Python, MCP, and Rust support
-- 📈 80ms UI scans, 10000x faster and cheaper than humans
+- 🪟 Built for Windows, with partial support on Linux and macOS
+- 🤖 Learns deterministically from screen recordings of real workflows
+- 🧠 Designed for AI agents—not humans
+- ⚡ Uses OS-level accessibility APIs, with OCR/Vision as fallback
+- 🧩 Supports TypeScript, Python, MCP, and Rust
+- 📈 Scans the UI in ~80ms—up to 10,000x faster and cheaper than a human
 
-Terminator operates "headless" by default—it doesn't need a visible screen. It uses OS-level accessibility services (like UI Automation on Windows) to interact with applications programmatically. This makes it extremely fast, reliable, and suitable for automation in CI/CD pipelines or on servers without a graphical session.
+Terminator runs “headless” by default. It doesn’t require a visible screen, relying instead on accessibility layers (like UI Automation on Windows) to interact with apps.
 
 ## Feature Support
 
