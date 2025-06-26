@@ -3078,6 +3078,9 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::Visible(_) => Err(AutomationError::UnsupportedOperation(
                 "Visible selector not yet supported for macOS".to_string(),
             )),
+            Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
+                "LocalizedRole selector is not yet supported for macOS".to_string(),
+            )),
         }
     }
 
