@@ -232,6 +232,62 @@ pub struct ClipboardArgs {
     pub text: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SelectOptionArgs {
+    #[schemars(description = "A string selector to locate the dropdown/combobox element.")]
+    pub selector: String,
+    #[schemars(description = "The visible text of the option to select.")]
+    pub option_name: String,
+    #[schemars(description = "Optional alternative selectors.")]
+    pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional timeout in milliseconds.")]
+    pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response.")]
+    pub include_tree: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetToggledArgs {
+    #[schemars(description = "A string selector to locate the toggleable element.")]
+    pub selector: String,
+    #[schemars(description = "The desired state: true for on, false for off.")]
+    pub state: bool,
+    #[schemars(description = "Optional alternative selectors.")]
+    pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional timeout in milliseconds.")]
+    pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response.")]
+    pub include_tree: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetRangeValueArgs {
+    #[schemars(description = "A string selector to locate the range-based element.")]
+    pub selector: String,
+    #[schemars(description = "The numerical value to set.")]
+    pub value: f64,
+    #[schemars(description = "Optional alternative selectors.")]
+    pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional timeout in milliseconds.")]
+    pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response.")]
+    pub include_tree: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetSelectedArgs {
+    #[schemars(description = "A string selector to locate the selectable element.")]
+    pub selector: String,
+    #[schemars(description = "The desired state: true for selected, false for deselected.")]
+    pub state: bool,
+    #[schemars(description = "Optional alternative selectors.")]
+    pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional timeout in milliseconds.")]
+    pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response.")]
+    pub include_tree: Option<bool>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[schemars(description = "Arguments for scrolling an element")]
 pub struct ScrollElementArgs {

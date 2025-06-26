@@ -2,7 +2,8 @@ use crate::utils::{
     get_timeout, ActivateElementArgs, ClipboardArgs, DesktopWrapper, EmptyArgs, GetClipboardArgs,
     GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
     MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
-    ScrollElementArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use rmcp::model::{
@@ -1157,6 +1158,413 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
+    #[tool(description = "Selects an option in a dropdown or combobox by its visible text.")]
+    async fn select_option(
+        &self,
+        #[tool(param)] args: SelectOptionArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+
+        element.select_option(&args.option_name).map_err(|e| {
+            McpError::resource_not_found(
+                "Failed to select option",
+                Some(
+                    json!({ "reason": e.to_string(), "selector": args.selector, "option": args.option_name }),
+                ),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "select_option",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "option_selected": args.option_name,
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Lists all available option strings from a dropdown, list box, or similar control."
+    )]
+    async fn list_options(
+        &self,
+        #[tool(param)] args: LocatorArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let options = element.list_options().map_err(|e| {
+            McpError::internal_error(
+                "Failed to list options",
+                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "list_options",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "options": options,
+            "count": options.len(),
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(description = "Sets the state of a toggleable control (e.g., checkbox, switch).")]
+    async fn set_toggled(
+        &self,
+        #[tool(param)] args: SetToggledArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+
+        element.set_toggled(args.state).map_err(|e| {
+            McpError::internal_error(
+                "Failed to set toggle state",
+                Some(
+                    json!({ "reason": e.to_string(), "selector": args.selector, "state": args.state }),
+                ),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "set_toggled",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "state_set_to": args.state,
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(description = "Sets the value of a range-based control like a slider.")]
+    async fn set_range_value(
+        &self,
+        #[tool(param)] args: SetRangeValueArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+
+        element.set_range_value(args.value).map_err(|e| {
+            McpError::internal_error(
+                "Failed to set range value",
+                Some(
+                    json!({ "reason": e.to_string(), "selector": args.selector, "value": args.value }),
+                ),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "set_range_value",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "value_set_to": args.value,
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Sets the selection state of a selectable item (e.g., in a list or calendar)."
+    )]
+    async fn set_selected(
+        &self,
+        #[tool(param)] args: SetSelectedArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+
+        element.set_selected(args.state).map_err(|e| {
+            McpError::internal_error(
+                "Failed to set selected state",
+                Some(
+                    json!({ "reason": e.to_string(), "selector": args.selector, "state": args.state }),
+                ),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "set_selected",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "state_set_to": args.state,
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Checks if a control (like a checkbox or toggle switch) is currently toggled on."
+    )]
+    async fn is_toggled(
+        &self,
+        #[tool(param)] args: LocatorArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let is_toggled = element.is_toggled().map_err(|e| {
+            McpError::internal_error(
+                "Failed to get toggle state",
+                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "is_toggled",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "is_toggled": is_toggled,
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Gets the current value from a range-based control like a slider or progress bar."
+    )]
+    async fn get_range_value(
+        &self,
+        #[tool(param)] args: LocatorArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let value = element.get_range_value().map_err(|e| {
+            McpError::internal_error(
+                "Failed to get range value",
+                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "get_range_value",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "value": value,
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Checks if a selectable item (e.g., in a calendar, list, or tab) is currently selected."
+    )]
+    async fn is_selected(
+        &self,
+        #[tool(param)] args: LocatorArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to locate element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                })),
+            )
+        })?;
+
+        let element_info =
+            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let is_selected = element.is_selected().map_err(|e| {
+            McpError::internal_error(
+                "Failed to get selected state",
+                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "is_selected",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "is_selected": is_selected,
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(false),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
     // Helper to optionally attach UI tree to response
     fn maybe_attach_tree(&self, include_tree: bool, pid_opt: Option<u32>, result_json: &mut Value) {
         if !include_tree {
@@ -1370,6 +1778,15 @@ To make your automation scripts more reliable and easier to debug, follow these 
 *   `wait_for_element`: Waits for an element to meet a specific condition (visible, enabled, focused, exists).
 *   `navigate_browser`: Opens a URL in the specified browser.
 *   `open_application`: Opens an application by name.
+*   **New Tools for High-Level Interactions:**
+    *   `select_option`: Selects an option in a dropdown by its visible text.
+    *   `list_options`: Lists all available options from a dropdown or list box.
+    *   `set_toggled`: Sets the state of a checkbox or switch.
+    *   `is_toggled`: Checks if a checkbox or switch is on.
+    *   `set_range_value`: Sets the value of a slider.
+    *   `get_range_value`: Gets the current value of a slider or progress bar.
+    *   `set_selected`: Sets the selection state of an item in a list or calendar.
+    *   `is_selected`: Checks if an item is selected.
 
 Contextual information:
 - The current date and time is {}.
