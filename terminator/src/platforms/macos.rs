@@ -1837,7 +1837,7 @@ impl UIElementImpl for MacOSUIElement {
             "list_options is not implemented for macOS yet".to_string(),
         ))
     }
-    
+
     fn is_toggled(&self) -> Result<bool, AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "is_toggled is not implemented for macOS yet".to_string(),

@@ -155,7 +155,8 @@ fn sync_cargo_versions() -> Result<(), Box<dyn std::error::Error>> {
     let mut in_workspace_deps = false;
     let mut deps_version_updated = false;
 
-    for i in 0..lines.len() {
+    let tmp = 0..lines.len();
+    for i in tmp {
         let line = &lines[i];
         let trimmed_line = line.trim();
 
@@ -203,7 +204,8 @@ fn set_workspace_version(new_version: &str) -> Result<(), Box<dyn std::error::Er
     let mut in_workspace_package = false;
     let mut package_version_updated = false;
 
-    for i in 0..lines.len() {
+    let tmp = 0..lines.len();
+    for i in tmp {
         let line = &lines[i];
         let trimmed_line = line.trim();
 

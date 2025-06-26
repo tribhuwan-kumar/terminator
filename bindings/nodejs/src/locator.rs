@@ -12,6 +12,12 @@ pub struct Locator {
     inner: TerminatorLocator,
 }
 
+impl std::fmt::Display for Locator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Locator({})", self.inner.selector_string())
+    }
+}
+
 impl From<TerminatorLocator> for Locator {
     fn from(l: TerminatorLocator) -> Self {
         Locator { inner: l }
@@ -108,10 +114,5 @@ impl Locator {
         };
         let loc = self.inner.clone().locator(sel_rust);
         Ok(Locator::from(loc))
-    }
-
-    #[napi]
-    pub fn to_string(&self) -> String {
-        format!("Locator({})", self.inner.selector_string())
     }
 }

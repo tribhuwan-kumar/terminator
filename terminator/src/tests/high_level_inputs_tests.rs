@@ -92,7 +92,7 @@ async fn test_slider_value() -> Result<(), AutomationError> {
 }
 
 #[tokio::test]
-#[ignore] // todo does not work - idk whats the best practice for calendar automation thing 
+#[ignore] // todo does not work - idk whats the best practice for calendar automation thing
 async fn test_calendar_selection() -> Result<(), AutomationError> {
     let desktop = Desktop::new(false, false)?;
     let app = desktop.open_url("https://ui.shadcn.com/docs/components/calendar", None)?;

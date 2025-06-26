@@ -4642,7 +4642,7 @@ fn launch_legacy_app(engine: &WindowsEngine, app_name: &str) -> Result<UIElement
             cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
             fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
             lpFile: PCWSTR(HSTRING::from(app_name).as_ptr()),
-            nShow: SW_SHOWNORMAL.0 as i32,
+            nShow: SW_SHOWNORMAL.0,
             ..Default::default()
         };
 

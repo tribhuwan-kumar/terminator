@@ -6,10 +6,12 @@ alwaysApply: true
 # Terminator Development Standards
 
 ## Code Quality (Non-Negotiable)
+
+Always run this:
+
 ```bash
 cargo fmt --check    # Must pass - zero tolerance for unformatted code
 cargo clippy         # Fix ALL warnings - use #[allow] only with justification  
-cargo test           # All tests must pass
 ```
 
 ## Architecture

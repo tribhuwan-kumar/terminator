@@ -29,6 +29,12 @@ pub enum Selector {
     LocalizedRole(String),
 }
 
+impl std::fmt::Display for Selector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl From<&str> for Selector {
     fn from(s: &str) -> Self {
         // Handle chained selectors first
@@ -37,7 +43,7 @@ impl From<&str> for Selector {
             return Selector::Chain(parts.into_iter().map(Selector::from).collect());
         }
 
-        // if using pipe, use it for the role plus name 
+        // if using pipe, use it for the role plus name
         if s.contains('|') {
             let parts: Vec<&str> = s.split('|').collect();
             return Selector::Role {
