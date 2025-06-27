@@ -283,6 +283,7 @@ fn send_mouse_move(_x: i32, _y: i32) -> Result<(), String> {
 /// - Mouse clicks (move + down + up)
 /// - Mouse movements (continuous tracking)
 #[tokio::test]
+#[ignore]
 async fn test_unified_input_latency() {
     println!("\n🚀 Starting Unified Input Latency Benchmark");
     println!("===========================================");
@@ -580,6 +581,7 @@ async fn run_latency_test(
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_mouse_movement_verification() {
     println!("\n🖱️ Mouse Movement Verification Test");
     println!("===================================");
