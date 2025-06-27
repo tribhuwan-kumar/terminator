@@ -4184,8 +4184,10 @@ name = "terminator-mcp-agent"
 version = "0.6.7"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "futures",
+ "image",
  "rmcp",
  "serde",
  "serde_json",

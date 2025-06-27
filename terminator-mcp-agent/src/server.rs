@@ -6,14 +6,20 @@ use crate::utils::{
     SetSelectedArgs, SetToggledArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
+use image::{ExtendedColorType, ImageEncoder};
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
 use rmcp::{tool, Error as McpError, ServerHandler};
 use serde_json::{json, Value};
 use std::env;
+use std::io::Cursor;
 use std::sync::Arc;
-use terminator::{Browser, Desktop, Selector};
+use terminator::{Browser, Desktop, Selector, UIElement};
+
+// New imports for image encoding
+use base64::{engine::general_purpose, Engine as _};
+use image::codecs::png::PngEncoder;
 
 /// Helper function to parse comma-separated alternative selectors into a Vec<String>
 fn parse_alternative_selectors(alternatives: Option<&str>) -> Vec<String> {
@@ -32,6 +38,39 @@ fn get_selectors_tried(primary: &str, alternatives: Option<&str>) -> Vec<String>
     let mut all = vec![primary.to_string()];
     all.extend(parse_alternative_selectors(alternatives));
     all
+}
+
+/// Builds a standardized JSON object with detailed information about a UIElement.
+/// This includes a suggested selector that prioritizes role|name over just the ID.
+fn build_element_info(element: &UIElement) -> Value {
+    let id = element.id().unwrap_or_default();
+    let role = element.role();
+    let name = element.name().unwrap_or_default();
+
+    let suggested_selector = if !name.is_empty() && role != "Unknown" {
+        format!("{}|{}", &role, &name)
+    } else {
+        format!("#{}", id)
+    };
+
+    json!({
+        "name": name,
+        "role": role,
+        "id": id,
+        "suggested_selector": suggested_selector,
+        "application": element.application_name(),
+        "window_title": element.window_title(),
+        "process_id": element.process_id().unwrap_or(0),
+        "is_focused": element.is_focused().unwrap_or(false),
+        "text": element.text(0).unwrap_or_default(),
+        "bounds": element.bounds().map(|b| json!({
+            "x": b.0, "y": b.1, "width": b.2, "height": b.3
+        })).unwrap_or(json!(null)),
+        "enabled": element.is_enabled().unwrap_or(false),
+        "is_selected": element.is_selected().unwrap_or(false),
+        "is_toggled": element.is_toggled().unwrap_or(false),
+        "keyboard_focusable": element.is_keyboard_focusable().unwrap_or(false),
+    })
 }
 
 #[tool(tool_box)]
@@ -91,7 +130,7 @@ impl DesktopWrapper {
             "pid": args.pid,
             "title": args.title,
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "recommendation": "Look for element IDs (e.g., '#12345') as primary selectors. Avoid name-based selectors when IDs are available."
+            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic."
         });
 
         // Always include the tree unless explicitly disabled
@@ -128,6 +167,12 @@ impl DesktopWrapper {
                 let app_pid = app.process_id().unwrap_or(0);
                 let is_focused = app.is_focused().unwrap_or(false);
 
+                let suggested_selector = if !app_name.is_empty() {
+                    format!("{}|{}", &app_role, &app_name)
+                } else {
+                    format!("#{}", app_id)
+                };
+
                 tokio::spawn(async move {
                     let tree = if include_tree && app_pid > 0 {
                         desktop.get_window_tree(app_pid, None, None).ok()
@@ -141,7 +186,7 @@ impl DesktopWrapper {
                         "role": app_role,
                         "pid": app_pid,
                         "is_focused": is_focused,
-                        "suggested_selector": format!("#{}", app_id),
+                        "suggested_selector": suggested_selector,
                         "alternative_selectors": [
                             format!("#{}", app_id),
                             format!("name:{}", app_name)
@@ -158,7 +203,7 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(json!({
             "applications": app_info,
             "count": app_info.len(),
-            "recommendation": "Always prefer using ID selectors (e.g., '#12345') over name selectors for reliability. Use get_window_tree with the PID to get detailed UI structure when needed."
+            "recommendation": "For applications, the name is usually reliable. For elements inside the app, prefer role|name selectors and use the ID as a fallback. Use get_window_tree with the PID for details."
         }))?]))
     }
 
@@ -230,25 +275,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let pid = element.process_id().unwrap_or(0);
-        let id = element.id().unwrap_or_default();
-
-        // Get element details before typing for better feedback
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "application": element.application_name(),
-            "window": element.window_title(),
-            "process_id": element.process_id().unwrap_or(0),
-            "is_focused": element.is_focused().unwrap_or(false),
-            "role": element.role(),
-            "id": id,
-            "pid": pid,
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-            "enabled": element.is_enabled().unwrap_or(false),
-            "suggested_selector": format!("#{}", id),
-        });
+        let element_info = build_element_info(&element);
 
         // Clear the element before typing if requested (default: true)
         let should_clear = args.clear_before_typing.unwrap_or(true);
@@ -311,7 +338,11 @@ impl DesktopWrapper {
         }
 
         // Always attach tree for better context, or if explicitly requested
-        self.maybe_attach_tree(true, Some(pid), &mut result_json);
+        self.maybe_attach_tree(
+            true,
+            Some(element.process_id().unwrap_or(0)),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -344,16 +375,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        // Get element details before clicking for better feedback
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "role": element.role(),
-            "id": element.id().unwrap_or_default(),
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-            "enabled": element.is_enabled().unwrap_or(false),
-        });
+        let element_info = build_element_info(&element);
 
         element.click().map_err(|e| {
             McpError::resource_not_found(
@@ -375,6 +397,35 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
+
+        // --- Action Consequence Verification ---
+        let mut consequence = "no_significant_change".to_string();
+        std::thread::sleep(std::time::Duration::from_millis(250)); // Wait for UI to react
+
+        // Check 1: Did the element disappear?
+        let post_click_locator = self
+            .desktop
+            .locator(Selector::from(successful_selector.as_str()));
+        if post_click_locator
+            .wait(Some(std::time::Duration::from_millis(100)))
+            .await
+            .is_err()
+        {
+            consequence = "element_disappeared".to_string();
+        } else {
+            // Check 2: Did focus change?
+            if let Ok(focused_element) = self.desktop.focused_element() {
+                if focused_element.id_or_empty() != element.id_or_empty() {
+                    consequence = format!("focus_changed_to: #{}", focused_element.id_or_empty());
+                }
+            }
+        }
+
+        if let Some(obj) = result_json.as_object_mut() {
+            obj.insert("consequence".to_string(), json!(consequence));
+        }
+        // --- End Consequence Verification ---
+
         // Always attach tree for better context
         self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
 
@@ -398,20 +449,7 @@ impl DesktopWrapper {
                     Some(json!({"reason": e.to_string(), "selector": args.selector})),
                 )
             })?;
-        // Get element details before pressing key for better feedback
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "role": element.role(),
-            "id": element.id().unwrap_or_default(),
-            "application": element.application_name(),
-            "window_title": element.window_title(),
-            "process_id": element.process_id().unwrap_or(0),
-            "is_focused": element.is_focused().unwrap_or(false),
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-            "enabled": element.is_enabled().unwrap_or(false),
-        });
+        let element_info = build_element_info(&element);
 
         element.press_key(&args.key).map_err(|e| {
             McpError::resource_not_found(
@@ -454,19 +492,7 @@ impl DesktopWrapper {
         })?;
 
         // Gather metadata for debugging / result payload
-        let element_info = json!({
-            "name": focused.name().unwrap_or_default(),
-            "role": focused.role(),
-            "id": focused.id().unwrap_or_default(),
-            "application": focused.application_name(),
-            "window_title": focused.window_title(),
-            "process_id": focused.process_id().unwrap_or(0),
-            "is_focused": focused.is_focused().unwrap_or(false),
-            "bounds": focused.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-            "enabled": focused.is_enabled().unwrap_or(false),
-        });
+        let element_info = build_element_info(&focused);
 
         // Perform the key press
         focused.press_key(&args.key).map_err(|e| {
@@ -536,28 +562,16 @@ impl DesktopWrapper {
                 )
             })?;
 
-        let pid = element.process_id().unwrap_or(0);
-        let id = element.id().unwrap_or_default();
-
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "role": element.role(),
-            "id": id,
-            "pid": pid,
-            "application": element.application_name(),
-            "window_title": element.window_title(),
-            "is_focused": element.is_focused().unwrap_or(false),
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-            "enabled": element.is_enabled().unwrap_or(false),
-            "suggested_selector": format!("#{}", id),
-        });
+        let element_info = build_element_info(&element);
 
         element.activate_window().map_err(|e| {
             McpError::resource_not_found(
                 "Failed to activate window with that element",
-                Some(json!({"reason": e.to_string(), "selector": args.selector, "element_info": element_info})),
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selector": args.selector,
+                    "element_info": element_info
+                })),
             )
         })?;
 
@@ -573,7 +587,7 @@ impl DesktopWrapper {
         // Always attach UI tree for activated elements to help with next actions
         self.maybe_attach_tree(
             true, // Always attach tree for activate_element since it's important for next actions
-            Some(pid),
+            Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
 
@@ -706,19 +720,7 @@ impl DesktopWrapper {
             })?;
 
         // Get element details before dragging for better feedback
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "role": element.role(),
-            "id": element.id().unwrap_or_default(),
-            "application": element.application_name(),
-            "window_title": element.window_title(),
-            "process_id": element.process_id().unwrap_or(0),
-            "is_focused": element.is_focused().unwrap_or(false),
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-            "enabled": element.is_enabled().unwrap_or(false),
-        });
+        let element_info = build_element_info(&element);
 
         element
             .mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y)
@@ -767,25 +769,10 @@ impl DesktopWrapper {
         .await
         {
             Ok((element, successful_selector)) => {
-                let element_info = json!({
-                    "exists": true,
-                    "name": element.name().unwrap_or_default(),
-                    "role": element.role(),
-                    "id": element.id().unwrap_or_default(),
-                    "application": element.application_name(),
-                    "window_title": element.window_title(),
-                    "process_id": element.process_id().unwrap_or(0),
-                    "is_focused": element.is_focused().unwrap_or(false),
-                    "bounds": element.bounds().map(|b| json!({
-                        "x": b.0, "y": b.1, "width": b.2, "height": b.3
-                    })).unwrap_or(json!(null)),
-                    "enabled": element.is_enabled().unwrap_or(false),
-                    "visible": element.is_visible().unwrap_or(false),
-                    "focused": element.is_focused().unwrap_or(false),
-                    "keyboard_focusable": element.is_keyboard_focusable().unwrap_or(false),
-                    "text": element.text(1).unwrap_or_default(),
-                    "value": element.attributes().value.unwrap_or_default(),
-                });
+                let mut element_info = build_element_info(&element);
+                if let Some(obj) = element_info.as_object_mut() {
+                    obj.insert("exists".to_string(), json!(true));
+                }
 
                 let mut result_json = json!({
                     "action": "validate_element",
@@ -834,18 +821,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "role": element.role(),
-            "id": element.id().unwrap_or_default(),
-            "application": element.application_name(),
-            "window_title": element.window_title(),
-            "process_id": element.process_id().unwrap_or(0),
-            "is_focused": element.is_focused().unwrap_or(false),
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-        });
+        let element_info = build_element_info(&element);
 
         let mut result_json = json!({
             "action": "highlight_element",
@@ -948,18 +924,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info = json!({
-            "name": ui_element.name().unwrap_or_default(),
-            "role": ui_element.role(),
-            "id": ui_element.id().unwrap_or_default(),
-            "application": ui_element.application_name(),
-            "window_title": ui_element.window_title(),
-            "process_id": ui_element.process_id().unwrap_or(0),
-            "is_focused": ui_element.is_focused().unwrap_or(false),
-            "bounds": ui_element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-        });
+        let element_info = build_element_info(&ui_element);
 
         let tree = self
             .desktop
@@ -994,19 +959,9 @@ impl DesktopWrapper {
         })?;
 
         let process_id = ui_element.process_id().unwrap_or(0);
+        let window_title = ui_element.window_title();
 
-        let element_info = json!({
-            "name": ui_element.name().unwrap_or_default(),
-            "role": ui_element.role(),
-            "id": ui_element.id().unwrap_or_default(),
-            "application": ui_element.application_name(),
-            "window_title": ui_element.window_title(),
-            "process_id": process_id,
-            "is_focused": ui_element.is_focused().unwrap_or(false),
-            "bounds": ui_element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-        });
+        let element_info = build_element_info(&ui_element);
 
         let mut result_json = json!({
             "action": "open_application",
@@ -1019,7 +974,10 @@ impl DesktopWrapper {
 
         // Always attach the full UI tree for newly opened applications
         if process_id > 0 {
-            if let Ok(tree) = self.desktop.get_window_tree(process_id, None, None) {
+            if let Ok(tree) =
+                self.desktop
+                    .get_window_tree(process_id, Some(window_title.as_str()), None)
+            {
                 if let Ok(tree_val) = serde_json::to_value(tree) {
                     if let Some(obj) = result_json.as_object_mut() {
                         obj.insert("ui_tree".to_string(), tree_val);
@@ -1050,18 +1008,7 @@ impl DesktopWrapper {
             })?;
 
         // Get element details before closing for better feedback
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "role": element.role(),
-            "id": element.id().unwrap_or_default(),
-            "process_id": element.process_id().unwrap_or(0),
-            "is_focused": element.is_focused().unwrap_or(false),
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-            "application": element.application_name(),
-            "window_title": element.window_title(),
-        });
+        let element_info = build_element_info(&element);
 
         element.close().map_err(|e| {
             McpError::resource_not_found(
@@ -1100,18 +1047,7 @@ impl DesktopWrapper {
             })?;
 
         // Get element details before scrolling for better feedback
-        let element_info = json!({
-            "name": element.name().unwrap_or_default(),
-            "role": element.role(),
-            "id": element.id().unwrap_or_default(),
-            "application": element.application_name(),
-            "window_title": element.window_title(),
-            "process_id": element.process_id().unwrap_or(0),
-            "is_focused": element.is_focused().unwrap_or(false),
-            "bounds": element.bounds().map(|b| json!({
-                "x": b.0, "y": b.1, "width": b.2, "height": b.3
-            })).unwrap_or(json!(null)),
-        });
+        let element_info = build_element_info(&element);
 
         element.scroll(&args.direction, args.amount).map_err(|e| {
             McpError::resource_not_found(
@@ -1164,8 +1100,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
 
         element.select_option(&args.option_name).map_err(|e| {
             McpError::resource_not_found(
@@ -1213,8 +1148,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
         let options = element.list_options().map_err(|e| {
             McpError::internal_error(
                 "Failed to list options",
@@ -1258,8 +1192,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
 
         element.set_toggled(args.state).map_err(|e| {
             McpError::internal_error(
@@ -1305,8 +1238,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
 
         element.set_range_value(args.value).map_err(|e| {
             McpError::internal_error(
@@ -1354,8 +1286,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
 
         element.set_selected(args.state).map_err(|e| {
             McpError::internal_error(
@@ -1403,8 +1334,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
         let is_toggled = element.is_toggled().map_err(|e| {
             McpError::internal_error(
                 "Failed to get toggle state",
@@ -1449,8 +1379,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
         let value = element.get_range_value().map_err(|e| {
             McpError::internal_error(
                 "Failed to get range value",
@@ -1495,8 +1424,7 @@ impl DesktopWrapper {
             )
         })?;
 
-        let element_info =
-            json!({ "id": element.id(), "name": element.name(), "role": element.role() });
+        let element_info = build_element_info(&element);
         let is_selected = element.is_selected().map_err(|e| {
             McpError::internal_error(
                 "Failed to get selected state",
@@ -1512,6 +1440,128 @@ impl DesktopWrapper {
             "is_selected": is_selected,
         });
         self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(description = "Captures a screenshot of a specific UI element.")]
+    async fn capture_element_screenshot(
+        &self,
+        #[tool(param)] args: ValidateElementArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            let selectors_tried =
+                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
+            McpError::internal_error(
+                "Failed to locate element for screenshot",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": selectors_tried,
+                })),
+            )
+        })?;
+
+        let screenshot_result = element.capture().map_err(|e| {
+            McpError::internal_error(
+                "Failed to capture element screenshot",
+                Some(json!({"reason": e.to_string(), "selector_used": successful_selector})),
+            )
+        })?;
+
+        let mut png_data = Vec::new();
+        let encoder = PngEncoder::new(Cursor::new(&mut png_data));
+        encoder
+            .write_image(
+                &screenshot_result.image_data,
+                screenshot_result.width,
+                screenshot_result.height,
+                ExtendedColorType::Rgba8,
+            )
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to encode screenshot to PNG",
+                    Some(json!({ "reason": e.to_string() })),
+                )
+            })?;
+
+        let base64_image = general_purpose::STANDARD.encode(&png_data);
+
+        let element_info = build_element_info(&element);
+
+        Ok(CallToolResult::success(vec![
+            Content::json(json!({
+                "action": "capture_element_screenshot",
+                "status": "success",
+                "element": element_info,
+                "selector_used": successful_selector,
+                "image_format": "png",
+            }))?,
+            Content::image(base64_image, "image/png".to_string()),
+        ]))
+    }
+
+    #[tool(
+        description = "Invokes a UI element. This is often more reliable than clicking for controls like radio buttons or menu items."
+    )]
+    async fn invoke_element(
+        &self,
+        #[tool(param)] args: LocatorArgs,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_element_with_fallbacks;
+
+        let (element, successful_selector) = find_element_with_fallbacks(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+        )
+        .await
+        .map_err(|e| {
+            let selectors_tried =
+                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
+
+            McpError::internal_error(
+                "Failed to locate element for invoke",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selectors_tried": selectors_tried,
+                    "timeout_used": get_timeout(args.timeout_ms).map(|d| d.as_millis())
+                })),
+            )
+        })?;
+
+        let element_info = build_element_info(&element);
+
+        element.invoke().map_err(|e| {
+            McpError::resource_not_found(
+                "Failed to invoke element",
+                Some(json!({
+                    "reason": e.to_string(),
+                    "selector": args.selector,
+                    "element_info": element_info.clone()
+                })),
+            )
+        })?;
+
+        let mut result_json = json!({
+            "action": "invoke",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1563,22 +1613,26 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
 
 1.  **CHECK FOCUS FIRST:** Before any `click`, `type`, or `press_key` action, you **MUST** verify the target application `is_focused` using `get_applications`. If it's not, you **MUST** call `activate_element` before proceeding. This is the #1 way to prevent sending commands to the wrong window.
 
-2.  **WAIT AFTER NAVIGATION:** After actions like `click_element` on a link or `navigate_browser`, the UI needs time to load. You **MUST** explicitly wait. The best method is to use `wait_for_element` targeting a known element on the new page. Do not call `get_window_tree` immediately.
+2.  **AVOID STALE STATE & CONTEXT COLLAPSE:** After any action that changes the UI context (closing a dialog, getting an error, a click that loads new content), the UI may have changed dramatically. **You MUST call `get_window_tree` again to get the current, fresh state before proceeding.** Failure to do so will cause you to act on a 'ghost' UI and fail. Do not trust a 'success' status alone; verify the outcome.
 
-3.  **VERIFY EVERY ACTION:** After every significant action, call `get_window_tree` to get fresh UI state and confirm your action had the intended effect. Do not trust a 'success' status alone.
+3.  **WAIT AFTER NAVIGATION:** After actions like `click_element` on a link or `navigate_browser`, the UI needs time to load. You **MUST** explicitly wait. The best method is to use `wait_for_element` targeting a known element on the new page. Do not call `get_window_tree` immediately.
 
-4.  **USE PRECISE SELECTORS:** For most elements, the most precise selector is `role|name` (e.g., `\"button|Submit\"`). If an element lacks a clear name, use its numeric ID (`\"#12345\"`) as the primary selector. Avoid broad selectors like `\"role:Button\"` or `\"name:Submit\"` alone.
+4.  **CHECK BEFORE YOU ACT (Especially Toggles):** Before clicking a checkbox, radio button, or any toggleable item, **ALWAYS** use `is_toggled` or `is_selected` to check its current state. Only click if it's not already in the desired state to avoid accidentally undoing the action.
 
-**Core Workflow: Discover, then Act with ID Priority**
+5.  **HANDLE DISABLED ELEMENTS:** Before attempting to click a button or interact with an element, you **MUST** check if it is enabled. The `validate_element` and `get_window_tree` tools return an `enabled` property. If an element is disabled (e.g., a grayed-out 'Submit' button), do not try to click it. Instead, you must investigate the UI to figure out why it's disabled. Look for unchecked checkboxes, empty required fields, or other dependencies that must be satisfied first.
+
+6.  **USE PRECISE SELECTORS:** For most elements, the most precise selector is `role|name` (e.g., `\"button|Submit\"`). If an element has an empty or generic name, use its numeric ID (`\"#12345\"`) as the next best option. Avoid broad selectors like `\"role:Button\"` or `\"name:Submit\"` alone.
+
+**Core Workflow: Discover, then Act with Precision**
 
 Your most reliable strategy is to inspect the application's UI structure *before* trying to interact with it. Never guess selectors.
 
-1.  **Discover Running Applications:** Use `get_applications` to see what's running. This gives you the `name`, `id`, and `pid` (Process ID) for each application. Note the `suggested_selector` field which prioritizes ID selectors.
+1.  **Discover Running Applications:** Use `get_applications` to see what's running. This gives you the `name`, `id`, and `pid` (Process ID) for each application.
 
 2.  **Get the UI Tree:** This is the most important step. Once you have the `pid` of your target application, call `get_window_tree` with `include_tree: true`. This returns a complete, JSON-like structure of all UI elements in that application.
 
 3.  **Construct Smart Selector Strategies:** You have powerful tools to create robust targeting strategies:
-    *   **Primary Strategy - Role+Name First:** For most elements, use the pipe format `\"button|Submit\"`. If a name is missing/generic, use the numeric ID selector `\"#12345\"` as the primary instead.
+    *   **Primary Strategy - Role+Name First:** For most elements, use the pipe format `\"button|Submit\"`. If an element's name is empty or not unique, fall back to its numeric ID `\"#12345\"` for more reliable targeting.
     *   **Multi-Selector Fallbacks:** Provide precise alternatives, which are tried in parallel.
         ```json
         {{
@@ -1600,10 +1654,11 @@ Your most reliable strategy is to inspect the application's UI structure *before
         1. Role+Name (pipe): `\"button|Submit\"`
         2. Exact numeric ID: `\"#12345\"`
         3. Contextual chain: `\"role:Document >> button|Submit\"`
-        ❌ AVOID: Generic selectors like `\"role:Button\"` or `\"name:Submit\"` alone.
+    *   Note: AVOID: Generic selectors like `\"role:Button\"` or `\"name:Submit\"` alone.
 
 4.  **Interact with the Element:** Once you have a reliable `selector`, use an action tool:
-    *   `click_element`: To click buttons, links, etc. For elements without stable selectors (e.g., items on a drawing canvas), favor using a position selector like `pos:x,y`.
+    *   `invoke_element`: **(Preferred Method)** Use this for most interactions. It's faster and more reliable than `click`, especially for controls like radio buttons, menu items, and checkboxes. It triggers the element's default action directly.
+    *   `click_element`: Use as a fallback if `invoke_element` fails or for elements where a literal mouse click is necessary (e.g., specific coordinates on a canvas).
     *   `type_into_element`: To type text into input fields.
     *   `press_key`: Sends a key press to a UI element. **Key Syntax: Use curly braces for special keys!**
     *   `activate_element`: To bring a window to the foreground.
@@ -1611,6 +1666,30 @@ Your most reliable strategy is to inspect the application's UI structure *before
     *   `set_clipboard`: To set text to the system clipboard.
     *   `get_clipboard`: To get text from the system clipboard.
     *   `scroll_element`: To scroll within elements like web pages, documents, or lists.
+
+**Action Examples**
+
+*   **Clicking a 'Login' button:**
+    ```json
+    {{
+        \"tool_name\": \"invoke_element\",
+        \"args\": {{\"selector\": \"button|Login\"}}
+    }}
+    ```
+*   **Typing an email into an email field:**
+    ```json
+    {{
+        \"tool_name\": \"type_into_element\",
+        \"args\": {{\"selector\": \"edit|Email\", \"text_to_type\": \"user@example.com\"}}
+    }}
+    ```
+*   **Typing height into a height field:**
+    ```json
+    {{
+        \"tool_name\": \"type_into_element\",
+        \"args\": {{\"selector\": \"edit|Height\", \"text_to_type\": \"6'2\"}}
+    }}
+    ```
 
 5.  **Handle Scrolling for Full Context:** When working with pages or long content, ALWAYS scroll to see all content. Use `scroll_element` to scroll pages up/down to get the full context before making decisions or extracting information.
 

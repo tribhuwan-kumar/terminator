@@ -9,6 +9,7 @@ use image::{ImageBuffer, Rgba};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::panic;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -2478,7 +2479,10 @@ impl UIElementImpl for WindowsUIElement {
             description: None,           // Deferred - load on demand
             properties,                  // Minimal properties only
             is_keyboard_focusable: None, // Deferred - load on demand
+            is_focused: None,            // Deferred - load on demand
             bounds: None, // Will be populated by get_configurable_attributes if focusable
+            text: None,
+            enabled: None,
         }
     }
 
@@ -2665,6 +2669,17 @@ impl UIElementImpl for WindowsUIElement {
             .map_err(|e| AutomationError::PlatformError(e.to_string()))
     }
 
+    fn invoke(&self) -> Result<(), AutomationError> {
+        let invoke_pat = self
+            .element
+            .0
+            .get_pattern::<patterns::UIInvokePattern>()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        invoke_pat
+            .invoke()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))
+    }
+
     fn activate_window(&self) -> Result<(), AutomationError> {
         use windows::Win32::UI::WindowsAndMessaging::{
             BringWindowToTop, IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE,
@@ -2759,10 +2774,38 @@ impl UIElementImpl for WindowsUIElement {
         );
 
         if use_clipboard {
-            self.element
-                .0
-                .send_text_by_clipboard(text)
-                .map_err(|e| AutomationError::PlatformError(e.to_string()))
+            let element_clone = self.element.0.clone();
+            let text_clone = text.to_string();
+
+            // Using catch_unwind to handle potential panics in the uiautomation library.
+            let result = panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                element_clone.send_text_by_clipboard(&text_clone)
+            }));
+
+            match result {
+                Ok(Ok(())) => Ok(()), // Success
+                Ok(Err(e)) => {
+                    // The library returned an error, which we can handle.
+                    warn!(
+                        "Clipboard typing failed with an error: {:?}. Falling back to key-by-key input.",
+                        e
+                    );
+                    self.element
+                        .0
+                        .send_text(text, 10)
+                        .map_err(|e| AutomationError::PlatformError(e.to_string()))
+                }
+                Err(_) => {
+                    // A panic was caught.
+                    warn!(
+                        "Clipboard typing panicked. This is likely a bug in the underlying UI automation library. Falling back to key-by-key input."
+                    );
+                    self.element
+                        .0
+                        .send_text(text, 10)
+                        .map_err(|e| AutomationError::PlatformError(e.to_string()))
+                }
+            }
         } else {
             // Use standard typing method
             self.element
@@ -2975,37 +3018,73 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn scroll(&self, direction: &str, amount: f64) -> Result<(), AutomationError> {
-        // First try to focus the element
-        self.focus().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to focus element: {:?}", e))
-        })?;
+        // 1. Find a scrollable parent (or self)
+        let mut scrollable_element: Option<uiautomation::UIElement> = None;
+        let mut current_element_arc = self.element.0.clone();
 
-        // Only support up/down directions
-        match direction {
-            "up" | "down" => {
-                // Convert amount to number of key presses (round to nearest integer)
-                let times = amount.abs().round() as usize;
-                if times == 0 {
-                    return Ok(());
-                }
-
-                // Send the appropriate key based on direction
-                let key = if direction == "up" {
-                    "{page_up}"
-                } else {
-                    "{page_down}"
-                };
-                for _ in 0..times {
-                    self.press_key(key)?;
-                }
+        for _ in 0..7 {
+            // Search up to 7 levels up the tree
+            if let Ok(_pattern) = current_element_arc.get_pattern::<patterns::UIScrollPattern>() {
+                // Element supports scrolling, we found our target
+                scrollable_element = Some(current_element_arc.as_ref().clone());
+                break;
             }
-            _ => {
-                return Err(AutomationError::UnsupportedOperation(
-                    "Only 'up' and 'down' scroll directions are supported".to_string(),
-                ));
+
+            // Move to parent
+            if let Ok(parent) = current_element_arc.get_cached_parent() {
+                // Check if we've hit the root or a cycle
+                if let (Ok(cur_id), Ok(par_id)) = (
+                    current_element_arc.get_runtime_id(),
+                    parent.get_runtime_id(),
+                ) {
+                    if cur_id == par_id {
+                        break;
+                    }
+                }
+                current_element_arc = Arc::new(parent);
+            } else {
+                // No more parents
+                break;
             }
         }
-        Ok(())
+
+        let target_element = scrollable_element.ok_or_else(|| {
+            AutomationError::UnsupportedOperation(
+                "No scrollable container found for this element".to_string(),
+            )
+        })?;
+
+        // 2. Use ScrollPattern to scroll
+        if let Ok(scroll_pattern) = target_element.get_pattern::<patterns::UIScrollPattern>() {
+            let h_amount = uiautomation::types::ScrollAmount::NoAmount;
+            let v_amount = match direction {
+                "up" => uiautomation::types::ScrollAmount::LargeDecrement,
+                "down" => uiautomation::types::ScrollAmount::LargeIncrement,
+                _ => {
+                    return Err(AutomationError::InvalidArgument(
+                        "Invalid scroll direction. Only 'up' or 'down' are supported.".to_string(),
+                    ))
+                }
+            };
+
+            let num_scrolls = amount.round().max(1.0) as usize;
+            for i in 0..num_scrolls {
+                if scroll_pattern.scroll(h_amount, v_amount).is_err() {
+                    // If pattern fails, break and try the key press fallback
+                    warn!(
+                        "ScrollPattern failed on iteration {}. Attempting key-press fallback.",
+                        i
+                    );
+                    return self.scroll_with_fallback(direction, amount);
+                }
+                // Small delay between programmatic scrolls to allow UI to catch up
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            return Ok(());
+        }
+
+        // 3. If ScrollPattern fails, fall back to key presses on the original element
+        self.scroll_with_fallback(direction, amount)
     }
 
     fn is_keyboard_focusable(&self) -> Result<bool, AutomationError> {
@@ -3742,22 +3821,44 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_toggled(&self) -> Result<bool, AutomationError> {
-        let toggle_pattern = self
+        let toggle_pattern = self.element.0.get_pattern::<patterns::UITogglePattern>();
+
+        if let Ok(pattern) = toggle_pattern {
+            let state = pattern.get_toggle_state().map_err(|e| {
+                AutomationError::PlatformError(format!("Failed to get toggle state: {}", e))
+            })?;
+            return Ok(state == uiautomation::types::ToggleState::On);
+        }
+
+        // Fallback: Check SelectionItemPattern as some controls might use it
+        if let Ok(selection_pattern) = self
             .element
             .0
-            .get_pattern::<patterns::UITogglePattern>()
-            .map_err(|e| {
-                AutomationError::UnsupportedOperation(format!(
-                    "Element does not support TogglePattern: {}",
-                    e
-                ))
-            })?;
+            .get_pattern::<patterns::UISelectionItemPattern>()
+        {
+            if let Ok(is_selected) = selection_pattern.is_selected() {
+                return Ok(is_selected);
+            }
+        }
 
-        let state = toggle_pattern.get_toggle_state().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get toggle state: {}", e))
-        })?;
+        // Fallback: Check name for keywords if no pattern is definitive
+        if let Ok(name) = self.element.0.get_name() {
+            let name_lower = name.to_lowercase();
+            if name_lower.contains("checked")
+                || name_lower.contains("selected")
+                || name_lower.contains("toggled")
+            {
+                return Ok(true);
+            }
+            if name_lower.contains("unchecked") || name_lower.contains("not selected") {
+                return Ok(false);
+            }
+        }
 
-        Ok(state == uiautomation::types::ToggleState::On)
+        Err(AutomationError::UnsupportedOperation(format!(
+            "Element {:?} does not support TogglePattern or provide state in its name.",
+            self.element.0.get_name().unwrap_or_default()
+        )))
     }
 
     fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
@@ -3943,6 +4044,16 @@ impl UIElementImpl for WindowsUIElement {
         {
             Ok(false)
         } else {
+            // Fallback: Check name for keywords if no pattern is definitive
+            if let Ok(name) = self.element.0.get_name() {
+                let name_lower = name.to_lowercase();
+                if name_lower.contains("checked") || name_lower.contains("selected") {
+                    return Ok(true);
+                }
+                if name_lower.contains("unchecked") || name_lower.contains("not selected") {
+                    return Ok(false);
+                }
+            }
             Err(AutomationError::UnsupportedOperation(
                 "Element supports neither SelectionItemPattern nor TogglePattern, and is not focused."
                     .to_string(),
@@ -3995,6 +4106,45 @@ impl UIElementImpl for WindowsUIElement {
         Err(AutomationError::UnsupportedOperation(
             "Element cannot be deselected as it supports neither SelectionItemPattern nor TogglePattern.".to_string(),
         ))
+    }
+}
+
+trait ScrollFallback {
+    fn scroll_with_fallback(&self, direction: &str, amount: f64) -> Result<(), AutomationError>;
+}
+
+impl ScrollFallback for WindowsUIElement {
+    fn scroll_with_fallback(&self, direction: &str, amount: f64) -> Result<(), AutomationError> {
+        warn!(
+            "Using key-press scroll fallback for element: {:?}",
+            self.element.0.get_name().unwrap_or_default()
+        );
+        self.focus().map_err(|e| {
+            AutomationError::PlatformError(format!(
+                "Failed to focus element for scroll fallback: {:?}",
+                e
+            ))
+        })?;
+
+        match direction {
+            "up" | "down" => {
+                let times = amount.abs().round().max(1.0) as usize;
+                let key = if direction == "up" {
+                    "{page_up}"
+                } else {
+                    "{page_down}"
+                };
+                for _ in 0..times {
+                    self.press_key(key)?;
+                }
+            }
+            _ => {
+                return Err(AutomationError::UnsupportedOperation(
+                    "Only 'up' and 'down' scroll directions are supported".to_string(),
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -4609,6 +4759,22 @@ fn get_configurable_attributes(
                 attrs.bounds = Some(bounds);
             }
         }
+    }
+
+    if let Ok(is_focused) = element.is_focused() {
+        if is_focused {
+            attrs.is_focused = Some(true);
+        }
+    }
+
+    if let Ok(text) = element.text(0) {
+        if !text.is_empty() {
+            attrs.text = Some(text);
+        }
+    }
+
+    if let Ok(is_enabled) = element.is_enabled() {
+        attrs.enabled = Some(is_enabled);
     }
 
     attrs
