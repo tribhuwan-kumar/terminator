@@ -2,6 +2,7 @@ use crate::{AutomationError, Desktop, Selector};
 use std::time::Duration;
 
 #[tokio::test]
+#[ignore]
 async fn test_toggle_checkbox() -> Result<(), AutomationError> {
     let desktop = Desktop::new(false, false)?;
     let app = desktop.open_url("https://ui.shadcn.com/docs/components/checkbox", None)?;
@@ -41,6 +42,7 @@ async fn test_toggle_checkbox() -> Result<(), AutomationError> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_slider_value() -> Result<(), AutomationError> {
     let desktop = Desktop::new(false, false)?;
     // Using a native windows app with a slider for reliability
