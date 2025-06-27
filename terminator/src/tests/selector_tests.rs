@@ -174,7 +174,13 @@ fn test_click_by_position_in_settings() {
             role: "button".to_string(),
             name: Some("Close".to_string()),
         };
-        let close_button = desktop.locator(close_button_selector).first(None).await.expect("Could not find the 'Close' button in Settings.");
-        close_button.click().expect("Clicking the 'Close' button failed.");
+        let close_button = desktop
+            .locator(close_button_selector)
+            .first(None)
+            .await
+            .expect("Could not find the 'Close' button in Settings.");
+        close_button
+            .click()
+            .expect("Clicking the 'Close' button failed.");
     });
 }

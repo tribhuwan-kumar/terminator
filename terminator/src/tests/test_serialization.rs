@@ -5,7 +5,7 @@ use tracing_subscriber::FmtSubscriber;
 
 #[tokio::test]
 #[ignore] // This test is ignored by default because it's long-running and requires a GUI.
-// Run it manually with: cargo test --test browser_serialization -- --ignored
+          // Run it manually with: cargo test --test browser_serialization -- --ignored
 async fn test_browser_tree_serialization() -> Result<(), Box<dyn std::error::Error>> {
     // Set up tracing for logging, which is helpful for debugging integration tests.
     let subscriber = FmtSubscriber::builder()
