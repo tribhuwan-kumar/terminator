@@ -1599,6 +1599,7 @@ impl UIElementImpl for LinuxUIElement {
             name: self.name(),
             value: Some(self.is_enabled().unwrap_or(false).to_string()),
             is_keyboard_focusable: Some(self.is_focused().unwrap_or(false)),
+            bounds: None, // Will be populated by get_configurable_attributes if focusable
             ..Default::default()
         };
         // Fetch additional attributes using AccessibleProxy

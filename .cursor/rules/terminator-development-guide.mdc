@@ -10,7 +10,7 @@ alwaysApply: true
 Always run this:
 
 ```bash
-cargo fmt --check    # Must pass - zero tolerance for unformatted code
+cargo fmt    # Must pass - zero tolerance for unformatted code
 cargo clippy         # Fix ALL warnings - use #[allow] only with justification  
 ```
 

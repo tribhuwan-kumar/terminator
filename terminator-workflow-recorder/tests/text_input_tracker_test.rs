@@ -27,6 +27,7 @@ mod text_input_tracker_tests {
             UIElementAttributes {
                 role: self.role.clone(),
                 name: Some(self.name.clone()),
+                bounds: None, // Mock element doesn't provide bounds
                 ..Default::default()
             }
         }

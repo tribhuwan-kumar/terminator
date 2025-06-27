@@ -2478,6 +2478,7 @@ impl UIElementImpl for WindowsUIElement {
             description: None,           // Deferred - load on demand
             properties,                  // Minimal properties only
             is_keyboard_focusable: None, // Deferred - load on demand
+            bounds: None, // Will be populated by get_configurable_attributes if focusable
         }
     }
 
@@ -4604,7 +4605,7 @@ fn get_configurable_attributes(
     element: &UIElement,
     property_mode: &crate::platforms::PropertyLoadingMode,
 ) -> UIElementAttributes {
-    match property_mode {
+    let mut attrs = match property_mode {
         crate::platforms::PropertyLoadingMode::Fast => {
             // Only essential properties - current optimized version
             element.attributes()
@@ -4617,7 +4618,20 @@ fn get_configurable_attributes(
             // Load properties based on element type
             get_smart_attributes(element)
         }
+    };
+
+    // Check if element is keyboard focusable and add bounds if it is
+    if let Ok(is_focusable) = element.is_keyboard_focusable() {
+        if is_focusable {
+            attrs.is_keyboard_focusable = Some(true);
+            // Only add bounds for keyboard-focusable elements
+            if let Ok(bounds) = element.bounds() {
+                attrs.bounds = Some(bounds);
+            }
+        }
     }
+
+    attrs
 }
 
 /// Get complete attributes for an element (all properties)

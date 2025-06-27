@@ -776,6 +776,7 @@ impl UIElementImpl for MacOSUIElement {
                 description: None,
                 properties,
                 is_keyboard_focusable: Some(false), // macos: not implemented
+                bounds: None, // Will be populated by get_configurable_attributes if focusable
             };
 
             // Special handling for window title - try multiple attributes
@@ -877,6 +878,7 @@ impl UIElementImpl for MacOSUIElement {
             description: None,
             properties,
             is_keyboard_focusable: Some(false), // macos: not implemented
+            bounds: None, // Will be populated by get_configurable_attributes if focusable
         };
 
         // Debug attribute collection

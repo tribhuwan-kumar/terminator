@@ -188,6 +188,8 @@ pub struct UIElementAttributes {
     pub properties: HashMap<String, Option<serde_json::Value>>,
     #[serde(default, skip_serializing_if = "is_false_bool")]
     pub is_keyboard_focusable: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<(f64, f64, f64, f64)>, // Only populated for keyboard-focusable elements
 }
 
 impl fmt::Debug for UIElementAttributes {
@@ -235,6 +237,11 @@ impl fmt::Debug for UIElementAttributes {
         // Only show keyboard focusable if true
         if let Some(true) = self.is_keyboard_focusable {
             debug_struct.field("is_keyboard_focusable", &true);
+        }
+
+        // Only show bounds if present
+        if let Some(ref bounds) = self.bounds {
+            debug_struct.field("bounds", bounds);
         }
 
         debug_struct.finish()
@@ -918,6 +925,7 @@ pub mod utils {
             role: element.role(),
             name: element.name(),
             value: element.attributes().value,
+            bounds: None, // Not included in minimal attributes
             ..Default::default()
         }
     }
