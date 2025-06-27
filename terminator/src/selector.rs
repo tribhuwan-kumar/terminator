@@ -45,13 +45,15 @@ impl From<&str> for Selector {
             return Selector::Chain(parts.into_iter().map(Selector::from).collect());
         }
 
-        // if using pipe, use it for the role plus name
+        // if using pipe, use it for the role plus name (preferred precise format)
         if s.contains('|') {
             let parts: Vec<&str> = s.split('|').collect();
-            return Selector::Role {
-                role: parts[0].trim().to_string(),
-                name: Some(parts[1].trim().to_string()),
-            };
+            if parts.len() >= 2 {
+                return Selector::Role {
+                    role: parts[0].trim().to_string(),
+                    name: Some(parts[1].trim().to_string()),
+                };
+            }
         }
 
         // Make common UI roles like "window", "button", etc. default to Role selectors
