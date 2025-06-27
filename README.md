@@ -3,23 +3,32 @@
 https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 
 <p align="center">
-    <a href="https://discord.gg/dU9EBuw7Uq">
-        <img src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white&style=flat-square" alt="Join us on Discord">
-    </a>
-    <a href="https://docs.screenpi.pe/terminator/introduction">
-        <img src="https://img.shields.io/badge/read_the-docs-blue" alt="docs">
-    </a>
-    <a href="https://www.youtube.com/@mediar_ai">
-        <img src="https://img.shields.io/badge/YouTube-@mediar__ai-FF0000?logo=youtube&logoColor=white&style=flat-square" alt="YouTube @mediar_ai">
-    </a>
-</p>
-
-<p align="center">
+  <a href="https://discord.gg/dU9EBuw7Uq">
+    <img src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white&style=flat-square" alt="Join us on Discord">
+  </a>
+  <a href="https://docs.screenpi.pe/terminator/introduction">
+    <img src="https://img.shields.io/badge/read_the-docs-blue" alt="Docs">
+  </a>
+  <a href="https://www.youtube.com/@mediar_ai">
+    <img src="https://img.shields.io/badge/YouTube-@mediar__ai-FF0000?logo=youtube&logoColor=white&style=flat-square" alt="YouTube @mediar_ai">
+  </a>
   <a href="https://crates.io/crates/terminator-rs">
     <img src="https://img.shields.io/crates/v/terminator-rs.svg" alt="Crates.io - terminator-rs">
   </a>
   <a href="https://crates.io/crates/terminator-workflow-recorder">
     <img src="https://img.shields.io/crates/v/terminator-workflow-recorder.svg" alt="Crates.io - workflow recorder">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D">
+    <img alt="Install in VS Code" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20MCP&color=0098FF">
+  </a>
+  <a href="https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D">
+    <img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20MCP&color=24bfa5">
+  </a>
+  <a href="https://cursor.com/install-mcp?name=terminator-mcp-agent&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50Il19">
+    <img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20MCP&color=22272e">
   </a>
 </p>
 
