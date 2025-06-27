@@ -250,6 +250,22 @@ impl DesktopWrapper {
             "suggested_selector": format!("#{}", id),
         });
 
+        // Clear the element before typing if requested (default: true)
+        let should_clear = args.clear_before_typing.unwrap_or(true);
+        if should_clear {
+            // Select all existing text and delete it
+            if let Err(clear_error) = element
+                .press_key("{Ctrl}a")
+                .and_then(|_| element.press_key("{Delete}"))
+            {
+                // If clearing fails, log it but continue with typing (non-fatal)
+                eprintln!(
+                    "Warning: Failed to clear element before typing: {}",
+                    clear_error
+                );
+            }
+        }
+
         element.type_text(&args.text_to_type, true).map_err(|e| {
             McpError::resource_not_found(
                 "Failed to type text",
@@ -266,6 +282,7 @@ impl DesktopWrapper {
             "action": "type_into_element",
             "status": "success",
             "text_typed": args.text_to_type,
+            "cleared_before_typing": should_clear,
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
@@ -946,7 +963,11 @@ impl DesktopWrapper {
 
         let tree = self
             .desktop
-            .get_window_tree(ui_element.process_id().unwrap_or(0), None, None)
+            .get_window_tree(
+                ui_element.process_id().unwrap_or(0),
+                ui_element.name().as_deref(),
+                None,
+            )
             .unwrap_or_default();
 
         Ok(CallToolResult::success(vec![Content::json(json!({

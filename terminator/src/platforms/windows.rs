@@ -4472,17 +4472,6 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
         .get_cached_classname()
         .or_else(|_| element.get_classname())
         .map_err(|e| AutomationError::PlatformError(format!("Failed to get classname: {}", e)))?;
-    let bounds = element
-        .get_cached_bounding_rectangle()
-        .or_else(|_| element.get_bounding_rectangle())
-        .map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get bounding rectangle: {}", e))
-        })?;
-    // runtime_id is fundamental and less likely to have a distinct cached vs. live fetch issue here
-    // It's usually retrieved when the element handle is obtained.
-    let runtime_id = element
-        .get_runtime_id()
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get runtime ID: {}", e)))?;
     let help_text = element
         .get_cached_help_text()
         .or_else(|_| element.get_help_text())
@@ -4490,17 +4479,8 @@ fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, Autom
 
     // Create a stable string representation
     let id_string = format!(
-        "{}:{}:{}:{}:{}:{}:{}:{}:{:?}:{}",
-        control_type,
-        name,
-        automation_id,
-        class_name,
-        bounds.get_left(),
-        bounds.get_top(),
-        bounds.get_width(),
-        bounds.get_height(),
-        runtime_id,
-        help_text
+        "{}:{}:{}:{}:{}",
+        control_type, name, automation_id, class_name, help_text
     );
 
     // Generate a hash from the stable string
