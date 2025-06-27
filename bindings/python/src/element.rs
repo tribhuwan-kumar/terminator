@@ -76,6 +76,12 @@ impl UIElement {
                 .map(|(k, v)| (k, v.map(|v| v.to_string())))
                 .collect(),
             is_keyboard_focusable: attrs.is_keyboard_focusable,
+            bounds: attrs.bounds.map(|(x, y, width, height)| Bounds {
+                x,
+                y,
+                width,
+                height,
+            }),
         })
     }
 

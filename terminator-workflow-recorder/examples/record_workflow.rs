@@ -11,7 +11,7 @@ use tracing_subscriber::FmtSubscriber;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[EARLY] Comprehensive workflow recorder started");
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .with_target(true)
         .with_thread_ids(false)
         .with_file(true)
@@ -472,6 +472,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
                         println!("     └─ TO Title: \"{}\"", to_title_display);
                     }
+
+                    // print browser name
+                    println!("     └─ Browser: {}", tab_nav_event.browser);
 
                     // Show navigation method
                     let method_icon = match tab_nav_event.method {

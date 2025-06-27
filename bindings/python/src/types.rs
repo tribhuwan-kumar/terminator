@@ -90,6 +90,8 @@ pub struct UIElementAttributes {
     pub properties: HashMap<String, Option<String>>,
     #[pyo3(get)]
     pub is_keyboard_focusable: Option<bool>,
+    #[pyo3(get)]
+    pub bounds: Option<Bounds>,
 }
 
 /// Coordinates for mouse operations
@@ -286,6 +288,12 @@ impl From<::terminator_core::UIElementAttributes> for UIElementAttributes {
             description: attrs.description,
             properties,
             is_keyboard_focusable: attrs.is_keyboard_focusable,
+            bounds: attrs.bounds.map(|(x, y, width, height)| Bounds {
+                x,
+                y,
+                width,
+                height,
+            }),
         }
     }
 }

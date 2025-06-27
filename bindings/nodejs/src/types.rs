@@ -65,6 +65,7 @@ pub struct UIElementAttributes {
     pub description: Option<String>,
     pub properties: HashMap<String, Option<String>>,
     pub is_keyboard_focusable: Option<bool>,
+    pub bounds: Option<Bounds>,
 }
 
 #[napi(object, js_name = "ExploredElementDetail")]
@@ -185,6 +186,12 @@ impl From<terminator::UIElementAttributes> for UIElementAttributes {
             description: attrs.description,
             properties,
             is_keyboard_focusable: attrs.is_keyboard_focusable,
+            bounds: attrs.bounds.map(|(x, y, width, height)| Bounds {
+                x,
+                y,
+                width,
+                height,
+            }),
         }
     }
 }

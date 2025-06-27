@@ -13,8 +13,9 @@
 //!   cargo run --bin terminator -- status     # Show current status
 //!   cargo run --bin terminator -- tag        # Tag and push current version
 //!   cargo run --bin terminator -- release    # Full release: bump patch + tag + push
+//!   cargo run --bin terminator -- release minor # Full release: bump minor + tag + push
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -31,6 +32,28 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(ValueEnum, Clone, Copy, Debug, Default)]
+#[clap(rename_all = "lower")]
+enum BumpLevel {
+    #[default]
+    Patch,
+    Minor,
+    Major,
+}
+
+impl std::fmt::Display for BumpLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", format!("{:?}", self).to_lowercase())
+    }
+}
+
+#[derive(Parser, Debug)]
+struct ReleaseArgs {
+    /// The part of the version to bump: patch, minor, or major.
+    #[clap(value_enum, default_value_t = BumpLevel::Patch)]
+    level: BumpLevel,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Bump patch version (x.y.Z+1)
@@ -45,8 +68,8 @@ enum Commands {
     Status,
     /// Tag current version and push (triggers CI)
     Tag,
-    /// Full release: bump patch + tag + push
-    Release,
+    /// Full release: bump version + tag + push
+    Release(ReleaseArgs),
 }
 
 fn main() {
@@ -62,7 +85,7 @@ fn main() {
         Commands::Sync => sync_all_versions(),
         Commands::Status => show_status(),
         Commands::Tag => tag_and_push(),
-        Commands::Release => full_release(),
+        Commands::Release(args) => full_release(&args.level.to_string()),
     }
 }
 
@@ -123,36 +146,83 @@ fn get_workspace_version() -> Result<String, Box<dyn std::error::Error>> {
     Err("Version not found in [workspace.package] in Cargo.toml".into())
 }
 
+fn sync_cargo_versions() -> Result<(), Box<dyn std::error::Error>> {
+    println!("📦 Syncing Cargo.toml dependency versions...");
+    let workspace_version = get_workspace_version()?;
+
+    let cargo_toml = fs::read_to_string("Cargo.toml")?;
+    let mut lines: Vec<String> = cargo_toml.lines().map(|s| s.to_string()).collect();
+    let mut in_workspace_deps = false;
+    let mut deps_version_updated = false;
+
+    let tmp = 0..lines.len();
+    for i in tmp {
+        let line = &lines[i];
+        let trimmed_line = line.trim();
+
+        if trimmed_line.starts_with('[') {
+            in_workspace_deps = trimmed_line == "[workspace.dependencies]";
+            continue;
+        }
+
+        if in_workspace_deps && trimmed_line.starts_with("terminator =") {
+            let line_clone = line.clone();
+            if let Some(start) = line_clone.find("version = \"") {
+                let version_start = start + "version = \"".len();
+                if let Some(end_quote_offset) = line_clone[version_start..].find('"') {
+                    let range = version_start..(version_start + end_quote_offset);
+                    if &line_clone[range.clone()] != workspace_version.as_str() {
+                        lines[i].replace_range(range, &workspace_version);
+                        println!(
+                            "✅ Updated 'terminator' dependency version to {}.",
+                            workspace_version
+                        );
+                        deps_version_updated = true;
+                    } else {
+                        println!("✅ 'terminator' dependency version is already up to date.");
+                        deps_version_updated = true; // Mark as done
+                    }
+                }
+            }
+            break; // Assume only one terminator dependency to update
+        }
+    }
+
+    if deps_version_updated {
+        fs::write("Cargo.toml", lines.join("\n") + "\n")?;
+    } else {
+        eprintln!(
+            "⚠️  Warning: Could not find 'terminator' in [workspace.dependencies] to sync version."
+        );
+    }
+    Ok(())
+}
+
 fn set_workspace_version(new_version: &str) -> Result<(), Box<dyn std::error::Error>> {
     let cargo_toml = fs::read_to_string("Cargo.toml")?;
     let mut lines: Vec<String> = cargo_toml.lines().map(|s| s.to_string()).collect();
     let mut in_workspace_package = false;
-    let mut version_found = false;
+    let mut package_version_updated = false;
 
-    for line in &mut lines {
+    let tmp = 0..lines.len();
+    for i in tmp {
+        let line = &lines[i];
         let trimmed_line = line.trim();
-        if trimmed_line == "[workspace.package]" {
-            in_workspace_package = true;
+
+        if trimmed_line.starts_with('[') {
+            in_workspace_package = trimmed_line == "[workspace.package]";
             continue;
         }
-        if in_workspace_package {
-            if trimmed_line.starts_with('[') {
-                break;
-            }
-            if line.trim().starts_with("version") {
-                if let Some(key) = line.split('=').next() {
-                    if key.trim() == "version" {
-                        let indentation = line.len() - line.trim_start().len();
-                        *line = format!("{}version = \"{}\"", " ".repeat(indentation), new_version);
-                        version_found = true;
-                        break;
-                    }
-                }
-            }
+
+        if in_workspace_package && trimmed_line.starts_with("version =") {
+            let indentation = line.len() - line.trim_start().len();
+            lines[i] = format!("{}version = \"{}\"", " ".repeat(indentation), new_version);
+            package_version_updated = true;
+            break; // Exit after finding and updating the version
         }
     }
 
-    if !version_found {
+    if !package_version_updated {
         return Err("version key not found in [workspace.package] in Cargo.toml".into());
     }
 
@@ -215,6 +285,12 @@ fn bump_version(bump_type: &str) {
 
 fn sync_all_versions() {
     println!("🔄 Syncing all package versions...");
+
+    // First, sync versions within Cargo.toml
+    if let Err(e) = sync_cargo_versions() {
+        eprintln!("❌ Failed to sync versions in Cargo.toml: {}", e);
+        return;
+    }
 
     let workspace_version = match get_workspace_version() {
         Ok(v) => v,
@@ -486,9 +562,12 @@ fn tag_and_push() {
     println!("🔗 Check CI: https://github.com/mediar-ai/terminator/actions");
 }
 
-fn full_release() {
-    println!("🚀 Starting full release process...");
-    bump_version("patch");
+fn full_release(bump_type: &str) {
+    println!(
+        "🚀 Starting full release process with {} bump...",
+        bump_type
+    );
+    bump_version(bump_type);
     tag_and_push();
 }
 

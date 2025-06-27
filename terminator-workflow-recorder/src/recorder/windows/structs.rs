@@ -18,6 +18,9 @@ pub enum UIAInputRequest {
     KeyPressForCompletion {
         key_code: u32,
     },
+    ActivationKeyPress {
+        key_code: u32,
+    },
 }
 
 /// Text input tracking state
@@ -29,9 +32,6 @@ pub struct TextInputTracker {
     pub start_time: Instant,
     /// Number of typing keystrokes (excludes navigation keys)
     pub keystroke_count: u32,
-    /// Initial text value when tracking started (unused in current implementation)
-    #[allow(dead_code)]
-    pub initial_text: String,
     /// Whether we've detected any actual typing
     pub has_typing_activity: bool,
     /// Whether we're in the middle of autocomplete navigation (arrow keys active)
@@ -49,7 +49,6 @@ impl TextInputTracker {
             element,
             start_time: Instant::now(),
             keystroke_count: 0,
-            initial_text: String::new(), // Keep empty to avoid element access issues
             has_typing_activity: false,
             in_autocomplete_navigation: false,
             last_autocomplete_activity: Instant::now(),
@@ -165,27 +164,26 @@ impl TextInputTracker {
             return None;
         }
 
-        let typing_duration_ms = self.start_time.elapsed().as_millis() as u64;
-
-        // Use safe fallbacks for element properties
-        let field_name = self.element.name();
-        let field_type = self.element.role();
-
         // Try to get actual text value from the element
         let text_value = match self.element.text(0) {
-            Ok(actual_text) if !actual_text.trim().is_empty() => {
-                debug!("✅ Got actual text value: '{}'", actual_text);
-                actual_text
-            }
-            Ok(empty_text) => {
-                debug!("📝 Got empty or whitespace text value: '{}'", empty_text);
-                String::new()
-            }
+            Ok(actual_text) => actual_text,
             Err(e) => {
                 error!("❌ Could not get text value: {}", e);
                 String::new()
             }
         };
+
+        // Do not emit an event for empty or whitespace-only text.
+        if text_value.trim().is_empty() {
+            debug!("❌ Text value is empty or whitespace-only, not emitting completion event.");
+            return None;
+        }
+
+        let typing_duration_ms = self.start_time.elapsed().as_millis() as u64;
+
+        // Use safe fallbacks for element properties
+        let field_name = self.element.name();
+        let field_type = self.element.role();
 
         // Determine input method
         let final_input_method = input_method.unwrap_or(crate::TextInputMethod::Typed);

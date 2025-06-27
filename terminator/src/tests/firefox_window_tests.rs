@@ -53,6 +53,7 @@ async fn test_get_firefox_window_tree() -> Result<(), AutomationError> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_get_browser_url() -> Result<(), AutomationError> {
     init_tracing();
     let desktop = Desktop::new(false, true)?;

@@ -9,6 +9,12 @@ pub struct Selector {
     pub(crate) inner: TerminatorSelector,
 }
 
+impl std::fmt::Display for Selector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.inner)
+    }
+}
+
 impl From<TerminatorSelector> for Selector {
     fn from(sel: TerminatorSelector) -> Self {
         Selector { inner: sel }
@@ -105,10 +111,5 @@ impl Selector {
             self.inner.clone(),
             TerminatorSelector::Visible(is_visible),
         ]))
-    }
-
-    #[napi]
-    pub fn to_string(&self) -> String {
-        format!("{:?}", self.inner)
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "terminator"
+name = "terminator-rs"
 version = { workspace = true }
 edition = "2021"
 description = "A Playwright-style SDK for automating desktop GUI applications"
@@ -10,6 +10,7 @@ documentation = "https://docs.rs/terminator"
 readme = "../README.md"
 keywords = ["automation", "gui", "desktop", "accessibility", "testing"]
 categories = ["accessibility", "api-bindings", "development-tools::testing"]
+license-file = { workspace = true }
 
 [dependencies]
 serde = { workspace = true }
@@ -24,9 +25,7 @@ tokio = { workspace = true }
 xcap = { workspace = true }
 image = { workspace = true }
 uni-ocr = { workspace = true }
-tempfile = { workspace = true }
 async-trait = { workspace = true }
-base64 = { workspace = true }
 futures = "0.3"
 
 [lib]
@@ -45,13 +44,12 @@ atspi-common = { version = "0.10.1", default-features = false }
 atspi-proxies = { version = "0.10.2", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-accessibility-sys = { git = "https://github.com/eiz/accessibility.git", branch = "master" }
-accessibility = { git = "https://github.com/eiz/accessibility.git", branch = "master" }
-objc = "0.2.7"
-objc-foundation = "0.1.1"
-
-core-foundation = "0.10.1"
-core-graphics = { version = "0.24.0", features = ["highsierra"] }
+accessibility-sys = { workspace = true }
+accessibility = { workspace = true }
+objc = { workspace = true }
+objc-foundation = { workspace = true }
+core-foundation = { workspace = true }
+core-graphics = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61.1", features = [

@@ -112,45 +112,24 @@ To use VS Code or Cursor with Remote SSH:
 
 ## GUI Application Launching
 
-When working through SSH or non-interactive sessions, you can use the `gui-launch` function to start GUI applications in the active user session. This is particularly useful when you need to run Windows applications while connected via SSH or VS Code Remote SSH.
+When working through SSH or non-interactive sessions, you can use the `gui-shell` tool to launch an interactive PowerShell shell in the active GUI user session (session 1). This allows you to interact with the Windows desktop environment as if you were logged in via RDP, even from SSH or VS Code Remote SSH. The shell you get is running in the correct session for GUI apps, so any GUI applications you launch from within it will appear on the Windows desktop.
 
 ### Usage
 
-1. Launch a simple application:
-   ```powershell
-   gui-launch notepad.exe
-   ```
+To start an interactive PowerShell shell in the GUI session:
+```powershell
+gui-shell
+```
 
-2. Launch an application with arguments:
-   ```powershell
-   gui-launch "C:\Program Files\SomeApp\app.exe" /flag
-   ```
-
-3. Launch Python scripts with GUI components:
-   ```powershell
-   gui-launch py .\terminator\examples\snipping_tool.py
-   ```
-
-4. Launch applications with relative paths:
-   ```powershell
-   gui-launch .\my_app\app.exe
-   ```
-
-5. Launch applications with complex arguments:
-   ```powershell
-   gui-launch "C:\Program Files\Microsoft VS Code\Code.exe" --new-window "C:\path\to\file.txt"
-   ```
+Once inside the shell, you can launch GUI applications or run any commands interactively as if you were at the Windows desktop.
 
 ### Features
-- Automatically resolves relative paths to absolute paths
-- Handles commands with spaces and special characters
-- Runs applications in the active user session
-- Captures and displays command output
-- Works with both simple commands and complex command lines with arguments
+- Launches a PowerShell shell in the GUI user session (session 1)
+- Any GUI apps started from this shell will appear on the Windows desktop
+- No need for RDP: interact with the desktop session from SSH or remote environments
 
 ### Requirements
 - PSTools must be installed (automatically handled by the Vagrant setup)
-- Must be run from a PowerShell session
 - Requires an active user session on the Windows VM
 
 ## Notes

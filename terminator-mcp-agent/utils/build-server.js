@@ -38,6 +38,16 @@ if (platform === "win32" && arch === "x64") {
   process.exit(1);
 }
 
+// Kill any existing terminator-mcp-agent process before building
+try {
+  // windows is annoying w filesystem
+  if (platform === "win32") {
+    execSync("taskkill /f /im terminator-mcp-agent.exe 2>nul || exit 0", { stdio: "ignore" });
+  }
+} catch (error) {
+  // Ignore errors if process doesn't exist
+}
+
 const buildType = isRelease ? "--release" : "";
 console.log(`Building for target ${target} (${buildType || "debug"})`);
 execSync(

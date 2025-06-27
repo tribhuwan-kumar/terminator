@@ -522,6 +522,11 @@ fn find_elements_inner<'a>(
                     "Selector::Path is not implemented for Linux".to_string(),
                 ));
             }
+            Selector::LocalizedRole(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "LocalizedRole selector is not yet supported for Linux".to_string(),
+                ));
+            }
             Selector::ClassName(_) => {
                 return Err(AutomationError::UnsupportedPlatform(
                     "Selector::ClassName is not implemented for Linux".to_string(),
@@ -530,6 +535,11 @@ fn find_elements_inner<'a>(
             Selector::NativeId(_) => {
                 return Err(AutomationError::UnsupportedPlatform(
                     "Selector::NativeId is not implemented for Linux".to_string(),
+                ));
+            }
+            Selector::Position(_, _) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Selector::Position is not implemented for Linux".to_string(),
                 ));
             }
             Selector::Text(_) => {
@@ -587,7 +597,7 @@ fn find_elements_inner<'a>(
                 return Ok(current_elements);
             }
             Selector::Role { .. } | Selector::Name(_) => {
-                // Supported
+                // Supported - continue to processing below
             }
         }
         // Only Role and Name selectors are supported below
@@ -1589,6 +1599,7 @@ impl UIElementImpl for LinuxUIElement {
             name: self.name(),
             value: Some(self.is_enabled().unwrap_or(false).to_string()),
             is_keyboard_focusable: Some(self.is_focused().unwrap_or(false)),
+            bounds: None, // Will be populated by get_configurable_attributes if focusable
             ..Default::default()
         };
         // Fetch additional attributes using AccessibleProxy
@@ -2342,6 +2353,54 @@ impl UIElementImpl for LinuxUIElement {
 
     fn url(&self) -> Option<String> {
         None
+    }
+
+    fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "select_option is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn list_options(&self) -> Result<Vec<String>, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "list_options is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn is_toggled(&self) -> Result<bool, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "is_toggled is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_toggled is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn get_range_value(&self) -> Result<f64, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "get_range_value is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_range_value is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn is_selected(&self) -> Result<bool, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "is_selected is not implemented for Linux yet".to_string(),
+        ))
+    }
+
+    fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_selected is not implemented for Linux yet".to_string(),
+        ))
     }
 }
 

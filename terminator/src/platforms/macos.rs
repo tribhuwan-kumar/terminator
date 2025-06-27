@@ -776,6 +776,7 @@ impl UIElementImpl for MacOSUIElement {
                 description: None,
                 properties,
                 is_keyboard_focusable: Some(false), // macos: not implemented
+                bounds: None, // Will be populated by get_configurable_attributes if focusable
             };
 
             // Special handling for window title - try multiple attributes
@@ -877,6 +878,7 @@ impl UIElementImpl for MacOSUIElement {
             description: None,
             properties,
             is_keyboard_focusable: Some(false), // macos: not implemented
+            bounds: None, // Will be populated by get_configurable_attributes if focusable
         };
 
         // Debug attribute collection
@@ -1825,6 +1827,54 @@ impl UIElementImpl for MacOSUIElement {
     fn url(&self) -> Option<String> {
         None
     }
+
+    fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "select_option is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn list_options(&self) -> Result<Vec<String>, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "list_options is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn is_toggled(&self) -> Result<bool, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "is_toggled is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_toggled is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn get_range_value(&self) -> Result<f64, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "get_range_value is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_range_value is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn is_selected(&self) -> Result<bool, AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "is_selected is not implemented for macOS yet".to_string(),
+        ))
+    }
+
+    fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "set_selected is not implemented for macOS yet".to_string(),
+        ))
+    }
 }
 
 // Helper function to parse AXUIElement attribute values into appropriate types
@@ -2748,6 +2798,12 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::ClassName(_) => Err(AutomationError::UnsupportedOperation(
                 "ClassName selector is not yet supported for macOS".to_string(),
             )),
+            Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
+                "LocalizedRole selector is not yet supported for macOS".to_string(),
+            )),
+            Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
+                "Position selector not yet supported for macOS".to_string(),
+            )),
         }
     }
 
@@ -3026,6 +3082,12 @@ impl AccessibilityEngine for MacOSEngine {
             )),
             Selector::Visible(_) => Err(AutomationError::UnsupportedOperation(
                 "Visible selector not yet supported for macOS".to_string(),
+            )),
+            Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
+                "LocalizedRole selector is not yet supported for macOS".to_string(),
+            )),
+            Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
+                "Position selector not yet supported for macOS".to_string(),
             )),
         }
     }

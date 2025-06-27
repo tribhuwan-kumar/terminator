@@ -25,6 +25,16 @@ pub enum Selector {
     ClassName(String),
     /// Filter by visibility on screen
     Visible(bool),
+    /// Select by localized role
+    LocalizedRole(String),
+    /// Select by position (x,y) on screen
+    Position(i32, i32),
+}
+
+impl std::fmt::Display for Selector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl From<&str> for Selector {
@@ -33,6 +43,15 @@ impl From<&str> for Selector {
         let parts: Vec<&str> = s.split(">>").map(|p| p.trim()).collect();
         if parts.len() > 1 {
             return Selector::Chain(parts.into_iter().map(Selector::from).collect());
+        }
+
+        // if using pipe, use it for the role plus name
+        if s.contains('|') {
+            let parts: Vec<&str> = s.split('|').collect();
+            return Selector::Role {
+                role: parts[0].trim().to_string(),
+                name: Some(parts[1].trim().to_string()),
+            };
         }
 
         // Make common UI roles like "window", "button", etc. default to Role selectors
@@ -71,6 +90,16 @@ impl From<&str> for Selector {
             _ if s.to_lowercase().starts_with("visible:") => {
                 let value = s[8..].trim().to_lowercase();
                 Selector::Visible(value == "true")
+            }
+            _ if s.to_lowercase().starts_with("pos:") => {
+                let parts: Vec<&str> = s[4..].split(',').map(|p| p.trim()).collect();
+                if parts.len() == 2 {
+                    if let (Ok(x), Ok(y)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
+                        return Selector::Position(x, y);
+                    }
+                }
+                // Fallback to name if format is wrong
+                Selector::Name(s.to_string())
             }
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),
