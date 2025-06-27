@@ -1,9 +1,9 @@
 mod e2e_tests;
 mod firefox_window_tests;
 mod functional_verification_tests;
-mod google_workflow_tests;
 mod high_level_inputs_tests;
 mod performance_tests;
+mod selector_tests;
 mod test_serialization;
 
 // Initialize tracing for tests

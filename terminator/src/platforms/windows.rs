@@ -641,7 +641,7 @@ impl AccessibilityEngine for WindowsEngine {
             Selector::Id(id) => {
                 debug!("Searching for element with ID: {}", id);
                 // Clone id to move into the closure
-                let target_id = id.clone();
+                let target_id = id.strip_prefix('#').unwrap_or(id).to_string();
                 let matcher = self
                     .automation
                     .0
@@ -952,6 +952,12 @@ impl AccessibilityEngine for WindowsEngine {
                     })
                     .collect())
             }
+            Selector::Position(_x, _y) => {
+                // not implemented
+                Err(AutomationError::UnsupportedOperation(
+                    "`Position` selector not supported".to_string(),
+                ))
+            }
         }
     }
 
@@ -1019,12 +1025,13 @@ impl AccessibilityEngine for WindowsEngine {
             Selector::Id(id) => {
                 debug!("Searching for element with ID: {}", id);
                 // Clone id to move into the closure
-                let target_id = id.clone();
+                let target_id = id.strip_prefix('#').unwrap_or(id).to_string();
                 let matcher = self
                     .automation
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(500)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Use the common function to generate ID
                         match generate_element_id(e) {
@@ -1264,6 +1271,17 @@ impl AccessibilityEngine for WindowsEngine {
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
                 })))
+            }
+            Selector::Position(x, y) => {
+                debug!("searching element at position: ({}, {})", x, y);
+                let point = uiautomation::types::Point::new(*x, *y);
+                let element = self.automation.0.element_from_point(point).map_err(|e| {
+                    AutomationError::ElementNotFound(format!(
+                        "No element found at position ({}, {}): {}",
+                        x, y, e
+                    ))
+                })?;
+                Ok(convert_uiautomation_element_to_terminator(element))
             }
         }
     }

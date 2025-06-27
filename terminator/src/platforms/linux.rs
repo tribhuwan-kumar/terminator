@@ -537,6 +537,11 @@ fn find_elements_inner<'a>(
                     "Selector::NativeId is not implemented for Linux".to_string(),
                 ));
             }
+            Selector::Position(_, _) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Selector::Position is not implemented for Linux".to_string(),
+                ));
+            }
             Selector::Text(_) => {
                 return Err(AutomationError::UnsupportedPlatform(
                     "Selector::Text is not implemented for Linux".to_string(),

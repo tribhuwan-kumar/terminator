@@ -1,9 +1,9 @@
 use crate::utils::{
-    get_timeout, ActivateElementArgs, ClipboardArgs, DesktopWrapper, EmptyArgs, GetClipboardArgs,
-    GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
-    MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
-    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, DesktopWrapper, EmptyArgs,
+    GetApplicationsArgs, GetClipboardArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
+    HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
+    PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
+    SetSelectedArgs, SetToggledArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use rmcp::model::{
@@ -95,11 +95,9 @@ impl DesktopWrapper {
         });
 
         // Always include the tree unless explicitly disabled
-        if args.include_tree.unwrap_or(true) {
-            if let Ok(tree_val) = serde_json::to_value(tree) {
-                if let Some(obj) = result_json.as_object_mut() {
-                    obj.insert("ui_tree".to_string(), tree_val);
-                }
+        if let Ok(tree_val) = serde_json::to_value(tree) {
+            if let Some(obj) = result_json.as_object_mut() {
+                obj.insert("ui_tree".to_string(), tree_val);
             }
         }
 
@@ -109,7 +107,7 @@ impl DesktopWrapper {
     #[tool(description = "Get all applications currently running and their state.")]
     async fn get_applications(
         &self,
-        #[tool(param)] _args: EmptyArgs,
+        #[tool(param)] args: GetApplicationsArgs,
     ) -> Result<CallToolResult, McpError> {
         let apps = self.desktop.applications().map_err(|e| {
             McpError::resource_not_found(
@@ -117,6 +115,8 @@ impl DesktopWrapper {
                 Some(json!({"reason": e.to_string()})),
             )
         })?;
+
+        let include_tree = args.include_tree.unwrap_or(false);
 
         let app_info_futures: Vec<_> = apps
             .iter()
@@ -128,12 +128,9 @@ impl DesktopWrapper {
                 let app_pid = app.process_id().unwrap_or(0);
                 let is_focused = app.is_focused().unwrap_or(false);
 
-                tokio::task::spawn_blocking(move || {
-                    let tree = if app_pid > 0 {
-                        desktop
-                            .get_window_tree(app_pid, None, None)
-                            .ok()
-                            .and_then(|t| serde_json::to_value(t).ok())
+                tokio::spawn(async move {
+                    let tree = if include_tree && app_pid > 0 {
+                        desktop.get_window_tree(app_pid, None, None).ok()
                     } else {
                         None
                     };
@@ -149,22 +146,19 @@ impl DesktopWrapper {
                             format!("#{}", app_id),
                             format!("name:{}", app_name)
                         ],
-                        "ui_tree": tree
+                        "ui_tree": tree.and_then(|t| serde_json::to_value(t).ok())
                     })
                 })
             })
             .collect();
 
-        let app_info_results = futures::future::join_all(app_info_futures).await;
-        let app_info: Vec<Value> = app_info_results
-            .into_iter()
-            .filter_map(|res| res.ok())
-            .collect();
+        let results = futures::future::join_all(app_info_futures).await;
+        let app_info: Vec<Value> = results.into_iter().filter_map(Result::ok).collect();
 
         Ok(CallToolResult::success(vec![Content::json(json!({
             "applications": app_info,
             "count": app_info.len(),
-            "recommendation": "Always prefer using ID selectors (e.g., '#12345') over name selectors for reliability. The UI tree for each application is now included."
+            "recommendation": "Always prefer using ID selectors (e.g., '#12345') over name selectors for reliability. Use get_window_tree with the PID to get detailed UI structure when needed."
         }))?]))
     }
 
@@ -300,12 +294,7 @@ impl DesktopWrapper {
         }
 
         // Always attach tree for better context, or if explicitly requested
-        self.maybe_attach_tree(
-            args.include_tree
-                .unwrap_or(args.verify_action.unwrap_or(true)),
-            Some(pid),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, Some(pid), &mut result_json);
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -313,7 +302,7 @@ impl DesktopWrapper {
     #[tool(description = "Clicks a UI element.")]
     async fn click_element(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        #[tool(param)] args: ClickElementArgs,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -369,12 +358,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        // Attach tree if requested
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        // Always attach tree for better context
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -431,11 +416,7 @@ impl DesktopWrapper {
             "selector": args.selector,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -489,11 +470,7 @@ impl DesktopWrapper {
             "element": element_info,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            focused.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, focused.process_id().ok(), &mut result_json);
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -750,11 +727,7 @@ impl DesktopWrapper {
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -805,11 +778,7 @@ impl DesktopWrapper {
                     "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 });
-                self.maybe_attach_tree(
-                    args.include_tree.unwrap_or(false),
-                    element.process_id().ok(),
-                    &mut result_json,
-                );
+                self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
 
                 Ok(CallToolResult::success(vec![Content::json(result_json)?]))
             }
@@ -870,11 +839,7 @@ impl DesktopWrapper {
             "duration_ms": args.duration_ms.unwrap_or(1000),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1149,11 +1114,7 @@ impl DesktopWrapper {
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1201,11 +1162,7 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "option_selected": args.option_name,
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1252,11 +1209,7 @@ impl DesktopWrapper {
             "options": options,
             "count": options.len(),
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1303,11 +1256,7 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "state_set_to": args.state,
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1354,11 +1303,7 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "value_set_to": args.value,
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1407,11 +1352,7 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "state_set_to": args.state,
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1457,11 +1398,7 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "is_toggled": is_toggled,
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1507,11 +1444,7 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "value": value,
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1557,11 +1490,7 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "is_selected": is_selected,
         });
-        self.maybe_attach_tree(
-            args.include_tree.unwrap_or(false),
-            element.process_id().ok(),
-            &mut result_json,
-        );
+        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1645,6 +1574,8 @@ Your most reliable strategy is to inspect the application's UI structure *before
         - `\"role:Document >> name:Email\"` (find Email field within document content)
         - `\"role:Window >> role:Document >> role:Button\"` (find button within document, not browser chrome)
         - `\"name:Form >> role:Edit\"` (find edit field within a specific form)
+    *   **Coordinate-Based Selectors for Visual Targeting:** When dealing with graphical elements that lack stable IDs or names (like canvas elements, drawing applications, or specific parts of an image), you can use coordinate-based selectors:
+        - `pos:x,y`: To target a specific point on the screen for actions like `click_element`.
     *   **Intelligent Selector Design:** Consider the application context:
         - **Web browsers:** Chain with `role:Document >>` to target page content, not browser UI
         - **Forms:** Use parent containers to avoid ambiguity: `\"name:Contact Form >> name:Email\"`
@@ -1656,7 +1587,7 @@ Your most reliable strategy is to inspect the application's UI structure *before
         4. Generic (last resort): `\"role:Button\"`
 
 5.  **Interact with the Element:** Once you have a reliable `selector`, use an action tool:
-    *   `click_element`: To click buttons, links, etc.
+    *   `click_element`: To click buttons, links, etc. For elements without stable selectors (e.g., items on a drawing canvas), favor using a position selector like `pos:x,y`.
     *   `type_into_element`: To type text into input fields.
     *   `press_key`: Sends a key press to a UI element. **Key Syntax: Use curly braces for special keys!**
     *   `activate_element`: To bring a window to the foreground.

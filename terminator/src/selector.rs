@@ -27,6 +27,8 @@ pub enum Selector {
     Visible(bool),
     /// Select by localized role
     LocalizedRole(String),
+    /// Select by position (x,y) on screen
+    Position(i32, i32),
 }
 
 impl std::fmt::Display for Selector {
@@ -88,6 +90,16 @@ impl From<&str> for Selector {
             _ if s.to_lowercase().starts_with("visible:") => {
                 let value = s[8..].trim().to_lowercase();
                 Selector::Visible(value == "true")
+            }
+            _ if s.to_lowercase().starts_with("pos:") => {
+                let parts: Vec<&str> = s[4..].split(',').map(|p| p.trim()).collect();
+                if parts.len() == 2 {
+                    if let (Ok(x), Ok(y)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
+                        return Selector::Position(x, y);
+                    }
+                }
+                // Fallback to name if format is wrong
+                Selector::Name(s.to_string())
             }
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),

@@ -44,16 +44,20 @@ pub struct GetWindowTreeArgs {
     pub pid: u32,
     #[schemars(description = "Optional window title filter")]
     pub title: Option<String>,
-    #[schemars(
-        description = "Whether to include full UI tree in the response (verbose mode). STRONGLY RECOMMENDED to set to true for detailed element discovery with IDs."
-    )]
-    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetWindowsArgs {
     #[schemars(description = "Name of the application to get windows for")]
     pub app_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetApplicationsArgs {
+    #[schemars(
+        description = "Whether to include the full UI tree for each application. Defaults to false."
+    )]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -68,8 +72,22 @@ pub struct LocatorArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
+    #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ClickElementArgs {
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional timeout in milliseconds for the action")]
+    pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -86,8 +104,6 @@ pub struct TypeIntoElementArgs {
     pub text_to_type: String,
     #[schemars(description = "Optional timeout in milliseconds for the action (default: 3000ms)")]
     pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
     #[schemars(description = "Whether to verify the action succeeded (default: true)")]
     pub verify_action: Option<bool>,
 }
@@ -106,8 +122,6 @@ pub struct PressKeyArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -116,8 +130,6 @@ pub struct GlobalKeyArgs {
         description = "The key or key combination to press (e.g., '{PageDown}', '{Ctrl}{V}')"
     )]
     pub key: String,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

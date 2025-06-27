@@ -39,7 +39,7 @@ pub enum Browser {
 pub use platforms::windows::{convert_uiautomation_element_to_terminator, get_process_name_by_pid};
 
 // Define a new struct to hold click result information - move to module level
-pub struct ClickResult {
+pub struct  ClickResult {
     pub method: String,
     pub coordinates: Option<(f64, f64)>,
     pub details: String,
