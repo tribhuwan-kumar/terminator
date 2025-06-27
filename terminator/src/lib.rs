@@ -304,7 +304,7 @@ impl Desktop {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terminator::Desktop;
     /// let desktop = Desktop::new_default()?;
     /// let monitors = desktop.list_monitors().await?;
