@@ -522,9 +522,11 @@ fn find_elements_inner<'a>(
                     "Selector::Path is not implemented for Linux".to_string(),
                 ));
             }
-            Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedPlatform(
-                "LocalizedRole selector is not yet supported for Linux".to_string(),
-            )),
+            Selector::LocalizedRole(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "LocalizedRole selector is not yet supported for Linux".to_string(),
+                ));
+            }
             Selector::ClassName(_) => {
                 return Err(AutomationError::UnsupportedPlatform(
                     "Selector::ClassName is not implemented for Linux".to_string(),
