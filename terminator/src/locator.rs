@@ -11,6 +11,9 @@ use std::time::Duration;
 const DEFAULT_LOCATOR_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A high-level API for finding and interacting with UI elements
+///
+/// For maximum precision, prefer role|name format (e.g., "button|Submit")
+/// over broad selectors like "role:Button" that could match multiple elements.
 #[derive(Clone)]
 pub struct Locator {
     engine: Arc<dyn AccessibilityEngine>,

@@ -4,6 +4,7 @@ use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
 use crate::{ClickResult, CommandOutput, ScreenshotResult};
 use atspi::{State, StateSet};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::default::Default;
 use std::fmt::Debug;
 use std::future::Future;
@@ -1553,6 +1554,29 @@ impl AccessibilityEngine for LinuxEngine {
     }
 }
 
+impl LinuxUIElement {
+    fn description(&self) -> Option<String> {
+        let (resp_tx, resp_rx): OptionStringChannel = std::sync::mpsc::channel();
+        let this = self.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let result: Result<Option<String>, AutomationError> = rt.block_on(async move {
+                let proxy = AccessibleProxy::builder(&this.connection)
+                    .destination(this.destination.as_str())
+                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                    .path(this.path.as_str())
+                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                    .build()
+                    .await
+                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                Ok(proxy.description().await.ok())
+            });
+            let _ = resp_tx.send(result);
+        });
+        resp_rx.recv().unwrap().unwrap_or(None)
+    }
+}
+
 impl UIElementImpl for LinuxUIElement {
     fn object_id(&self) -> usize {
         generate_element_id(&self.connection, &self.destination, &self.path).unwrap_or(0)
@@ -1594,27 +1618,27 @@ impl UIElementImpl for LinuxUIElement {
     }
 
     fn attributes(&self) -> UIElementAttributes {
-        let attrs = UIElementAttributes {
+        let mut properties = HashMap::new();
+        if let Ok(attrs) = get_accessible_attributes(self) {
+            properties = attrs
+                .into_iter()
+                .map(|(k, v)| (k, Some(serde_json::Value::String(v))))
+                .collect();
+        }
+
+        UIElementAttributes {
             role: self.role(),
             name: self.name(),
-            value: Some(self.is_enabled().unwrap_or(false).to_string()),
-            is_keyboard_focusable: Some(self.is_focused().unwrap_or(false)),
-            bounds: None, // Will be populated by get_configurable_attributes if focusable
-            ..Default::default()
-        };
-        // Fetch additional attributes using AccessibleProxy
-        if let Ok(attributes) = get_accessible_attributes(self) {
-            // Convert HashMap<String, String> to HashMap<String, Option<serde_json::Value>>
-            let converted_attributes: std::collections::HashMap<String, Option<serde_json::Value>> =
-                attributes
-                    .into_iter()
-                    .map(|(k, v)| (k, Some(serde_json::Value::String(v))))
-                    .collect();
-            let mut attrs = attrs;
-            attrs.properties = converted_attributes;
-            return attrs;
+            label: self.name(),
+            value: self.get_text(0).ok(),
+            description: self.description(),
+            text: self.get_text(0).ok(),
+            is_keyboard_focusable: self.is_keyboard_focusable().ok(),
+            is_focused: self.is_focused().ok(),
+            enabled: self.is_enabled().ok(),
+            bounds: self.bounds().ok(),
+            properties,
         }
-        attrs
     }
 
     fn name(&self) -> Option<String> {
@@ -2339,7 +2363,7 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
-    fn set_transparency(&self, percentage: u8) -> Result<(), AutomationError> {
+    fn set_transparency(&self, _percentage: u8) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))
@@ -2355,7 +2379,7 @@ impl UIElementImpl for LinuxUIElement {
         None
     }
 
-    fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
+    fn select_option(&self, _option_name: &str) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "select_option is not implemented for Linux yet".to_string(),
         ))
@@ -2373,7 +2397,7 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
-    fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
+    fn set_toggled(&self, _state: bool) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "set_toggled is not implemented for Linux yet".to_string(),
         ))
@@ -2385,7 +2409,7 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
-    fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
+    fn set_range_value(&self, _value: f64) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "set_range_value is not implemented for Linux yet".to_string(),
         ))
@@ -2397,10 +2421,14 @@ impl UIElementImpl for LinuxUIElement {
         ))
     }
 
-    fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
+    fn set_selected(&self, _state: bool) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "set_selected is not implemented for Linux yet".to_string(),
         ))
+    }
+
+    fn invoke(&self) -> Result<(), AutomationError> {
+        self.click().map(|_| ())
     }
 }
 

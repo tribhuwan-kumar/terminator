@@ -181,6 +181,8 @@ pub struct UIElementAttributes {
     #[serde(default, skip_serializing_if = "is_empty_string")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "is_empty_string")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "is_empty_string")]
     pub value: Option<String>,
     #[serde(default, skip_serializing_if = "is_empty_string")]
     pub description: Option<String>,
@@ -188,8 +190,12 @@ pub struct UIElementAttributes {
     pub properties: HashMap<String, Option<serde_json::Value>>,
     #[serde(default, skip_serializing_if = "is_false_bool")]
     pub is_keyboard_focusable: Option<bool>,
+    #[serde(default, skip_serializing_if = "is_false_bool")]
+    pub is_focused: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounds: Option<(f64, f64, f64, f64)>, // Only populated for keyboard-focusable elements
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
 }
 
 impl fmt::Debug for UIElementAttributes {
@@ -215,6 +221,13 @@ impl fmt::Debug for UIElementAttributes {
             }
         }
 
+        // Only show non-empty text
+        if let Some(ref text) = self.text {
+            if !text.is_empty() {
+                debug_struct.field("text", text);
+            }
+        }
+
         // Only show non-empty value
         if let Some(ref value) = self.value {
             if !value.is_empty() {
@@ -237,6 +250,11 @@ impl fmt::Debug for UIElementAttributes {
         // Only show keyboard focusable if true
         if let Some(true) = self.is_keyboard_focusable {
             debug_struct.field("is_keyboard_focusable", &true);
+        }
+
+        // Only show focused if true
+        if let Some(true) = self.is_focused {
+            debug_struct.field("is_focused", &true);
         }
 
         // Only show bounds if present
@@ -265,6 +283,7 @@ pub trait UIElementImpl: Send + Sync + Debug {
     fn right_click(&self) -> Result<(), AutomationError>;
     fn hover(&self) -> Result<(), AutomationError>;
     fn focus(&self) -> Result<(), AutomationError>;
+    fn invoke(&self) -> Result<(), AutomationError>;
     fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError>;
     fn press_key(&self, key: &str) -> Result<(), AutomationError>;
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError>;
@@ -539,6 +558,12 @@ impl UIElement {
     /// Focus this element
     pub fn focus(&self) -> Result<(), AutomationError> {
         self.inner.focus()
+    }
+
+    /// Invoke this element
+    #[instrument(level = "debug", skip(self))]
+    pub fn invoke(&self) -> Result<(), AutomationError> {
+        self.inner.invoke()
     }
 
     /// Type text into this element
@@ -924,6 +949,7 @@ pub mod utils {
         UIElementAttributes {
             role: element.role(),
             name: element.name(),
+            text: None,
             value: element.attributes().value,
             bounds: None, // Not included in minimal attributes
             ..Default::default()

@@ -106,6 +106,8 @@ pub struct TypeIntoElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to verify the action succeeded (default: true)")]
     pub verify_action: Option<bool>,
+    #[schemars(description = "Whether to clear the element before typing (default: true)")]
+    pub clear_before_typing: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
