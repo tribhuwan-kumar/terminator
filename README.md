@@ -51,10 +51,10 @@ Control your computer using natural language through Claude or other LLMs:
    [Typing haiku...]
    ✅ Done! I've written a haiku about robots in Notepad.
 
-💬 You: Take a screenshot and tell me what apps are running
-🤖 Claude: I'll capture your screen and analyze the running applications...
-   [Taking screenshot...]
-   ✅ I can see Chrome, VS Code, and Spotify are currently running.
+💬 You: Open Twitter and comment on people posts with an e/acc style 
+🤖 Claude: Sure I'll do that
+   [Opening x.com in Chrome...]
+   ✅ I commented on Karpathy post about aliens
 ```
 
 **Installation:**
