@@ -23,18 +23,15 @@ fn default_desktop() -> Arc<Desktop> {
 pub struct DesktopWrapper {
     #[serde(skip, default = "default_desktop")]
     pub desktop: Arc<Desktop>,
+    #[serde(skip)]
+    pub tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
 }
 
 impl Default for DesktopWrapper {
     fn default() -> Self {
-        #[cfg(any(target_os = "windows", target_os = "linux"))]
-        let desktop = Desktop::new(false, false).expect("Failed to create default desktop");
-        #[cfg(target_os = "macos")]
-        let desktop = Desktop::new(true, true).expect("Failed to create default desktop");
-
-        Self {
-            desktop: Arc::new(desktop),
-        }
+        // Can't use Default::default() because we need the tool_router from the macro
+        // So we'll construct it properly in server.rs
+        panic!("DesktopWrapper::default() should not be used directly. Use DesktopWrapper::new() instead.");
     }
 }
 

@@ -1,5 +1,6 @@
+pub use crate::utils::DesktopWrapper;
 use crate::utils::{
-    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, DesktopWrapper, EmptyArgs,
+    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, EmptyArgs,
     GetApplicationsArgs, GetClipboardArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
     HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
     PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
@@ -7,12 +8,15 @@ use crate::utils::{
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
+use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
 use rmcp::{tool, Error as McpError, ServerHandler};
+use rmcp::{tool_handler, tool_router};
 use serde_json::{json, Value};
 use std::env;
+use std::future::Future;
 use std::io::Cursor;
 use std::sync::Arc;
 use terminator::{Browser, Desktop, Selector, UIElement};
@@ -95,7 +99,7 @@ fn build_element_not_found_error(
     McpError::resource_not_found("Element not found", Some(error_payload))
 }
 
-#[tool(tool_box)]
+#[tool_router]
 impl DesktopWrapper {
     pub async fn new() -> Result<Self, McpError> {
         #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -122,6 +126,7 @@ impl DesktopWrapper {
 
         Ok(Self {
             desktop: Arc::new(desktop),
+            tool_router: Self::tool_router(),
         })
     }
 
@@ -130,7 +135,7 @@ impl DesktopWrapper {
     )]
     async fn get_window_tree(
         &self,
-        #[tool(param)] args: GetWindowTreeArgs,
+        Parameters(args): Parameters<GetWindowTreeArgs>,
     ) -> Result<CallToolResult, McpError> {
         let tree = self
             .desktop
@@ -170,7 +175,7 @@ impl DesktopWrapper {
     )]
     async fn get_applications(
         &self,
-        #[tool(param)] args: GetApplicationsArgs,
+        Parameters(args): Parameters<GetApplicationsArgs>,
     ) -> Result<CallToolResult, McpError> {
         let apps = self.desktop.applications().map_err(|e| {
             McpError::resource_not_found(
@@ -234,7 +239,7 @@ impl DesktopWrapper {
     #[tool(description = "Get windows for a specific application by name.")]
     async fn get_windows_for_application(
         &self,
-        #[tool(param)] args: GetWindowsArgs,
+        Parameters(args): Parameters<GetWindowsArgs>,
     ) -> Result<CallToolResult, McpError> {
         let windows = self
             .desktop
@@ -274,7 +279,7 @@ impl DesktopWrapper {
     )]
     async fn type_into_element(
         &self,
-        #[tool(param)] args: TypeIntoElementArgs,
+        Parameters(args): Parameters<TypeIntoElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -286,7 +291,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -366,7 +375,7 @@ impl DesktopWrapper {
     )]
     async fn click_element(
         &self,
-        #[tool(param)] args: ClickElementArgs,
+        Parameters(args): Parameters<ClickElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -378,7 +387,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -443,7 +456,7 @@ impl DesktopWrapper {
     )]
     async fn press_key(
         &self,
-        #[tool(param)] args: PressKeyArgs,
+        Parameters(args): Parameters<PressKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -487,7 +500,7 @@ impl DesktopWrapper {
     )]
     async fn press_key_global(
         &self,
-        #[tool(param)] args: GlobalKeyArgs,
+        Parameters(args): Parameters<GlobalKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
         // Identify focused element
         let focused = self.desktop.focused_element().map_err(|e| {
@@ -527,7 +540,7 @@ impl DesktopWrapper {
     #[tool(description = "Executes a shell command.")]
     async fn run_command(
         &self,
-        #[tool(param)] args: RunCommandArgs,
+        Parameters(args): Parameters<RunCommandArgs>,
     ) -> Result<CallToolResult, McpError> {
         let output = self
             .desktop
@@ -555,7 +568,7 @@ impl DesktopWrapper {
     )]
     async fn activate_element(
         &self,
-        #[tool(param)] args: ActivateElementArgs,
+        Parameters(args): Parameters<ActivateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -605,7 +618,7 @@ impl DesktopWrapper {
     )]
     async fn capture_screen(
         &self,
-        #[tool(param)] _args: EmptyArgs,
+        Parameters(_args): Parameters<EmptyArgs>,
     ) -> Result<CallToolResult, McpError> {
         let monitor = self.desktop.get_primary_monitor().await.map_err(|e| {
             McpError::internal_error(
@@ -638,7 +651,7 @@ impl DesktopWrapper {
     #[tool(description = "Sets text to the system clipboard using shell commands.")]
     async fn set_clipboard(
         &self,
-        #[tool(param)] args: ClipboardArgs,
+        Parameters(args): Parameters<ClipboardArgs>,
     ) -> Result<CallToolResult, McpError> {
         // todo use native clipbaord feature we implemented
         let result = if cfg!(target_os = "windows") {
@@ -677,7 +690,7 @@ impl DesktopWrapper {
     #[tool(description = "Gets text from the system clipboard using shell commands.")]
     async fn get_clipboard(
         &self,
-        #[tool(param)] _args: GetClipboardArgs,
+        Parameters(_args): Parameters<GetClipboardArgs>,
     ) -> Result<CallToolResult, McpError> {
         let command_result = if cfg!(target_os = "windows") {
             // Windows: powershell Get-Clipboard
@@ -714,7 +727,7 @@ impl DesktopWrapper {
     )]
     async fn mouse_drag(
         &self,
-        #[tool(param)] args: MouseDragArgs,
+        Parameters(args): Parameters<MouseDragArgs>,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -764,7 +777,7 @@ impl DesktopWrapper {
     )]
     async fn validate_element(
         &self,
-        #[tool(param)] args: ValidateElementArgs,
+        Parameters(args): Parameters<ValidateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -823,7 +836,7 @@ impl DesktopWrapper {
     #[tool(description = "Highlights an element with a colored border for visual confirmation.")]
     async fn highlight_element(
         &self,
-        #[tool(param)] args: HighlightElementArgs,
+        Parameters(args): Parameters<HighlightElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -865,7 +878,7 @@ impl DesktopWrapper {
     )]
     async fn wait_for_element(
         &self,
-        #[tool(param)] args: WaitForElementArgs,
+        Parameters(args): Parameters<WaitForElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let timeout = get_timeout(args.timeout_ms);
@@ -937,7 +950,7 @@ impl DesktopWrapper {
     )]
     async fn navigate_browser(
         &self,
-        #[tool(param)] args: NavigateBrowserArgs,
+        Parameters(args): Parameters<NavigateBrowserArgs>,
     ) -> Result<CallToolResult, McpError> {
         let browser = args.browser.clone().map(Browser::Custom);
         let ui_element = self.desktop.open_url(&args.url, browser).map_err(|e| {
@@ -972,7 +985,7 @@ impl DesktopWrapper {
     #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
     async fn open_application(
         &self,
-        #[tool(param)] args: OpenApplicationArgs,
+        Parameters(args): Parameters<OpenApplicationArgs>,
     ) -> Result<CallToolResult, McpError> {
         let ui_element = self.desktop.open_application(&args.app_name).map_err(|e| {
             McpError::internal_error(
@@ -1017,7 +1030,7 @@ impl DesktopWrapper {
     )]
     async fn close_element(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -1056,7 +1069,7 @@ impl DesktopWrapper {
     #[tool(description = "Scrolls a UI element in the specified direction by the given amount.")]
     async fn scroll_element(
         &self,
-        #[tool(param)] args: ScrollElementArgs,
+        Parameters(args): Parameters<ScrollElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let element = locator
@@ -1102,7 +1115,7 @@ impl DesktopWrapper {
     #[tool(description = "Selects an option in a dropdown or combobox by its visible text.")]
     async fn select_option(
         &self,
-        #[tool(param)] args: SelectOptionArgs,
+        Parameters(args): Parameters<SelectOptionArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1114,7 +1127,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1144,7 +1161,7 @@ impl DesktopWrapper {
     )]
     async fn list_options(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1156,7 +1173,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1184,7 +1205,7 @@ impl DesktopWrapper {
     )]
     async fn set_toggled(
         &self,
-        #[tool(param)] args: SetToggledArgs,
+        Parameters(args): Parameters<SetToggledArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1196,7 +1217,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1226,7 +1251,7 @@ impl DesktopWrapper {
     )]
     async fn set_range_value(
         &self,
-        #[tool(param)] args: SetRangeValueArgs,
+        Parameters(args): Parameters<SetRangeValueArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1238,7 +1263,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1268,7 +1297,7 @@ impl DesktopWrapper {
     )]
     async fn set_selected(
         &self,
-        #[tool(param)] args: SetSelectedArgs,
+        Parameters(args): Parameters<SetSelectedArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1280,7 +1309,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1310,7 +1343,7 @@ impl DesktopWrapper {
     )]
     async fn is_toggled(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1322,7 +1355,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1349,7 +1386,7 @@ impl DesktopWrapper {
     )]
     async fn get_range_value(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1361,7 +1398,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1388,7 +1429,7 @@ impl DesktopWrapper {
     )]
     async fn is_selected(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1400,7 +1441,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1425,7 +1470,7 @@ impl DesktopWrapper {
     #[tool(description = "Captures a screenshot of a specific UI element.")]
     async fn capture_element_screenshot(
         &self,
-        #[tool(param)] args: ValidateElementArgs,
+        Parameters(args): Parameters<ValidateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1492,7 +1537,7 @@ impl DesktopWrapper {
     )]
     async fn invoke_element(
         &self,
-        #[tool(param)] args: LocatorArgs,
+        Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_element_with_fallbacks;
 
@@ -1504,7 +1549,11 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
+            build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e.into(),
+            )
         })?;
 
         let element_info = build_element_info(&element);
@@ -1551,7 +1600,7 @@ impl DesktopWrapper {
     }
 }
 
-#[tool(tool_box)]
+#[tool_handler]
 impl ServerHandler for DesktopWrapper {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {

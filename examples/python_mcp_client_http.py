@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Natural Language MCP Client for Terminator Desktop Automation
-Uses Claude to understand natural language and execute desktop automation
+Natural Language MCP Client for Terminator Desktop Automation (HTTP Transport)
+Uses Claude to understand natural language and execute desktop automation via HTTP
 
-pip install anthropic mcp python-dotenv
+Note: This requires the MCP server to support streamable-http transport.
+Currently, the terminator-mcp-agent only supports stdio transport.
+This client is provided for future use or custom server implementations.
 """
 
 import asyncio
@@ -11,8 +13,8 @@ import os
 from typing import Optional, List, Dict, Any
 from contextlib import AsyncExitStack
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -32,21 +34,14 @@ class NaturalLanguageMCPClient:
             raise ValueError("ANTHROPIC_API_KEY environment variable is required")
         self.anthropic = Anthropic(api_key=api_key)
     
-    async def connect_to_server(self, server_command: str = "target/release/terminator-mcp-agent"):
-        """Connect to the terminator MCP server"""
+    async def connect_to_server(self, server_url: str = "http://localhost:3000/mcp"):
+        """Connect to the terminator MCP server via HTTP"""
         try:
-            print(f"🔌 Connecting to {server_command}...")
-            
-            # Set up the server parameters
-            server_params = StdioServerParameters(
-                command=server_command,
-                args=[],
-                env=None
-            )
+            print(f"🔌 Connecting to {server_url}...")
             
             # Create the client transport and connect
             transport = await self.exit_stack.enter_async_context(
-                stdio_client(server_params)
+                streamablehttp_client(server_url)
             )
             
             # Create the session
@@ -187,7 +182,7 @@ class NaturalLanguageMCPClient:
     
     async def chat_loop(self):
         """Run an interactive chat session"""
-        print("\n🤖 Natural Language Desktop Control")
+        print("\n🤖 Natural Language Desktop Control (via HTTP)")
         print("=" * 50)
         print("You can now control your desktop using natural language!")
         print("Examples:")
@@ -224,20 +219,26 @@ class NaturalLanguageMCPClient:
     
     async def cleanup(self):
         """Clean up resources"""
-        try:
-            await self.exit_stack.aclose()
-        except (asyncio.CancelledError, Exception):
-            # Ignore cleanup errors - they often happen on exit
-            pass
+        await self.exit_stack.aclose()
 
 
 async def main():
     """Main entry point"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Natural Language MCP Client (HTTP Transport)")
+    parser.add_argument(
+        "--server-url",
+        default="http://localhost:3000/mcp",
+        help="URL of the MCP HTTP server (default: http://localhost:3000/mcp)"
+    )
+    args = parser.parse_args()
+    
     client = NaturalLanguageMCPClient()
     
     try:
         # Connect to the MCP server
-        await client.connect_to_server()
+        await client.connect_to_server(args.server_url)
         
         # Run the interactive chat loop
         await client.chat_loop()
@@ -254,6 +255,11 @@ if __name__ == "__main__":
         print("Please set it in your .env file or export it:")
         print("  export ANTHROPIC_API_KEY='your-api-key-here'")
         exit(1)
+    
+    print("⚠️  Note: This client requires a server that supports streamable-http transport.")
+    print("The current terminator-mcp-agent only supports stdio transport.")
+    print("This client is provided for future use or custom server implementations.")
+    print()
     
     # Run the async main function
     asyncio.run(main()) 

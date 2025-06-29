@@ -68,11 +68,17 @@ Control your computer using natural language through Claude or other LLMs:
 cargo build --release --bin terminator-mcp-agent
 
 # Install Python dependencies
-pip install mcp anthropic python-dotenv
+pip install "mcp[client]" anthropic python-dotenv
 
-# Set your API key and run
+# Set your API key
 export ANTHROPIC_API_KEY='your-key-here'
+
+# Run the client (automatically starts MCP agent)
 python examples/python_mcp_client.py
+
+# or the HTTP transport 
+terminator-mcp-agent -t http
+python examples/python_mcp_client_http.py
 ```
 
 [See the full MCP client example →](examples/python_mcp_client.py)
@@ -152,30 +158,25 @@ The **MCP integration** is the recommended way to build AI-powered applications 
 
 ### Quick Start with MCP
 
-1. **Get the MCP agent**:
-   
-   **Option A: Download pre-built binary (Windows)**
-   - Download `terminator-mcp-windows-x86_64.zip` from [latest releases](https://github.com/mediar-ai/terminator/releases/latest)
-   - Extract and add to your PATH
-   
-   **Option B: Build from source** (requires Rust)
+1. **Setup** (one-time):
    ```bash
-   cargo build --release --bin terminator-mcp-agent
-   ```
-
-2. **Run the Python MCP client**:
-   ```bash
-   # Clone the repo if you haven't
+   # Clone the repo
    git clone https://github.com/mediar-ai/terminator
    cd terminator
    
-   # Install dependencies
-   pip install mcp anthropic python-dotenv
+   # Build the MCP agent (or download from releases)
+   cargo build --release --bin terminator-mcp-agent
    
-   # Set your Anthropic API key
+   # Install Python dependencies
+   pip install "mcp[client]" anthropic python-dotenv
+   ```
+
+2. **Run**:
+   ```bash
+   # Set your API key
    export ANTHROPIC_API_KEY='your-key-here'
    
-   # Run the client
+   # Start the client (auto-starts MCP agent)
    python examples/python_mcp_client.py
    ```
 
@@ -208,6 +209,8 @@ The MCP agent exposes 40+ tools for desktop automation, including:
 - **Advanced**: `mouse_drag`, `press_key`, `select_option`, `set_range_value`
 
 [Full MCP tool documentation →](terminator-mcp-agent/README.md)
+
+
 
 ### Integrating with AI Applications
 
