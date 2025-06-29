@@ -43,7 +43,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 
 Control your computer using natural language through Claude or other LLMs:
 
-```python
+```
 # Just talk to it:
 💬 You: Open Notepad and write a haiku about robots
 🤖 Claude: I'll help you open Notepad and write a haiku...
