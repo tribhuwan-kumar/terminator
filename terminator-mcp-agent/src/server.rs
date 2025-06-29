@@ -286,7 +286,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -378,7 +378,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1114,7 +1114,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1156,7 +1156,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1196,7 +1196,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1238,7 +1238,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1280,7 +1280,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1322,7 +1322,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1361,7 +1361,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1400,7 +1400,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
@@ -1504,7 +1504,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e.into())
         })?;
 
         let element_info = build_element_info(&element);
