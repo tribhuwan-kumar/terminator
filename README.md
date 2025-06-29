@@ -33,37 +33,88 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 
->Computer use SDK for building agents that learn from human screen recordings. Cross-platform (Windows/macOS/Linux), deterministic, and ready for L5 desktop automation.
+>AI-powered desktop automation through natural language. Build agents that control any application using MCP (Model Context Protocol) + LLMs. Cross-platform SDK with Python, TypeScript, and Rust support.
 
 ## ⚡ TL;DR — Hello World Example
 
 > Skip the boilerplate. This is the fastest way to feel the magic.
 
-### 🐍 Python
+### 🤖 Natural Language Control with MCP Client (Recommended)
 
+Control your computer using natural language through Claude or other LLMs:
+
+```python
+# Just talk to it:
+💬 You: Open Notepad and write a haiku about robots
+🤖 Claude: I'll help you open Notepad and write a haiku...
+   [Opening Notepad...]
+   [Typing haiku...]
+   ✅ Done! I've written a haiku about robots in Notepad.
+
+💬 You: Take a screenshot and tell me what apps are running
+🤖 Claude: I'll capture your screen and analyze the running applications...
+   [Taking screenshot...]
+   ✅ I can see Chrome, VS Code, and Spotify are currently running.
+```
+
+**Installation:**
+
+```bash
+# Option 1: Download pre-built MCP agent (Windows)
+# Download from: https://github.com/mediar-ai/terminator/releases/latest
+# Extract terminator-mcp-windows-x86_64.zip and add to PATH
+
+# Option 2: Build from source (requires Rust)
+cargo build --release --bin terminator-mcp-agent
+
+# Install Python dependencies
+pip install mcp anthropic python-dotenv
+
+# Set your API key and run
+export ANTHROPIC_API_KEY='your-key-here'
+python examples/python_mcp_client.py
+```
+
+[See the full MCP client example →](examples/python_mcp_client.py)
+
+### 🐍 Direct Python SDK
+
+For programmatic control without AI:
+
+```python
+import terminator
+
+# Control applications programmatically
+desktop = terminator.Desktop()
+desktop.open_application('calc')
+desktop.locator('name:Seven').click()
+desktop.locator('name:Plus').click()  
+desktop.locator('name:Three').click()
+desktop.locator('name:Equals').click()
+# Result: 10 appears in calculator
+```
+
+**Installation:**
 ```bash
 pip install terminator.py
 ```
 
-```python
-import terminator
-desktop = terminator.Desktop()
-desktop.open_application('calc')
-seven = desktop.locator('name:Seven')
-seven.click()
-```
+### 🟦 TypeScript / Node.js SDK
 
-### 🟦 TypeScript / Node.js
-
-```bash
-bun i terminator.js # or npm, pnpm, yarn
-```
-
-```ts
+```typescript
 const { Desktop } = require('terminator.js');
+
+// Async/await for modern control flow
 const desktop = new Desktop();
-await desktop.openApplication('notepad')
-await desktop.locator('name:Edit').typeText('hello world')
+await desktop.openApplication('notepad');
+await desktop.locator('name:Edit').typeText('Hello from TypeScript!');
+await desktop.pressKey('{Ctrl}s'); // Save
+```
+
+**Installation:**
+```bash
+npm install terminator.js
+# or: bun add terminator.js
 ```
 
 ### 🧠 What is Terminator?
@@ -77,7 +128,107 @@ Terminator is an AI-first Playwright-style SDK for automating operating systems.
 - 🧩 Supports TypeScript, Python, MCP, and Rust
 - 📈 Scans the UI in ~80ms—up to 10,000x faster and cheaper than a human
 
-Terminator runs “headless” by default. It doesn’t require a visible screen, relying instead on accessibility layers (like UI Automation on Windows) to interact with apps.
+Terminator runs "headless" by default. It doesn't require a visible screen, relying instead on accessibility layers (like UI Automation on Windows) to interact with apps.
+
+## 🎯 Building with MCP (Model Context Protocol)
+
+The **MCP integration** is the recommended way to build AI-powered applications with Terminator. It provides a standardized interface between LLMs (like Claude) and desktop automation tools.
+
+### System Requirements
+
+- **Windows**: Pre-built binaries available (recommended)
+- **macOS/Linux**: Build from source with Rust
+- **Python 3.8+** for the client
+- **API Key** from Anthropic, OpenAI, or other LLM provider
+
+### Why MCP?
+
+- **Natural Language Interface**: Control your desktop using plain English
+- **AI-Powered Decision Making**: The LLM decides which tools to use and when
+- **Complex Workflows**: Handle multi-step operations with a single command
+- **Error Recovery**: AI can adapt when things don't go as expected
+- **Tool Chaining**: Automatically sequences multiple operations
+- **(Soon) Near determinism and production ready**: We build the tools to make the MCP client near deterministic and production ready through generated workflows of human screen recordings
+
+### Quick Start with MCP
+
+1. **Get the MCP agent**:
+   
+   **Option A: Download pre-built binary (Windows)**
+   - Download `terminator-mcp-windows-x86_64.zip` from [latest releases](https://github.com/mediar-ai/terminator/releases/latest)
+   - Extract and add to your PATH
+   
+   **Option B: Build from source** (requires Rust)
+   ```bash
+   cargo build --release --bin terminator-mcp-agent
+   ```
+
+2. **Run the Python MCP client**:
+   ```bash
+   # Clone the repo if you haven't
+   git clone https://github.com/mediar-ai/terminator
+   cd terminator
+   
+   # Install dependencies
+   pip install mcp anthropic python-dotenv
+   
+   # Set your Anthropic API key
+   export ANTHROPIC_API_KEY='your-key-here'
+   
+   # Run the client
+   python examples/python_mcp_client.py
+   ```
+
+3. **Try these examples**:
+   - "Open Chrome and search for 'best pizza near me'"
+   - "Create a new text file on the desktop and write meeting notes"
+   - "Take a screenshot and tell me what applications are running"
+   - "Open Calculator and compute 15% tip on $47.50"
+
+### How It Works
+
+The MCP client connects Claude (or other LLMs) to Terminator's automation capabilities:
+
+```
+You → "Open Notepad and write a poem" → Claude → MCP Tools → Desktop Automation
+                                            ↓
+                                    Decides to use:
+                                    1. open_application
+                                    2. wait_for_element
+                                    3. type_into_element
+```
+
+### Available MCP Tools
+
+The MCP agent exposes 40+ tools for desktop automation, including:
+- **Application Control**: `open_application`, `close_element`, `get_applications`
+- **UI Interaction**: `click_element`, `type_into_element`, `scroll_element`
+- **Navigation**: `wait_for_element`, `validate_element`, `get_window_tree`
+- **Data Capture**: `capture_screen`, `capture_element_screenshot`, `get_clipboard`
+- **Advanced**: `mouse_drag`, `press_key`, `select_option`, `set_range_value`
+
+[Full MCP tool documentation →](terminator-mcp-agent/README.md)
+
+### Integrating with AI Applications
+
+The MCP client example shows how to build conversational AI applications. You can:
+
+1. **Build Custom Agents**: Create specialized automation agents for specific workflows
+2. **Integrate with Existing Apps**: Add desktop automation to your AI applications
+3. **Use Any LLM**: While the example uses Claude, you can adapt it for GPT, Gemini, or open-source models
+4. **Deploy at Scale**: Run multiple MCP agents for different users or tasks
+
+See the [Python MCP client source](examples/python_mcp_client.py) for a complete implementation you can customize.
+
+## Direct SDK Usage (Alternative)
+
+While MCP is recommended for AI-powered automation, you can also use the SDKs directly for programmatic control:
+
+- **Python SDK**: For long running tasks
+- **TypeScript SDK**: For web applications and Node.js services  
+- **Rust SDK**: For high-performance system integration
+
+These provide fine-grained control but require you to specify each action explicitly.
 
 ## Feature Support
 
