@@ -223,6 +223,45 @@ The MCP client example shows how to build conversational AI applications. You ca
 
 See the [Python MCP client source](examples/python_mcp_client.py) for a complete implementation you can customize.
 
+### 🌐 Remote Desktop Control via HTTP + ngrok
+
+Control a computer remotely by exposing the MCP server over HTTP and tunneling through ngrok:
+
+**On the Host Computer (being controlled):**
+
+```bash
+# 1. Start MCP server in HTTP mode
+terminator-mcp-agent --transport http --port 3000
+
+# 2. Expose via ngrok (in another terminal)
+ngrok http 3000
+# Copy the HTTPS URL (e.g., https://abc123.ngrok-free.app)
+```
+
+**On the Client Computer (controller):**
+
+```python
+# Install dependencies
+pip install "mcp[client]" httpx anthropic
+
+# Connect to remote MCP server
+python examples/remote_mcp_client.py https://abc123.ngrok-free.app
+
+# Now control the remote desktop:
+💬 You: Open Notepad and type "Hello from remote!"
+🤖 Claude: Opening Notepad on the remote computer...
+```
+
+**Key Points:**
+- The host runs `terminator-mcp-agent` with `--transport http`
+- ngrok creates a secure tunnel to expose port 3000
+- The client connects using the ngrok HTTPS URL
+- All 40+ MCP tools work remotely (screenshots, typing, clicking, etc.)
+
+⚠️ **Security**: ngrok URLs are public. Only share with trusted users and shut down when not in use.
+
+In production prefer using auth, open port, VM, or use more heavy stuff like Kubernetes.
+
 ## Direct SDK Usage (Alternative)
 
 While MCP is recommended for AI-powered automation, you can also use the SDKs directly for programmatic control:
