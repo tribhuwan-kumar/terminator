@@ -73,6 +73,28 @@ fn build_element_info(element: &UIElement) -> Value {
     })
 }
 
+/// Builds a standardized, actionable error when an element cannot be found.
+fn build_element_not_found_error(
+    primary_selector: &str,
+    alternatives: Option<&str>,
+    original_error: anyhow::Error,
+) -> McpError {
+    let selectors_tried = get_selectors_tried(primary_selector, alternatives);
+    let error_payload = json!({
+        "error_type": "ElementNotFound",
+        "message": format!("The specified element could not be found after trying all selectors. Original error: {}", original_error),
+        "selectors_tried": selectors_tried,
+        "suggestions": [
+            "Call `get_window_tree` again to get a fresh view of the UI; it might have changed.",
+            "Verify the element's 'name' and 'role' in the new UI tree. The 'name' attribute might be empty or different from the visible text.",
+            "If the element has no 'name', use its numeric ID selector (e.g., '#12345'). This is required for many clickable 'Group' elements.",
+            "Use `validate_element` with your selectors to debug existence issues before calling an action tool."
+        ]
+    });
+
+    McpError::resource_not_found("Element not found", Some(error_payload))
+}
+
 #[tool(tool_box)]
 impl DesktopWrapper {
     pub async fn new() -> Result<Self, McpError> {
@@ -104,7 +126,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state."
+        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. This is a read-only operation."
     )]
     async fn get_window_tree(
         &self,
@@ -143,7 +165,9 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Get all applications currently running and their state.")]
+    #[tool(
+        description = "Get all applications currently running and their state. This is a read-only operation."
+    )]
     async fn get_applications(
         &self,
         #[tool(param)] args: GetApplicationsArgs,
@@ -246,7 +270,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Types text into a UI element with smart clipboard optimization and verification. Much faster than press key."
+        description = "Types text into a UI element with smart clipboard optimization and verification. Much faster than press key. This action requires the application to be focused and may change the UI."
     )]
     async fn type_into_element(
         &self,
@@ -262,17 +286,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            let selectors_tried =
-                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
-
-            McpError::internal_error(
-                "Failed to locate element with any selector",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": selectors_tried,
-                    "timeout_used": get_timeout(args.timeout_ms).map(|d| d.as_millis())
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -347,7 +361,9 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Clicks a UI element.")]
+    #[tool(
+        description = "Clicks a UI element. This action requires the application to be focused and may change the UI."
+    )]
     async fn click_element(
         &self,
         #[tool(param)] args: ClickElementArgs,
@@ -362,17 +378,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            let selectors_tried =
-                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
-
-            McpError::internal_error(
-                "Failed to locate element with any selector",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": selectors_tried,
-                    "timeout_used": get_timeout(args.timeout_ms).map(|d| d.as_millis())
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -433,7 +439,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Sends a key press to a UI element. Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc."
+        description = "Sends a key press to a UI element. Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc. This action requires the application to be focused and may change the UI."
     )]
     async fn press_key(
         &self,
@@ -477,7 +483,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Sends a key press to the currently focused element (no selector required). Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc."
+        description = "Sends a key press to the currently focused element (no selector required). Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc. This action requires the application to be focused and may change the UI."
     )]
     async fn press_key_global(
         &self,
@@ -703,7 +709,9 @@ impl DesktopWrapper {
         }
     }
 
-    #[tool(description = "Performs a mouse drag operation from start to end coordinates.")]
+    #[tool(
+        description = "Performs a mouse drag operation from start to end coordinates. This action requires the application to be focused and may change the UI."
+    )]
     async fn mouse_drag(
         &self,
         #[tool(param)] args: MouseDragArgs,
@@ -752,7 +760,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Validates that an element exists and provides detailed information about it."
+        description = "Validates that an element exists and provides detailed information about it. This is a read-only operation."
     )]
     async fn validate_element(
         &self,
@@ -786,14 +794,29 @@ impl DesktopWrapper {
 
                 Ok(CallToolResult::success(vec![Content::json(result_json)?]))
             }
-            Err(e) => Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "validate_element",
-                "status": "failed",
-                "exists": false,
-                "reason": e.to_string(),
-                "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            }))?])),
+            Err(e) => {
+                let selectors_tried =
+                    get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
+                let reason_payload = json!({
+                    "error_type": "ElementNotFound",
+                    "message": format!("The specified element could not be found after trying all selectors. Original error: {}", e),
+                    "selectors_tried": selectors_tried,
+                    "suggestions": [
+                        "Call `get_window_tree` again to get a fresh view of the UI; it might have changed.",
+                        "Verify the element's 'name' and 'role' in the new UI tree. The 'name' attribute might be empty or different from the visible text.",
+                        "If the element has no 'name', use its numeric ID selector (e.g., '#12345')."
+                    ]
+                });
+
+                // This is not a tool error, but a validation failure, so we return success with the failure info.
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "validate_element",
+                    "status": "failed",
+                    "exists": false,
+                    "reason": reason_payload,
+                    "timestamp": chrono::Utc::now().to_rfc3339()
+                }))?]))
+            }
         }
     }
 
@@ -1091,13 +1114,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1123,7 +1140,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Lists all available option strings from a dropdown, list box, or similar control."
+        description = "Lists all available option strings from a dropdown, list box, or similar control. This is a read-only operation."
     )]
     async fn list_options(
         &self,
@@ -1139,13 +1156,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1168,7 +1179,9 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Sets the state of a toggleable control (e.g., checkbox, switch).")]
+    #[tool(
+        description = "Sets the state of a toggleable control (e.g., checkbox, switch). This action requires the application to be focused and may change the UI."
+    )]
     async fn set_toggled(
         &self,
         #[tool(param)] args: SetToggledArgs,
@@ -1183,13 +1196,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1214,7 +1221,9 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Sets the value of a range-based control like a slider.")]
+    #[tool(
+        description = "Sets the value of a range-based control like a slider. This action requires the application to be focused and may change the UI."
+    )]
     async fn set_range_value(
         &self,
         #[tool(param)] args: SetRangeValueArgs,
@@ -1229,13 +1238,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1261,7 +1264,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Sets the selection state of a selectable item (e.g., in a list or calendar)."
+        description = "Sets the selection state of a selectable item (e.g., in a list or calendar). This action requires the application to be focused and may change the UI."
     )]
     async fn set_selected(
         &self,
@@ -1277,13 +1280,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1309,7 +1306,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Checks if a control (like a checkbox or toggle switch) is currently toggled on."
+        description = "Checks if a control (like a checkbox or toggle switch) is currently toggled on. This is a read-only operation."
     )]
     async fn is_toggled(
         &self,
@@ -1325,13 +1322,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1354,7 +1345,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Gets the current value from a range-based control like a slider or progress bar."
+        description = "Gets the current value from a range-based control like a slider or progress bar. This is a read-only operation."
     )]
     async fn get_range_value(
         &self,
@@ -1370,13 +1361,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1399,7 +1384,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Checks if a selectable item (e.g., in a calendar, list, or tab) is currently selected."
+        description = "Checks if a selectable item (e.g., in a calendar, list, or tab) is currently selected. This is a read-only operation."
     )]
     async fn is_selected(
         &self,
@@ -1415,13 +1400,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            McpError::internal_error(
-                "Failed to locate element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1509,7 +1488,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Invokes a UI element. This is often more reliable than clicking for controls like radio buttons or menu items."
+        description = "Invokes a UI element. This is often more reliable than clicking for controls like radio buttons or menu items. This action requires the application to be focused and may change the UI."
     )]
     async fn invoke_element(
         &self,
@@ -1525,17 +1504,7 @@ impl DesktopWrapper {
         )
         .await
         .map_err(|e| {
-            let selectors_tried =
-                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
-
-            McpError::internal_error(
-                "Failed to locate element for invoke",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": selectors_tried,
-                    "timeout_used": get_timeout(args.timeout_ms).map(|d| d.as_millis())
-                })),
-            )
+            build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)
         })?;
 
         let element_info = build_element_info(&element);
@@ -1623,6 +1592,14 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
 
 6.  **USE PRECISE SELECTORS (ID IS YOUR FRIEND):** A `role|name` selector is good, but often, an element **does not have a `name` attribute** even if it contains visible text (the text is often a child element). Check the `get_window_tree` output carefully. If an element has an empty or generic name, you **MUST use its numeric ID (`\"#12345\"`) for selection.** Do not guess or hallucinate a `name` from the visual text; use the ID. This is critical for clickable `Group` elements which often lack a name.
 
+**Tool Behavior & Metadata**
+
+Pay close attention to the tool descriptions for hints on their behavior.
+
+*   **Read-only tools** are safe to use for inspection and will not change the UI state (e.g., `validate_element`, `get_window_tree`).
+*   Tools that **may change the UI** require more care. After using one, consider calling `get_window_tree` again to get the latest UI state.
+*   Tools that **require focus** must only be used on the foreground application. Use `get_applications` to check focus and `activate_element` to bring an application to the front.
+
 **Core Workflow: Discover, then Act with Precision**
 
 Your most reliable strategy is to inspect the application's UI structure *before* trying to interact with it. Never guess selectors.
@@ -1697,7 +1674,6 @@ Contextual information:
 - The current date and time is {}.
 - Current operating system: {}.
 - Current working directory: {}.
-
 ",
         current_date_time, current_os, current_working_dir
     )
