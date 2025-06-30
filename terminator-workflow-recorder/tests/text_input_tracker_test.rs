@@ -176,6 +176,9 @@ mod text_input_tracker_tests {
         fn set_selected(&self, _state: bool) -> Result<(), AutomationError> {
             todo!()
         }
+        fn invoke(&self) -> Result<(), AutomationError> {
+            todo!()
+        }
     }
 
     fn create_tracker_with_text(text: &str) -> TextInputTracker {
