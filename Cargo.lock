@@ -3205,6 +3205,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-wrap"
+version = "8.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3ef4f2f0422f23a82ec9f628ea2acd12871c81a9362b02c43c1aa86acfc3ba1"
+dependencies = [
+ "futures",
+ "indexmap",
+ "nix 0.30.1",
+ "tokio",
+ "tracing",
+ "windows 0.61.3",
+]
+
+[[package]]
 name = "profiling"
 version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3688,6 +3702,7 @@ dependencies = [
  "http-body-util",
  "paste",
  "pin-project-lite",
+ "process-wrap",
  "rand 0.9.1",
  "rmcp-macros",
  "schemars",
@@ -4251,6 +4266,7 @@ dependencies = [
  "serde_json",
  "terminator-rs",
  "tokio",
+ "tokio-test",
  "tracing",
  "tracing-subscriber",
 ]
@@ -4482,6 +4498,19 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tokio-test"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2468baabc3311435b55dd935f702f42cd1b8abb7e754fb7dfb16bd36aa88f9f7"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "futures-core",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

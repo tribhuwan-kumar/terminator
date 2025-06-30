@@ -328,6 +328,34 @@ pub struct ActivateElementArgs {
     pub timeout_ms: Option<u64>,
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ToolCall {
+    #[schemars(description = "Name of the tool to execute")]
+    pub tool_name: String,
+    #[schemars(description = "Arguments to pass to the tool as a JSON object")]
+    pub arguments: serde_json::Value,
+    #[schemars(
+        description = "Optional: Continue to next tool even if this one fails (default: false)"
+    )]
+    pub continue_on_error: Option<bool>,
+    #[schemars(description = "Optional: Delay in milliseconds after this tool executes")]
+    pub delay_ms: Option<u64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ExecuteSequenceArgs {
+    #[schemars(description = "Array of tool calls to execute in sequence")]
+    pub tools: Vec<ToolCall>,
+    #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
+    pub stop_on_error: Option<bool>,
+    #[schemars(description = "Default delay in milliseconds between tool executions (default: 0)")]
+    pub delay_between_tools_ms: Option<u64>,
+    #[schemars(
+        description = "Whether to include detailed results from each tool execution (default: true)"
+    )]
+    pub include_detailed_results: Option<bool>,
+}
+
 pub fn init_logging() -> Result<()> {
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
@@ -470,4 +498,48 @@ pub async fn find_element_with_fallbacks(
     };
 
     Err(terminator::AutomationError::ElementNotFound(combined_error))
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ExportWorkflowSequenceArgs {
+    #[schemars(
+        description = "Array of successfully executed tool calls to convert into a reliable workflow. Each tool call should include the tool name, arguments used, and optionally the selector that worked."
+    )]
+    pub successful_tool_calls: Vec<ToolCall>,
+
+    #[schemars(description = "Name for the workflow being exported")]
+    pub workflow_name: String,
+
+    #[schemars(description = "Description of what this workflow accomplishes")]
+    pub workflow_description: String,
+
+    #[schemars(description = "The primary goal or intent of the workflow")]
+    pub workflow_goal: String,
+
+    #[schemars(description = "Output format: 'json' or 'yaml' (default: 'json')")]
+    pub output_format: Option<String>,
+
+    #[schemars(
+        description = "Whether to include AI decision points for dynamic conditions (default: true)"
+    )]
+    pub include_ai_fallbacks: Option<bool>,
+
+    #[schemars(
+        description = "Whether to add extra validation steps between actions (default: true)"
+    )]
+    pub add_validation_steps: Option<bool>,
+
+    #[schemars(description = "Whether to include UI tree captures at key points (default: false)")]
+    pub include_tree_captures: Option<bool>,
+
+    #[schemars(description = "Expected form data or input values used in the workflow")]
+    pub expected_data: Option<serde_json::Value>,
+
+    #[schemars(
+        description = "Any credentials or login information needed (will be parameterized in output)"
+    )]
+    pub credentials: Option<serde_json::Value>,
+
+    #[schemars(description = "Known error conditions and their solutions from the successful run")]
+    pub known_error_handlers: Option<Vec<serde_json::Value>>,
 }

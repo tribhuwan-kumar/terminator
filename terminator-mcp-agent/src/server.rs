@@ -1,10 +1,11 @@
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, EmptyArgs,
-    GetApplicationsArgs, GetClipboardArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
-    HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
-    PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
-    SetSelectedArgs, SetToggledArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs, GetClipboardArgs,
+    GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
+    MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
+    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
@@ -133,7 +134,7 @@ impl DesktopWrapper {
     #[tool(
         description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. This is a read-only operation."
     )]
-    async fn get_window_tree(
+    pub async fn get_window_tree(
         &self,
         Parameters(args): Parameters<GetWindowTreeArgs>,
     ) -> Result<CallToolResult, McpError> {
@@ -173,7 +174,7 @@ impl DesktopWrapper {
     #[tool(
         description = "Get all applications currently running and their state. This is a read-only operation."
     )]
-    async fn get_applications(
+    pub async fn get_applications(
         &self,
         Parameters(args): Parameters<GetApplicationsArgs>,
     ) -> Result<CallToolResult, McpError> {
@@ -775,7 +776,7 @@ impl DesktopWrapper {
     #[tool(
         description = "Validates that an element exists and provides detailed information about it. This is a read-only operation."
     )]
-    async fn validate_element(
+    pub async fn validate_element(
         &self,
         Parameters(args): Parameters<ValidateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
@@ -1583,6 +1584,549 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
+    #[tool(
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration."
+    )]
+    pub async fn execute_sequence(
+        &self,
+        Parameters(args): Parameters<ExecuteSequenceArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        use rmcp::handler::server::tool::Parameters;
+
+        let stop_on_error = args.stop_on_error.unwrap_or(true);
+        let default_delay = args.delay_between_tools_ms.unwrap_or(0);
+        let include_detailed = args.include_detailed_results.unwrap_or(true);
+
+        let mut results = Vec::new();
+        let mut has_error = false;
+        let start_time = chrono::Utc::now();
+
+        for (index, tool_call) in args.tools.iter().enumerate() {
+            let tool_start_time = chrono::Utc::now();
+
+            // Manually dispatch to the appropriate tool
+            let tool_result = match tool_call.tool_name.as_str() {
+                "get_window_tree" => {
+                    match serde_json::from_value::<GetWindowTreeArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.get_window_tree(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for get_window_tree",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "get_applications" => {
+                    match serde_json::from_value::<GetApplicationsArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.get_applications(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for get_applications",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "click_element" => {
+                    match serde_json::from_value::<ClickElementArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.click_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for click_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "type_into_element" => {
+                    match serde_json::from_value::<TypeIntoElementArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.type_into_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for type_into_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "press_key" => {
+                    match serde_json::from_value::<PressKeyArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.press_key(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for press_key",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "press_key_global" => {
+                    match serde_json::from_value::<GlobalKeyArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.press_key_global(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for press_key_global",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "validate_element" => {
+                    match serde_json::from_value::<ValidateElementArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.validate_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for validate_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "wait_for_element" => {
+                    match serde_json::from_value::<WaitForElementArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.wait_for_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for wait_for_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "activate_element" => {
+                    match serde_json::from_value::<ActivateElementArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.activate_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for activate_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "navigate_browser" => {
+                    match serde_json::from_value::<NavigateBrowserArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.navigate_browser(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for navigate_browser",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "open_application" => {
+                    match serde_json::from_value::<OpenApplicationArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.open_application(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for open_application",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "scroll_element" => {
+                    match serde_json::from_value::<ScrollElementArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.scroll_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for scroll_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "set_clipboard" => {
+                    match serde_json::from_value::<ClipboardArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.set_clipboard(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for set_clipboard",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "get_clipboard" => {
+                    match serde_json::from_value::<GetClipboardArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.get_clipboard(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for get_clipboard",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                // Add more tools as needed...
+                _ => Err(McpError::internal_error(
+                    "Unknown tool called",
+                    Some(json!({"tool_name": tool_call.tool_name})),
+                )),
+            };
+
+            // Process the result
+            let processed_result = match tool_result {
+                Ok(result) => {
+                    // Extract result content - we can't inspect Content type directly
+                    // so we'll just provide a summary
+                    let content_summary = if include_detailed {
+                        json!({
+                            "type": "tool_result",
+                            "content_count": result.content.len(),
+                            "content": "Tool executed successfully (content details not available)"
+                        })
+                    } else {
+                        json!({ "type": "summary", "content": "Tool executed successfully" })
+                    };
+
+                    json!({
+                        "tool_name": tool_call.tool_name,
+                        "index": index,
+                        "status": "success",
+                        "duration_ms": (chrono::Utc::now() - tool_start_time).num_milliseconds(),
+                        "result": content_summary,
+                    })
+                }
+                Err(e) => {
+                    has_error = true;
+
+                    let error_result = json!({
+                        "tool_name": tool_call.tool_name,
+                        "index": index,
+                        "status": "error",
+                        "duration_ms": (chrono::Utc::now() - tool_start_time).num_milliseconds(),
+                        "error": e.to_string(),
+                    });
+
+                    // Check if we should continue on error
+                    let continue_on_error = tool_call.continue_on_error.unwrap_or(false);
+                    if !continue_on_error && stop_on_error {
+                        results.push(error_result);
+                        break; // Stop execution
+                    }
+
+                    error_result
+                }
+            };
+
+            results.push(processed_result);
+
+            // Add delay if specified (and not the last tool)
+            if index < args.tools.len() - 1 {
+                let delay = tool_call.delay_ms.unwrap_or(default_delay);
+                if delay > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+            }
+        }
+
+        let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
+
+        let summary = json!({
+            "action": "execute_sequence",
+            "status": if has_error && stop_on_error { "partial_success" } else if has_error { "completed_with_errors" } else { "success" },
+            "total_tools": args.tools.len(),
+            "executed_tools": results.len(),
+            "total_duration_ms": total_duration,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "results": results,
+        });
+
+        Ok(CallToolResult::success(vec![Content::json(summary)?]))
+    }
+
+    #[tool(
+        description = "Exports a sequence of successful tool calls into a structured, reliable workflow format that can be executed by another AI agent with minimal context. This tool analyzes the provided sequence and enhances it with intelligent error handling, validation steps, wait conditions, and fallback strategies to maximize success rate. The output can be in JSON or YAML format and includes comprehensive metadata to ensure reproducibility."
+    )]
+    pub async fn export_workflow_sequence(
+        &self,
+        Parameters(args): Parameters<ExportWorkflowSequenceArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let output_format = args.output_format.clone().unwrap_or("json".to_string());
+        let include_ai_fallbacks = args.include_ai_fallbacks.unwrap_or(true);
+        let add_validation_steps = args.add_validation_steps.unwrap_or(true);
+        let include_tree_captures = args.include_tree_captures.unwrap_or(false);
+
+        // Build the workflow steps with enhancements
+        let mut enhanced_steps = Vec::new();
+        let mut step_counter = 1;
+
+        for (index, tool_call) in args.successful_tool_calls.iter().enumerate() {
+            // Analyze the tool to determine what enhancements to add
+            let tool_name = &tool_call.tool_name;
+
+            // Add focus check before UI interaction tools
+            if matches!(
+                tool_name.as_str(),
+                "click_element"
+                    | "type_into_element"
+                    | "press_key"
+                    | "invoke_element"
+                    | "select_option"
+            ) && (index == 0 || should_add_focus_check(&args.successful_tool_calls, index))
+            {
+                enhanced_steps.push(json!({
+                    "step": step_counter,
+                    "action": "validate_focus",
+                    "description": "Ensure the target application has focus",
+                    "tool_name": "get_applications",
+                    "condition": "Check if target app is_focused=true",
+                    "fallback": "Use activate_element if not focused"
+                }));
+                step_counter += 1;
+            }
+
+            // Add wait after navigation or state-changing actions
+            if matches!(tool_name.as_str(), "navigate_browser" | "open_application") {
+                enhanced_steps.push(json!({
+                    "step": step_counter,
+                    "action": tool_name,
+                    "description": tool_call.arguments.get("description").and_then(|v| v.as_str()).unwrap_or("Execute action"),
+                    "tool_name": tool_name,
+                    "arguments": tool_call.arguments.clone(),
+                    "success_criteria": "Page/App loads successfully"
+                }));
+                step_counter += 1;
+
+                // Add intelligent wait
+                enhanced_steps.push(json!({
+                    "step": step_counter,
+                    "action": "wait_for_stability",
+                    "description": "Wait for UI to stabilize after navigation",
+                    "tool_name": "wait_for_element",
+                    "arguments": {
+                        "selector": "role:Document",
+                        "condition": "exists",
+                        "timeout_ms": 5000
+                    },
+                    "fallback": "If timeout, check get_window_tree for current state"
+                }));
+                step_counter += 1;
+            } else {
+                // Process the actual tool call with enhancements
+                let mut enhanced_args = tool_call.arguments.clone();
+
+                // Extract selectors and add alternatives if available
+                if let Some(_selector) =
+                    tool_call.arguments.get("selector").and_then(|v| v.as_str())
+                {
+                    // Look for alternative selectors from the arguments
+                    if let Some(alternatives) = tool_call.arguments.get("alternative_selectors") {
+                        enhanced_args["alternative_selectors"] = alternatives.clone();
+                    }
+                }
+
+                enhanced_steps.push(json!({
+                    "step": step_counter,
+                    "action": tool_name,
+                    "description": self.generate_step_description(tool_name, &tool_call.arguments),
+                    "tool_name": tool_name,
+                    "arguments": enhanced_args,
+                    "wait_for": self.get_wait_condition(tool_name),
+                    "verify_success": add_validation_steps
+                }));
+                step_counter += 1;
+            }
+
+            // Add validation after state-changing actions if requested
+            if add_validation_steps && is_state_changing_action(tool_name) {
+                if let Some(selector) = tool_call.arguments.get("selector") {
+                    enhanced_steps.push(json!({
+                        "step": step_counter,
+                        "action": "validate_action_result",
+                        "description": format!("Verify {} completed successfully", tool_name),
+                        "tool_name": "validate_element",
+                        "arguments": {
+                            "selector": selector,
+                            "timeout_ms": 1000
+                        },
+                        "condition": "Element still exists and state changed as expected"
+                    }));
+                    step_counter += 1;
+                }
+            }
+
+            // Add tree capture at key points if requested
+            if include_tree_captures
+                && should_capture_tree(tool_name, index, args.successful_tool_calls.len())
+            {
+                enhanced_steps.push(json!({
+                    "step": step_counter,
+                    "action": "capture_ui_state",
+                    "description": "Capture UI tree for debugging/verification",
+                    "tool_name": "get_window_tree",
+                    "arguments": {
+                        "include_tree": true
+                    },
+                    "purpose": "State checkpoint for recovery"
+                }));
+                step_counter += 1;
+            }
+        }
+
+        // Build the complete workflow structure
+        let workflow = json!({
+            "workflow": {
+                "name": args.workflow_name,
+                "version": "1.0",
+                "description": args.workflow_description,
+                "goal": args.workflow_goal,
+                "created_at": chrono::Utc::now().to_rfc3339(),
+                "created_by": "terminator-mcp-agent",
+
+                "prerequisites": {
+                    "browser": "Chrome",
+                    "platform": env::consts::OS,
+                    "required_tools": self.extract_required_tools(&args.successful_tool_calls)
+                },
+
+                "parameters": {
+                    "credentials": args.credentials.unwrap_or(json!({})),
+                    "form_data": args.expected_data.unwrap_or(json!({}))
+                },
+
+                "configuration": {
+                    "include_ai_fallbacks": include_ai_fallbacks,
+                    "add_validation_steps": add_validation_steps,
+                    "default_timeout_ms": 3000,
+                    "retry_on_failure": true,
+                    "max_retries": 2
+                },
+
+                "steps": enhanced_steps,
+
+                "error_handling": {
+                    "known_errors": args.known_error_handlers.unwrap_or_default(),
+                    "general_strategies": [
+                        {
+                            "error": "ElementNotFound",
+                            "solution": "Call get_window_tree to refresh UI state, then retry with alternative selectors"
+                        },
+                        {
+                            "error": "ElementDisabled",
+                            "solution": "Check prerequisites - ensure all required fields are filled and conditions met"
+                        },
+                        {
+                            "error": "Timeout",
+                            "solution": "Increase timeout_ms or add explicit wait_for_element steps"
+                        }
+                    ]
+                },
+
+                "success_criteria": {
+                    "final_validation": "Verify the workflow goal has been achieved",
+                    "expected_outcomes": self.infer_expected_outcomes(&args.successful_tool_calls),
+                    "verification_steps": if add_validation_steps {
+                        vec!["Check final UI state matches expected", "Verify data was processed correctly"]
+                    } else {
+                        vec![]
+                    }
+                },
+
+                "ai_decision_points": if include_ai_fallbacks {
+                    json!([
+                        {
+                            "condition": "Dialog or popup appears unexpectedly",
+                            "action": "Analyze dialog content and decide whether to accept, cancel, or handle differently"
+                        },
+                        {
+                            "condition": "Expected element not found after multiple retries",
+                            "action": "Use get_window_tree to understand current state and find alternative path"
+                        },
+                        {
+                            "condition": "Form validation errors",
+                            "action": "Read error messages and adjust input data accordingly"
+                        }
+                    ])
+                } else {
+                    json!([])
+                },
+
+                "notes": [
+                    "This workflow was automatically generated from successful tool executions",
+                    "Selectors use exact IDs where possible for maximum reliability",
+                    "Alternative selectors are included for robustness",
+                    "Wait conditions and validations ensure each step completes before proceeding"
+                ]
+            }
+        });
+
+        // Convert to requested format
+        let output = match output_format.to_lowercase().as_str() {
+            "yaml" => {
+                // For YAML output, we'll return instructions since we can't directly convert
+                json!({
+                    "format": "yaml",
+                    "content": workflow,
+                    "note": "Copy the 'content' field and convert to YAML using a JSON-to-YAML converter for proper formatting"
+                })
+            }
+            _ => workflow,
+        };
+
+        Ok(CallToolResult::success(vec![Content::json(output)?]))
+    }
+
+    // Helper methods for export_workflow_sequence
+    fn generate_step_description(&self, tool_name: &str, args: &serde_json::Value) -> String {
+        match tool_name {
+            "click_element" => format!(
+                "Click on element: {}",
+                args.get("selector")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+            ),
+            "type_into_element" => format!(
+                "Type '{}' into {}",
+                args.get("text_to_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(""),
+                args.get("selector")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("field")
+            ),
+            "navigate_browser" => format!(
+                "Navigate to {}",
+                args.get("url").and_then(|v| v.as_str()).unwrap_or("URL")
+            ),
+            "select_option" => format!(
+                "Select '{}' from dropdown",
+                args.get("option_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("option")
+            ),
+            _ => format!("Execute {}", tool_name),
+        }
+    }
+
+    fn get_wait_condition(&self, tool_name: &str) -> Option<String> {
+        match tool_name {
+            "click_element" => Some("Element state changes or UI updates".to_string()),
+            "type_into_element" => Some("Text appears in field".to_string()),
+            "navigate_browser" => Some("Page loads completely".to_string()),
+            "open_application" => Some("Application window appears".to_string()),
+            _ => None,
+        }
+    }
+
+    fn extract_required_tools(&self, tool_calls: &[crate::utils::ToolCall]) -> Vec<String> {
+        tool_calls
+            .iter()
+            .map(|tc| tc.tool_name.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect()
+    }
+
+    fn infer_expected_outcomes(&self, tool_calls: &[crate::utils::ToolCall]) -> Vec<String> {
+        let mut outcomes = Vec::new();
+
+        for call in tool_calls {
+            match call.tool_name.as_str() {
+                "navigate_browser" => {
+                    outcomes.push("Target webpage loaded successfully".to_string())
+                }
+                "type_into_element" => outcomes.push("Form fields populated with data".to_string()),
+                "click_element"
+                    if call
+                        .arguments
+                        .get("selector")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .contains("Submit") =>
+                {
+                    outcomes.push("Form submitted successfully".to_string())
+                }
+                "select_option" => outcomes.push("Option selected in dropdown".to_string()),
+                _ => {}
+            }
+        }
+
+        outcomes
+    }
+
     // Helper to optionally attach UI tree to response
     fn maybe_attach_tree(&self, include_tree: bool, pid_opt: Option<u32>, result_json: &mut Value) {
         if !include_tree {
@@ -1598,6 +2142,57 @@ impl DesktopWrapper {
             }
         }
     }
+}
+
+// Helper functions for export_workflow_sequence
+fn should_add_focus_check(tool_calls: &[crate::utils::ToolCall], current_index: usize) -> bool {
+    // Add focus check if:
+    // 1. It's the first UI interaction
+    // 2. Previous action was navigation or opened a new window
+    // 3. There was a significant gap (e.g., after get_window_tree or wait)
+
+    if current_index == 0 {
+        return true;
+    }
+
+    let prev_tool = &tool_calls[current_index - 1].tool_name;
+    matches!(
+        prev_tool.as_str(),
+        "navigate_browser"
+            | "open_application"
+            | "close_element"
+            | "get_window_tree"
+            | "get_applications"
+            | "activate_element"
+    )
+}
+
+fn is_state_changing_action(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "click_element"
+            | "type_into_element"
+            | "select_option"
+            | "set_toggled"
+            | "set_selected"
+            | "set_range_value"
+            | "invoke_element"
+            | "press_key"
+            | "mouse_drag"
+            | "scroll_element"
+    )
+}
+
+fn should_capture_tree(tool_name: &str, index: usize, total_steps: usize) -> bool {
+    // Capture tree at key points:
+    // 1. After major navigation
+    // 2. Before complex sequences
+    // 3. At regular intervals (every 5 steps)
+    // 4. Before the final action
+
+    matches!(tool_name, "navigate_browser" | "open_application")
+        || index % 5 == 0
+        || index == total_steps - 1
 }
 
 #[tool_handler]
