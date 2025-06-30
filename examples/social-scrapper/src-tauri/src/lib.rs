@@ -5,7 +5,7 @@ mod command;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![command::greet])
+        .invoke_handler(tauri::generate_handler![command::scrap_whatsapp])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
