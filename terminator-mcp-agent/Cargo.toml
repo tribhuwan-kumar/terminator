@@ -18,3 +18,5 @@ rmcp = { version = "0.1.5", features = [
     "transport-io",
 ] }
 futures = "0.3"
+image = { version = "0.25.1", features = ["png"] }
+base64 = "0.22.1"

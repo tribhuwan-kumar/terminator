@@ -184,3 +184,249 @@ fn test_click_by_position_in_settings() {
             .expect("Clicking the 'Close' button failed.");
     });
 }
+
+#[test]
+fn test_stable_id_across_sessions() {
+    // Helper function to run the stability check on a given app
+    fn check_id_stability(app_name: &str, selector: Selector, element_description: &str) {
+        println!("\n--- Testing ID stability for {} ---", app_name);
+        let fixture = AppFixture::new(app_name);
+        let desktop = fixture.desktop.clone();
+        let rt = &fixture.rt;
+
+        rt.block_on(async {
+            // Give the app a moment to start, especially Settings.
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            // 1. Find the element for the first time.
+            let element_1 = desktop
+                .locator(selector.clone())
+                .first(Some(std::time::Duration::from_secs(5)))
+                .await
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Could not find the {} in {} (first attempt): {}",
+                        element_description, app_name, e
+                    )
+                });
+
+            let id_1 = element_1.id().expect("Element should have an ID.");
+            println!(
+                "Found {} in {}. First ID: {}",
+                element_description, app_name, id_1
+            );
+            assert!(!id_1.is_empty(), "First element ID should not be empty.");
+
+            // 2. Find the *exact same* element again to simulate a new session/query.
+            let element_2 = desktop
+                .locator(selector.clone())
+                .first(Some(std::time::Duration::from_secs(5)))
+                .await
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Could not find the {} in {} (second attempt): {}",
+                        element_description, app_name, e
+                    )
+                });
+
+            let id_2 = element_2.id().expect("Element should have an ID.");
+            println!(
+                "Found {} in {} again. Second ID: {}",
+                element_description, app_name, id_2
+            );
+            assert!(!id_2.is_empty(), "Second element ID should not be empty.");
+
+            // 3. Verify that the IDs are identical.
+            assert_eq!(
+                id_1, id_2,
+                "The ID for the {} in {} should be stable across sessions.",
+                element_description, app_name
+            );
+
+            println!(
+                "✅ ID for {} in {} is stable.",
+                element_description, app_name
+            );
+        });
+    }
+
+    // Run the check for Notepad
+    check_id_stability(
+        "notepad",
+        Selector::Role {
+            role: "edit".to_string(),
+            name: None,
+        },
+        "main text area",
+    );
+
+    // Run the check for Settings app
+    check_id_stability(
+        "ms-settings:",
+        Selector::Role {
+            role: "listitem".to_string(),
+            name: Some("System".to_string()),
+        },
+        "'System' button",
+    );
+}
+#[test]
+fn test_web_id_stability() {
+    println!("\n--- Testing Web ID stability (Rigorous) ---");
+    let rt = Runtime::new().expect("Failed to create Tokio runtime");
+    let desktop = Arc::new(Desktop::new(false, false).expect("Failed to create Desktop"));
+
+    rt.block_on(async {
+        let mut browser_window: Option<UIElement> = None;
+
+        // A closure that returns a future, allowing it to be called multiple times.
+        let check_url = |url: String,
+                         element_selector: Selector,
+                         element_description: String,
+                         expected_title_part: String| {
+            let desktop = desktop.clone();
+            async move {
+                println!("-- Checking URL: {} --", url);
+
+                // 1. Use the correct open_url function to launch and navigate.
+                let app = desktop
+                    .open_url(&url, Some(crate::Browser::Edge))
+                    .expect("Failed to open URL in Edge.");
+
+                // Allow a few seconds for the browser to initialize and start navigation.
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                println!("✅ Browser opened to {}", url);
+
+                // 2. RIGOROUS: Poll until the window title confirms navigation.
+                let nav_timeout = std::time::Duration::from_secs(20);
+                let start_time = std::time::Instant::now();
+                let mut navigated = false;
+                while start_time.elapsed() < nav_timeout {
+                    if let Some(name) = app.name() {
+                        if name.contains(&expected_title_part) {
+                            println!("✅ Navigation confirmed: Window title is '{}'", name);
+                            navigated = true;
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+                assert!(
+                    navigated,
+                    "Navigation failed: Window title did not contain '{}' within timeout.",
+                    expected_title_part
+                );
+
+                // 3. Find the target element on the page for the first time.
+                let element_1 = app
+                    .locator(element_selector.clone())
+                    .unwrap()
+                    .first(Some(std::time::Duration::from_secs(10)))
+                    .await
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Could not find '{}' on {} (first attempt): {}",
+                            element_description, url, e
+                        )
+                    });
+
+                let id_1 = element_1.id().expect("Element should have an ID.");
+                println!("Found '{}'. First ID: {}", element_description, id_1);
+
+                // 4. Find the browser's 'Reload' button and click it to refresh the page.
+                let reload_button = app
+                    .locator(Selector::Role {
+                        role: "button".to_string(),
+                        name: Some("Refresh".to_string()),
+                    })
+                    .unwrap()
+                    .first(None)
+                    .await
+                    .expect("Could not find the 'Reload' button in the browser.");
+
+                reload_button
+                    .click()
+                    .expect("Failed to click Reload button.");
+                println!("Reloaded page, waiting for content to load again...");
+
+                // 5. RIGOROUS: Poll until the window title confirms reload.
+                let reload_start_time = std::time::Instant::now();
+                let mut reloaded = false;
+                while reload_start_time.elapsed() < nav_timeout {
+                    if let Some(name) = app.name() {
+                        if name.contains(&expected_title_part) {
+                            println!("✅ Reload confirmed: Window title is '{}'", name);
+                            reloaded = true;
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+                assert!(
+                    reloaded,
+                    "Page reload failed: Window title did not contain '{}' after reload.",
+                    expected_title_part
+                );
+
+                // 6. Find the same element again after the reload.
+                let element_2 = app
+                    .locator(element_selector.clone())
+                    .unwrap()
+                    .first(Some(std::time::Duration::from_secs(10)))
+                    .await
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Could not find '{}' on {} (second attempt, after reload): {}",
+                            element_description, url, e
+                        )
+                    });
+
+                let id_2 = element_2.id().expect("Element should have a second ID.");
+                println!("Found '{}' again. Second ID: {}", element_description, id_2);
+
+                // 7. Assert that the IDs are identical, proving stability.
+                assert_eq!(
+                    id_1, id_2,
+                    "Web element ID for '{}' should be stable after a page reload.",
+                    element_description
+                );
+                println!("✅ ID for '{}' is stable on {}.", element_description, url);
+
+                // Return the app window for closing later
+                app
+            }
+        };
+
+        // Test Dataiku page
+        browser_window = Some(
+            check_url(
+                "https://pages.dataiku.com/guide-to-ai-agents".to_string(),
+                Selector::Name("Get Ahead With Agentic AI".to_string()),
+                "Dataiku page title".to_string(),
+                "Agents".to_string(), // Expected part of the window title
+            )
+            .await,
+        );
+
+        // wait 30 seconds
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+
+        // Test Luma page
+        browser_window = Some(
+            check_url(
+                "https://lu.ma/airstreet".to_string(),
+                Selector::Name("Air Street".to_string()),
+                "Luma event title".to_string(),
+                "Air Street".to_string(), // Expected part of the window title
+            )
+            .await,
+        );
+
+        // --- Tearing down test ---
+        if let Some(window) = browser_window {
+            println!("--- Tearing down test, closing browser ---");
+            window.close().expect("Failed to close browser window.");
+        }
+    });
+}

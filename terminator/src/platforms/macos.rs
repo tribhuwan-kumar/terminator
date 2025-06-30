@@ -774,8 +774,11 @@ impl UIElementImpl for MacOSUIElement {
                 label: None,
                 value: None,
                 description: None,
+                text: self.get_text(0).ok(),
                 properties,
                 is_keyboard_focusable: Some(false), // macos: not implemented
+                is_focused: self.is_focused().ok(),
+                enabled: self.is_enabled().ok(),
                 bounds: None, // Will be populated by get_configurable_attributes if focusable
             };
 
@@ -876,8 +879,11 @@ impl UIElementImpl for MacOSUIElement {
             label: None,
             value: None,
             description: None,
+            text: self.get_text(0).ok(),
             properties,
             is_keyboard_focusable: Some(false), // macos: not implemented
+            is_focused: self.is_focused().ok(),
+            enabled: self.is_enabled().ok(),
             bounds: None, // Will be populated by get_configurable_attributes if focusable
         };
 
@@ -1874,6 +1880,21 @@ impl UIElementImpl for MacOSUIElement {
         Err(AutomationError::UnsupportedOperation(
             "set_selected is not implemented for macOS yet".to_string(),
         ))
+    }
+
+    fn invoke(&self) -> Result<(), AutomationError> {
+        // Use AXPress as the most common invocation action on macOS
+        let press_attr = AXAttribute::new(&CFString::new("AXPress"));
+        match self.element.0.perform_action(&press_attr.as_CFString()) {
+            Ok(_) => {
+                debug!("Successfully invoked element with AXPress");
+                Ok(())
+            }
+            Err(e) => Err(AutomationError::PlatformError(format!(
+                "Invoke with AXPress failed: {:?}",
+                e
+            ))),
+        }
     }
 }
 
