@@ -1,13 +1,13 @@
 # Terminator CLI
 
-The Terminator CLI is a powerful command-line tool for managing the Terminator project, including version management, releases, and **Azure VM deployment for MCP servers**.
+The Terminator CLI is a powerful command-line tool for managing the Terminator project, including version management, releases, **Azure VM deployment**, and **MCP server interaction**.
 
 ## Features
 
 - 📦 **Version Management**: Bump and sync versions across all packages
 - 🏷️ **Release Automation**: Tag and release with a single command
-- ☁️ **Azure VM Deployment**: Create Windows VMs with pre-installed MCP server
-- 🤖 **MCP Server Setup**: Automated installation and configuration
+- ☁️ **Azure VM Deployment**: One-liner to deploy Windows VMs with MCP server
+- 🤖 **MCP Client**: Chat with MCP servers over HTTP
 - 🔒 **Secure by Default**: Auto-generated passwords, configurable security rules
 
 ## Installation
@@ -21,6 +21,23 @@ cargo build --release --bin terminator
 # Install globally (optional)
 cargo install --path terminator-cli
 ```
+
+## Quick Start
+
+### 🚀 One-Liner Azure VM + MCP Deployment
+
+```bash
+# Prerequisites: Azure CLI installed and logged in
+az login
+
+# Deploy VM with MCP server in one command
+terminator azure create --subscription-id YOUR_SUB_ID --save-to vm.json
+
+# Chat with the deployed MCP server (wait ~2-3 minutes for VM to boot)
+terminator mcp chat --url http://$(jq -r .public_ip vm.json):3000
+```
+
+That's it! You now have a Windows VM running the Terminator MCP server.
 
 ## Usage
 
@@ -44,166 +61,157 @@ terminator tag
 # Full release (bump + tag + push)
 terminator release        # patch release
 terminator release minor  # minor release
-terminator release major  # major release
 ```
 
 ### Azure VM Deployment
 
 #### Prerequisites
 
-1. Install Azure CLI:
-   ```bash
-   # Windows
-   winget install Microsoft.AzureCLI
-   
-   # macOS
-   brew install azure-cli
-   
-   # Linux
-   curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-   ```
+```bash
+# Install Azure CLI
+# Windows: winget install Microsoft.AzureCLI
+# macOS: brew install azure-cli
+# Linux: curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
-2. Login to Azure:
-   ```bash
-   az login
-   ```
+# Login to Azure
+az login
+```
 
-3. Set your subscription (if you have multiple):
-   ```bash
-   export AZURE_SUBSCRIPTION_ID="your-subscription-id"
-   ```
-
-#### Create a VM with MCP Server
+#### Deploy VM with MCP Server
 
 ```bash
-# Basic deployment (uses defaults)
-terminator azure create
+# Basic deployment (auto-generates secure password)
+terminator azure create --subscription-id YOUR_SUBSCRIPTION_ID
 
 # Custom deployment
 terminator azure create \
-  --resource-group my-terminator-rg \
-  --vm-name my-terminator-vm \
+  --subscription-id YOUR_SUBSCRIPTION_ID \
+  --resource-group my-rg \
+  --vm-name my-vm \
   --location westus2 \
   --vm-size Standard_D4s_v3 \
-  --admin-username myadmin \
   --save-to vm-info.json
 ```
 
-#### Available Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--subscription-id` | Azure subscription ID | From env or prompt |
-| `--resource-group` | Resource group name | `terminator-rg-XXXX` |
-| `--vm-name` | Virtual machine name | `terminator-vm-XXXX` |
-| `--location` | Azure region | `eastus` |
-| `--vm-size` | VM size | `Standard_D2s_v3` |
-| `--admin-username` | Administrator username | `terminatoradmin` |
-| `--admin-password` | Administrator password | Auto-generated |
-| `--no-rdp` | Disable RDP access | RDP enabled |
-| `--no-winrm` | Disable WinRM access | WinRM enabled |
-| `--no-mcp` | Skip MCP server installation | MCP installed |
-| `--save-to` | Save connection info to file | Not saved |
-
-#### Connect to Your VM
-
-After deployment, you'll receive connection information:
-
-**RDP (Remote Desktop):**
-```bash
-# Windows
-mstsc /v:YOUR_VM_IP:3389
-
-# macOS (use Microsoft Remote Desktop from App Store)
-# Linux
-xfreerdp /v:YOUR_VM_IP /u:YOUR_USERNAME /p:'YOUR_PASSWORD'
-```
-
-**PowerShell Remoting:**
-```powershell
-$cred = Get-Credential YOUR_USERNAME
-Enter-PSSession -ComputerName YOUR_VM_IP -Credential $cred
-```
+The VM will:
+- Install Node.js, Git, and build tools
+- Deploy MCP server as a Windows service
+- Open port 3000 for HTTP access
+- Start automatically on boot
 
 #### Delete Resources
 
 ```bash
-# Delete entire resource group
-terminator azure delete my-terminator-rg
+terminator azure delete RESOURCE_GROUP_NAME --subscription-id YOUR_SUB_ID
+```
+
+### MCP Client
+
+#### Interactive Chat Mode
+
+```bash
+# Connect to MCP server
+terminator mcp chat --url http://VM_IP:3000
+
+# In chat mode, you can:
+# - Type tool names with arguments
+# - Type 'help' to see all tools
+# - Type 'exit' to quit
+
+# Examples:
+> get_desktop_info
+> open_application notepad
+> type_text "Hello from Terminator!"
+> take_screenshot
+```
+
+#### Execute Single Command
+
+```bash
+# Execute a specific tool
+terminator mcp exec --url http://VM_IP:3000 get_desktop_info
+
+# With arguments
+terminator mcp exec --url http://VM_IP:3000 open_application notepad
+terminator mcp exec --url http://VM_IP:3000 type_text "Hello World"
+
+# With JSON arguments
+terminator mcp exec --url http://VM_IP:3000 click '{"x": 100, "y": 200}'
+```
+
+## Complete Workflow Example
+
+```bash
+# 1. Deploy VM with MCP server
+terminator azure create --subscription-id $AZURE_SUBSCRIPTION_ID --save-to vm.json
+
+# 2. Wait for VM to boot (2-3 minutes)
+echo "Waiting for VM to initialize..."
+sleep 180
+
+# 3. Get the VM IP
+VM_IP=$(jq -r .public_ip vm.json)
+MCP_URL="http://$VM_IP:3000"
+
+# 4. Test MCP connection
+terminator mcp exec --url $MCP_URL get_desktop_info
+
+# 5. Start interactive session
+terminator mcp chat --url $MCP_URL
+
+# 6. Clean up when done
+terminator azure delete $(jq -r .resource_group vm.json) --subscription-id $AZURE_SUBSCRIPTION_ID
 ```
 
 ## MCP Server Details
 
-The MCP server is automatically installed as a Windows service:
+When deployed on Azure, the MCP server:
+- Runs on port 3000 (HTTP)
+- Provides health endpoint: `http://VM_IP:3000/health`
+- Supports JSON-RPC 2.0 protocol
+- Logs to: `C:\TerminatorMCP\install.log`
 
-- **Service Name**: Terminator MCP Server
-- **Installation Path**: `C:\TerminatorMCP\`
-- **Logs**: `C:\TerminatorMCP\install.log`
-- **Configuration**: Runs `terminator-mcp-agent` via npx
+## Security Notes
 
-To verify installation after connecting to the VM:
-
-```powershell
-# Check service status
-Get-Service "Terminator MCP Server"
-
-# View installation logs
-Get-Content C:\TerminatorMCP\install.log -Tail 50
-
-# Test MCP agent
-npx -y terminator-mcp-agent --version
-```
-
-## Examples
-
-See the [`examples`](../terminator/examples) directory for complete examples:
-
-- [`azure_vm_deployment.rs`](../terminator/examples/azure_vm_deployment.rs) - Full Azure VM deployment workflow
+- VMs are accessible from the internet by default
+- Auto-generated passwords meet Azure complexity requirements
+- Consider restricting NSG rules to your IP address
+- For production, use Azure Bastion instead of direct RDP
 
 ## Cost Management
 
-- VMs are billed hourly - remember to delete when not in use
-- Typical costs:
-  - Standard_B2s: ~$30/month
-  - Standard_D2s_v3: ~$96/month (default)
-  - Standard_D4s_v3: ~$192/month
-
-## Security Best Practices
-
-1. **Restrict Network Access**: Update NSG rules to limit access to your IP
-2. **Use Strong Passwords**: Auto-generated passwords meet Azure requirements
-3. **Enable MFA**: Use Azure Bastion for production deployments
-4. **Regular Updates**: Keep Windows and MCP server updated
+- VMs are billed hourly
+- Default VM size (Standard_D2s_v3): ~$96/month
+- Remember to delete resources when not in use
+- Use `--no-wait` flag for faster deletion
 
 ## Troubleshooting
 
-### Azure CLI Issues
+### Azure Issues
 
 ```bash
-# Clear cache and re-authenticate
-az account clear
+# Not logged in
 az login
 
-# Verify subscription
-az account show
-```
+# Wrong subscription
+az account set --subscription YOUR_SUB_ID
 
-### VM Creation Fails
-
-Check Azure quotas:
-```bash
+# Check quotas
 az vm list-usage --location eastus --output table
 ```
 
-### MCP Server Not Running
+### MCP Connection Issues
 
-1. Connect via RDP
-2. Check logs: `Get-Content C:\TerminatorMCP\install.log`
-3. Restart service: `Restart-Service "Terminator MCP Server"`
+```bash
+# Check if server is running
+curl http://VM_IP:3000/health
 
-## Contributing
+# Check firewall on VM (via RDP)
+Get-NetFirewallRule -DisplayName "*MCP*"
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for development guidelines.
+# Check service status
+Get-Service "Terminator MCP Server"
+```
 
 ## License
 

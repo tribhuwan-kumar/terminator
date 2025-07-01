@@ -79,6 +79,15 @@ impl AzureVmManager {
         // Create VM with all resources
         let public_ip = self.create_vm_with_resources()?;
 
+        // Open additional ports after VM creation
+        if self.config.enable_winrm {
+            self.open_winrm_ports()?;
+        }
+
+        if self.config.deploy_mcp {
+            self.open_mcp_port()?;
+        }
+
         Ok(VmDeploymentResult {
             vm_name: self.config.vm_name.clone(),
             resource_group: self.config.resource_group.clone(),
@@ -88,6 +97,11 @@ impl AzureVmManager {
             rdp_enabled: self.config.enable_rdp,
             winrm_enabled: self.config.enable_winrm,
             mcp_deployed: self.config.deploy_mcp,
+            mcp_url: if self.config.deploy_mcp {
+                Some(format!("http://{}:3000", public_ip))
+            } else {
+                None
+            },
         })
     }
 
@@ -205,11 +219,6 @@ impl AzureVmManager {
 
         println!("✅ VM created successfully");
 
-        // Open additional ports if needed
-        if self.config.enable_winrm {
-            self.open_winrm_ports()?;
-        }
-
         // Get public IP
         let public_ip = self.get_public_ip()?;
         println!("📍 Public IP: {}", public_ip);
@@ -262,6 +271,35 @@ impl AzureVmManager {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             eprintln!("⚠️  Warning: Failed to open WinRM HTTPS port: {}", stderr);
+        }
+
+        Ok(())
+    }
+
+    fn open_mcp_port(&self) -> Result<()> {
+        println!("🔓 Opening MCP HTTP port (3000)...");
+
+        let output = Command::new("az")
+            .args(&[
+                "vm",
+                "open-port",
+                "--resource-group",
+                &self.config.resource_group,
+                "--name",
+                &self.config.vm_name,
+                "--port",
+                "3000",
+                "--priority",
+                "1003",
+            ])
+            .output()
+            .context("Failed to open MCP HTTP port")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("⚠️  Warning: Failed to open MCP HTTP port: {}", stderr);
+        } else {
+            println!("✅ MCP HTTP port 3000 opened");
         }
 
         Ok(())
@@ -338,6 +376,7 @@ pub struct VmDeploymentResult {
     pub rdp_enabled: bool,
     pub winrm_enabled: bool,
     pub mcp_deployed: bool,
+    pub mcp_url: Option<String>,
 }
 
 impl VmDeploymentResult {
@@ -368,11 +407,12 @@ impl VmDeploymentResult {
             );
         }
 
-        if self.mcp_deployed {
+        if let Some(ref mcp_url) = self.mcp_url {
             println!("\n🤖 MCP Server:");
-            println!("  The MCP server will be automatically installed on first boot.");
+            println!("  HTTP Endpoint: {}", mcp_url);
+            println!("  Health Check: {}/health", mcp_url);
             println!("  Installation log: C:\\TerminatorMCP\\install.log");
-            println!("  Check status with: Get-Service 'Terminator MCP Server'");
+            println!("\n  Test with: terminator mcp chat --url {}", mcp_url);
         }
 
         println!("\n⚠️  Security Notes:");

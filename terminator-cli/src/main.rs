@@ -23,6 +23,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 mod azure;
+mod mcp_client;
 
 #[derive(Parser)]
 #[command(name = "terminator")]
@@ -114,12 +115,40 @@ struct AzureDeleteArgs {
     subscription_id: Option<String>,
 }
 
+#[derive(Parser, Debug)]
+struct McpChatArgs {
+    /// MCP server URL (e.g., http://localhost:3000)
+    #[clap(long, short = 'u')]
+    url: String,
+}
+
+#[derive(Parser, Debug)]
+struct McpExecArgs {
+    /// MCP server URL
+    #[clap(long, short = 'u')]
+    url: String,
+
+    /// Tool name to execute
+    tool: String,
+
+    /// Arguments for the tool (as JSON or simple string)
+    args: Option<String>,
+}
+
 #[derive(Subcommand)]
 enum AzureCommands {
     /// Create a new Windows VM with MCP server
     Create(AzureCreateArgs),
     /// Delete a resource group and all its resources
     Delete(AzureDeleteArgs),
+}
+
+#[derive(Subcommand)]
+enum McpCommands {
+    /// Interactive chat with MCP server
+    Chat(McpChatArgs),
+    /// Execute a single MCP tool
+    Exec(McpExecArgs),
 }
 
 #[derive(Subcommand)]
@@ -141,6 +170,9 @@ enum Commands {
     /// Azure VM management commands
     #[command(subcommand)]
     Azure(AzureCommands),
+    /// MCP client commands
+    #[command(subcommand)]
+    Mcp(McpCommands),
 }
 
 fn main() {
@@ -158,6 +190,7 @@ fn main() {
         Commands::Tag => tag_and_push(),
         Commands::Release(args) => full_release(&args.level.to_string()),
         Commands::Azure(azure_cmd) => handle_azure_command(azure_cmd),
+        Commands::Mcp(mcp_cmd) => handle_mcp_command(mcp_cmd),
     }
 }
 
@@ -763,4 +796,27 @@ async fn delete_azure_resources(args: AzureDeleteArgs) -> Result<(), Box<dyn std
     manager.delete_resource_group().await?;
 
     Ok(())
+}
+
+fn handle_mcp_command(cmd: McpCommands) {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+
+    match cmd {
+        McpCommands::Chat(args) => {
+            runtime.block_on(async {
+                if let Err(e) = mcp_client::interactive_chat(args.url).await {
+                    eprintln!("❌ MCP chat error: {}", e);
+                    std::process::exit(1);
+                }
+            });
+        }
+        McpCommands::Exec(args) => {
+            runtime.block_on(async {
+                if let Err(e) = mcp_client::execute_command(args.url, args.tool, args.args).await {
+                    eprintln!("❌ MCP execution error: {}", e);
+                    std::process::exit(1);
+                }
+            });
+        }
+    }
 }
