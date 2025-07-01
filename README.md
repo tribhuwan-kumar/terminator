@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 
->AI-powered desktop automation through natural language. Build agents that control any application using MCP (Model Context Protocol) + LLMs. Cross-platform SDK with Python, TypeScript, and Rust support.
+>Computer use SDK for building agents that learn from human screen recordings. Accessibility-first. Cross-platform (Windows/macOS/Linux), near-deterministic.
 
 ## ⚡ TL;DR — Hello World Example
 
