@@ -24,7 +24,6 @@ use std::process::{Command, Stdio};
 
 mod azure;
 mod mcp_client;
-mod mcp_stdio;
 
 #[derive(Parser)]
 #[command(name = "terminator")]
@@ -813,17 +812,8 @@ fn handle_mcp_command(cmd: McpCommands) {
     match cmd {
         McpCommands::Chat(args) => {
             runtime.block_on(async {
-                let result = if let Some(url) = args.url {
-                    mcp_client::interactive_chat(url).await
-                } else if let Some(command) = args.command {
-                    let parts = parse_command(&command);
-                    mcp_stdio::interactive_chat_stdio(parts).await
-                } else {
-                    eprintln!("❌ Either --url or --command must be specified");
-                    std::process::exit(1);
-                };
-
-                if let Err(e) = result {
+                let transport = parse_transport(args.url, args.command);
+                if let Err(e) = mcp_client::interactive_chat(transport).await {
                     eprintln!("❌ MCP chat error: {}", e);
                     std::process::exit(1);
                 }
@@ -831,22 +821,25 @@ fn handle_mcp_command(cmd: McpCommands) {
         }
         McpCommands::Exec(args) => {
             runtime.block_on(async {
-                let result = if let Some(url) = args.url {
-                    mcp_client::execute_command(url, args.tool, args.args).await
-                } else if let Some(command) = args.command {
-                    let parts = parse_command(&command);
-                    mcp_stdio::execute_command_stdio(parts, args.tool, args.args).await
-                } else {
-                    eprintln!("❌ Either --url or --command must be specified");
-                    std::process::exit(1);
-                };
-
-                if let Err(e) = result {
+                let transport = parse_transport(args.url, args.command);
+                if let Err(e) = mcp_client::execute_command(transport, args.tool, args.args).await {
                     eprintln!("❌ MCP execution error: {}", e);
                     std::process::exit(1);
                 }
             });
         }
+    }
+}
+
+fn parse_transport(url: Option<String>, command: Option<String>) -> mcp_client::Transport {
+    if let Some(url) = url {
+        mcp_client::Transport::Http(url)
+    } else if let Some(command) = command {
+        let parts = parse_command(&command);
+        mcp_client::Transport::Stdio(parts)
+    } else {
+        eprintln!("❌ Either --url or --command must be specified");
+        std::process::exit(1);
     }
 }
 

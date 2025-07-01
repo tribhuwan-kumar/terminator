@@ -107,9 +107,11 @@ terminator azure delete RESOURCE_GROUP_NAME --subscription-id YOUR_SUB_ID
 
 ### MCP Client
 
-The MCP client supports two transport modes:
+The MCP client uses a unified implementation that supports two transport modes:
 - **HTTP**: Connect to remote MCP servers
 - **stdio**: Launch and connect to local MCP servers
+
+Both transports share the same interface and features through a single `Transport` enum.
 
 #### Interactive Chat Mode
 
