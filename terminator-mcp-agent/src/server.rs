@@ -1,11 +1,11 @@
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
-    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, EmptyArgs,
+    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, DelayArgs, EmptyArgs,
     ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs, GetClipboardArgs,
-    GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
-    MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
-    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
+    HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
+    PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
+    SetSelectedArgs, SetToggledArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
@@ -167,6 +167,70 @@ impl DesktopWrapper {
                 obj.insert("ui_tree".to_string(), tree_val);
             }
         }
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Get the complete UI tree for the currently focused window. This is a convenient tool that automatically detects which window has focus and returns its UI tree. This is a read-only operation."
+    )]
+    pub async fn get_focused_window_tree(
+        &self,
+        Parameters(_args): Parameters<crate::utils::GetFocusedWindowTreeArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        // Get the currently focused element
+        let focused_element = self.desktop.focused_element().map_err(|e| {
+            McpError::internal_error(
+                "Failed to get focused element",
+                Some(json!({"reason": e.to_string()})),
+            )
+        })?;
+
+        // Get the PID and window title from the focused element
+        let pid = focused_element.process_id().unwrap_or(0);
+
+        if pid == 0 {
+            return Err(McpError::internal_error(
+                "Could not get process ID from focused element",
+                Some(json!({"element_role": focused_element.role()})),
+            ));
+        }
+
+        let window_title = focused_element.window_title();
+        let app_name = focused_element.application_name();
+
+        // Get the window tree for the focused application
+        let tree = self
+            .desktop
+            .get_window_tree(
+                pid,
+                Some(&window_title),
+                None, // Use default config
+            )
+            .map_err(|e| {
+                McpError::resource_not_found(
+                    "Failed to get window tree for focused window",
+                    Some(json!({
+                        "reason": e.to_string(),
+                        "pid": pid,
+                        "window_title": window_title,
+                        "app_name": app_name
+                    })),
+                )
+            })?;
+
+        let result_json = json!({
+            "action": "get_focused_window_tree",
+            "status": "success",
+            "focused_window": {
+                "pid": pid,
+                "window_title": window_title,
+                "application_name": app_name,
+            },
+            "ui_tree": tree,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic."
+        });
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -721,6 +785,30 @@ impl DesktopWrapper {
                 Some(json!({"reason": e.to_string()})),
             )),
         }
+    }
+
+    #[tool(
+        description = "Delays execution for a specified number of milliseconds. Useful for waiting between actions to ensure UI stability."
+    )]
+    async fn delay(
+        &self,
+        Parameters(args): Parameters<DelayArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let start_time = chrono::Utc::now();
+
+        // Use tokio's sleep for async delay
+        tokio::time::sleep(std::time::Duration::from_millis(args.delay_ms)).await;
+
+        let end_time = chrono::Utc::now();
+        let actual_delay_ms = (end_time - start_time).num_milliseconds();
+
+        Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "delay",
+            "status": "success",
+            "requested_delay_ms": args.delay_ms,
+            "actual_delay_ms": actual_delay_ms,
+            "timestamp": end_time.to_rfc3339()
+        }))?]))
     }
 
     #[tool(
@@ -1585,7 +1673,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration."
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')."
     )]
     pub async fn execute_sequence(
         &self,
@@ -1594,7 +1682,6 @@ impl DesktopWrapper {
         use rmcp::handler::server::tool::Parameters;
 
         let stop_on_error = args.stop_on_error.unwrap_or(true);
-        let default_delay = args.delay_between_tools_ms.unwrap_or(0);
         let include_detailed = args.include_detailed_results.unwrap_or(true);
 
         let mut results = Vec::new();
@@ -1604,13 +1691,30 @@ impl DesktopWrapper {
         for (index, tool_call) in args.tools.iter().enumerate() {
             let tool_start_time = chrono::Utc::now();
 
+            // Strip the mcp_terminator-mcp-agent_ prefix if present
+            let tool_name = tool_call
+                .tool_name
+                .strip_prefix("mcp_terminator-mcp-agent_")
+                .unwrap_or(&tool_call.tool_name);
+
             // Manually dispatch to the appropriate tool
-            let tool_result = match tool_call.tool_name.as_str() {
+            let tool_result = match tool_name {
                 "get_window_tree" => {
                     match serde_json::from_value::<GetWindowTreeArgs>(tool_call.arguments.clone()) {
                         Ok(args) => self.get_window_tree(Parameters(args)).await,
                         Err(e) => Err(McpError::invalid_params(
                             "Invalid arguments for get_window_tree",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "get_focused_window_tree" => {
+                    match serde_json::from_value::<GetFocusedWindowTreeArgs>(
+                        tool_call.arguments.clone(),
+                    ) {
+                        Ok(args) => self.get_focused_window_tree(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for get_focused_window_tree",
                             Some(json!({"error": e.to_string()})),
                         )),
                     }
@@ -1739,10 +1843,163 @@ impl DesktopWrapper {
                         )),
                     }
                 }
-                // Add more tools as needed...
+                "delay" => match serde_json::from_value::<DelayArgs>(tool_call.arguments.clone()) {
+                    Ok(args) => self.delay(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for delay",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                },
+                "get_windows_for_application" => {
+                    match serde_json::from_value::<GetWindowsArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.get_windows_for_application(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for get_windows_for_application",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "run_command" => {
+                    match serde_json::from_value::<RunCommandArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.run_command(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for run_command",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "capture_screen" => {
+                    match serde_json::from_value::<EmptyArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.capture_screen(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for capture_screen",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "mouse_drag" => {
+                    match serde_json::from_value::<MouseDragArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.mouse_drag(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for mouse_drag",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "highlight_element" => {
+                    match serde_json::from_value::<HighlightElementArgs>(
+                        tool_call.arguments.clone(),
+                    ) {
+                        Ok(args) => self.highlight_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for highlight_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "close_element" => {
+                    match serde_json::from_value::<LocatorArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.close_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for close_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "select_option" => {
+                    match serde_json::from_value::<SelectOptionArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.select_option(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for select_option",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "list_options" => {
+                    match serde_json::from_value::<LocatorArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.list_options(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for list_options",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "set_toggled" => {
+                    match serde_json::from_value::<SetToggledArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.set_toggled(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for set_toggled",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "set_range_value" => {
+                    match serde_json::from_value::<SetRangeValueArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.set_range_value(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for set_range_value",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "set_selected" => {
+                    match serde_json::from_value::<SetSelectedArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.set_selected(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for set_selected",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "is_toggled" => {
+                    match serde_json::from_value::<LocatorArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.is_toggled(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for is_toggled",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "get_range_value" => {
+                    match serde_json::from_value::<LocatorArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.get_range_value(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for get_range_value",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "is_selected" => {
+                    match serde_json::from_value::<LocatorArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.is_selected(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for is_selected",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "capture_element_screenshot" => {
+                    match serde_json::from_value::<ValidateElementArgs>(tool_call.arguments.clone())
+                    {
+                        Ok(args) => self.capture_element_screenshot(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for capture_element_screenshot",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
+                "invoke_element" => {
+                    match serde_json::from_value::<LocatorArgs>(tool_call.arguments.clone()) {
+                        Ok(args) => self.invoke_element(Parameters(args)).await,
+                        Err(e) => Err(McpError::invalid_params(
+                            "Invalid arguments for invoke_element",
+                            Some(json!({"error": e.to_string()})),
+                        )),
+                    }
+                }
                 _ => Err(McpError::internal_error(
                     "Unknown tool called",
-                    Some(json!({"tool_name": tool_call.tool_name})),
+                    Some(json!({"tool_name": tool_call.tool_name, "stripped_name": tool_name})),
                 )),
             };
 
@@ -1792,14 +2049,6 @@ impl DesktopWrapper {
             };
 
             results.push(processed_result);
-
-            // Add delay if specified (and not the last tool)
-            if index < args.tools.len() - 1 {
-                let delay = tool_call.delay_ms.unwrap_or(default_delay);
-                if delay > 0 {
-                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                }
-            }
         }
 
         let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
@@ -2236,6 +2485,11 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
 
 6.  **USE PRECISE SELECTORS (ID IS YOUR FRIEND):** A `role|name` selector is good, but often, an element **does not have a `name` attribute** even if it contains visible text (the text is often a child element). Check the `get_window_tree` output carefully. If an element has an empty or generic name, you **MUST use its numeric ID (`\"#12345\"`) for selection.** Do not guess or hallucinate a `name` from the visual text; use the ID. This is critical for clickable `Group` elements which often lack a name.
 
+7.  **PREFER INVOKE OVER CLICK FOR BUTTONS:** When dealing with buttons, especially those that might not be in the viewport, **prefer `invoke_element` over `click_element`**. The `invoke_element` action is more reliable because it doesn't require the element to be scrolled into view. Use `click_element` only when you specifically need mouse interaction behavior (e.g., for links or UI elements that respond differently to clicks).
+
+8.  **USE SET_SELECTED FOR RADIO BUTTONS AND CHECKBOXES:** For radio buttons and selectable items, **always use `set_selected` with `state: true`** instead of `click_element`. This ensures the element reaches the desired state regardless of its current state. For checkboxes and toggle switches, use `set_toggled` with the desired state.
+
+
 **Tool Behavior & Metadata**
 
 Pay close attention to the tool descriptions for hints on their behavior.
@@ -2252,49 +2506,31 @@ Your most reliable strategy is to inspect the application's UI structure *before
 
 2.  **Get the UI Tree:** This is the most important step. Once you have the `pid` of your target application, call `get_window_tree` with `include_tree: true`. This returns a complete, JSON-like structure of all UI elements in that application.
 
-3.  **Construct Smart Selector Strategies:** You have powerful tools to create robust targeting strategies:
-    *   **Primary Strategy - Role+Name, then ID:** Always check the `get_window_tree` output. If an element has a unique, non-generic `name` attribute, use `role|name`. Otherwise, **immediately use the numeric ID selector (`\"#12345\"`)**. An element's visible text is often in a child element, so the parent container (like a `Group`) may not have a `name` itself.
-    *   **Multi-Selector Fallbacks:** Provide precise alternatives, which are tried in parallel.
+3.  **Construct Smart Selector Strategies:** 
+    *   **Primary Strategy:** Use `role:Type|name:Name` when available, otherwise use the numeric ID (`\"#12345\"`).
+    *   **Multi-Selector Fallbacks:** Provide alternatives that are tried in parallel:
         ```json
         {{
-          \"selector\": \"button|Submit Form\",
-          \"alternative_selectors\": \"#12345,role:Document >> button|Submit\"
+          \"selector\": \"role:Button|name:Submit\",
+          \"alternative_selectors\": \"#12345\"
         }}
         ```
-    *   **Chain Selectors for Context:** Use `>>` to chain selectors for specificity. Examples:
-        - `\"role:Document >> name:Email\"` (find Email field within document content)
-        - `\"role:Window >> role:Document >> role:Button\"` (find button within document, not browser chrome)
-        - `\"name:Form >> role:Edit\"` (find edit field within a specific form)
-    *   **Coordinate-Based Selectors for Visual Targeting:** When dealing with graphical elements that lack stable IDs or names (like canvas elements, drawing applications, or specific parts of an image), you can use coordinate-based selectors:
-        - `pos:x,y`: To target a specific point on the screen for actions like `click_element`.
-    *   **Intelligent Selector Design:** Consider the application context:
-        - **Web browsers:** Chain with `role:Document >>` to target page content, not browser UI
-        - **Forms:** Use parent containers to avoid ambiguity: `\"name:Contact Form >> name:Email\"`
-        - **Complex apps:** Navigate from window → document → specific element
-    *   **Smart Fallback Strategy:** Order selectors from most to least specific:
-        1. Role+Name (pipe): `\"button|Submit\"`
-        2. Exact numeric ID: `\"#12345\"`
-        3. Contextual chain: `\"role:Document >> button|Submit\"`
-    *   Note: AVOID: Generic selectors like `\"role:Button\"` or `\"name:Submit\"` alone.
-
-4.  **Interact with the Element:** Once you have a reliable `selector`, use an action tool:
-    *   `invoke_element`: **(Preferred Method)** Use this for most interactions. It's faster and more reliable than `click`, especially for controls like radio buttons, menu items, and checkboxes. It triggers the element's default action directly.
-    *   `click_element`: Use as a fallback if `invoke_element` fails or for elements where a literal mouse click is necessary (e.g., specific coordinates on a canvas).
-    *   `type_into_element`: To type text into input fields.
-    *   `press_key`: Sends a key press to a UI element. **Key Syntax: Use curly braces for special keys!**
-    *   `activate_element`: To bring a window to the foreground.
-    *   `mouse_drag`: To perform drag and drop operations.
-    *   `set_clipboard`: To set text to the system clipboard.
-    *   `get_clipboard`: To get text from the system clipboard.
-    *   `scroll_element`: To scroll within elements like web pages, documents, or lists.
+    *   **Avoid:** Generic selectors like `\"role:Button\"` alone - they're too ambiguous.
 
 **Action Examples**
 
-*   **Clicking a 'Login' button:**
+*   **Invoking a button (preferred over clicking):**
     ```json
     {{
         \"tool_name\": \"invoke_element\",
-        \"args\": {{\"selector\": \"button|Login\"}}
+        \"args\": {{\"selector\": \"role:button|name:Login\"}}
+    }}
+    ```
+*   **Selecting a radio button (use set_selected, not click):**
+    ```json
+    {{
+        \"tool_name\": \"set_selected\",
+        \"args\": {{\"selector\": \"role:RadioButton|name:Male\", \"state\": true}}
     }}
     ```
 *   **Typing an email into an email field:**
@@ -2304,15 +2540,24 @@ Your most reliable strategy is to inspect the application's UI structure *before
         \"args\": {{\"selector\": \"edit|Email\", \"text_to_type\": \"user@example.com\"}}
     }}
     ```
-*   **Typing height into a height field:**
+*   **Using alternative selectors for robustness:**
     ```json
     {{
-        \"tool_name\": \"type_into_element\",
-        \"args\": {{\"selector\": \"edit|Height\", \"text_to_type\": \"6'2\"}}
+        \"tool_name\": \"invoke_element\",
+        \"args\": {{
+            \"selector\": \"#17517999067772859239\",
+            \"alternative_selectors\": \"role:Group|name:Run Quote\"
+        }}
     }}
     ```
 
-5.  **Handle Scrolling for Full Context:** When working with pages or long content, ALWAYS scroll to see all content. Use `scroll_element` to scroll pages up/down to get the full context before making decisions or extracting information.
+**Common Pitfalls & Solutions**
+
+*   **Click fails on buttons not in viewport:** Use `invoke_element` instead of `click_element`.
+*   **Radio button clicks don't register:** Use `set_selected` with `state: true`.
+*   **Form validation errors:** Verify all fields AND radio buttons/checkboxes before submitting.
+*   **Element not found after UI change:** Call `get_window_tree` again after UI changes.
+*   **Selector matches wrong element:** Use numeric ID when name is empty.
 
 Contextual information:
 - The current date and time is {}.

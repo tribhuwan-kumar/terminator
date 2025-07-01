@@ -11,6 +11,12 @@ use tracing_subscriber::EnvFilter;
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct EmptyArgs {}
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DelayArgs {
+    #[schemars(description = "Number of milliseconds to delay")]
+    pub delay_ms: u64,
+}
+
 fn default_desktop() -> Arc<Desktop> {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     let desktop = Desktop::new(false, false).expect("Failed to create default desktop");
@@ -42,6 +48,9 @@ pub struct GetWindowTreeArgs {
     #[schemars(description = "Optional window title filter")]
     pub title: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetFocusedWindowTreeArgs {}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetWindowsArgs {
@@ -330,7 +339,9 @@ pub struct ActivateElementArgs {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ToolCall {
-    #[schemars(description = "Name of the tool to execute")]
+    #[schemars(
+        description = "Name of the tool to execute. Can be either short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')"
+    )]
     pub tool_name: String,
     #[schemars(description = "Arguments to pass to the tool as a JSON object")]
     pub arguments: serde_json::Value,
@@ -348,8 +359,6 @@ pub struct ExecuteSequenceArgs {
     pub tools: Vec<ToolCall>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
-    #[schemars(description = "Default delay in milliseconds between tool executions (default: 0)")]
-    pub delay_between_tools_ms: Option<u64>,
     #[schemars(
         description = "Whether to include detailed results from each tool execution (default: true)"
     )]
