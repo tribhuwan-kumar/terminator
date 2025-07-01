@@ -27,9 +27,8 @@ async fn test_execute_sequence_direct() {
 
     // Test execute_sequence with empty tools array
     let args = ExecuteSequenceArgs {
-        tools: vec![],
+        tools_json: serde_json::to_string(&Vec::<ToolCall>::new()).unwrap(),
         stop_on_error: Some(true),
-        delay_between_tools_ms: None,
         include_detailed_results: Some(true),
     };
 
@@ -94,14 +93,14 @@ async fn test_execute_sequence_with_invalid_tool() {
 
     // Test execute_sequence with an invalid tool
     let args = ExecuteSequenceArgs {
-        tools: vec![ToolCall {
+        tools_json: serde_json::to_string(&vec![ToolCall {
             tool_name: "non_existent_tool".to_string(),
             arguments: json!({}),
             continue_on_error: None,
             delay_ms: None,
-        }],
+        }])
+        .unwrap(),
         stop_on_error: Some(true),
-        delay_between_tools_ms: None,
         include_detailed_results: Some(true),
     };
 
@@ -144,7 +143,7 @@ async fn test_complex_sequence_direct() {
 
     // Test a more complex sequence
     let args = ExecuteSequenceArgs {
-        tools: vec![
+        tools_json: serde_json::to_string(&vec![
             ToolCall {
                 tool_name: "invalid_tool".to_string(),
                 arguments: json!({}),
@@ -160,9 +159,9 @@ async fn test_complex_sequence_direct() {
                 continue_on_error: None,
                 delay_ms: None,
             },
-        ],
+        ])
+        .unwrap(),
         stop_on_error: Some(true),
-        delay_between_tools_ms: Some(10),
         include_detailed_results: Some(true),
     };
 
@@ -200,7 +199,7 @@ async fn test_execute_sequence_delays() {
     let start_time = std::time::Instant::now();
 
     let args = ExecuteSequenceArgs {
-        tools: vec![
+        tools_json: serde_json::to_string(&vec![
             ToolCall {
                 tool_name: "validate_element".to_string(),
                 arguments: json!({
@@ -219,9 +218,9 @@ async fn test_execute_sequence_delays() {
                 continue_on_error: None,
                 delay_ms: None,
             },
-        ],
+        ])
+        .unwrap(),
         stop_on_error: Some(true),
-        delay_between_tools_ms: Some(50),
         include_detailed_results: Some(false),
     };
 
