@@ -14,3 +14,8 @@ path = "src/bin/cargo-terminator.rs"
 [dependencies]
 serde_json = "1.0.140"
 clap = { version = "4.4", features = ["derive"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+rand = "0.8"
+base64 = "0.22"
