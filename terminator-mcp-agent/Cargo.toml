@@ -39,3 +39,4 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d6
 ] }
 tokio-test = "0.4"
 anyhow = "1.0"
+rand = "0.8"
