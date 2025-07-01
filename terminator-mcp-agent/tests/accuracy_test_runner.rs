@@ -1,13 +1,13 @@
-mod workflow_accuracy_tests;
-mod workflow_definitions;
-mod workflows;
+mod common;
 
 use anyhow::Result;
+use common::{
+    workflow_accuracy_tests::{AccuracyReport, WorkflowAccuracyTester},
+    workflow_definitions::*,
+    workflows::*,
+};
 use std::fs;
 use std::path::Path;
-use workflow_accuracy_tests::{AccuracyReport, WorkflowAccuracyTester};
-use workflow_definitions::*;
-use workflows::*;
 
 #[tokio::test]
 async fn test_pdf_data_entry_accuracy() -> Result<()> {

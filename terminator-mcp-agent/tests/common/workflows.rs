@@ -1,5 +1,8 @@
-use crate::workflow_accuracy_tests::*;
+use super::workflow_accuracy_tests::{
+    ComplexWorkflow, ExpectedOutcome, TestData, ValidationCriterion, WorkflowCategory, WorkflowStep,
+};
 use rmcp::object;
+use serde_json::json;
 use std::collections::HashMap;
 
 /// Simple calculator test - actually tests what we can do
@@ -16,9 +19,10 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
                     "application_name": "uwp:Microsoft.WindowsCalculator",
                     "wait_for_ready": true,
                     "timeout_ms": 5000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "application_opened" }),
+                    expected_data: object!({ "status": "application_opened" }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 5000,
@@ -30,9 +34,10 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "pid": "{{calculator_pid}}",
                     "title": "Calculator"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "success" }),
+                    expected_data: object!({ "status": "success" }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 3000,
@@ -44,9 +49,10 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "button|Five",
                     "alternative_selectors": "Name:Five,#num5Button"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "clicked": true }),
+                    expected_data: object!({ "clicked": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -58,9 +64,10 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "button|Plus",
                     "alternative_selectors": "Name:Plus,#plusButton"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "clicked": true }),
+                    expected_data: object!({ "clicked": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -72,9 +79,10 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "button|Three",
                     "alternative_selectors": "Name:Three,#num3Button"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "clicked": true }),
+                    expected_data: object!({ "clicked": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -86,9 +94,10 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "button|Equals",
                     "alternative_selectors": "Name:Equals,#equalButton"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "clicked": true }),
+                    expected_data: object!({ "clicked": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -100,7 +109,8 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "nativeid:CalculatorResults",
                     "timeout_ms": 2000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::ElementFound {
                     selector: "nativeid:CalculatorResults".to_string(),
                 },
@@ -115,8 +125,8 @@ pub fn create_calculator_test_workflow() -> ComplexWorkflow {
         test_data: TestData {
             input_files: vec![],
             expected_outputs: HashMap::from([
-                ("calculation_correct".to_string(), object!(true)),
-                ("result".to_string(), object!("8")),
+                ("calculation_correct".to_string(), json!(true)),
+                ("result".to_string(), json!(8)),
             ]),
             mock_data: HashMap::new(),
         },
@@ -138,9 +148,10 @@ pub fn create_notepad_test_workflow() -> ComplexWorkflow {
                     "application_name": "notepad.exe",
                     "wait_for_ready": true,
                     "timeout_ms": 3000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "application_opened" }),
+                    expected_data: object!({ "status": "application_opened" }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 3000,
@@ -154,7 +165,8 @@ pub fn create_notepad_test_workflow() -> ComplexWorkflow {
                     "alternative_selectors": "Name:Text Editor,role:document",
                     "text_to_type": "Hello from MCP accuracy test!",
                     "clear_before_typing": false
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::TextEntered {
                     field: "editor".to_string(),
                     value: "Hello from MCP accuracy test!".to_string(),
@@ -168,9 +180,10 @@ pub fn create_notepad_test_workflow() -> ComplexWorkflow {
                 tool_name: "press_key_global".to_string(),
                 arguments: object!({
                     "key": "{Ctrl}s"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "key_pressed": true }),
+                    expected_data: object!({ "key_pressed": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -184,7 +197,8 @@ pub fn create_notepad_test_workflow() -> ComplexWorkflow {
                     "alternative_selectors": "Name:File name:",
                     "text_to_type": "mcp_test_output.txt",
                     "clear_before_typing": true
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::TextEntered {
                     field: "filename".to_string(),
                     value: "mcp_test_output.txt".to_string(),
@@ -199,9 +213,10 @@ pub fn create_notepad_test_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "button|Save",
                     "alternative_selectors": "Name:Save"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "file_saved": true }),
+                    expected_data: object!({ "file_saved": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -211,10 +226,10 @@ pub fn create_notepad_test_workflow() -> ComplexWorkflow {
         test_data: TestData {
             input_files: vec![],
             expected_outputs: HashMap::from([
-                ("file_created".to_string(), object!(true)),
+                ("file_created".to_string(), json!(true)),
                 (
                     "content".to_string(),
-                    object!("Hello from MCP accuracy test!"),
+                    json!("Hello from MCP accuracy test!"),
                 ),
             ]),
             mock_data: HashMap::new(),

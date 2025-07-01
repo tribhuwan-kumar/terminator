@@ -1,4 +1,4 @@
-use crate::workflow_accuracy_tests::*;
+use super::workflow_accuracy_tests::*;
 use anyhow::Result;
 use rand::Rng;
 use rmcp::object;
@@ -92,14 +92,17 @@ impl MockMcpService {
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown");
 
-                self.mock_state
-                    .insert(format!("app_{}", app_name), object!({ "opened": true }));
+                self.mock_state.insert(
+                    format!("app_{}", app_name),
+                    object!({ "opened": true }).into(),
+                );
 
                 Ok(object!({
                     "action": "open_application",
                     "status": "success",
                     "application": app_name
-                }))
+                })
+                .into())
             }
 
             "click_element" => {
@@ -113,7 +116,8 @@ impl MockMcpService {
                     "status": "success",
                     "clicked": true,
                     "selector": selector
-                }))
+                })
+                .into())
             }
 
             "type_into_element" => {
@@ -126,28 +130,32 @@ impl MockMcpService {
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
 
-                self.mock_state
-                    .insert(format!("field_{}", selector), object!({ "value": text }));
+                self.mock_state.insert(
+                    format!("field_{}", selector),
+                    object!({ "value": text }).into(),
+                );
 
                 Ok(object!({
                     "action": "type_into_element",
                     "status": "success",
                     "typed": text,
                     "selector": selector
-                }))
+                })
+                .into())
             }
 
             "navigate_browser" => {
                 let url = arguments.get("url").and_then(|v| v.as_str()).unwrap_or("");
 
                 self.mock_state
-                    .insert("current_url".to_string(), object!({ "url": url }));
+                    .insert("current_url".to_string(), object!({ "url": url }).into());
 
                 Ok(object!({
                     "action": "navigate_browser",
                     "status": "success",
                     "navigated_to": url
-                }))
+                })
+                .into())
             }
 
             "extract_text_from_region" => {
@@ -177,7 +185,8 @@ impl MockMcpService {
                     "action": "extract_text_from_region",
                     "status": "success",
                     "extracted_data": extracted_data
-                }))
+                })
+                .into())
             }
 
             "validate_element" => {
@@ -194,7 +203,8 @@ impl MockMcpService {
                     "status": if exists { "success" } else { "failed" },
                     "exists": exists,
                     "selector": selector
-                }))
+                })
+                .into())
             }
 
             "execute_sequence" => {
@@ -213,7 +223,8 @@ impl MockMcpService {
                     "executed_tools": tools,
                     "successful_tools": successful,
                     "fields_filled": successful
-                }))
+                })
+                .into())
             }
 
             "select_option" => {
@@ -226,7 +237,8 @@ impl MockMcpService {
                     "action": "select_option",
                     "status": "success",
                     "selected": option
-                }))
+                })
+                .into())
             }
 
             "wait_for_element" => {
@@ -240,7 +252,8 @@ impl MockMcpService {
                     "status": "success",
                     "found": true,
                     "selector": selector
-                }))
+                })
+                .into())
             }
 
             "extract_element_text" => {
@@ -277,7 +290,8 @@ impl MockMcpService {
                     "price": "$175.43",
                     "market_cap": "$2.7T",
                     "extracted": extracted
-                }))
+                })
+                .into())
             }
 
             "switch_to_application" => {
@@ -291,7 +305,8 @@ impl MockMcpService {
                     "status": "success",
                     "switched": true,
                     "application": app_name
-                }))
+                })
+                .into())
             }
 
             "send_keys" => {
@@ -301,14 +316,16 @@ impl MockMcpService {
                     "action": "send_keys",
                     "status": "success",
                     "keys_sent": keys
-                }))
+                })
+                .into())
             }
 
             _ => Ok(object!({
                 "action": tool_name,
                 "status": "success",
                 "message": "Mock tool execution"
-            })),
+            })
+            .into()),
         }
     }
 }
@@ -337,9 +354,9 @@ impl MockWorkflowAccuracyTester {
         let start_time = std::time::Instant::now();
         let mut total_accuracy = 0.0;
 
-        for workflow in &self.workflows {
+        for workflow in self.workflows.clone() {
             println!("Running mock workflow: {}", workflow.name);
-            let result = self.run_workflow(workflow).await?;
+            let result = self.run_workflow(&workflow).await?;
             total_accuracy += result.accuracy_percentage;
             self.results.push(result);
         }

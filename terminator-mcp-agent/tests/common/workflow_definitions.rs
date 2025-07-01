@@ -1,5 +1,6 @@
-use crate::workflow_accuracy_tests::*;
+use super::workflow_accuracy_tests::*;
 use rmcp::object;
+use serde_json::json;
 use std::collections::HashMap;
 
 /// Create a PDF to form data entry workflow
@@ -17,9 +18,10 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                     "application_name": "Adobe Acrobat Reader",
                     "wait_for_ready": true,
                     "timeout_ms": 5000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "application_opened" }),
+                    expected_data: object!({ "status": "application_opened" }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ExactMatch {
                     field: "status".to_string(),
@@ -62,7 +64,8 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                     ],
                     "stop_on_error": false,
                     "include_detailed_results": true
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::FileProcessed {
                     file_type: "PDF".to_string(),
                 },
@@ -96,7 +99,8 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "use_ocr_if_needed": true
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::DataExtracted {
                     fields: HashMap::from([
                         ("invoice_number".to_string(), "INV-2024-001".to_string()),
@@ -125,9 +129,10 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                     "application_name": "QuickBooks",
                     "wait_for_ready": true,
                     "timeout_ms": 8000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "application_opened" }),
+                    expected_data: object!({ "status": "application_opened" }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ElementExists {
                     selector: "name:QuickBooks".to_string(),
@@ -154,7 +159,8 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "delay_between_tools_ms": 500
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::NavigationCompleted {
                     url: "bills_entry".to_string(),
                 },
@@ -204,9 +210,10 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                     ],
                     "stop_on_error": false,
                     "include_detailed_results": true
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "fields_filled": 4 }),
+                    expected_data: object!({ "fields_filled": 4 }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ElementHasText {
                     selector: "name:Bill #".to_string(),
@@ -221,9 +228,10 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "name:Save & Close",
                     "alternative_selectors": "name:Save,button|Save"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "saved": true }),
+                    expected_data: object!({ "saved": true }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ResponseTime { max_ms: 3000 }],
                 timeout_ms: 5000,
@@ -233,7 +241,7 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
         test_data: TestData {
             input_files: vec!["invoice_001.pdf".to_string()],
             expected_outputs: HashMap::from([
-                ("invoice_saved".to_string(), object!(true)),
+                ("invoice_saved".to_string(), json!(true)),
                 (
                     "extracted_fields".to_string(),
                     object!({
@@ -241,7 +249,8 @@ pub fn create_pdf_data_entry_workflow() -> ComplexWorkflow {
                         "invoice_date": "2024-01-15",
                         "total_amount": "$1,234.56",
                         "vendor_name": "Acme Corp"
-                    }),
+                    })
+                    .into(),
                 ),
             ]),
             mock_data: HashMap::new(),
@@ -266,9 +275,10 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                     "application_name": "Google Chrome",
                     "wait_for_ready": true,
                     "timeout_ms": 5000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "browser_opened" }),
+                    expected_data: object!({ "status": "browser_opened" }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ElementExists {
                     selector: "name:Address and search bar".to_string(),
@@ -282,7 +292,8 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "url": "https://demo-insurance.example.com/quote",
                     "wait_for_load": true
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::NavigationCompleted {
                     url: "https://demo-insurance.example.com/quote".to_string(),
                 },
@@ -299,9 +310,10 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                     "selector": "name:Accept All Cookies",
                     "alternative_selectors": "button|Accept,name:Accept",
                     "optional": true
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "clicked": true }),
+                    expected_data: object!({ "clicked": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -354,9 +366,10 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                     ],
                     "delay_between_tools_ms": 200,
                     "stop_on_error": false
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "fields_filled": 5 }),
+                    expected_data: object!({ "fields_filled": 5 }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ElementHasText {
                     selector: "name:Email".to_string(),
@@ -402,9 +415,10 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "delay_between_tools_ms": 300
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "health_info_complete": true }),
+                    expected_data: object!({ "health_info_complete": true }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ElementHasText {
                     selector: "name:Weight".to_string(),
@@ -442,9 +456,10 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "delay_between_tools_ms": 200
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "coverage_selected": true }),
+                    expected_data: object!({ "coverage_selected": true }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::NumericRange {
                     field: "coverage_amount".to_string(),
@@ -460,9 +475,10 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "name:Get My Quote",
                     "alternative_selectors": "button|Calculate Quote,name:Submit"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "quote_requested": true }),
+                    expected_data: object!({ "quote_requested": true }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ResponseTime { max_ms: 5000 }],
                 timeout_ms: 5000,
@@ -474,7 +490,8 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                 arguments: object!({
                     "selector": "name:Your Quote",
                     "timeout_ms": 10000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::ElementFound {
                     selector: "name:Your Quote".to_string(),
                 },
@@ -494,7 +511,8 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
                         "name:Coverage Amount",
                         "name:Policy Term"
                     ]
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::DataExtracted {
                     fields: HashMap::from([
                         ("monthly_premium".to_string(), "$45.00".to_string()),
@@ -514,14 +532,15 @@ pub fn create_insurance_quote_workflow() -> ComplexWorkflow {
         test_data: TestData {
             input_files: vec![],
             expected_outputs: HashMap::from([
-                ("quote_generated".to_string(), object!(true)),
+                ("quote_generated".to_string(), json!(true)),
                 (
                     "quote_data".to_string(),
                     object!({
                         "monthly_premium": "$45.00",
                         "coverage_amount": "$500,000",
                         "policy_term": "20 years"
-                    }),
+                    })
+                    .into(),
                 ),
             ]),
             mock_data: HashMap::from([
@@ -548,9 +567,10 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                     "application_name": "Microsoft Excel",
                     "wait_for_ready": true,
                     "timeout_ms": 5000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "excel_opened" }),
+                    expected_data: object!({ "status": "excel_opened" }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ElementExists {
                     selector: "name:Microsoft Excel".to_string(),
@@ -604,9 +624,10 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "delay_between_tools_ms": 100
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "headers_created": 3 }),
+                    expected_data: object!({ "headers_created": 3 }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 8000,
@@ -619,9 +640,10 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                     "application_name": "Google Chrome",
                     "wait_for_ready": true,
                     "timeout_ms": 5000
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "status": "browser_opened" }),
+                    expected_data: object!({ "status": "browser_opened" }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 5000,
@@ -655,7 +677,8 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "delay_between_tools_ms": 500
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::NavigationCompleted {
                     url: "quote".to_string(),
                 },
@@ -673,7 +696,8 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                         "selector:.market-cap"
                     ],
                     "wait_for_elements": true
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::DataExtracted {
                     fields: HashMap::from([
                         ("company".to_string(), "Apple Inc.".to_string()),
@@ -693,9 +717,10 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                 tool_name: "switch_to_application".to_string(),
                 arguments: object!({
                     "application_name": "Microsoft Excel"
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "switched": true }),
+                    expected_data: object!({ "switched": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 2000,
@@ -747,9 +772,10 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "delay_between_tools_ms": 100
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "data_entered": true }),
+                    expected_data: object!({ "data_entered": true }).into(),
                 },
                 validation_criteria: vec![],
                 timeout_ms: 8000,
@@ -782,9 +808,10 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
                         }
                     ],
                     "delay_between_tools_ms": 300
-                }),
+                })
+                .into(),
                 expected_outcome: ExpectedOutcome::Success {
-                    expected_data: object!({ "file_saved": true }),
+                    expected_data: object!({ "file_saved": true }).into(),
                 },
                 validation_criteria: vec![ValidationCriterion::ResponseTime { max_ms: 3000 }],
                 timeout_ms: 5000,
@@ -794,13 +821,14 @@ pub fn create_research_data_collection_workflow() -> ComplexWorkflow {
         test_data: TestData {
             input_files: vec![],
             expected_outputs: HashMap::from([
-                ("spreadsheet_created".to_string(), object!(true)),
+                ("spreadsheet_created".to_string(), json!(true)),
                 (
                     "data_collected".to_string(),
                     object!({
                         "companies": ["Apple Inc."],
                         "data_points": 3
-                    }),
+                    })
+                    .into(),
                 ),
             ]),
             mock_data: HashMap::new(),

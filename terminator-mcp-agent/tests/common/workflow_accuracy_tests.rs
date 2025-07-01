@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
-use rmcp::model::ProtocolVersion;
-use rmcp::transport::TokioChildProcess;
-use rmcp::{model::CallToolRequestParam, object, ServiceExt};
+use rmcp::{
+    model::CallToolRequestParam,
+    service::{Service, ServiceExt},
+    transport::TokioChildProcess,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -64,6 +67,11 @@ pub enum WorkflowCategory {
     WebNavigation,
     DataExtraction,
     MultiStepProcess,
+    ECommerce,
+    PublicServices,
+    Finance,
+    Productivity,
+    SocialMedia,
 }
 
 /// Test data for workflows
@@ -75,7 +83,7 @@ pub struct TestData {
 }
 
 /// Result of a workflow execution
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WorkflowResult {
     pub workflow_name: String,
     pub total_steps: usize,
@@ -88,7 +96,7 @@ pub struct WorkflowResult {
 }
 
 /// Result of a single step execution
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StepResult {
     pub step_name: String,
     pub success: bool,
@@ -99,7 +107,7 @@ pub struct StepResult {
 }
 
 /// Result of a validation check
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ValidationResult {
     pub criterion: String,
     pub passed: bool,
@@ -109,13 +117,15 @@ pub struct ValidationResult {
 }
 
 /// Main test runner for workflow accuracy
-pub struct WorkflowAccuracyTester {
-    service: rmcp::Service,
+pub struct WorkflowAccuracyTester<S> {
+    service: S,
     workflows: Vec<ComplexWorkflow>,
     results: Vec<WorkflowResult>,
 }
 
-impl WorkflowAccuracyTester {
+impl<T: rmcp::transport::Transport + Send + Sync + 'static>
+    WorkflowAccuracyTester<rmcp::Service<(), T>>
+{
     /// Create a new tester with MCP service
     pub async fn new() -> Result<Self> {
         let agent_path = get_agent_binary_path();
@@ -125,7 +135,8 @@ impl WorkflowAccuracyTester {
 
         let mut cmd = Command::new(&agent_path);
         cmd.args(["-t", "stdio"]);
-        let service = ().serve(TokioChildProcess::new(cmd)?).await?;
+        let transport = TokioChildProcess::new(cmd)?;
+        let service = ().serve(transport).await?;
 
         Ok(Self {
             service,
@@ -133,7 +144,13 @@ impl WorkflowAccuracyTester {
             results: Vec::new(),
         })
     }
+}
 
+impl<S> WorkflowAccuracyTester<S>
+where
+    S: ServiceExt<()> + Send + Sync,
+    S::Future: Send,
+{
     /// Add a workflow to test
     pub fn add_workflow(&mut self, workflow: ComplexWorkflow) {
         self.workflows.push(workflow);
@@ -148,7 +165,7 @@ impl WorkflowAccuracyTester {
             println!("Running workflow: {}", workflow.name);
             let result = self.run_workflow(workflow).await?;
             total_accuracy += result.accuracy_percentage;
-            self.results.push(result);
+            self.results.push(result.clone());
         }
 
         let overall_accuracy = if self.results.is_empty() {
@@ -169,20 +186,20 @@ impl WorkflowAccuracyTester {
     /// Run a single workflow
     async fn run_workflow(&self, workflow: &ComplexWorkflow) -> Result<WorkflowResult> {
         let start_time = Instant::now();
-        let mut step_results = Vec::new();
+        let mut step_results: Vec<StepResult> = Vec::new();
         let mut successful_steps = 0;
         let mut error_summary = Vec::new();
 
         for step in &workflow.steps {
             let step_result = self.execute_step(step).await;
-            match &step_result {
+            match step_result {
                 Ok(result) => {
                     if result.success {
                         successful_steps += 1;
                     } else if let Some(error) = &result.error {
                         error_summary.push(format!("{}: {}", step.name, error));
                     }
-                    step_results.push(result.clone());
+                    step_results.push(result);
                 }
                 Err(e) => {
                     error_summary.push(format!("{}: {}", step.name, e));
@@ -275,7 +292,7 @@ impl WorkflowAccuracyTester {
             .service
             .call_tool(CallToolRequestParam {
                 name: tool_name.into(),
-                arguments: Some(arguments.clone()),
+                arguments: arguments.as_object().cloned(),
             })
             .await
             .context("Failed to call MCP tool")?;
@@ -375,7 +392,7 @@ impl WorkflowAccuracyTester {
         match self
             .call_tool(
                 "validate_element",
-                &object!({
+                &json!({
                     "selector": selector,
                     "timeout_ms": 1000
                 }),
@@ -424,7 +441,7 @@ impl WorkflowAccuracyTester {
 }
 
 /// Overall accuracy report
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AccuracyReport {
     pub total_workflows: usize,
     pub overall_accuracy_percentage: f64,

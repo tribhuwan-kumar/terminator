@@ -1,11 +1,10 @@
-mod simple_accuracy_test;
-mod workflow_accuracy_tests;
+mod common;
 
 use anyhow::Result;
-use simple_accuracy_test::*;
+use common::workflow_accuracy_tests::{AccuracyReport, WorkflowAccuracyTester};
+use common::workflows::{create_calculator_test_workflow, create_notepad_test_workflow};
 use std::fs;
 use std::path::Path;
-use workflow_accuracy_tests::{AccuracyReport, WorkflowAccuracyTester};
 
 #[tokio::test]
 async fn test_calculator_accuracy() -> Result<()> {
