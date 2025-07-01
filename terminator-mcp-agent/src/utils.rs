@@ -337,26 +337,20 @@ pub struct ActivateElementArgs {
     pub timeout_ms: Option<u64>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ToolCall {
-    #[schemars(
-        description = "Name of the tool to execute. Can be either short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')"
-    )]
     pub tool_name: String,
-    #[schemars(description = "Arguments to pass to the tool as a JSON object")]
     pub arguments: serde_json::Value,
-    #[schemars(
-        description = "Optional: Continue to next tool even if this one fails (default: false)"
-    )]
     pub continue_on_error: Option<bool>,
-    #[schemars(description = "Optional: Delay in milliseconds after this tool executes")]
     pub delay_ms: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExecuteSequenceArgs {
-    #[schemars(description = "Array of tool calls to execute in sequence")]
-    pub tools: Vec<ToolCall>,
+    #[schemars(
+        description = "JSON string containing an array of tool calls to execute in sequence. Parse this as an array where each element is an object with 'tool_name' (string), 'arguments' (object), 'continue_on_error' (optional bool), and 'delay_ms' (optional number)."
+    )]
+    pub tools_json: String,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
     #[schemars(
@@ -512,9 +506,9 @@ pub async fn find_element_with_fallbacks(
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExportWorkflowSequenceArgs {
     #[schemars(
-        description = "Array of successfully executed tool calls to convert into a reliable workflow. Each tool call should include the tool name, arguments used, and optionally the selector that worked."
+        description = "JSON value containing an array of successfully executed tool calls to convert into a reliable workflow. Each tool call should be a JSON object with 'tool_name' (string), 'arguments' (object), 'continue_on_error' (optional bool), and 'delay_ms' (optional number)."
     )]
-    pub successful_tool_calls: Vec<ToolCall>,
+    pub successful_tool_calls: serde_json::Value,
 
     #[schemars(description = "Name for the workflow being exported")]
     pub workflow_name: String,
@@ -549,6 +543,8 @@ pub struct ExportWorkflowSequenceArgs {
     )]
     pub credentials: Option<serde_json::Value>,
 
-    #[schemars(description = "Known error conditions and their solutions from the successful run")]
-    pub known_error_handlers: Option<Vec<serde_json::Value>>,
+    #[schemars(
+        description = "Known error conditions and their solutions from the successful run as a JSON array"
+    )]
+    pub known_error_handlers: Option<serde_json::Value>,
 }

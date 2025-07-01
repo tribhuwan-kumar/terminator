@@ -5,7 +5,8 @@ use crate::utils::{
     GetFocusedWindowTreeArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
     HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
     PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
-    SetSelectedArgs, SetToggledArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    SetSelectedArgs, SetToggledArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs,
+    WaitForElementArgs,
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
@@ -1684,11 +1685,45 @@ impl DesktopWrapper {
         let stop_on_error = args.stop_on_error.unwrap_or(true);
         let include_detailed = args.include_detailed_results.unwrap_or(true);
 
+        // Parse the JSON string into an array of tool calls
+        let tools_array: Vec<serde_json::Value> = serde_json::from_str(&args.tools_json)
+            .map_err(|e| McpError::invalid_params(
+                "Invalid JSON format for tools",
+                Some(json!({
+                    "error": e.to_string(),
+                    "expected": "JSON array of tool call objects",
+                    "example": "[{\"tool_name\": \"click_element\", \"arguments\": {\"selector\": \"#button\"}}]"
+                })),
+            ))?;
+
+        // Parse the JSON values into ToolCall structs
+        let mut parsed_tools = Vec::new();
+        for (index, json_value) in tools_array.iter().enumerate() {
+            match serde_json::from_value::<ToolCall>(json_value.clone()) {
+                Ok(tool_call) => parsed_tools.push(tool_call),
+                Err(e) => {
+                    return Err(McpError::invalid_params(
+                        "Invalid tool call format in sequence",
+                        Some(json!({
+                            "error": e.to_string(),
+                            "index": index,
+                            "expected_format": {
+                                "tool_name": "string",
+                                "arguments": "object",
+                                "continue_on_error": "optional bool",
+                                "delay_ms": "optional number"
+                            }
+                        })),
+                    ))
+                }
+            }
+        }
+
         let mut results = Vec::new();
         let mut has_error = false;
         let start_time = chrono::Utc::now();
 
-        for (index, tool_call) in args.tools.iter().enumerate() {
+        for (index, tool_call) in parsed_tools.iter().enumerate() {
             let tool_start_time = chrono::Utc::now();
 
             // Strip the mcp_terminator-mcp-agent_ prefix if present
@@ -2006,16 +2041,34 @@ impl DesktopWrapper {
             // Process the result
             let processed_result = match tool_result {
                 Ok(result) => {
-                    // Extract result content - we can't inspect Content type directly
-                    // so we'll just provide a summary
+                    // Extract actual content from the result
+                    let mut extracted_content = Vec::new();
+
+                    for content in &result.content {
+                        // Try to extract the content as JSON since most tool results are JSON
+                        if let Ok(json_content) = serde_json::to_value(content) {
+                            extracted_content.push(json_content);
+                        } else {
+                            // Fallback to a generic representation
+                            extracted_content.push(json!({
+                                "type": "unknown",
+                                "data": "Content extraction failed"
+                            }));
+                        }
+                    }
+
                     let content_summary = if include_detailed {
                         json!({
                             "type": "tool_result",
                             "content_count": result.content.len(),
-                            "content": "Tool executed successfully (content details not available)"
+                            "content": extracted_content
                         })
                     } else {
-                        json!({ "type": "summary", "content": "Tool executed successfully" })
+                        json!({
+                            "type": "summary",
+                            "content": "Tool executed successfully",
+                            "content_count": result.content.len()
+                        })
                     };
 
                     json!({
@@ -2049,6 +2102,13 @@ impl DesktopWrapper {
             };
 
             results.push(processed_result);
+
+            // Handle delay after tool execution if specified
+            if let Some(delay_ms) = tool_call.delay_ms {
+                if delay_ms > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                }
+            }
         }
 
         let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
@@ -2056,7 +2116,7 @@ impl DesktopWrapper {
         let summary = json!({
             "action": "execute_sequence",
             "status": if has_error && stop_on_error { "partial_success" } else if has_error { "completed_with_errors" } else { "success" },
-            "total_tools": args.tools.len(),
+            "total_tools": parsed_tools.len(),
             "executed_tools": results.len(),
             "total_duration_ms": total_duration,
             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -2078,11 +2138,45 @@ impl DesktopWrapper {
         let add_validation_steps = args.add_validation_steps.unwrap_or(true);
         let include_tree_captures = args.include_tree_captures.unwrap_or(false);
 
+        // Parse the JSON value as an array of tool calls
+        let tool_calls_array: Vec<serde_json::Value> = serde_json::from_value(args.successful_tool_calls.clone())
+            .map_err(|e| McpError::invalid_params(
+                "successful_tool_calls must be a JSON array",
+                Some(json!({
+                    "error": e.to_string(),
+                    "expected": "JSON array of tool call objects",
+                    "example": "[{\"tool_name\": \"click_element\", \"arguments\": {\"selector\": \"#button\"}}]"
+                })),
+            ))?;
+
+        // Parse the JSON values into ToolCall structs
+        let mut parsed_tool_calls = Vec::new();
+        for (index, json_value) in tool_calls_array.iter().enumerate() {
+            match serde_json::from_value::<ToolCall>(json_value.clone()) {
+                Ok(tool_call) => parsed_tool_calls.push(tool_call),
+                Err(e) => {
+                    return Err(McpError::invalid_params(
+                        "Invalid tool call format",
+                        Some(json!({
+                            "error": e.to_string(),
+                            "index": index,
+                            "expected_format": {
+                                "tool_name": "string",
+                                "arguments": "object",
+                                "continue_on_error": "optional bool",
+                                "delay_ms": "optional number"
+                            }
+                        })),
+                    ))
+                }
+            }
+        }
+
         // Build the workflow steps with enhancements
         let mut enhanced_steps = Vec::new();
         let mut step_counter = 1;
 
-        for (index, tool_call) in args.successful_tool_calls.iter().enumerate() {
+        for (index, tool_call) in parsed_tool_calls.iter().enumerate() {
             // Analyze the tool to determine what enhancements to add
             let tool_name = &tool_call.tool_name;
 
@@ -2094,7 +2188,7 @@ impl DesktopWrapper {
                     | "press_key"
                     | "invoke_element"
                     | "select_option"
-            ) && (index == 0 || should_add_focus_check(&args.successful_tool_calls, index))
+            ) && (index == 0 || should_add_focus_check(&parsed_tool_calls, index))
             {
                 enhanced_steps.push(json!({
                     "step": step_counter,
@@ -2179,7 +2273,7 @@ impl DesktopWrapper {
 
             // Add tree capture at key points if requested
             if include_tree_captures
-                && should_capture_tree(tool_name, index, args.successful_tool_calls.len())
+                && should_capture_tree(tool_name, index, parsed_tool_calls.len())
             {
                 enhanced_steps.push(json!({
                     "step": step_counter,
@@ -2208,7 +2302,7 @@ impl DesktopWrapper {
                 "prerequisites": {
                     "browser": "Chrome",
                     "platform": env::consts::OS,
-                    "required_tools": self.extract_required_tools(&args.successful_tool_calls)
+                    "required_tools": self.extract_required_tools(&parsed_tool_calls)
                 },
 
                 "parameters": {
@@ -2227,7 +2321,7 @@ impl DesktopWrapper {
                 "steps": enhanced_steps,
 
                 "error_handling": {
-                    "known_errors": args.known_error_handlers.unwrap_or_default(),
+                    "known_errors": args.known_error_handlers.unwrap_or(json!([])),
                     "general_strategies": [
                         {
                             "error": "ElementNotFound",
@@ -2246,7 +2340,7 @@ impl DesktopWrapper {
 
                 "success_criteria": {
                     "final_validation": "Verify the workflow goal has been achieved",
-                    "expected_outcomes": self.infer_expected_outcomes(&args.successful_tool_calls),
+                    "expected_outcomes": self.infer_expected_outcomes(&parsed_tool_calls),
                     "verification_steps": if add_validation_steps {
                         vec!["Check final UI state matches expected", "Verify data was processed correctly"]
                     } else {
