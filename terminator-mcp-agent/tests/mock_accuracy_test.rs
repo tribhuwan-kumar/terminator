@@ -1,10 +1,12 @@
 mod mock_workflow_runner;
 mod workflow_accuracy_tests;
 mod workflow_definitions;
+mod workflows;
 
 use anyhow::Result;
 use mock_workflow_runner::MockWorkflowAccuracyTester;
 use workflow_definitions::*;
+use workflows::*;
 
 #[tokio::test]
 async fn test_mock_workflow_accuracy() -> Result<()> {
@@ -15,6 +17,12 @@ async fn test_mock_workflow_accuracy() -> Result<()> {
     tester.add_workflow(create_pdf_data_entry_workflow());
     tester.add_workflow(create_insurance_quote_workflow());
     tester.add_workflow(create_research_data_collection_workflow());
+
+    // Add new real-world workflows
+    tester.add_workflow(create_amazon_shopping_workflow());
+    tester.add_workflow(create_dmv_appointment_workflow());
+    tester.add_workflow(create_bank_transfer_workflow());
+    tester.add_workflow(create_linkedin_job_application_workflow());
 
     // Run workflows with mock service
     let report = tester.run_all_workflows().await?;

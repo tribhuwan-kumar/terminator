@@ -1,11 +1,13 @@
 mod workflow_accuracy_tests;
 mod workflow_definitions;
+mod workflows;
 
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
 use workflow_accuracy_tests::{AccuracyReport, WorkflowAccuracyTester};
 use workflow_definitions::*;
+use workflows::*;
 
 #[tokio::test]
 async fn test_pdf_data_entry_accuracy() -> Result<()> {
@@ -83,10 +85,26 @@ async fn test_data_collection_accuracy() -> Result<()> {
 async fn test_all_workflows_accuracy() -> Result<()> {
     let mut tester = WorkflowAccuracyTester::new().await?;
 
-    // Add all workflows
+    // Add original workflows
     tester.add_workflow(create_pdf_data_entry_workflow());
     tester.add_workflow(create_insurance_quote_workflow());
     tester.add_workflow(create_research_data_collection_workflow());
+
+    // Add e-commerce workflows
+    tester.add_workflow(create_amazon_shopping_workflow());
+    tester.add_workflow(create_ebay_auction_workflow());
+
+    // Add government workflows
+    tester.add_workflow(create_dmv_appointment_workflow());
+    tester.add_workflow(create_irs_tax_form_workflow());
+
+    // Add banking workflows
+    tester.add_workflow(create_bank_transfer_workflow());
+    tester.add_workflow(create_credit_card_application_workflow());
+
+    // Add social media workflows
+    tester.add_workflow(create_linkedin_job_application_workflow());
+    tester.add_workflow(create_twitter_posting_workflow());
 
     // Run all workflows and measure overall accuracy
     let report = tester.run_all_workflows().await?;
@@ -129,6 +147,106 @@ async fn test_all_workflows_accuracy() -> Result<()> {
 
     // Generate markdown report
     generate_markdown_report(&report)?;
+
+    tester.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_ecommerce_workflows_accuracy() -> Result<()> {
+    let mut tester = WorkflowAccuracyTester::new().await?;
+
+    // Add e-commerce workflows
+    tester.add_workflow(create_amazon_shopping_workflow());
+    tester.add_workflow(create_ebay_auction_workflow());
+
+    // Run and measure accuracy
+    let report = tester.run_all_workflows().await?;
+
+    // Assert minimum accuracy threshold
+    assert!(
+        report.overall_accuracy_percentage >= 75.0,
+        "E-commerce workflows accuracy too low: {:.2}%",
+        report.overall_accuracy_percentage
+    );
+
+    // Save report
+    save_accuracy_report(&report, "ecommerce_accuracy_report.json")?;
+
+    tester.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_government_workflows_accuracy() -> Result<()> {
+    let mut tester = WorkflowAccuracyTester::new().await?;
+
+    // Add government workflows
+    tester.add_workflow(create_dmv_appointment_workflow());
+    tester.add_workflow(create_irs_tax_form_workflow());
+
+    // Run and measure accuracy
+    let report = tester.run_all_workflows().await?;
+
+    // Assert minimum accuracy threshold
+    assert!(
+        report.overall_accuracy_percentage >= 80.0,
+        "Government workflows accuracy too low: {:.2}%",
+        report.overall_accuracy_percentage
+    );
+
+    // Save report
+    save_accuracy_report(&report, "government_accuracy_report.json")?;
+
+    tester.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_banking_workflows_accuracy() -> Result<()> {
+    let mut tester = WorkflowAccuracyTester::new().await?;
+
+    // Add banking workflows
+    tester.add_workflow(create_bank_transfer_workflow());
+    tester.add_workflow(create_credit_card_application_workflow());
+
+    // Run and measure accuracy
+    let report = tester.run_all_workflows().await?;
+
+    // Assert minimum accuracy threshold - banking needs high accuracy
+    assert!(
+        report.overall_accuracy_percentage >= 85.0,
+        "Banking workflows accuracy too low: {:.2}%",
+        report.overall_accuracy_percentage
+    );
+
+    // Save report
+    save_accuracy_report(&report, "banking_accuracy_report.json")?;
+
+    tester.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_social_media_workflows_accuracy() -> Result<()> {
+    let mut tester = WorkflowAccuracyTester::new().await?;
+
+    // Add social media workflows
+    tester.add_workflow(create_linkedin_job_application_workflow());
+    tester.add_workflow(create_twitter_posting_workflow());
+
+    // Run and measure accuracy
+    let report = tester.run_all_workflows().await?;
+
+    // Assert minimum accuracy threshold
+    assert!(
+        report.overall_accuracy_percentage >= 80.0,
+        "Social media workflows accuracy too low: {:.2}%",
+        report.overall_accuracy_percentage
+    );
+
+    // Save report
+    save_accuracy_report(&report, "social_media_accuracy_report.json")?;
 
     tester.shutdown().await?;
     Ok(())
