@@ -108,13 +108,6 @@ class Desktop:
         Returns:
             Locator: A locator for finding elements.
         """
-    async def capture_screen(self) -> ScreenshotResult:
-        r"""
-        (async) Capture a screenshot of the primary monitor.
-        
-        Returns:
-            ScreenshotResult: The screenshot data.
-        """
     async def run_command(self, windows_command:typing.Optional[builtins.str]=None, unix_command:typing.Optional[builtins.str]=None) -> CommandOutput:
         r"""
         (async) Run a shell command.
@@ -125,23 +118,6 @@ class Desktop:
         
         Returns:
             CommandOutput: The command output.
-        """
-    async def get_active_monitor_name(self) -> str:
-        r"""
-        (async) Get the name of the currently active monitor.
-        
-        Returns:
-            str: The name of the active monitor.
-        """
-    async def capture_monitor_by_name(self, name:builtins.str) -> ScreenshotResult:
-        r"""
-        (async) Capture a screenshot of a specific monitor.
-        
-        Args:
-            name (str): The name of the monitor to capture.
-        
-        Returns:
-            ScreenshotResult: The screenshot data.
         """
     async def ocr_image_path(self, image_path:builtins.str) -> str:
         r"""
@@ -669,13 +645,6 @@ class UIElement:
         Returns:
             Locator: A new locator for finding elements.
         """
-    def explore(self) -> ExploreResponse:
-        r"""
-        Explore this element and its direct children.
-        
-        Returns:
-            ExploreResponse: Details about the element and its children.
-        """
     def process_id(self) -> builtins.int:
         r"""
         Get the process ID of the application containing this element.
@@ -738,6 +707,7 @@ class UIElementAttributes:
     description: typing.Optional[builtins.str]
     properties: builtins.dict[builtins.str, typing.Optional[builtins.str]]
     is_keyboard_focusable: typing.Optional[builtins.bool]
+    bounds: typing.Optional[Bounds]
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
 

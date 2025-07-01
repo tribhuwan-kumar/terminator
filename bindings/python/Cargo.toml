@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # PyO3 for Python bindings
-pyo3 = { version = "0.25", features = ["abi3-py311"] }
+pyo3 = { version = "0.25", features = ["abi3-py310"] }
 pyo3-async-runtimes = { version = "0.25", features = ["attributes", "tokio-runtime"] }
 terminator_core = { path = "../../terminator", package = "terminator-rs" }
 tracing = { workspace = true }
