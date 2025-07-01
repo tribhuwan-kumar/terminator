@@ -91,7 +91,7 @@ impl AzureVmManager {
         Ok(VmDeploymentResult {
             vm_name: self.config.vm_name.clone(),
             resource_group: self.config.resource_group.clone(),
-            public_ip,
+            public_ip: public_ip.clone(),
             admin_username: self.config.admin_username.clone(),
             admin_password: self.config.admin_password.clone(),
             rdp_enabled: self.config.enable_rdp,
@@ -446,7 +446,7 @@ fn generate_secure_password() -> String {
     let number = rng.gen_range(100..999);
 
     // Ensure we have uppercase and lowercase
-    let mut password = format!("{}{}Az{}", base, special, number);
+    let password = format!("{}{}Az{}", base, special, number);
 
     // Shuffle the password
     use rand::seq::SliceRandom;
