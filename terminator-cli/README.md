@@ -7,7 +7,7 @@ The Terminator CLI is a powerful command-line tool for managing the Terminator p
 - 📦 **Version Management**: Bump and sync versions across all packages
 - 🏷️ **Release Automation**: Tag and release with a single command
 - ☁️ **Azure VM Deployment**: One-liner to deploy Windows VMs with MCP server
-- 🤖 **MCP Client**: Chat with MCP servers over HTTP
+- 🤖 **MCP Client**: Chat with MCP servers over HTTP or stdio
 - 🔒 **Secure by Default**: Auto-generated passwords, configurable security rules
 
 ## Installation
@@ -107,11 +107,18 @@ terminator azure delete RESOURCE_GROUP_NAME --subscription-id YOUR_SUB_ID
 
 ### MCP Client
 
+The MCP client supports two transport modes:
+- **HTTP**: Connect to remote MCP servers
+- **stdio**: Launch and connect to local MCP servers
+
 #### Interactive Chat Mode
 
 ```bash
-# Connect to MCP server
+# Connect via HTTP
 terminator mcp chat --url http://VM_IP:3000
+
+# Connect via stdio (launches local server)
+terminator mcp chat --command "npx -y terminator-mcp-agent"
 
 # In chat mode, you can:
 # - Type tool names with arguments
@@ -128,8 +135,11 @@ terminator mcp chat --url http://VM_IP:3000
 #### Execute Single Command
 
 ```bash
-# Execute a specific tool
+# Via HTTP
 terminator mcp exec --url http://VM_IP:3000 get_desktop_info
+
+# Via stdio
+terminator mcp exec --command "npx -y terminator-mcp-agent" get_desktop_info
 
 # With arguments
 terminator mcp exec --url http://VM_IP:3000 open_application notepad
@@ -161,6 +171,21 @@ terminator mcp chat --url $MCP_URL
 
 # 6. Clean up when done
 terminator azure delete $(jq -r .resource_group vm.json) --subscription-id $AZURE_SUBSCRIPTION_ID
+```
+
+## Local Development with MCP
+
+For local development, you can use the stdio transport:
+
+```bash
+# Chat with local MCP agent
+terminator mcp chat --command "npx -y terminator-mcp-agent"
+
+# Execute single command
+terminator mcp exec --command "npx -y terminator-mcp-agent" list_applications
+
+# Use a different MCP server
+terminator mcp chat --command "npx -y @modelcontextprotocol/server-everything"
 ```
 
 ## MCP Server Details
@@ -203,8 +228,12 @@ az vm list-usage --location eastus --output table
 ### MCP Connection Issues
 
 ```bash
-# Check if server is running
+# Check if server is running (HTTP)
 curl http://VM_IP:3000/health
+
+# Enable debug logging
+export RUST_LOG=debug
+terminator mcp chat --url http://VM_IP:3000
 
 # Check firewall on VM (via RDP)
 Get-NetFirewallRule -DisplayName "*MCP*"

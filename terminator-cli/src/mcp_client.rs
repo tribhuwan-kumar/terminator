@@ -1,8 +1,15 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
+use rmcp::{
+    model::{CallToolRequestParam, ClientCapabilities, ClientInfo, Implementation},
+    object,
+    transport::StreamableHttpClientTransport,
+    ServiceExt,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, Write};
+use tracing::info;
 
 #[derive(Debug, Serialize)]
 struct McpRequest {
@@ -168,20 +175,33 @@ pub async fn interactive_chat(url: String) -> Result<()> {
     println!("=============================");
     println!("Connecting to: {}", url);
 
-    let mut client = McpClient::new(url.clone())?;
+    // Create transport
+    let transport = StreamableHttpClientTransport::from_uri(&url);
 
-    // Check health first
-    match client.health_check().await {
-        Ok(true) => println!("✅ Server is healthy"),
-        Ok(false) => println!("⚠️  Server health check failed"),
-        Err(e) => println!("⚠️  Could not reach server: {}", e),
+    // Create client info
+    let client_info = ClientInfo {
+        protocol_version: Default::default(),
+        capabilities: ClientCapabilities::default(),
+        client_info: Implementation {
+            name: "terminator-cli".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    };
+
+    // Connect to server
+    let client = client_info.serve(transport).await.inspect_err(|e| {
+        tracing::error!("Failed to connect to server: {:?}", e);
+    })?;
+
+    // Get server info
+    let server_info = client.peer_info();
+    println!("✅ Connected to server: {}", server_info.name);
+    if let Some(version) = &server_info.version {
+        println!("   Version: {}", version);
     }
 
-    // Initialize connection
-    client.initialize().await?;
-
     // List available tools
-    let tools = client.list_tools().await?;
+    let tools = client.list_all_tools().await?;
     println!("\n📋 Available tools ({}):", tools.len());
     for (i, tool) in tools.iter().enumerate() {
         if i < 10 {
@@ -250,27 +270,48 @@ pub async fn interactive_chat(url: String) -> Result<()> {
         // Build arguments
         let arguments = if parts.len() > 1 {
             // Try to parse as JSON first
-            if let Ok(json) = serde_json::from_str::<Value>(parts[1]) {
-                json
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(parts[1]) {
+                json.as_object().cloned()
             } else {
                 // Otherwise, try to build simple arguments
-                if tool_name == "open_application" || tool_name == "type_text" {
-                    serde_json::json!({
-                        if tool_name == "open_application" { "name" } else { "text" }: parts[1]
-                    })
-                } else {
-                    serde_json::json!({})
+                match tool_name {
+                    "open_application" => Some(object!({ "name": parts[1] })),
+                    "type_text" => Some(object!({ "text": parts[1] })),
+                    _ => None,
                 }
             }
         } else {
-            serde_json::json!({})
+            None
         };
 
-        println!("\n⚡ Calling {} with args: {}", tool_name, arguments);
+        println!(
+            "\n⚡ Calling {} with args: {}",
+            tool_name,
+            arguments
+                .as_ref()
+                .map(|a| serde_json::to_string(a).unwrap_or_default())
+                .unwrap_or_else(|| "{}".to_string())
+        );
 
-        match client.call_tool(tool_name, arguments).await {
+        match client
+            .call_tool(CallToolRequestParam {
+                name: tool_name.to_string(),
+                arguments,
+            })
+            .await
+        {
             Ok(result) => {
-                println!("✅ Result:\n{}\n", result);
+                println!("✅ Result:");
+                for content in &result.content {
+                    if let Some(text) = content.as_text() {
+                        println!("{}", text);
+                    } else if let Some(image) = content.as_image() {
+                        println!("[Image: {}]", image.url);
+                    } else if let Some(resource) = content.as_resource() {
+                        println!("[Resource: {}]", resource.uri);
+                    }
+                }
+                println!();
             }
             Err(e) => {
                 println!("❌ Error: {}\n", e);
@@ -278,27 +319,82 @@ pub async fn interactive_chat(url: String) -> Result<()> {
         }
     }
 
+    // Cancel the client connection
+    client.cancel().await?;
+
     Ok(())
 }
 
 pub async fn execute_command(url: String, tool: String, args: Option<String>) -> Result<()> {
-    let mut client = McpClient::new(url)?;
+    // Initialize logging for non-interactive mode
+    init_logging();
 
-    // Initialize connection
-    client.initialize().await?;
+    // Create transport
+    let transport = StreamableHttpClientTransport::from_uri(&url);
+
+    // Create client info
+    let client_info = ClientInfo {
+        protocol_version: Default::default(),
+        capabilities: ClientCapabilities::default(),
+        client_info: Implementation {
+            name: "terminator-cli".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    };
+
+    // Connect to server
+    info!("Connecting to server: {}", url);
+    let client = client_info.serve(transport).await?;
 
     // Parse arguments
     let arguments = if let Some(args_str) = args {
-        serde_json::from_str::<Value>(&args_str)
-            .unwrap_or_else(|_| serde_json::json!({ "value": args_str }))
+        serde_json::from_str::<serde_json::Value>(&args_str)
+            .ok()
+            .and_then(|v| v.as_object().cloned())
     } else {
-        serde_json::json!({})
+        None
     };
 
-    println!("⚡ Calling {} with args: {}", tool, arguments);
+    println!(
+        "⚡ Calling {} with args: {}",
+        tool,
+        arguments
+            .as_ref()
+            .map(|a| serde_json::to_string(a).unwrap_or_default())
+            .unwrap_or_else(|| "{}".to_string())
+    );
 
-    let result = client.call_tool(&tool, arguments).await?;
-    println!("✅ Result:\n{}", result);
+    let result = client
+        .call_tool(CallToolRequestParam {
+            name: tool,
+            arguments,
+        })
+        .await?;
+
+    println!("✅ Result:");
+    for content in &result.content {
+        if let Some(text) = content.as_text() {
+            println!("{}", text);
+        } else if let Some(image) = content.as_image() {
+            println!("[Image: {}]", image.url);
+        } else if let Some(resource) = content.as_resource() {
+            println!("[Resource: {}]", resource.uri);
+        }
+    }
+
+    // Cancel the client connection
+    client.cancel().await?;
 
     Ok(())
+}
+
+fn init_logging() {
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 }
