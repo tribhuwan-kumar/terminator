@@ -2,11 +2,12 @@
 resolver = "2"
 members = [
     "terminator",
-    "terminator-workflow-recorder",
+    "terminator-cli",
     "bindings/python",
     "bindings/nodejs",
     "terminator-mcp-agent",
-    "terminator-cli",
+    "terminator-ai-summarizer",
+    "terminator-workflow-recorder",
 ]
 
 

@@ -4307,6 +4307,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminator-ai-summarizer"
+version = "0.6.9"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "terminator-mcp-agent",
+ "terminator-rs",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "terminator-cli"
 version = "0.6.9"
 dependencies = [
