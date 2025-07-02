@@ -4308,7 +4308,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4325,7 +4325,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "anyhow",
  "axum",
@@ -4347,7 +4347,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "napi",
  "napi-build",
@@ -4359,7 +4359,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4373,7 +4373,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4408,7 +4408,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "arboard",
  "async-stream",
