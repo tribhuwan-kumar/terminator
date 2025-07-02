@@ -1,6 +1,24 @@
 import asyncio
 import terminator
+import subprocess
+import re
 
+def get_gnome_calculator_version():
+    try:
+        output = subprocess.check_output(["gnome-calculator", "--version"], text=True, stderr=subprocess.STDOUT)
+        # Output: "gnome-calculator 48.1" or similar
+        # Use regex to robustly extract the version number
+        match = re.search(r'gnome-calculator\s+([0-9]+(?:\.[0-9]+)*)', output.strip())
+        if match:
+            version_str = match.group(1)
+            major_version = int(version_str.split(".")[0])
+            return major_version
+        else:
+            print(f"Could not parse version from output: {output.strip()}")
+            return None
+    except Exception as e:
+        print(f"Failed to get gnome-calculator version: {e}")
+        return None
 
 async def run_calculator():
     desktop = terminator.Desktop(
@@ -65,8 +83,21 @@ async def run_calculator():
             print(f"Clicked {label}")
 
         print("Retrieving result...")
-        result_field = await calc_window.locator("role:editbar").first()
-        result = result_field.text()
+        await asyncio.sleep(1)
+
+        version = get_gnome_calculator_version()
+        print(f"GNOME Calculator version: {version}")
+        if version == 48:
+            # In GNOME Calculator 48, the result is shown as a list of labels inside a list item
+            result_field = await calc_window.locator("role:list item").locator("role:label").all()
+            result = ""
+            for child in result_field:
+                result += child.text() + " "
+            result = result.strip()
+        else:
+            # Fallback for older versions: use the editbar
+            result_field = await calc_window.locator("role:editbar").first()
+            result = result_field.text()
         print(f"Calculation result: {result}")
 
     except terminator.PlatformError as e:
