@@ -5,6 +5,7 @@ mod high_level_inputs_tests;
 mod performance_tests;
 mod selector_tests;
 mod test_serialization;
+mod get_applications_tests;
 
 // Initialize tracing for tests
 pub fn init_tracing() {
