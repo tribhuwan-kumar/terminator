@@ -1,7 +1,9 @@
 use rmcp::handler::server::tool::Parameters;
 use serde_json::json;
 use terminator_mcp_agent::server::DesktopWrapper;
-use terminator_mcp_agent::utils::{ExecuteSequenceArgs, ToolCall, ValidateElementArgs};
+use terminator_mcp_agent::utils::{
+    ExecuteSequenceArgs, SequenceStep, ToolCall, ValidateElementArgs,
+};
 
 /// Helper function to extract JSON from tool response
 fn extract_json_from_content(content: &[rmcp::model::Content]) -> Option<serde_json::Value> {
@@ -27,7 +29,7 @@ async fn test_execute_sequence_direct() {
 
     // Test execute_sequence with empty tools array
     let args = ExecuteSequenceArgs {
-        tools_json: serde_json::to_string(&Vec::<ToolCall>::new()).unwrap(),
+        items: vec![],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
     };
@@ -44,8 +46,8 @@ async fn test_execute_sequence_direct() {
 
     assert_eq!(parsed["action"], "execute_sequence");
     assert_eq!(parsed["status"], "success");
-    assert_eq!(parsed["total_tools"], 0);
-    assert_eq!(parsed["executed_tools"], 0);
+    assert_eq!(parsed["total_items"], 0);
+    assert_eq!(parsed["executed_items"], 0);
 }
 
 #[tokio::test]
@@ -82,7 +84,7 @@ async fn test_validate_element_direct() {
 }
 
 #[tokio::test]
-async fn test_execute_sequence_with_invalid_tool() {
+async fn test_execute_sequence_with_invalid_tool_stops() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
@@ -91,15 +93,17 @@ async fn test_execute_sequence_with_invalid_tool() {
         }
     };
 
-    // Test execute_sequence with an invalid tool
+    // Test execute_sequence with an invalid tool and stop_on_error: true
     let args = ExecuteSequenceArgs {
-        tools_json: serde_json::to_string(&vec![ToolCall {
-            tool_name: "non_existent_tool".to_string(),
-            arguments: json!({}),
-            continue_on_error: None,
+        items: vec![SequenceStep {
+            tool_name: Some("non_existent_tool".to_string()),
+            arguments: Some(json!({})),
+            continue_on_error: Some(false), // Explicitly do not continue
             delay_ms: None,
-        }])
-        .unwrap(),
+            group_name: None,
+            steps: None,
+            skippable: None,
+        }],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
     };
@@ -115,9 +119,12 @@ async fn test_execute_sequence_with_invalid_tool() {
         .expect("Failed to extract JSON from response");
 
     assert_eq!(parsed["action"], "execute_sequence");
-    assert_eq!(parsed["status"], "partial_success");
-    assert_eq!(parsed["total_tools"], 1);
-    assert_eq!(parsed["executed_tools"], 1);
+    assert_eq!(
+        parsed["status"], "partial_success",
+        "Status should be partial_success as it stopped on error"
+    );
+    assert_eq!(parsed["total_items"], 1);
+    assert_eq!(parsed["executed_items"], 1);
 
     // Check that the error was captured
     let results = parsed["results"]
@@ -132,7 +139,7 @@ async fn test_execute_sequence_with_invalid_tool() {
 }
 
 #[tokio::test]
-async fn test_complex_sequence_direct() {
+async fn test_continue_on_error_allows_sequence_to_proceed() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
@@ -141,27 +148,32 @@ async fn test_complex_sequence_direct() {
         }
     };
 
-    // Test a more complex sequence
+    // This sequence should complete, as the first tool's failure is ignored.
     let args = ExecuteSequenceArgs {
-        tools_json: serde_json::to_string(&vec![
-            ToolCall {
-                tool_name: "invalid_tool".to_string(),
-                arguments: json!({}),
-                continue_on_error: Some(true),
+        items: vec![
+            SequenceStep {
+                tool_name: Some("invalid_tool".to_string()),
+                arguments: Some(json!({})),
+                continue_on_error: Some(true), // This should be respected
                 delay_ms: None,
+                group_name: None,
+                steps: None,
+                skippable: None,
             },
-            ToolCall {
-                tool_name: "validate_element".to_string(),
-                arguments: json!({
+            SequenceStep {
+                tool_name: Some("validate_element".to_string()),
+                arguments: Some(json!({
                     "selector": "#test-element",
-                    "timeout_ms": 50
-                }),
+                    "timeout_ms": 10
+                })),
                 continue_on_error: None,
                 delay_ms: None,
+                group_name: None,
+                steps: None,
+                skippable: None,
             },
-        ])
-        .unwrap(),
-        stop_on_error: Some(true),
+        ],
+        stop_on_error: Some(false), // Sequence-level stop is false
         include_detailed_results: Some(true),
     };
 
@@ -172,15 +184,18 @@ async fn test_complex_sequence_direct() {
     let parsed = extract_json_from_content(&call_result.content)
         .expect("Failed to extract JSON from response");
 
-    // Both tools should have executed
-    assert_eq!(parsed["total_tools"], 2);
-    assert_eq!(parsed["executed_tools"], 2);
+    assert_eq!(parsed["status"], "completed_with_errors");
+    assert_eq!(parsed["total_items"], 2);
+    assert_eq!(
+        parsed["executed_items"], 2,
+        "Both tools should have been executed"
+    );
 
     let results = parsed["results"].as_array().unwrap();
     assert_eq!(results.len(), 2);
 
-    // First tool should have failed
-    assert_eq!(results[0]["status"], "error");
+    // First tool should be marked as skipped
+    assert_eq!(results[0]["status"], "skipped");
     // Second tool should have succeeded
     assert_eq!(results[1]["status"], "success");
 }
@@ -199,27 +214,32 @@ async fn test_execute_sequence_delays() {
     let start_time = std::time::Instant::now();
 
     let args = ExecuteSequenceArgs {
-        tools_json: serde_json::to_string(&vec![
-            ToolCall {
-                tool_name: "validate_element".to_string(),
-                arguments: json!({
+        items: vec![
+            SequenceStep {
+                tool_name: Some("validate_element".to_string()),
+                arguments: Some(json!({
                     "selector": "#test-delay-1",
                     "timeout_ms": 50
-                }),
+                })),
                 continue_on_error: None,
                 delay_ms: Some(100),
+                group_name: None,
+                steps: None,
+                skippable: None,
             },
-            ToolCall {
-                tool_name: "validate_element".to_string(),
-                arguments: json!({
+            SequenceStep {
+                tool_name: Some("validate_element".to_string()),
+                arguments: Some(json!({
                     "selector": "#test-delay-2",
                     "timeout_ms": 50
-                }),
+                })),
                 continue_on_error: None,
                 delay_ms: None,
+                group_name: None,
+                steps: None,
+                skippable: None,
             },
-        ])
-        .unwrap(),
+        ],
         stop_on_error: Some(true),
         include_detailed_results: Some(false),
     };
@@ -234,4 +254,173 @@ async fn test_execute_sequence_delays() {
         "Delays not properly applied: {}ms",
         elapsed.as_millis()
     );
+}
+
+#[tokio::test]
+async fn test_sequence_with_skippable_failing_group() {
+    let desktop = DesktopWrapper::new().await.unwrap();
+
+    let args = ExecuteSequenceArgs {
+        items: vec![
+            // A skippable group with a failing tool
+            SequenceStep {
+                group_name: Some("Skippable Group".to_string()),
+                skippable: Some(true),
+                steps: Some(vec![ToolCall {
+                    tool_name: "non_existent_tool".to_string(),
+                    arguments: json!({}),
+                    continue_on_error: Some(false), // This should not stop the sequence
+                    delay_ms: None,
+                }]),
+                tool_name: None,
+                arguments: None,
+                continue_on_error: None,
+                delay_ms: None,
+            },
+            // A regular successful tool that should be executed
+            SequenceStep {
+                tool_name: Some("validate_element".to_string()),
+                arguments: Some(json!({"selector": "#some-element", "timeout_ms": 10})),
+                continue_on_error: None,
+                delay_ms: None,
+                group_name: None,
+                steps: None,
+                skippable: None,
+            },
+        ],
+        stop_on_error: Some(true), // stop_on_error is true, but the failing group is skippable
+        include_detailed_results: Some(true),
+    };
+
+    let result = desktop.execute_sequence(Parameters(args)).await.unwrap();
+    let parsed = extract_json_from_content(&result.content).unwrap();
+
+    assert_eq!(
+        parsed["status"], "completed_with_errors",
+        "Sequence should complete with errors due to the failing skippable group. Full response: {:?}",
+        parsed
+    );
+    assert_eq!(parsed["executed_items"], 2);
+
+    let results = parsed["results"].as_array().unwrap();
+    // Check skippable group result
+    assert_eq!(results[0]["group_name"], "Skippable Group");
+    assert_eq!(results[0]["status"], "partial_success");
+    // Check successful tool result
+    assert_eq!(results[1]["tool_name"], "validate_element");
+    assert_eq!(results[1]["status"], "success");
+}
+
+#[tokio::test]
+async fn test_sequence_with_unskippable_failing_group_stops() {
+    let desktop = DesktopWrapper::new().await.unwrap();
+
+    let args = ExecuteSequenceArgs {
+        items: vec![
+            // An unskippable group with a failing tool
+            SequenceStep {
+                group_name: Some("Unskippable Group".to_string()),
+                skippable: Some(false), // Explicitly not skippable
+                steps: Some(vec![ToolCall {
+                    tool_name: "non_existent_tool".to_string(),
+                    arguments: json!({}),
+                    continue_on_error: Some(false),
+                    delay_ms: None,
+                }]),
+                tool_name: None,
+                arguments: None,
+                continue_on_error: None,
+                delay_ms: None,
+            },
+            // This tool should NOT be executed
+            SequenceStep {
+                tool_name: Some("validate_element".to_string()),
+                arguments: Some(json!({"selector": "#should-not-run"})),
+                continue_on_error: None,
+                delay_ms: None,
+                group_name: None,
+                steps: None,
+                skippable: None,
+            },
+        ],
+        stop_on_error: Some(true),
+        include_detailed_results: Some(true),
+    };
+
+    let result = desktop.execute_sequence(Parameters(args)).await.unwrap();
+    let parsed = extract_json_from_content(&result.content).unwrap();
+
+    assert_eq!(
+        parsed["status"], "partial_success",
+        "Sequence should stop and report partial success."
+    );
+    assert_eq!(parsed["total_items"], 2);
+    assert_eq!(
+        parsed["executed_items"], 1,
+        "Sequence should have stopped after the first failing group"
+    );
+
+    let results = parsed["results"].as_array().unwrap();
+    assert_eq!(results[0]["group_name"], "Unskippable Group");
+    assert_eq!(results[0]["status"], "partial_success");
+}
+
+#[tokio::test]
+async fn test_stop_on_error_halts_sequence() {
+    let desktop = match DesktopWrapper::new().await {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Skipping test due to Desktop initialization failure: {}", e);
+            return;
+        }
+    };
+
+    // This sequence should stop after the first tool fails because stop_on_error is true
+    // and the tool is not in a skippable group.
+    let args = ExecuteSequenceArgs {
+        items: vec![
+            SequenceStep {
+                tool_name: Some("invalid_tool".to_string()),
+                arguments: Some(json!({})),
+                continue_on_error: Some(false), // Explicitly false
+                delay_ms: None,
+                group_name: None,
+                steps: None,
+                skippable: None,
+            },
+            SequenceStep {
+                tool_name: Some("validate_element".to_string()),
+                arguments: Some(json!({
+                    "selector": "#should-not-be-reached",
+                    "timeout_ms": 10
+                })),
+                continue_on_error: None,
+                delay_ms: None,
+                group_name: None,
+                steps: None,
+                skippable: None,
+            },
+        ],
+        stop_on_error: Some(true),
+        include_detailed_results: Some(true),
+    };
+
+    let result = desktop.execute_sequence(Parameters(args)).await;
+    assert!(result.is_ok(), "execute_sequence failed");
+
+    let call_result = result.unwrap();
+    let parsed = extract_json_from_content(&call_result.content)
+        .expect("Failed to extract JSON from response");
+
+    // Only the first tool should have been executed.
+    assert_eq!(parsed["status"], "partial_success");
+    assert_eq!(parsed["total_items"], 2);
+    assert_eq!(
+        parsed["executed_items"], 1,
+        "Sequence should have stopped after the first error"
+    );
+
+    let results = parsed["results"].as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["status"], "error");
 }

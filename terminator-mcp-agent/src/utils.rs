@@ -337,26 +337,67 @@ pub struct ActivateElementArgs {
     pub timeout_ms: Option<u64>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ToolCall {
+    #[schemars(description = "The name of the tool to be executed.")]
     pub tool_name: String,
+    #[schemars(description = "The arguments for the tool, as a JSON object.")]
     pub arguments: serde_json::Value,
+    #[schemars(
+        description = "If true, the sequence will continue even if this tool call fails. Defaults to false."
+    )]
     pub continue_on_error: Option<bool>,
+    #[schemars(
+        description = "An optional delay in milliseconds to wait after this tool call completes."
+    )]
     pub delay_ms: Option<u64>,
+}
+
+// Simplified structure for Gemini compatibility
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SequenceStep {
+    #[schemars(description = "The name of the tool to execute (for single tool steps)")]
+    pub tool_name: Option<String>,
+    #[schemars(description = "The arguments for the tool (for single tool steps)")]
+    pub arguments: Option<serde_json::Value>,
+    #[schemars(description = "Continue on error flag (for single tool steps)")]
+    pub continue_on_error: Option<bool>,
+    #[schemars(description = "Delay after execution (for single tool steps)")]
+    pub delay_ms: Option<u64>,
+    #[schemars(description = "Group name (for grouped steps)")]
+    pub group_name: Option<String>,
+    #[schemars(description = "Steps in the group (for grouped steps)")]
+    pub steps: Option<Vec<ToolCall>>,
+    #[schemars(description = "Whether the group is skippable on error (for grouped steps)")]
+    pub skippable: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExecuteSequenceArgs {
     #[schemars(
-        description = "JSON string containing an array of tool calls to execute in sequence. Parse this as an array where each element is an object with 'tool_name' (string), 'arguments' (object), 'continue_on_error' (optional bool), and 'delay_ms' (optional number)."
+        description = "Array of steps to execute. Each step can be either a single tool (with tool_name and arguments) or a group (with group_name and steps)."
     )]
-    pub tools_json: String,
+    pub items: Vec<SequenceStep>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
     #[schemars(
         description = "Whether to include detailed results from each tool execution (default: true)"
     )]
     pub include_detailed_results: Option<bool>,
+}
+
+// Keep the old structures for internal use
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolGroup {
+    pub group_name: String,
+    pub steps: Vec<ToolCall>,
+    pub skippable: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum SequenceItem {
+    Tool { tool_call: ToolCall },
+    Group { tool_group: ToolGroup },
 }
 
 pub fn init_logging() -> Result<()> {
