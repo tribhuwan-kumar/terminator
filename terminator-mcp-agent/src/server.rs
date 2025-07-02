@@ -471,9 +471,9 @@ impl DesktopWrapper {
             }
         }
 
-        // Always attach tree for better context, or if explicitly requested
+        // Always attach tree for better context, or if an override is provided
         self.maybe_attach_tree(
-            true,
+            args.include_tree.unwrap_or(true),
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
@@ -540,7 +540,11 @@ impl DesktopWrapper {
         });
 
         // Always attach tree for better context
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -699,7 +703,7 @@ impl DesktopWrapper {
 
         // Always attach UI tree for activated elements to help with next actions
         self.maybe_attach_tree(
-            true, // Always attach tree for activate_element since it's important for next actions
+            args.include_tree.unwrap_or(true),
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
@@ -885,7 +889,11 @@ impl DesktopWrapper {
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1229,7 +1237,11 @@ impl DesktopWrapper {
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1274,7 +1286,12 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "option_selected": args.option_name,
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1318,7 +1335,11 @@ impl DesktopWrapper {
             "options": options,
             "count": options.len(),
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1364,7 +1385,11 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "state_set_to": args.state,
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            Some(element.process_id().unwrap_or(0)),
+            &mut result_json,
+        );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1410,7 +1435,11 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "value_set_to": args.value,
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            Some(element.process_id().unwrap_or(0)),
+            &mut result_json,
+        );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1456,7 +1485,11 @@ impl DesktopWrapper {
             "selector_used": successful_selector,
             "state_set_to": args.state,
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            Some(element.process_id().unwrap_or(0)),
+            &mut result_json,
+        );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 

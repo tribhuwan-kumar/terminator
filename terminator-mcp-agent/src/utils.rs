@@ -94,6 +94,8 @@ pub struct ClickElementArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -114,6 +116,8 @@ pub struct TypeIntoElementArgs {
     pub verify_action: Option<bool>,
     #[schemars(description = "Whether to clear the element before typing (default: true)")]
     pub clear_before_typing: Option<bool>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -130,6 +134,8 @@ pub struct PressKeyArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -335,6 +341,8 @@ pub struct ActivateElementArgs {
     pub selector: String,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
