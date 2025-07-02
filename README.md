@@ -298,14 +298,6 @@ While Terminator aims for full cross-platform support, current capabilities vary
 - 🟡: **Partial / Experimental** - The feature is in development and may have limitations.
 - ❌: **Not Supported** - The feature is not yet available on this platform.
 
-## Documentation
-
-For detailed information on features, installation, usage, and the API, please visit the **[Official Documentation](https://docs.screenpi.pe/terminator/introduction)**.
-
-Here's a section you can add under your `README.md` to document tools for inspecting accessibility elements across Windows, macOS, and Linux — tailored to Terminator users trying to find correct selectors:
-
----
-
 ## 🕵️ How to Inspect Accessibility Elements (like `name:Seven`)
 
 To create reliable selectors (e.g. `name:Seven`, `role:Button`, `window:Calculator`), you need to inspect the Accessibility Tree of your OS. Here's how to explore UI elements on each platform:
