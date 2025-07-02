@@ -1868,8 +1868,8 @@ impl DesktopWrapper {
         let summary = json!({
             "action": "execute_sequence",
             "status": final_status,
-            "total_items": sequence_items.len(),
-            "executed_items": results.len(),
+            "total_tools": sequence_items.len(),
+            "executed_tools": results.len(),
             "total_duration_ms": total_duration,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "results": results,
