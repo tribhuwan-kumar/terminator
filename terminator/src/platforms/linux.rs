@@ -995,11 +995,18 @@ impl AccessibilityEngine for LinuxEngine {
     }
 
     fn get_application_by_name(&self, name: &str) -> Result<UIElement, AutomationError> {
-        let selector = Selector::Role {
-            role: "application".to_string(),
-            name: Some(name.to_string()),
-        };
-        self.find_element(&selector, None, None)
+        let apps = self.get_applications()?;
+        for app in apps {
+            if let Some(app_name) = app.name() {
+                if app_name.to_lowercase() == name.to_lowercase() {
+                    return Ok(app);
+                }
+            }
+        }
+        Err(AutomationError::ElementNotFound(format!(
+            "No application found with name '{}'",
+            name
+        )))
     }
 
     fn get_application_by_pid(
@@ -1045,75 +1052,105 @@ impl AccessibilityEngine for LinuxEngine {
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {
+        use std::process::{Command, Stdio};
+
+        fn get_latest_pid(app_name: &str) -> Option<i32> {
+            let output = Command::new("pgrep")
+                .arg("-f")
+                .arg("-n")
+                .arg(app_name)
+                .output()
+                .ok()?;
+
+            if output.status.success() {
+                String::from_utf8(output.stdout).ok()?.trim().parse().ok()
+            } else {
+                None
+            }
+        }
+
         let app_name = app_name.to_string();
-        // First, try launching the application directly
-        let mut output = Command::new("setsid")
-            .arg(app_name.clone())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+        let mut tried_pids = Vec::new();
+
+        let mut output = Command::new(&app_name)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| AutomationError::PlatformError(e.to_string()));
 
-        // If direct launch fails, try fallbacks
         if output.is_err() {
             debug!("Direct launch of '{}' failed, trying gtk-launch", app_name);
-            output = Command::new("setsid")
-                .arg(format!("gtk-launch {}", app_name))
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+            output = Command::new("gtk-launch")
+                .arg(&app_name)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
                 .spawn()
                 .map_err(|e| AutomationError::PlatformError(format!("gtk-launch failed: {}", e)));
         }
 
-        // If all attempts fail, return the last error
         let output = output?;
-        // Wait for the application to appear
-        let pid = output.id() as i32;
+        let mut pid = output.id() as i32;
+        tried_pids.push(pid);
 
-        // Check if the process exists
+        // Check if original PID exists
         let process_exists = Command::new("ps")
             .arg(pid.to_string())
             .output()
-            .map(|output| output.status.success())
+            .map(|o| o.status.success())
             .unwrap_or(false);
 
-        let pid = if !process_exists {
-            debug!(
-                "Process with PID {} has exited, using pgrep to find latest {}",
-                pid, app_name
-            );
-            let pgrep_output = Command::new("pgrep")
-                .arg("-n")
-                .arg(&app_name)
-                .output()
-                .map_err(|e| AutomationError::PlatformError(format!("pgrep failed: {}", e)))?;
-            if pgrep_output.status.success() {
-                let pid_str = String::from_utf8_lossy(&pgrep_output.stdout)
-                    .trim()
-                    .to_string();
-                pid_str.parse::<i32>().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to parse PID from pgrep: {}", e))
-                })?
+        if !process_exists {
+            if let Some(new_pid) = get_latest_pid(&app_name) {
+                pid = new_pid;
+                tried_pids.push(pid);
             } else {
+                // Fallback: try to get by name before giving up
+                debug!("No process found for '{}' using pgrep, falling back to get_application_by_name", app_name);
+                if let Ok(app) = self.get_application_by_name(&app_name) {
+                    debug!("Found application '{}' by name fallback", app_name);
+                    return Ok(app);
+                }
                 return Err(AutomationError::ElementNotFound(format!(
-                    "No process found for '{}' using pgrep",
-                    app_name
+                    "No process found for '{}' using pgrep (tried pids: {:?}) and not found by name",
+                    app_name, tried_pids
                 )));
             }
-        } else {
-            pid
-        };
+        }
 
-        // Wait for the application to appear in the accessibility tree
-        for _ in 0..10 {
+        // Try original PID for 5s
+        for _ in 0..5 {
             if let Ok(app) = self.get_application_by_pid(pid, None) {
+                debug!("Found application '{}' with pid {}", app_name, pid);
                 return Ok(app);
             }
-            std::thread::sleep(Duration::from_millis(500));
+            std::thread::sleep(Duration::from_millis(1000));
         }
+
+        // Then try with pgrep PID
+        for _ in 0..5 {
+            if let Some(new_pid) = get_latest_pid(&app_name) {
+                if !tried_pids.contains(&new_pid) {
+                    tried_pids.push(new_pid);
+                }
+                pid = new_pid;
+                if let Ok(app) = self.get_application_by_pid(pid, None) {
+                    debug!("Found application '{}' with pgrep pid {}", app_name, pid);
+                    return Ok(app);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(1000));
+        }
+
+        // Final fallback: try to get by name before giving up
+        debug!("Application '{}' not found by PID after launch, falling back to get_application_by_name", app_name);
+        if let Ok(app) = self.get_application_by_name(&app_name) {
+            debug!("Found application '{}' by name fallback at end", app_name);
+            return Ok(app);
+        }
+
         Err(AutomationError::ElementNotFound(format!(
-            "Application '{}' not found after launch",
-            app_name
+            "Application '{}' not found after launch (tried pids: {:?}) and not found by name",
+            app_name, tried_pids
         )))
     }
 
@@ -2231,21 +2268,22 @@ impl UIElementImpl for LinuxUIElement {
                     .path(this.path.as_str())?
                     .build()
                     .await?;
-                if let Ok(application) = proxy.get_application().await {
-                    let dbus_proxy = DBusProxy::new(&this.connection).await?;
-                    if let Ok(unique_name) =
-                        dbus_proxy.get_name_owner((&application.name).into()).await
-                    {
-                        if let Ok(pid) = dbus_proxy
-                            .get_connection_unix_process_id(unique_name.into())
-                            .await
-                        {
-                            return Ok(pid);
-                        }
+                let dbus_proxy = DBusProxy::new(&this.connection).await?;
+                // Use the proxy's destination (bus name) directly for PID lookup, with correct type conversion
+                let bus_name = match proxy.inner().destination().as_str().try_into() {
+                    Ok(b) => b,
+                    Err(e) => {
+                        return Err(AutomationError::PlatformError(format!(
+                            "Failed to convert bus name: {}",
+                            e
+                        )))
                     }
+                };
+                if let Ok(pid) = dbus_proxy.get_connection_unix_process_id(bus_name).await {
+                    return Ok(pid);
                 }
                 Err(AutomationError::PlatformError(format!(
-                    "Failed to get process ID for application: {}",
+                    "Failed to get process ID for bus name: {}",
                     this.destination
                 )))
             });
