@@ -1,8 +1,8 @@
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
-    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, DelayArgs, EmptyArgs,
-    ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs, GetClipboardArgs,
-    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
+    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, CloseElementArgs, DelayArgs,
+    EmptyArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
+    GetClipboardArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
     HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
     PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
     SetSelectedArgs, SetToggledArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs,
@@ -392,59 +392,53 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<TypeIntoElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let text_to_type = args.text_to_type.clone();
+        let should_clear = args.clear_before_typing.unwrap_or(true);
+
+        let action = move |element: UIElement| {
+            let text_to_type = text_to_type.clone();
+            async move {
+                if should_clear {
+                    if let Err(clear_error) = element
+                        .press_key("{Ctrl}a")
+                        .and_then(|_| element.press_key("{Delete}"))
+                    {
+                        warn!(
+                            "Warning: Failed to clear element before typing: {}",
+                            clear_error
+                        );
+                    }
+                }
+                element.type_text(&text_to_type, true)
+            }
+        };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            action,
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
-
-        let element_info = build_element_info(&element);
-
-        // Clear the element before typing if requested (default: true)
-        let should_clear = args.clear_before_typing.unwrap_or(true);
-        if should_clear {
-            // Select all existing text and delete it
-            if let Err(clear_error) = element
-                .press_key("{Ctrl}a")
-                .and_then(|_| element.press_key("{Delete}"))
-            {
-                // If clearing fails, log it but continue with typing (non-fatal)
-                eprintln!(
-                    "Warning: Failed to clear element before typing: {}",
-                    clear_error
-                );
-            }
-        }
-
-        element.type_text(&args.text_to_type, true).map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to type text",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selector": args.selector,
-                    "text_to_type": args.text_to_type,
-                    "element_info": element_info
-                })),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let mut result_json = json!({
             "action": "type_into_element",
             "status": "success",
             "text_typed": args.text_to_type,
-            "cleared_before_typing": should_clear,
-            "element": element_info,
+            "cleared_before_typing": args.clear_before_typing.unwrap_or(true),
+            "element": build_element_info(&element),
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
@@ -488,43 +482,34 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ClickElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let ((_click_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            |element| async move { element.click() },
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
         let original_element_id = element.id_or_empty();
 
-        element.click().map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to click on element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selector": args.selector,
-                    "element_info": element_info.clone()
-                })),
-            )
-        })?;
-
         // --- Action Consequence Verification ---
-        // Replace the fixed sleep with intelligent polling for UI changes.
         let consequence = wait_for_ui_change(
             &self.desktop,
             &original_element_id,
-            std::time::Duration::from_millis(300), // Max wait time for a change
+            std::time::Duration::from_millis(300),
         )
         .await;
 
@@ -556,39 +541,44 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<PressKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
-        let element_info = build_element_info(&element);
+        use crate::utils::find_and_execute_with_retry;
 
-        element.press_key(&args.key).map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to press key",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selector": args.selector,
-                    "key_pressed": args.key,
-                    "element_info": element_info
-                })),
-            )
-        })?;
+        let key_to_press = args.key.clone();
+        let action = move |element: UIElement| {
+            let key_to_press = key_to_press.clone();
+            async move { element.press_key(&key_to_press) }
+        };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            None, // PressKey doesn't have alternative selectors yet
+            args.timeout_ms,
+            args.retries,
+            action,
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(&args.selector, None, e)),
+        }?;
+
+        let element_info = build_element_info(&element);
 
         let mut result_json = json!({
             "action": "press_key",
             "status": "success",
             "key_pressed": args.key,
             "element": element_info,
-            "selector": args.selector,
+            "selector_used": successful_selector,
+            "selectors_tried": vec![args.selector],
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            true, // press_key_global does not have include_tree option
+            element.process_id().ok(),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -601,7 +591,7 @@ impl DesktopWrapper {
         Parameters(args): Parameters<GlobalKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
         // Identify focused element
-        let focused = self.desktop.focused_element().map_err(|e| {
+        let element = self.desktop.focused_element().map_err(|e| {
             McpError::internal_error(
                 "Failed to get focused element",
                 Some(json!({"reason": e.to_string()})),
@@ -609,10 +599,10 @@ impl DesktopWrapper {
         })?;
 
         // Gather metadata for debugging / result payload
-        let element_info = build_element_info(&focused);
+        let element_info = build_element_info(&element);
 
         // Perform the key press
-        focused.press_key(&args.key).map_err(|e| {
+        element.press_key(&args.key).map_err(|e| {
             McpError::resource_not_found(
                 "Failed to press key on focused element",
                 Some(json!({
@@ -630,7 +620,11 @@ impl DesktopWrapper {
             "element": element_info,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(true, focused.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            true, // press_key_global does not have include_tree option
+            element.process_id().ok(),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -668,35 +662,30 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ActivateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
+        use crate::utils::find_and_execute_with_retry;
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            None, // ActivateElement doesn't have alternative selectors
+            args.timeout_ms,
+            args.retries,
+            |element| async move { element.activate_window() },
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(&args.selector, None, e)),
+        }?;
 
         let element_info = build_element_info(&element);
-
-        element.activate_window().map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to activate window with that element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selector": args.selector,
-                    "element_info": element_info
-                })),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "activate_element",
             "status": "success",
             "element": element_info,
-            "selector": args.selector,
+            "selector_used": successful_selector,
+            "selectors_tried": vec![args.selector],
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Window activated successfully. The UI tree is attached to help you find specific elements to interact with next."
         });
@@ -851,40 +840,34 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<MouseDragArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
+        use crate::utils::find_and_execute_with_retry;
 
-        // Get element details before dragging for better feedback
+        let action = |element: UIElement| async move {
+            element.mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y)
+        };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            None, // MouseDrag doesn't have alternative selectors
+            args.timeout_ms,
+            args.retries,
+            action,
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(&args.selector, None, e)),
+        }?;
+
         let element_info = build_element_info(&element);
-
-        element
-            .mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y)
-            .map_err(|e| {
-                McpError::resource_not_found(
-                    "Failed to perform mouse drag",
-                    Some(json!({
-                        "reason": e.to_string(),
-                        "selector": args.selector,
-                        "start": (args.start_x, args.start_y),
-                        "end": (args.end_x, args.end_y),
-                        "element_info": element_info
-                    })),
-                )
-            })?;
 
         let mut result_json = json!({
             "action": "mouse_drag",
             "status": "success",
             "element": element_info,
-            "selector": args.selector,
+            "selector_used": successful_selector,
+            "selectors_tried": vec![args.selector],
             "start": (args.start_x, args.start_y),
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()
@@ -905,17 +888,22 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ValidateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        match find_element_with_fallbacks(
+        // For validation, the "action" is just succeeding.
+        let action = |element: UIElement| async move { Ok(element) };
+
+        match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            action,
         )
         .await
         {
-            Ok((element, successful_selector)) => {
+            Ok(((element, _), successful_selector)) => {
                 let mut element_info = build_element_info(&element);
                 if let Some(obj) = element_info.as_object_mut() {
                     obj.insert("exists".to_string(), json!(true));
@@ -968,24 +956,29 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<HighlightElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element for highlighting",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
-
+        use crate::utils::find_and_execute_with_retry;
         let duration = args.duration_ms.map(std::time::Duration::from_millis);
-        element.highlight(args.color, duration).map_err(|e| {
-            McpError::internal_error(
-                "Failed to highlight element",
-                Some(json!({"reason": e.to_string(), "selector": args.selector})),
-            )
-        })?;
+        let color = args.color;
+
+        let action = |element: UIElement| async move { element.highlight(color, duration) };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+            args.retries,
+            action,
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
 
@@ -993,12 +986,17 @@ impl DesktopWrapper {
             "action": "highlight_element",
             "status": "success",
             "element": element_info,
-            "selector": args.selector,
+            "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "color": args.color.unwrap_or(0x0000FF),
             "duration_ms": args.duration_ms.unwrap_or(1000),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1010,6 +1008,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<WaitForElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // NOTE: wait_for_element has its own timeout/retry logic within the locator.
+        // Adding our external retry logic on top would be redundant and confusing.
+        // We will call the locator directly.
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let timeout = get_timeout(args.timeout_ms);
 
@@ -1160,38 +1161,36 @@ impl DesktopWrapper {
     )]
     async fn close_element(
         &self,
-        Parameters(args): Parameters<LocatorArgs>,
+        Parameters(args): Parameters<CloseElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element for closing",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
+        use crate::utils::find_and_execute_with_retry;
 
-        // Get element details before closing for better feedback
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+            args.retries,
+            |element| async move { element.close() },
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e,
+            )),
+        }?;
+
         let element_info = build_element_info(&element);
-
-        element.close().map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to close element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selector": args.selector,
-                    "element_info": element_info
-                })),
-            )
-        })?;
 
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "close_element",
             "status": "success",
             "element": element_info,
-            "selector": args.selector,
+            "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         }))?]))
     }
@@ -1201,38 +1200,41 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ScrollElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let element = locator
-            .wait(get_timeout(args.timeout_ms))
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to locate element for scrolling",
-                    Some(json!({"reason": e.to_string(), "selector": args.selector})),
-                )
-            })?;
+        use crate::utils::find_and_execute_with_retry;
 
-        // Get element details before scrolling for better feedback
+        let direction = args.direction.clone();
+        let amount = args.amount;
+        let action = move |element: UIElement| {
+            let direction = direction.clone();
+            async move { element.scroll(&direction, amount) }
+        };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+            args.retries,
+            action,
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e,
+            )),
+        }?;
+
         let element_info = build_element_info(&element);
-
-        element.scroll(&args.direction, args.amount).map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to scroll element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selector": args.selector,
-                    "direction": args.direction,
-                    "amount": args.amount,
-                    "element_info": element_info
-                })),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "scroll_element",
             "status": "success",
             "element": element_info,
-            "selector": args.selector,
+            "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "direction": args.direction,
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
@@ -1251,39 +1253,40 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SelectOptionArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let option_name = args.option_name.clone();
+        let action = move |element: UIElement| {
+            let option_name = option_name.clone();
+            async move { element.select_option(&option_name) }
+        };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            action,
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-
-        element.select_option(&args.option_name).map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to select option",
-                Some(
-                    json!({ "reason": e.to_string(), "selector": args.selector, "option": args.option_name }),
-                ),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "select_option",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "option_selected": args.option_name,
         });
         self.maybe_attach_tree(
@@ -1302,36 +1305,34 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let ((options, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            |element| async move { element.list_options() },
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-        let options = element.list_options().map_err(|e| {
-            McpError::internal_error(
-                "Failed to list options",
-                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "list_options",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "options": options,
             "count": options.len(),
         });
@@ -1350,39 +1351,37 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetToggledArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let state = args.state;
+        let action = move |element: UIElement| async move { element.set_toggled(state) };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            action,
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-
-        element.set_toggled(args.state).map_err(|e| {
-            McpError::internal_error(
-                "Failed to set toggle state",
-                Some(
-                    json!({ "reason": e.to_string(), "selector": args.selector, "state": args.state }),
-                ),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "set_toggled",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "state_set_to": args.state,
         });
         self.maybe_attach_tree(
@@ -1400,39 +1399,37 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetRangeValueArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let value = args.value;
+        let action = move |element: UIElement| async move { element.set_range_value(value) };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            action,
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-
-        element.set_range_value(args.value).map_err(|e| {
-            McpError::internal_error(
-                "Failed to set range value",
-                Some(
-                    json!({ "reason": e.to_string(), "selector": args.selector, "value": args.value }),
-                ),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "set_range_value",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "value_set_to": args.value,
         });
         self.maybe_attach_tree(
@@ -1450,39 +1447,37 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetSelectedArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let state = args.state;
+        let action = move |element: UIElement| async move { element.set_selected(state) };
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            action,
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-
-        element.set_selected(args.state).map_err(|e| {
-            McpError::internal_error(
-                "Failed to set selected state",
-                Some(
-                    json!({ "reason": e.to_string(), "selector": args.selector, "state": args.state }),
-                ),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "set_selected",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "state_set_to": args.state,
         });
         self.maybe_attach_tree(
@@ -1500,39 +1495,41 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let ((is_toggled, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            |element| async move { element.is_toggled() },
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-        let is_toggled = element.is_toggled().map_err(|e| {
-            McpError::internal_error(
-                "Failed to get toggle state",
-                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "is_toggled",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "is_toggled": is_toggled,
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1543,39 +1540,41 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let ((value, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            |element| async move { element.get_range_value() },
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-        let value = element.get_range_value().map_err(|e| {
-            McpError::internal_error(
-                "Failed to get range value",
-                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "get_range_value",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "value": value,
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1586,39 +1585,41 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let ((is_selected, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            |element| async move { element.is_selected() },
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-        let is_selected = element.is_selected().map_err(|e| {
-            McpError::internal_error(
-                "Failed to get selected state",
-                Some(json!({ "reason": e.to_string(), "selector": args.selector })),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "is_selected",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "is_selected": is_selected,
         });
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1627,33 +1628,25 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ValidateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let ((screenshot_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            |element| async move { element.capture() },
         )
         .await
-        .map_err(|e| {
-            let selectors_tried =
-                get_selectors_tried(&args.selector, args.alternative_selectors.as_deref());
-            McpError::internal_error(
-                "Failed to locate element for screenshot",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selectors_tried": selectors_tried,
-                })),
-            )
-        })?;
-
-        let screenshot_result = element.capture().map_err(|e| {
-            McpError::internal_error(
-                "Failed to capture element screenshot",
-                Some(json!({"reason": e.to_string(), "selector_used": successful_selector})),
-            )
-        })?;
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e,
+            )),
+        }?;
 
         let mut png_data = Vec::new();
         let encoder = PngEncoder::new(Cursor::new(&mut png_data));
@@ -1681,6 +1674,7 @@ impl DesktopWrapper {
                 "status": "success",
                 "element": element_info,
                 "selector_used": successful_selector,
+                "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
                 "image_format": "png",
             }))?,
             Content::image(base64_image, "image/png".to_string()),
@@ -1694,35 +1688,27 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::utils::find_element_with_fallbacks;
+        use crate::utils::find_and_execute_with_retry;
 
-        let (element, successful_selector) = find_element_with_fallbacks(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
             args.timeout_ms,
+            args.retries,
+            |element| async move { element.invoke() },
         )
         .await
-        .map_err(|e| {
-            build_element_not_found_error(
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
-                e.into(),
-            )
-        })?;
+                e,
+            )),
+        }?;
 
         let element_info = build_element_info(&element);
-
-        element.invoke().map_err(|e| {
-            McpError::resource_not_found(
-                "Failed to invoke element",
-                Some(json!({
-                    "reason": e.to_string(),
-                    "selector": args.selector,
-                    "element_info": element_info.clone()
-                })),
-            )
-        })?;
 
         let mut result_json = json!({
             "action": "invoke",
@@ -1733,7 +1719,11 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        self.maybe_attach_tree(true, element.process_id().ok(), &mut result_json);
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1815,16 +1805,21 @@ impl DesktopWrapper {
 
                         group_results.push(result.clone());
 
-                        if result["status"] != "success" {
+                        let tool_failed = result["status"] != "success";
+                        if tool_failed {
                             group_had_errors = true;
-                        }
 
-                        if error_occurred {
-                            group_had_errors = true;
-                            if !is_skippable {
-                                sequence_should_stop = true;
+                            // A tool failed. Check if we should break out of the group.
+                            // We break if the error is fatal (error_occurred) OR if the group
+                            // is designated as skippable (meaning we abandon it on any failure).
+                            if error_occurred || is_skippable {
+                                // If the error was fatal AND the group was NOT skippable,
+                                // the entire sequence must stop.
+                                if error_occurred && !is_skippable {
+                                    sequence_should_stop = true;
+                                }
+                                break; // Exit the loop for this group's steps.
                             }
-                            break;
                         }
                     }
 
@@ -2132,13 +2127,15 @@ impl DesktopWrapper {
                     )),
                 }
             }
-            "close_element" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
-                Ok(args) => self.close_element(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for close_element",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
+            "close_element" => {
+                match serde_json::from_value::<CloseElementArgs>(arguments.clone()) {
+                    Ok(args) => self.close_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for close_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
             "select_option" => {
                 match serde_json::from_value::<SelectOptionArgs>(arguments.clone()) {
                     Ok(args) => self.select_option(Parameters(args)).await,

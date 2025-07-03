@@ -1,10 +1,18 @@
 mod e2e_tests;
 mod firefox_window_tests;
 mod functional_verification_tests;
+#[cfg(test)]
 mod high_level_inputs_tests;
+#[cfg(test)]
 mod performance_tests;
 mod selector_tests;
 mod test_serialization;
+
+#[cfg(test)]
+mod firefox_window_tests;
+
+#[cfg(all(test, target_os = "windows"))]
+mod wait_tests;
 
 // Initialize tracing for tests
 pub fn init_tracing() {
