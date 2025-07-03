@@ -49,9 +49,22 @@ impl From<&str> for Selector {
         if s.contains('|') {
             let parts: Vec<&str> = s.split('|').collect();
             if parts.len() >= 2 {
+                let role_part = parts[0].trim();
+                let name_part = parts[1].trim();
+
+                // Handle role:abcd|name:abcd format
+                let role = role_part
+                    .strip_prefix("role:")
+                    .unwrap_or(role_part)
+                    .to_string();
+                let name = name_part
+                    .strip_prefix("name:")
+                    .unwrap_or(name_part)
+                    .to_string();
+
                 return Selector::Role {
-                    role: parts[0].trim().to_string(),
-                    name: Some(parts[1].trim().to_string()),
+                    role,
+                    name: Some(name),
                 };
             }
         }

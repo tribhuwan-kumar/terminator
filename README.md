@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 
->AI-powered desktop automation through natural language. Build agents that control any application using MCP (Model Context Protocol) + LLMs. Cross-platform SDK with Python, TypeScript, and Rust support.
+>Computer use SDK for building agents that learn from human screen recordings. Accessibility-first. Cross-platform (Windows/macOS/Linux), near-deterministic.
 
 ## ⚡ TL;DR — Hello World Example
 
@@ -297,14 +297,6 @@ While Terminator aims for full cross-platform support, current capabilities vary
 - ✅: **Supported** - The feature is stable and well-tested.
 - 🟡: **Partial / Experimental** - The feature is in development and may have limitations.
 - ❌: **Not Supported** - The feature is not yet available on this platform.
-
-## Documentation
-
-For detailed information on features, installation, usage, and the API, please visit the **[Official Documentation](https://docs.screenpi.pe/terminator/introduction)**.
-
-Here's a section you can add under your `README.md` to document tools for inspecting accessibility elements across Windows, macOS, and Linux — tailored to Terminator users trying to find correct selectors:
-
----
 
 ## 🕵️ How to Inspect Accessibility Elements (like `name:Seven`)
 

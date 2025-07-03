@@ -2700,7 +2700,17 @@ impl UIElementImpl for WindowsUIElement {
             .element
             .0
             .get_pattern::<patterns::UIInvokePattern>()
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+            .map_err(|e| {
+                let error_str = e.to_string();
+                if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
+                    AutomationError::UnsupportedOperation(format!(
+                        "Element does not support InvokePattern. This typically happens with custom controls, groups, or non-standard buttons. Try using 'click_element' instead. Error: {}",
+                        error_str
+                    ))
+                } else {
+                    AutomationError::PlatformError(format!("Failed to get InvokePattern: {}", e))
+                }
+            })?;
         invoke_pat
             .invoke()
             .map_err(|e| AutomationError::PlatformError(e.to_string()))
@@ -2931,24 +2941,30 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn set_value(&self, value: &str) -> Result<(), AutomationError> {
-        let value_par = self
-            .element
-            .0
-            .get_pattern::<patterns::UIValuePattern>()
-            .map_err(|e| AutomationError::PlatformError(e.to_string()));
         debug!(
             "setting value: {:#?} to ui element {:#?}",
             &value, &self.element.0
         );
 
-        if let Ok(v) = value_par {
-            v.set_value(value)
-                .map_err(|e| AutomationError::PlatformError(e.to_string()))
-        } else {
-            Err(AutomationError::PlatformError(
-                "`UIValuePattern` is not found".to_string(),
-            ))
-        }
+        let value_par = self
+            .element
+            .0
+            .get_pattern::<patterns::UIValuePattern>()
+            .map_err(|e| {
+                let error_str = e.to_string();
+                if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
+                    AutomationError::UnsupportedOperation(format!(
+                        "Element does not support ValuePattern. This control cannot have its value set directly. Try using 'type_into_element' for text input, or 'select_option' for dropdowns. Error: {}",
+                        error_str
+                    ))
+                } else {
+                    AutomationError::PlatformError(format!("Failed to get ValuePattern: {}", e))
+                }
+            })?;
+
+        value_par
+            .set_value(value)
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))
     }
 
     fn is_enabled(&self) -> Result<bool, AutomationError> {
@@ -2976,16 +2992,7 @@ impl UIElementImpl for WindowsUIElement {
         // actions those don't take args
         match action {
             "focus" => self.focus(),
-            "invoke" => {
-                let invoke_pat = self
-                    .element
-                    .0
-                    .get_pattern::<patterns::UIInvokePattern>()
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-                invoke_pat
-                    .invoke()
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()))
-            }
+            "invoke" => self.invoke(),
             "click" => self.click().map(|_| ()),
             "double_click" => self.double_click().map(|_| ()),
             "right_click" => self.right_click().map(|_| ()),
@@ -2994,7 +3001,17 @@ impl UIElementImpl for WindowsUIElement {
                     .element
                     .0
                     .get_pattern::<patterns::UITogglePattern>()
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                    .map_err(|e| {
+                        let error_str = e.to_string();
+                        if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
+                            AutomationError::UnsupportedOperation(format!(
+                                "Element does not support TogglePattern. This is not a toggleable control (checkbox, switch, etc.). Try using 'click' instead. Error: {}",
+                                error_str
+                            ))
+                        } else {
+                            AutomationError::PlatformError(format!("Failed to get TogglePattern: {}", e))
+                        }
+                    })?;
                 toggle_pattern
                     .toggle()
                     .map_err(|e| AutomationError::PlatformError(e.to_string()))
@@ -3004,7 +3021,17 @@ impl UIElementImpl for WindowsUIElement {
                     .element
                     .0
                     .get_pattern::<patterns::UIExpandCollapsePattern>()
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                    .map_err(|e| {
+                        let error_str = e.to_string();
+                        if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
+                            AutomationError::UnsupportedOperation(format!(
+                                "Element does not support ExpandCollapsePattern. This is not an expandable control (tree item, dropdown, etc.). Try using 'click' to interact with it. Error: {}",
+                                error_str
+                            ))
+                        } else {
+                            AutomationError::PlatformError(format!("Failed to get ExpandCollapsePattern: {}", e))
+                        }
+                    })?;
                 expand_collapse_pattern
                     .expand()
                     .map_err(|e| AutomationError::PlatformError(e.to_string()))
@@ -3464,9 +3491,34 @@ impl UIElementImpl for WindowsUIElement {
                     self.element.0.get_pattern::<patterns::UIWindowPattern>()
                 {
                     debug!("Attempting to close window using WindowPattern");
-                    return window_pattern.close().map_err(|e| {
-                        AutomationError::PlatformError(format!("Failed to close window: {}", e))
-                    });
+                    let close_result = window_pattern.close();
+                    match close_result {
+                        Ok(()) => return Ok(()),
+                        Err(e) => {
+                            let error_str = e.to_string();
+                            if error_str.contains("not support")
+                                || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE")
+                            {
+                                // Window doesn't support WindowPattern, try Alt+F4
+                                debug!("WindowPattern not supported, falling back to Alt+F4");
+                                self.element.0.try_focus();
+                                return self.element
+                                    .0
+                                    .send_keys("%{F4}", 10) // Alt+F4
+                                    .map_err(|e2| {
+                                        AutomationError::PlatformError(format!(
+                                            "Failed to close window: WindowPattern not supported and Alt+F4 failed: {}",
+                                            e2
+                                        ))
+                                    });
+                            } else {
+                                return Err(AutomationError::PlatformError(format!(
+                                    "Failed to close window: {}",
+                                    e
+                                )));
+                            }
+                        }
+                    }
                 }
 
                 // Fallback: try to send Alt+F4 to close the window
@@ -3482,22 +3534,29 @@ impl UIElementImpl for WindowsUIElement {
             ControlType::Button => {
                 // For buttons, check if it's a close button by name/text
                 let name = self.element.0.get_name().unwrap_or_default().to_lowercase();
-                if name.contains("close") || name.contains("×") || name.contains("✕") {
+                if name.contains("close")
+                    || name.contains("×")
+                    || name.contains("✕")
+                    || name.contains("x")
+                {
                     debug!("Clicking close button: {}", name);
                     self.click().map(|_| ())
                 } else {
-                    // Regular button - do nothing
-                    debug!("Button '{}' is not a close button, doing nothing", name);
-                    Ok(())
+                    // Regular button - not a close action
+                    debug!("Button '{}' is not a close button", name);
+                    Err(AutomationError::UnsupportedOperation(format!(
+                        "Button '{}' is not a close button. Only windows, dialogs, and close buttons can be closed.",
+                        name
+                    )))
                 }
             }
             _ => {
-                // For other control types (text, edit, etc.), do nothing
-                debug!(
-                    "Element type {:?} is not closable, doing nothing",
+                // For other control types (text, edit, etc.), closing is not supported
+                debug!("Element type {:?} is not closable", control_type);
+                Err(AutomationError::UnsupportedOperation(format!(
+                    "Element of type '{}' cannot be closed. Only windows, dialogs, and close buttons support the close operation.",
                     control_type
-                );
-                Ok(())
+                )))
             }
         }
     }
@@ -3768,7 +3827,7 @@ impl UIElementImpl for WindowsUIElement {
             )
             .map_err(|e| {
                 AutomationError::ElementNotFound(format!(
-                    "Option '{}' not found: {}",
+                    "Option '{}' not found in dropdown. Make sure the dropdown is expanded and the option name is exact. Error: {}",
                     option_name, e
                 ))
             })?;
@@ -3782,8 +3841,15 @@ impl UIElementImpl for WindowsUIElement {
             })?;
         } else {
             // Fallback to click if selection pattern is not available
+            debug!(
+                "SelectionItemPattern not available for option '{}', falling back to click",
+                option_name
+            );
             option_element.click().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to click option: {}", e))
+                AutomationError::PlatformError(format!(
+                    "Failed to click option '{}': {}",
+                    option_name, e
+                ))
             })?;
         }
 
@@ -3828,21 +3894,32 @@ impl UIElementImpl for WindowsUIElement {
 
             if state != uiautomation::types::ExpandCollapseState::Expanded {
                 expand_collapse_pattern.expand().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to expand element: {}", e))
+                    AutomationError::PlatformError(format!(
+                        "Failed to expand element to list options: {}",
+                        e
+                    ))
                 })?;
                 std::thread::sleep(std::time::Duration::from_millis(200)); // Wait for animation
             }
+        } else {
+            debug!("Element does not support ExpandCollapsePattern, attempting to list visible children directly");
         }
 
         // Search for ListItem children
         let children = self.children()?;
         for child in children {
-            if child.role() == "ListItem" {
+            let role = child.role();
+            if role == "ListItem" || role == "MenuItem" || role == "Option" {
                 if let Some(name) = child.name() {
                     options.push(name);
                 }
             }
         }
+
+        if options.is_empty() {
+            debug!("No options found. The element might not be a dropdown/list, or options might have different roles");
+        }
+
         Ok(options)
     }
 
@@ -3882,7 +3959,7 @@ impl UIElementImpl for WindowsUIElement {
         }
 
         Err(AutomationError::UnsupportedOperation(format!(
-            "Element {:?} does not support TogglePattern or provide state in its name.",
+            "Element '{}' does not support TogglePattern or provide state information. This element is not a toggleable control. Use 'is_selected' for selection states.",
             self.element.0.get_name().unwrap_or_default()
         )))
     }
@@ -3898,10 +3975,15 @@ impl UIElementImpl for WindowsUIElement {
             .0
             .get_pattern::<patterns::UITogglePattern>()
             .map_err(|e| {
-                AutomationError::UnsupportedOperation(format!(
-                    "Element does not support TogglePattern to set state: {}",
-                    e
-                ))
+                let error_str = e.to_string();
+                if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
+                    AutomationError::UnsupportedOperation(format!(
+                        "Element does not support TogglePattern. This is not a toggleable control (checkbox, switch, etc.). For checkboxes, try 'click_element'. For radio buttons, use 'set_selected'. Error: {}",
+                        error_str
+                    ))
+                } else {
+                    AutomationError::PlatformError(format!("Failed to get TogglePattern: {}", e))
+                }
             })?;
 
         toggle_pattern
@@ -3915,10 +3997,15 @@ impl UIElementImpl for WindowsUIElement {
             .0
             .get_pattern::<patterns::UIRangeValuePattern>()
             .map_err(|e| {
-                AutomationError::UnsupportedOperation(format!(
-                    "Element does not support RangeValue pattern: {}",
-                    e
-                ))
+                let error_str = e.to_string();
+                if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
+                    AutomationError::UnsupportedOperation(format!(
+                        "Element does not support RangeValuePattern. This is not a range control (slider, progress bar, etc.). Error: {}",
+                        error_str
+                    ))
+                } else {
+                    AutomationError::PlatformError(format!("Failed to get RangeValuePattern: {}", e))
+                }
             })?;
         range_pattern.get_value().map_err(|e| {
             AutomationError::PlatformError(format!("Failed to get range value: {}", e))
@@ -3933,10 +4020,15 @@ impl UIElementImpl for WindowsUIElement {
             .0
             .get_pattern::<patterns::UIRangeValuePattern>()
             .map_err(|e| {
-                AutomationError::UnsupportedOperation(format!(
-                    "Element does not support RangeValue pattern: {}",
-                    e
-                ))
+                let error_str = e.to_string();
+                if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
+                    AutomationError::UnsupportedOperation(format!(
+                        "Element does not support RangeValuePattern. This is not a range control (slider, progress bar, etc.). Try using keyboard arrows or mouse drag for custom sliders. Error: {}",
+                        error_str
+                    ))
+                } else {
+                    AutomationError::PlatformError(format!("Failed to get RangeValuePattern: {}", e))
+                }
             })?;
 
         // Try setting value directly first, as it's the most efficient method.
@@ -4106,7 +4198,7 @@ impl UIElementImpl for WindowsUIElement {
                 // This is for multi-select controls; for single-select this may fail.
                 return selection_item_pattern.remove_from_selection().map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to remove item from selection: {}",
+                        "Failed to remove item from selection. This might be a single-select control that doesn't support deselection: {}",
                         e
                     ))
                 });
@@ -4121,16 +4213,18 @@ impl UIElementImpl for WindowsUIElement {
             .get_pattern::<patterns::UITogglePattern>()
             .is_ok()
         {
+            debug!("Element doesn't support SelectionItemPattern, falling back to TogglePattern");
             return self.set_toggled(state);
         }
 
         // Final fallback: if we want to select, try clicking.
         if state {
+            debug!("Element supports neither SelectionItemPattern nor TogglePattern, falling back to click");
             return self.click().map(|_| ());
         }
 
         Err(AutomationError::UnsupportedOperation(
-            "Element cannot be deselected as it supports neither SelectionItemPattern nor TogglePattern.".to_string(),
+            "Element cannot be deselected as it supports neither SelectionItemPattern nor TogglePattern. For radio buttons and list items, deselection typically happens by selecting another item.".to_string(),
         ))
     }
 }

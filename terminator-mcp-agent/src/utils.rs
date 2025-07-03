@@ -11,6 +11,12 @@ use tracing_subscriber::EnvFilter;
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct EmptyArgs {}
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct DelayArgs {
+    #[schemars(description = "Number of milliseconds to delay")]
+    pub delay_ms: u64,
+}
+
 fn default_desktop() -> Arc<Desktop> {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     let desktop = Desktop::new(false, false).expect("Failed to create default desktop");
@@ -42,6 +48,9 @@ pub struct GetWindowTreeArgs {
     #[schemars(description = "Optional window title filter")]
     pub title: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct GetFocusedWindowTreeArgs {}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetWindowsArgs {
@@ -85,6 +94,8 @@ pub struct ClickElementArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -105,6 +116,8 @@ pub struct TypeIntoElementArgs {
     pub verify_action: Option<bool>,
     #[schemars(description = "Whether to clear the element before typing (default: true)")]
     pub clear_before_typing: Option<bool>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -121,6 +134,8 @@ pub struct PressKeyArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -326,34 +341,71 @@ pub struct ActivateElementArgs {
     pub selector: String,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ToolCall {
-    #[schemars(description = "Name of the tool to execute")]
+    #[schemars(description = "The name of the tool to be executed.")]
     pub tool_name: String,
-    #[schemars(description = "Arguments to pass to the tool as a JSON object")]
+    #[schemars(description = "The arguments for the tool, as a JSON object.")]
     pub arguments: serde_json::Value,
     #[schemars(
-        description = "Optional: Continue to next tool even if this one fails (default: false)"
+        description = "If true, the sequence will continue even if this tool call fails. Defaults to false."
     )]
     pub continue_on_error: Option<bool>,
-    #[schemars(description = "Optional: Delay in milliseconds after this tool executes")]
+    #[schemars(
+        description = "An optional delay in milliseconds to wait after this tool call completes."
+    )]
     pub delay_ms: Option<u64>,
+}
+
+// Simplified structure for Gemini compatibility
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SequenceStep {
+    #[schemars(description = "The name of the tool to execute (for single tool steps)")]
+    pub tool_name: Option<String>,
+    #[schemars(description = "The arguments for the tool (for single tool steps)")]
+    pub arguments: Option<serde_json::Value>,
+    #[schemars(description = "Continue on error flag (for single tool steps)")]
+    pub continue_on_error: Option<bool>,
+    #[schemars(description = "Delay after execution (for single tool steps)")]
+    pub delay_ms: Option<u64>,
+    #[schemars(description = "Group name (for grouped steps)")]
+    pub group_name: Option<String>,
+    #[schemars(description = "Steps in the group (for grouped steps)")]
+    pub steps: Option<Vec<ToolCall>>,
+    #[schemars(description = "Whether the group is skippable on error (for grouped steps)")]
+    pub skippable: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExecuteSequenceArgs {
-    #[schemars(description = "Array of tool calls to execute in sequence")]
-    pub tools: Vec<ToolCall>,
+    #[schemars(
+        description = "Array of steps to execute. Each step can be either a single tool (with tool_name and arguments) or a group (with group_name and steps)."
+    )]
+    pub items: Vec<SequenceStep>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
-    #[schemars(description = "Default delay in milliseconds between tool executions (default: 0)")]
-    pub delay_between_tools_ms: Option<u64>,
     #[schemars(
         description = "Whether to include detailed results from each tool execution (default: true)"
     )]
     pub include_detailed_results: Option<bool>,
+}
+
+// Keep the old structures for internal use
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolGroup {
+    pub group_name: String,
+    pub steps: Vec<ToolCall>,
+    pub skippable: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum SequenceItem {
+    Tool { tool_call: ToolCall },
+    Group { tool_group: ToolGroup },
 }
 
 pub fn init_logging() -> Result<()> {
@@ -503,9 +555,9 @@ pub async fn find_element_with_fallbacks(
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExportWorkflowSequenceArgs {
     #[schemars(
-        description = "Array of successfully executed tool calls to convert into a reliable workflow. Each tool call should include the tool name, arguments used, and optionally the selector that worked."
+        description = "JSON value containing an array of successfully executed tool calls to convert into a reliable workflow. Each tool call should be a JSON object with 'tool_name' (string), 'arguments' (object), 'continue_on_error' (optional bool), and 'delay_ms' (optional number)."
     )]
-    pub successful_tool_calls: Vec<ToolCall>,
+    pub successful_tool_calls: serde_json::Value,
 
     #[schemars(description = "Name for the workflow being exported")]
     pub workflow_name: String,
@@ -540,6 +592,8 @@ pub struct ExportWorkflowSequenceArgs {
     )]
     pub credentials: Option<serde_json::Value>,
 
-    #[schemars(description = "Known error conditions and their solutions from the successful run")]
-    pub known_error_handlers: Option<Vec<serde_json::Value>>,
+    #[schemars(
+        description = "Known error conditions and their solutions from the successful run as a JSON array"
+    )]
+    pub known_error_handlers: Option<serde_json::Value>,
 }

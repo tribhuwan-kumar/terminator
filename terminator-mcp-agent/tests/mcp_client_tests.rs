@@ -85,7 +85,7 @@ async fn test_execute_sequence_empty() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools": [],
+                "items": [],
                 "stop_on_error": true,
                 "include_detailed_results": true
             })),
@@ -175,7 +175,7 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools": [
+                "items": [
                     {
                         "tool_name": "invalid_tool",
                         "arguments": {},
@@ -190,7 +190,6 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
                     }
                 ],
                 "stop_on_error": true,
-                "delay_between_tools_ms": 10,
                 "include_detailed_results": true
             })),
         })
@@ -213,7 +212,7 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
             .as_array()
             .expect("Expected results array");
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0]["status"], "error");
+        assert_eq!(results[0]["status"], "skipped"); // continue_on_error: true makes it "skipped"
         assert_eq!(results[1]["status"], "success");
     }
 
@@ -241,7 +240,7 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools": [
+                "items": [
                     {
                         "tool_name": "invalid_tool",
                         "arguments": {},
@@ -325,7 +324,7 @@ async fn test_execute_sequence_with_delays() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools": [
+                "items": [
                     {
                         "tool_name": "validate_element",
                         "arguments": {
@@ -343,7 +342,6 @@ async fn test_execute_sequence_with_delays() -> Result<()> {
                     }
                 ],
                 "stop_on_error": false,
-                "delay_between_tools_ms": 50,
                 "include_detailed_results": true
             })),
         })
