@@ -46,8 +46,8 @@ async fn test_execute_sequence_direct() {
 
     assert_eq!(parsed["action"], "execute_sequence");
     assert_eq!(parsed["status"], "success");
-    assert_eq!(parsed["total_items"], 0);
-    assert_eq!(parsed["executed_items"], 0);
+    assert_eq!(parsed["total_tools"], 0);
+    assert_eq!(parsed["executed_tools"], 0);
 }
 
 #[tokio::test]
@@ -123,8 +123,8 @@ async fn test_execute_sequence_with_invalid_tool_stops() {
         parsed["status"], "partial_success",
         "Status should be partial_success as it stopped on error"
     );
-    assert_eq!(parsed["total_items"], 1);
-    assert_eq!(parsed["executed_items"], 1);
+    assert_eq!(parsed["total_tools"], 1);
+    assert_eq!(parsed["executed_tools"], 1);
 
     // Check that the error was captured
     let results = parsed["results"]
@@ -185,9 +185,9 @@ async fn test_continue_on_error_allows_sequence_to_proceed() {
         .expect("Failed to extract JSON from response");
 
     assert_eq!(parsed["status"], "completed_with_errors");
-    assert_eq!(parsed["total_items"], 2);
+    assert_eq!(parsed["total_tools"], 2);
     assert_eq!(
-        parsed["executed_items"], 2,
+        parsed["executed_tools"], 2,
         "Both tools should have been executed"
     );
 
@@ -300,7 +300,7 @@ async fn test_sequence_with_skippable_failing_group() {
         "Sequence should complete with errors due to the failing skippable group. Full response: {:?}",
         parsed
     );
-    assert_eq!(parsed["executed_items"], 2);
+    assert_eq!(parsed["executed_tools"], 2);
 
     let results = parsed["results"].as_array().unwrap();
     // Check skippable group result
@@ -354,9 +354,9 @@ async fn test_sequence_with_unskippable_failing_group_stops() {
         parsed["status"], "partial_success",
         "Sequence should stop and report partial success."
     );
-    assert_eq!(parsed["total_items"], 2);
+    assert_eq!(parsed["total_tools"], 2);
     assert_eq!(
-        parsed["executed_items"], 1,
+        parsed["executed_tools"], 1,
         "Sequence should have stopped after the first failing group"
     );
 
@@ -414,9 +414,9 @@ async fn test_stop_on_error_halts_sequence() {
 
     // Only the first tool should have been executed.
     assert_eq!(parsed["status"], "partial_success");
-    assert_eq!(parsed["total_items"], 2);
+    assert_eq!(parsed["total_tools"], 2);
     assert_eq!(
-        parsed["executed_items"], 1,
+        parsed["executed_tools"], 1,
         "Sequence should have stopped after the first error"
     );
 
