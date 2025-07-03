@@ -1768,27 +1768,84 @@ impl DesktopWrapper {
             }
         }
 
-        let mut results = Vec::new();
+        // Build execution plan
+        let mut plan_steps = Vec::new();
+        let mut step_counter = 0;
+
+        for item in &sequence_items {
+            match item {
+                SequenceItem::Tool { tool_call } => {
+                    step_counter += 1;
+                    plan_steps.push(json!({
+                        "step": step_counter,
+                        "tool_name": tool_call.tool_name,
+                        "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
+                        "status": "pending"
+                    }));
+                }
+                SequenceItem::Group { tool_group } => {
+                    for tool_call in &tool_group.steps {
+                        step_counter += 1;
+                        plan_steps.push(json!({
+                            "step": step_counter,
+                            "tool_name": tool_call.tool_name,
+                            "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
+                            "group_name": tool_group.group_name,
+                            "status": "pending"
+                        }));
+                    }
+                }
+            }
+        }
+
+        let execution_plan = json!({
+            "total_steps": step_counter,
+            "steps": plan_steps
+        });
+
+        let mut step_results = Vec::new();
         let mut sequence_had_errors = false;
         let mut sequence_should_stop = false;
         let start_time = chrono::Utc::now();
+        let mut executed_steps = 0;
+        let mut successful_steps = 0;
+        let mut failed_steps = 0;
 
         for (item_index, item) in sequence_items.iter().enumerate() {
             match item {
                 SequenceItem::Tool { tool_call } => {
+                    executed_steps += 1;
+                    let step_start = chrono::Utc::now();
+
                     let (result, error_occurred) = self
                         .execute_single_tool(tool_call, item_index, include_detailed)
                         .await;
 
-                    if result["status"] != "success" {
+                    let step_completed = chrono::Utc::now();
+                    let step_duration = (step_completed - step_start).num_milliseconds();
+                    let status = if result["status"] == "success" {
+                        successful_steps += 1;
+                        "success"
+                    } else {
+                        failed_steps += 1;
                         sequence_had_errors = true;
-                    }
+                        "error"
+                    };
 
                     if error_occurred {
                         sequence_should_stop = true;
                     }
 
-                    results.push(result);
+                    step_results.push(json!({
+                        "step": executed_steps,
+                        "tool_name": tool_call.tool_name,
+                        "status": status,
+                        "started_at": step_start.to_rfc3339(),
+                        "completed_at": step_completed.to_rfc3339(),
+                        "duration_ms": step_duration,
+                        "progress": format!("{}/{}", executed_steps, step_counter),
+                        "result": result
+                    }));
 
                     if sequence_should_stop && stop_on_error {
                         break;
@@ -1796,52 +1853,58 @@ impl DesktopWrapper {
                 }
                 SequenceItem::Group { tool_group } => {
                     let mut group_had_errors = false;
-                    let mut group_results = Vec::new();
                     let is_skippable = tool_group.skippable.unwrap_or(false);
+
                     for (step_index, tool_call) in tool_group.steps.iter().enumerate() {
+                        executed_steps += 1;
+                        let step_start = chrono::Utc::now();
+
                         let (result, error_occurred) = self
                             .execute_single_tool(tool_call, step_index, include_detailed)
                             .await;
 
-                        group_results.push(result.clone());
+                        let step_completed = chrono::Utc::now();
+                        let step_duration = (step_completed - step_start).num_milliseconds();
 
                         let tool_failed = result["status"] != "success";
-                        if tool_failed {
+                        let status = if !tool_failed {
+                            successful_steps += 1;
+                            "success"
+                        } else {
+                            failed_steps += 1;
                             group_had_errors = true;
+                            "error"
+                        };
 
-                            // A tool failed. Check if we should break out of the group.
-                            // We break if the error is fatal (error_occurred) OR if the group
-                            // is designated as skippable (meaning we abandon it on any failure).
+                        step_results.push(json!({
+                            "step": executed_steps,
+                            "tool_name": tool_call.tool_name,
+                            "group_name": tool_group.group_name,
+                            "status": status,
+                            "started_at": step_start.to_rfc3339(),
+                            "completed_at": step_completed.to_rfc3339(),
+                            "duration_ms": step_duration,
+                            "progress": format!("{}/{}", executed_steps, step_counter),
+                            "result": result
+                        }));
+
+                        if tool_failed {
                             if error_occurred || is_skippable {
-                                // If the error was fatal AND the group was NOT skippable,
-                                // the entire sequence must stop.
                                 if error_occurred && !is_skippable {
                                     sequence_should_stop = true;
                                 }
-                                break; // Exit the loop for this group's steps.
+                                break;
                             }
                         }
                     }
 
-                    let group_status = if group_had_errors {
-                        "partial_success"
-                    } else {
-                        "success"
-                    };
-
-                    if group_status != "success" {
+                    if group_had_errors {
                         sequence_had_errors = true;
                     }
 
                     if group_had_errors && !is_skippable && stop_on_error {
                         sequence_should_stop = true;
                     }
-
-                    results.push(json!({
-                        "group_name": tool_group.group_name,
-                        "status": group_status,
-                        "results": group_results
-                    }));
 
                     if sequence_should_stop && stop_on_error {
                         break;
@@ -1850,7 +1913,8 @@ impl DesktopWrapper {
             }
         }
 
-        let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
+        let completed_time = chrono::Utc::now();
+        let total_duration = (completed_time - start_time).num_milliseconds();
 
         let final_status = if !sequence_had_errors {
             "success"
@@ -1860,14 +1924,22 @@ impl DesktopWrapper {
             "completed_with_errors"
         };
 
+        let execution_summary = json!({
+            "total_steps": step_counter,
+            "executed_steps": executed_steps,
+            "successful_steps": successful_steps,
+            "failed_steps": failed_steps,
+            "total_duration_ms": total_duration,
+            "started_at": start_time.to_rfc3339(),
+            "completed_at": completed_time.to_rfc3339()
+        });
+
         let summary = json!({
             "action": "execute_sequence",
             "status": final_status,
-            "total_tools": sequence_items.len(),
-            "executed_tools": results.len(),
-            "total_duration_ms": total_duration,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "results": results,
+            "execution_plan": execution_plan,
+            "execution_summary": execution_summary,
+            "step_results": step_results
         });
 
         Ok(CallToolResult::success(vec![Content::json(summary)?]))
