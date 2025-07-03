@@ -10,7 +10,7 @@ use crate::utils::{
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
-use rmcp::handler::server::tool::Parameters;
+use rmcp::handler::server::tool::{Parameters, RequestHandlerExtra};
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
@@ -1729,11 +1729,12 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')."
+        description = "Execute a sequence of tools with real-time progress streaming. Sends progress notifications as each step executes. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')."
     )]
     pub async fn execute_sequence(
         &self,
         Parameters(args): Parameters<ExecuteSequenceArgs>,
+        extra: RequestHandlerExtra,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::{SequenceItem, ToolCall, ToolGroup};
 
@@ -1803,6 +1804,18 @@ impl DesktopWrapper {
             "steps": plan_steps
         });
 
+        // Send initial execution plan notification
+        extra
+            .send_logging_message(
+                "info",
+                json!({
+                    "type": "execution_plan",
+                    "total_steps": step_counter,
+                    "steps": plan_steps
+                }),
+            )
+            .await?;
+
         let mut step_results = Vec::new();
         let mut sequence_had_errors = false;
         let mut sequence_should_stop = false;
@@ -1811,10 +1824,33 @@ impl DesktopWrapper {
         let mut successful_steps = 0;
         let mut failed_steps = 0;
 
+        // Send sequence start notification
+        extra
+            .send_logging_message(
+                "info",
+                json!({
+                    "type": "sequence_start",
+                    "total_steps": step_counter,
+                    "started_at": start_time.to_rfc3339()
+                }),
+            )
+            .await?;
+
         for (item_index, item) in sequence_items.iter().enumerate() {
             match item {
                 SequenceItem::Tool { tool_call } => {
                     executed_steps += 1;
+
+                    // Send step start notification
+                    extra.send_logging_message("info", json!({
+                        "type": "step_start",
+                        "step": executed_steps,
+                        "total_steps": step_counter,
+                        "tool_name": &tool_call.tool_name,
+                        "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
+                        "progress": format!("{}/{}", executed_steps, step_counter)
+                    })).await?;
+
                     let step_start = chrono::Utc::now();
 
                     let (result, error_occurred) = self
@@ -1836,7 +1872,7 @@ impl DesktopWrapper {
                         sequence_should_stop = true;
                     }
 
-                    step_results.push(json!({
+                    let step_result = json!({
                         "step": executed_steps,
                         "tool_name": tool_call.tool_name,
                         "status": status,
@@ -1845,7 +1881,21 @@ impl DesktopWrapper {
                         "duration_ms": step_duration,
                         "progress": format!("{}/{}", executed_steps, step_counter),
                         "result": result
-                    }));
+                    });
+
+                    step_results.push(step_result.clone());
+
+                    // Send step complete notification
+                    extra.send_logging_message("info", json!({
+                        "type": "step_complete",
+                        "step": executed_steps,
+                        "total_steps": step_counter,
+                        "tool_name": &tool_call.tool_name,
+                        "status": status,
+                        "duration_ms": step_duration,
+                        "progress": format!("{}/{}", executed_steps, step_counter),
+                        "result_summary": if include_detailed { &result } else { &json!({"status": status}) }
+                    })).await?;
 
                     if sequence_should_stop && stop_on_error {
                         break;
@@ -1855,8 +1905,32 @@ impl DesktopWrapper {
                     let mut group_had_errors = false;
                     let is_skippable = tool_group.skippable.unwrap_or(false);
 
+                    // Send group start notification
+                    extra
+                        .send_logging_message(
+                            "info",
+                            json!({
+                                "type": "group_start",
+                                "group_name": &tool_group.group_name,
+                                "total_steps_in_group": tool_group.steps.len()
+                            }),
+                        )
+                        .await?;
+
                     for (step_index, tool_call) in tool_group.steps.iter().enumerate() {
                         executed_steps += 1;
+
+                        // Send step start notification
+                        extra.send_logging_message("info", json!({
+                            "type": "step_start",
+                            "step": executed_steps,
+                            "total_steps": step_counter,
+                            "tool_name": &tool_call.tool_name,
+                            "group_name": &tool_group.group_name,
+                            "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
+                            "progress": format!("{}/{}", executed_steps, step_counter)
+                        })).await?;
+
                         let step_start = chrono::Utc::now();
 
                         let (result, error_occurred) = self
@@ -1876,7 +1950,7 @@ impl DesktopWrapper {
                             "error"
                         };
 
-                        step_results.push(json!({
+                        let step_result = json!({
                             "step": executed_steps,
                             "tool_name": tool_call.tool_name,
                             "group_name": tool_group.group_name,
@@ -1886,7 +1960,22 @@ impl DesktopWrapper {
                             "duration_ms": step_duration,
                             "progress": format!("{}/{}", executed_steps, step_counter),
                             "result": result
-                        }));
+                        });
+
+                        step_results.push(step_result);
+
+                        // Send step complete notification
+                        extra.send_logging_message("info", json!({
+                            "type": "step_complete",
+                            "step": executed_steps,
+                            "total_steps": step_counter,
+                            "tool_name": &tool_call.tool_name,
+                            "group_name": &tool_group.group_name,
+                            "status": status,
+                            "duration_ms": step_duration,
+                            "progress": format!("{}/{}", executed_steps, step_counter),
+                            "result_summary": if include_detailed { &result } else { &json!({"status": status}) }
+                        })).await?;
 
                         if tool_failed {
                             if error_occurred || is_skippable {
@@ -1897,6 +1986,18 @@ impl DesktopWrapper {
                             }
                         }
                     }
+
+                    // Send group complete notification
+                    extra
+                        .send_logging_message(
+                            "info",
+                            json!({
+                                "type": "group_complete",
+                                "group_name": &tool_group.group_name,
+                                "had_errors": group_had_errors
+                            }),
+                        )
+                        .await?;
 
                     if group_had_errors {
                         sequence_had_errors = true;
@@ -1933,6 +2034,18 @@ impl DesktopWrapper {
             "started_at": start_time.to_rfc3339(),
             "completed_at": completed_time.to_rfc3339()
         });
+
+        // Send sequence complete notification
+        extra
+            .send_logging_message(
+                "info",
+                json!({
+                    "type": "sequence_complete",
+                    "status": final_status,
+                    "execution_summary": &execution_summary
+                }),
+            )
+            .await?;
 
         let summary = json!({
             "action": "execute_sequence",
@@ -2712,6 +2825,7 @@ impl ServerHandler for DesktopWrapper {
                 .enable_prompts()
                 .enable_resources()
                 .enable_tools()
+                .enable_logging()
                 .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(get_server_instructions().to_string()),
