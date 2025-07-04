@@ -69,6 +69,34 @@ jobs:
           npm install
           npm run build
 
+      - name: List dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          dumpbin /dependents "terminator-mcp-agent\npm\${{ matrix.settings.npm_dir }}\${{ matrix.settings.bin_name }}"
+        shell: cmd
+
+      - name: Smoke test binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd terminator-mcp-agent
+          $process = Start-Process -FilePath "npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}" -ArgumentList "--transport", "http", "--port", "3999" -PassThru
+          Start-Sleep -Seconds 10
+          try {
+            Invoke-WebRequest -Uri http://localhost:3999/health -UseBasicParsing
+            Write-Host "Health check passed"
+          } catch {
+            Write-Error "Failed to connect to health check endpoint: $_"
+            $logPath = Join-Path ${env:USERPROFILE} ".terminator\terminator-mcp-agent.log"
+            if (Test-Path $logPath) {
+              Get-Content $logPath | Write-Error
+            }
+            exit 1
+          } finally {
+            Stop-Process -Id $process.Id -Force
+          }
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
