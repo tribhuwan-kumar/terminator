@@ -62,6 +62,7 @@ async fn test_validate_element_direct() {
 
     // Test validate_element with a non-existent element
     let args = ValidateElementArgs {
+        retries: Some(0),
         selector: "#99999999999".to_string(),
         alternative_selectors: None,
         timeout_ms: Some(100),
