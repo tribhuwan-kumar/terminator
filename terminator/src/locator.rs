@@ -6,6 +6,7 @@ use crate::platforms::AccessibilityEngine;
 use crate::selector::Selector;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task;
 
 // Default timeout if none is specified on the locator itself
 const DEFAULT_LOCATOR_TIMEOUT: Duration = Duration::from_secs(30);
@@ -74,44 +75,31 @@ impl Locator {
     pub async fn wait(&self, timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
         debug!("Waiting for element matching selector: {:?}", self.selector);
         let effective_timeout = timeout.unwrap_or(self.timeout);
-        let start = std::time::Instant::now();
 
-        loop {
-            // Calculate remaining time, preventing overflow if already timed out.
-            let remaining_time = if start.elapsed() >= effective_timeout {
-                Duration::ZERO
+        // Since the underlying engine's find_element is a blocking call that
+        // already handles polling and timeouts, we should not wrap it in another async loop.
+        // Instead, we run it in a blocking-safe thread to avoid stalling the async runtime.
+        let engine = self.engine.clone();
+        let selector = self.selector.clone();
+        let selector_string = self.selector_string();
+        let root = self.root.clone();
+
+        task::spawn_blocking(move || {
+            engine.find_element(&selector, root.as_ref(), Some(effective_timeout))
+        })
+        .await
+        .map_err(|e| AutomationError::PlatformError(format!("Task join error: {}", e)))?
+        .map_err(|e| {
+            // The engine returns ElementNotFound on timeout. We convert it to a more specific Timeout error here.
+            if let AutomationError::ElementNotFound(inner_msg) = e {
+                AutomationError::Timeout(format!(
+                    "Timed out after {:?} waiting for element {:?}. Original error: {}",
+                    effective_timeout, selector_string, inner_msg
+                ))
             } else {
-                effective_timeout - start.elapsed()
-            };
-            debug!(
-                "New wait loop iteration, remaining_time: {:?}",
-                remaining_time
-            );
-
-            // Directly use find_element with the calculated (or zero) remaining timeout
-            match self.engine.find_element(
-                &self.selector,
-                self.root.as_ref(),
-                Some(remaining_time), // Pass the safely calculated remaining time
-            ) {
-                Ok(element) => return Ok(element),
-                Err(AutomationError::ElementNotFound(_)) => {
-                    // Continue looping if not found yet
-                    if start.elapsed() >= effective_timeout {
-                        // Use the original error message format if possible, or create a new one
-                        return Err(AutomationError::Timeout(format!(
-                            "Timed out after {:?} waiting for element {:?}",
-                            effective_timeout, self.selector
-                        )));
-                    }
-                    tokio::time::sleep(Duration::from_millis(100)).await; // Small delay before retry
-                }
-                // Propagate other errors immediately
-                Err(e) => return Err(e),
+                e
             }
-            // Redundant check, loop condition handles timeout
-            // if start.elapsed() >= effective_timeout { ... }
-        }
+        })
     }
 
     fn append_selector(&self, selector_to_append: Selector) -> Locator {

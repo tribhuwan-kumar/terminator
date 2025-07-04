@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
-use terminator::Desktop;
-use tracing::Level;
+use terminator::{AutomationError, Desktop, UIElement};
+use tracing::{warn, Level};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -80,6 +80,7 @@ pub struct LocatorArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -94,6 +95,9 @@ pub struct ClickElementArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -114,6 +118,9 @@ pub struct TypeIntoElementArgs {
     pub verify_action: Option<bool>,
     #[schemars(description = "Whether to clear the element before typing (default: true)")]
     pub clear_before_typing: Option<bool>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -130,6 +137,9 @@ pub struct PressKeyArgs {
     pub alternative_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -176,6 +186,7 @@ pub struct MouseDragArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -192,6 +203,7 @@ pub struct ValidateElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -212,6 +224,7 @@ pub struct HighlightElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -230,6 +243,7 @@ pub struct WaitForElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -264,6 +278,7 @@ pub struct SelectOptionArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -278,6 +293,7 @@ pub struct SetToggledArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -292,6 +308,7 @@ pub struct SetRangeValueArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -306,6 +323,7 @@ pub struct SetSelectedArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -325,6 +343,7 @@ pub struct ScrollElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -335,28 +354,82 @@ pub struct ActivateElementArgs {
     pub selector: String,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ToolCall {
+    #[schemars(description = "The name of the tool to be executed.")]
     pub tool_name: String,
+    #[schemars(description = "The arguments for the tool, as a JSON object.")]
     pub arguments: serde_json::Value,
+    #[schemars(
+        description = "If true, the sequence will continue even if this tool call fails. Defaults to false."
+    )]
     pub continue_on_error: Option<bool>,
+    #[schemars(
+        description = "An optional delay in milliseconds to wait after this tool call completes."
+    )]
     pub delay_ms: Option<u64>,
+}
+
+// Simplified structure for Gemini compatibility
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SequenceStep {
+    #[schemars(description = "The name of the tool to execute (for single tool steps)")]
+    pub tool_name: Option<String>,
+    #[schemars(description = "The arguments for the tool (for single tool steps)")]
+    pub arguments: Option<serde_json::Value>,
+    #[schemars(description = "Continue on error flag (for single tool steps)")]
+    pub continue_on_error: Option<bool>,
+    #[schemars(description = "Delay after execution (for single tool steps)")]
+    pub delay_ms: Option<u64>,
+    #[schemars(description = "Group name (for grouped steps)")]
+    pub group_name: Option<String>,
+    #[schemars(description = "Steps in the group (for grouped steps)")]
+    pub steps: Option<Vec<ToolCall>>,
+    #[schemars(description = "Whether the group is skippable on error (for grouped steps)")]
+    pub skippable: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExecuteSequenceArgs {
     #[schemars(
-        description = "JSON string containing an array of tool calls to execute in sequence. Parse this as an array where each element is an object with 'tool_name' (string), 'arguments' (object), 'continue_on_error' (optional bool), and 'delay_ms' (optional number)."
+        description = "Array of steps to execute. Each step can be either a single tool (with tool_name and arguments) or a group (with group_name and steps)."
     )]
-    pub tools_json: String,
+    pub items: Vec<SequenceStep>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
     #[schemars(
         description = "Whether to include detailed results from each tool execution (default: true)"
     )]
     pub include_detailed_results: Option<bool>,
+}
+
+// Keep the old structures for internal use
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolGroup {
+    pub group_name: String,
+    pub steps: Vec<ToolCall>,
+    pub skippable: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum SequenceItem {
+    Tool { tool_call: ToolCall },
+    Group { tool_group: ToolGroup },
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseElementArgs {
+    pub selector: String,
+    pub alternative_selectors: Option<String>,
+    pub timeout_ms: Option<u64>,
+    pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 pub fn init_logging() -> Result<()> {
@@ -396,6 +469,18 @@ pub async fn find_element_with_fallbacks(
     use tokio::time::Duration;
 
     let timeout_duration = get_timeout(timeout_ms).unwrap_or(Duration::from_millis(3000));
+
+    // FAST PATH: If no alternatives provided, just use primary selector directly
+    if alternative_selectors.is_none() {
+        let locator = desktop.locator(terminator::Selector::from(primary_selector));
+        return match locator.first(Some(timeout_duration)).await {
+            Ok(element) => Ok((element, primary_selector.to_string())),
+            Err(e) => Err(terminator::AutomationError::ElementNotFound(format!(
+                "Primary selector '{}' failed: {}",
+                primary_selector, e
+            ))),
+        };
+    }
 
     // Parse comma-separated alternative selectors
     let alternative_selectors_vec: Option<Vec<String>> = alternative_selectors.map(|alts| {
@@ -547,4 +632,78 @@ pub struct ExportWorkflowSequenceArgs {
         description = "Known error conditions and their solutions from the successful run as a JSON array"
     )]
     pub known_error_handlers: Option<serde_json::Value>,
+}
+
+/// A robust helper that finds a UI element and executes a provided action on it,
+/// with built-in retry logic for both finding the element and performing the action.
+///
+/// This function is the standard way to interact with elements when reliability is key.
+///
+/// # Arguments
+/// * `desktop` - The active `Desktop` instance.
+/// * `primary_selector` - The main selector for the target element.
+/// * `alternatives` - A comma-separated string of fallback selectors.
+/// * `timeout_ms` - The timeout for the initial element search.
+/// * `retries` - The number of times to retry the *entire find-and-act sequence*.
+/// * `action` - An async closure that takes the found `UIElement` and performs an action,
+///              returning a `Result`.
+///
+/// # Returns
+/// A `Result` containing a tuple of the action's return value `T` and the `UIElement` on
+/// which the action was successfully performed.
+pub async fn find_and_execute_with_retry<F, Fut, T>(
+    desktop: &Desktop,
+    primary_selector: &str,
+    alternatives: Option<&str>,
+    timeout_ms: Option<u64>,
+    retries: Option<u32>,
+    action: F,
+) -> Result<((T, UIElement), String), anyhow::Error>
+where
+    F: Fn(UIElement) -> Fut,
+    Fut: std::future::Future<Output = Result<T, AutomationError>>,
+{
+    let retry_count = retries.unwrap_or(0);
+    let mut last_error: Option<anyhow::Error> = None;
+
+    for attempt in 0..=retry_count {
+        match find_element_with_fallbacks(desktop, primary_selector, alternatives, timeout_ms).await
+        {
+            Ok((element, successful_selector)) => match action(element.clone()).await {
+                Ok(result) => return Ok(((result, element), successful_selector)),
+                Err(e) => {
+                    last_error = Some(e.into());
+                    if attempt < retry_count {
+                        warn!(
+                            "Action failed on attempt {}/{}. Retrying... Error: {}",
+                            attempt + 1,
+                            retry_count + 1,
+                            last_error.as_ref().unwrap()
+                        );
+                        tokio::time::sleep(Duration::from_millis(250)).await; // Wait before next retry
+                    }
+                }
+            },
+            Err(e) => {
+                last_error = Some(e.into());
+                if attempt < retry_count {
+                    warn!(
+                        "Find element failed on attempt {}/{}. Retrying... Error: {}",
+                        attempt + 1,
+                        retry_count + 1,
+                        last_error.as_ref().unwrap()
+                    );
+                    // No need to sleep here, as find_element_with_fallbacks already has a timeout.
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow::anyhow!(
+            "Action failed after {} retries for selector '{}'",
+            retry_count + 1,
+            primary_selector
+        )
+    }))
 }

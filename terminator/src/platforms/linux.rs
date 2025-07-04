@@ -5,7 +5,7 @@ use crate::{ClickResult, CommandOutput, ScreenshotResult};
 use atspi::{State, StateSet};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
-use std::default::Default;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -34,6 +34,7 @@ use atspi_proxies::{
     device_event_controller::{DeviceEventControllerProxy, KeySynthType},
     text::TextProxy,
 };
+use futures::future::join_all;
 use image::{DynamicImage, ImageBuffer, Rgba};
 use uni_ocr::{OcrEngine, OcrProvider};
 use zbus::fdo::DBusProxy;
@@ -326,6 +327,95 @@ fn role_from_str(role: &str) -> Option<Role> {
     None
 }
 
+/// Recursive fallback: Traverse all descendants with filters if CollectionProxy is not available
+async fn traverse_descendants_with_filters<'a>(
+    proxy: &'a AccessibleProxy<'a>,
+    states: Option<Vec<State>>,
+    roles: Option<Vec<Role>>,
+    name_substring: Option<&'a str>,
+    visited: &mut HashSet<String>,
+    stop_after_first: bool,
+) -> Result<Vec<atspi::ObjectRef>, AutomationError> {
+    let mut matches = Vec::new();
+    let path = proxy.inner().path().to_string();
+    if !visited.insert(path.clone()) {
+        // Already visited
+        return Ok(matches);
+    }
+    // Apply filters to this node
+    let mut is_match = true;
+    if let Some(ref expected_states) = states {
+        is_match &= proxy
+            .get_state()
+            .await
+            .ok()
+            .is_some_and(|s| expected_states.iter().all(|st| s.contains(*st)));
+    }
+    if let Some(ref expected_roles) = roles {
+        is_match &= proxy
+            .get_role()
+            .await
+            .ok()
+            .is_some_and(|r| expected_roles.contains(&r));
+    }
+    if let Some(ref substr) = name_substring {
+        is_match &= proxy.name().await.ok().is_some_and(|n| n.contains(substr));
+    }
+    if is_match {
+        let role = proxy.get_role().await.ok();
+        let name = proxy.name().await.ok();
+        let path = proxy.inner().path().to_string();
+        let destination = proxy.inner().destination().to_string();
+        debug!(
+            "[fallback traversal] Matched descendant: role={:?}, name={:?}, path={}, destination={}",
+            role, name, path, destination
+        );
+        let object_ref = atspi_common::ObjectRef::try_from(proxy).map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to convert proxy to ObjectRef: {e}"))
+        })?;
+        matches.push(object_ref);
+        if stop_after_first {
+            return Ok(matches);
+        }
+    }
+    // Recurse into children in parallel
+    let children = proxy.get_children().await.unwrap_or_default();
+    let connection = proxy.inner().connection().clone();
+    let futures = children.into_iter().map(|child_ref| {
+        let connection = connection.clone();
+        let states = states.clone();
+        let roles = roles.clone();
+        let name_substring = name_substring;
+        let mut visited = visited.clone();
+        async move {
+            if let Ok(child_proxy) = child_ref.clone().into_accessible_proxy(&connection).await {
+                traverse_descendants_with_filters(
+                    &child_proxy,
+                    states,
+                    roles,
+                    name_substring,
+                    &mut visited,
+                    stop_after_first,
+                )
+                .await
+                .unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        }
+    });
+    let children_results = join_all(futures).await;
+    for mut child_matches in children_results {
+        if !child_matches.is_empty() {
+            matches.append(&mut child_matches);
+            if stop_after_first {
+                return Ok(matches);
+            }
+        }
+    }
+    Ok(matches)
+}
+
 // Helper: Recursively collect all elements from a root up to a given depth (breadth-first)
 pub async fn get_all_elements_from_root(
     root: &UIElement,
@@ -396,30 +486,78 @@ pub async fn get_all_elements_from_root(
                         AutomationError::PlatformError("Invalid child element type".to_string())
                     })?;
 
-                let collection_proxy = CollectionProxy::builder(&linux_child.connection)
+                let collection_proxy_result = CollectionProxy::builder(&linux_child.connection)
                     .destination(linux_child.destination.as_str())
                     .map_err(|e| AutomationError::PlatformError(e.to_string()))?
                     .path(linux_child.path.as_str())
                     .map_err(|e| AutomationError::PlatformError(e.to_string()))?
                     .build()
-                    .await
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-
-                let match_rule = ObjectMatchRule::builder()
-                    .states(StateSet::new(State::Showing), MatchType::All)
-                    .build();
-                let collection_matches = collection_proxy
-                    .get_matches_from(
-                        collection_proxy.inner().path(),
-                        match_rule,
-                        SortOrder::Canonical,
-                        atspi::TreeTraversalType::Inorder,
-                        0,
-                        true,
+                    .await;
+                let collection_matches = if let Ok(collection_proxy) = collection_proxy_result {
+                    let match_rule = ObjectMatchRule::builder()
+                        .states(StateSet::new(State::Showing), MatchType::All)
+                        .build();
+                    match collection_proxy
+                        .get_matches_from(
+                            collection_proxy.inner().path(),
+                            match_rule,
+                            SortOrder::Canonical,
+                            atspi::TreeTraversalType::Inorder,
+                            0,
+                            true,
+                        )
+                        .await
+                    {
+                        Ok(matches) => matches.into_iter().collect::<Vec<_>>(),
+                        Err(_) => {
+                            // Fallback: manual traversal with filter State::Showing
+                            let root_proxy = AccessibleProxy::builder(&linux_child.connection)
+                                .destination(linux_child.destination.as_str())
+                                .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                                .path(linux_child.path.as_str())
+                                .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                                .interface(ACCESSIBLE_INTERFACE)?
+                                .cache_properties(CacheProperties::No)
+                                .build()
+                                .await
+                                .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                            let mut visited = HashSet::new();
+                            let matches = traverse_descendants_with_filters(
+                                &root_proxy,
+                                Some(vec![State::Showing]),
+                                None,
+                                None,
+                                &mut visited,
+                                false,
+                            )
+                            .await?;
+                            matches.into_iter().collect::<Vec<_>>()
+                        }
+                    }
+                } else {
+                    // Fallback: manual traversal with filter State::Showing
+                    let root_proxy = AccessibleProxy::builder(&linux_child.connection)
+                        .destination(linux_child.destination.as_str())
+                        .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                        .path(linux_child.path.as_str())
+                        .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                        .interface(ACCESSIBLE_INTERFACE)?
+                        .cache_properties(CacheProperties::No)
+                        .build()
+                        .await
+                        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                    let mut visited = HashSet::new();
+                    let matches = traverse_descendants_with_filters(
+                        &root_proxy,
+                        Some(vec![State::Showing]),
+                        None,
+                        None,
+                        &mut visited,
+                        false,
                     )
-                    .await
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-
+                    .await?;
+                    matches.into_iter().collect::<Vec<_>>()
+                };
                 let mut child_elements = Vec::new();
                 for m in collection_matches {
                     let proxy = m
@@ -456,31 +594,59 @@ pub async fn get_all_elements_from_root(
 
         let destination = root_proxy.inner().destination().to_string();
         let path = root_proxy.inner().path().to_string();
-        let collection_proxy = CollectionProxy::builder(&linux_elem.connection)
+        let collection_proxy_result = CollectionProxy::builder(&linux_elem.connection)
             .destination(destination.as_str())
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?
             .path(path.as_str())
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?
             .build()
-            .await
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+            .await;
 
-        let match_rule = ObjectMatchRule::builder()
-            .states(StateSet::new(State::Showing), MatchType::All)
-            .build();
-
-        let collection_matches = collection_proxy
-            .get_matches_from(
-                collection_proxy.inner().path(),
-                match_rule,
-                SortOrder::Canonical,
-                atspi::TreeTraversalType::Inorder,
-                0,
-                true,
+        let collection_matches = if let Ok(collection_proxy) = collection_proxy_result {
+            let match_rule = ObjectMatchRule::builder()
+                .states(StateSet::new(State::Showing), MatchType::All)
+                .build();
+            match collection_proxy
+                .get_matches_from(
+                    collection_proxy.inner().path(),
+                    match_rule,
+                    SortOrder::Canonical,
+                    atspi::TreeTraversalType::Inorder,
+                    0,
+                    true,
+                )
+                .await
+            {
+                Ok(matches) => matches.into_iter().collect::<Vec<_>>(),
+                Err(_) => {
+                    // Fallback: manual traversal with filter State::Showing
+                    let mut visited = HashSet::new();
+                    let matches = traverse_descendants_with_filters(
+                        &root_proxy,
+                        Some(vec![State::Showing]),
+                        None,
+                        None,
+                        &mut visited,
+                        false,
+                    )
+                    .await?;
+                    matches.into_iter().collect::<Vec<_>>()
+                }
+            }
+        } else {
+            // Fallback: manual traversal with filter State::Showing
+            let mut visited = HashSet::new();
+            let matches = traverse_descendants_with_filters(
+                &root_proxy,
+                Some(vec![State::Showing]),
+                None,
+                None,
+                &mut visited,
+                false,
             )
-            .await
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-
+            .await?;
+            matches.into_iter().collect::<Vec<_>>()
+        };
         // Add root element
         all_elements.push(root.clone());
         // Add all matched elements
@@ -748,27 +914,70 @@ async fn find_focused_element_async(elements: &[UIElement]) -> Result<UIElement,
                 .map_err(|e| AutomationError::PlatformError(e.to_string()))?
                 .build()
                 .await;
-            let collection_proxy = match collection_proxy_result {
-                Ok(proxy) => proxy,
-                Err(_) => continue,
-            };
-            let match_rule = ObjectMatchRule::builder()
-                .states(StateSet::new(State::Focused), MatchType::All)
-                .build();
-            let matches = collection_proxy
-                .get_matches_from(
-                    collection_proxy.inner().path(),
-                    match_rule,
-                    SortOrder::Canonical,
-                    atspi::TreeTraversalType::Inorder,
-                    0,
-                    true,
-                )
-                .await;
-            if let Ok(matches) = matches {
-                if !matches.is_empty() {
-                    return Ok(element.clone());
+            let matches = if let Ok(collection_proxy) = collection_proxy_result {
+                let match_rule = ObjectMatchRule::builder()
+                    .states(StateSet::new(State::Focused), MatchType::All)
+                    .build();
+                match collection_proxy
+                    .get_matches_from(
+                        collection_proxy.inner().path(),
+                        match_rule,
+                        SortOrder::Canonical,
+                        atspi::TreeTraversalType::Inorder,
+                        0,
+                        true,
+                    )
+                    .await
+                {
+                    Ok(matches) => matches,
+                    Err(_) => {
+                        let root_proxy = AccessibleProxy::builder(&linux_elem.connection)
+                            .destination(linux_elem.destination.as_str())
+                            .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                            .path(linux_elem.path.as_str())
+                            .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                            .interface(ACCESSIBLE_INTERFACE)?
+                            .cache_properties(CacheProperties::No)
+                            .build()
+                            .await
+                            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                        let mut visited = HashSet::new();
+                        traverse_descendants_with_filters(
+                            &root_proxy,
+                            Some(vec![State::Focused]),
+                            None,
+                            None,
+                            &mut visited,
+                            false,
+                        )
+                        .await?
+                    }
                 }
+            } else {
+                // Fallback: manual traversal with filter State::Focused
+                let root_proxy = AccessibleProxy::builder(&linux_elem.connection)
+                    .destination(linux_elem.destination.as_str())
+                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                    .path(linux_elem.path.as_str())
+                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?
+                    .interface(ACCESSIBLE_INTERFACE)?
+                    .cache_properties(CacheProperties::No)
+                    .build()
+                    .await
+                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                let mut visited = HashSet::new();
+                traverse_descendants_with_filters(
+                    &root_proxy,
+                    Some(vec![State::Focused]),
+                    None,
+                    None,
+                    &mut visited,
+                    false,
+                )
+                .await?
+            };
+            if !matches.is_empty() {
+                return Ok(element.clone());
             }
         }
     }

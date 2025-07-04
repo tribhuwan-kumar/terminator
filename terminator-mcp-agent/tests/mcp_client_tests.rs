@@ -85,7 +85,7 @@ async fn test_execute_sequence_empty() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools_json": "[]",
+                "items": [],
                 "stop_on_error": true,
                 "include_detailed_results": true
             })),
@@ -175,20 +175,20 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools_json": serde_json::to_string(&vec![
-                    object!({
+                "items": [
+                    {
                         "tool_name": "invalid_tool",
                         "arguments": {},
                         "continue_on_error": true
-                    }),
-                    object!({
+                    },
+                    {
                         "tool_name": "validate_element",
                         "arguments": {
                             "selector": "#test-element",
                             "timeout_ms": 50
                         }
-                    })
-                ]).unwrap(),
+                    }
+                ],
                 "stop_on_error": true,
                 "include_detailed_results": true
             })),
@@ -212,7 +212,7 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
             .as_array()
             .expect("Expected results array");
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0]["status"], "error");
+        assert_eq!(results[0]["status"], "skipped"); // continue_on_error: true makes it "skipped"
         assert_eq!(results[1]["status"], "success");
     }
 
@@ -240,20 +240,20 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools_json": serde_json::to_string(&vec![
-                    object!({
+                "items": [
+                    {
                         "tool_name": "invalid_tool",
                         "arguments": {},
                         "continue_on_error": false
-                    }),
-                    object!({
+                    },
+                    {
                         "tool_name": "validate_element",
                         "arguments": {
                             "selector": "#should-not-execute",
                             "timeout_ms": 50
                         }
-                    })
-                ]).unwrap(),
+                    }
+                ],
                 "stop_on_error": true,
                 "include_detailed_results": true
             })),
@@ -324,23 +324,23 @@ async fn test_execute_sequence_with_delays() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "tools_json": serde_json::to_string(&vec![
-                    object!({
+                "items": [
+                    {
                         "tool_name": "validate_element",
                         "arguments": {
                             "selector": "#test1",
                             "timeout_ms": 50
                         },
                         "delay_ms": 100
-                    }),
-                    object!({
+                    },
+                    {
                         "tool_name": "validate_element",
                         "arguments": {
                             "selector": "#test2",
                             "timeout_ms": 50
                         }
-                    })
-                ]).unwrap(),
+                    }
+                ],
                 "stop_on_error": false,
                 "include_detailed_results": true
             })),

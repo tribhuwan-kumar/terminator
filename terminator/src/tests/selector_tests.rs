@@ -277,8 +277,6 @@ fn test_web_id_stability() {
     let desktop = Arc::new(Desktop::new(false, false).expect("Failed to create Desktop"));
 
     rt.block_on(async {
-        let mut browser_window: Option<UIElement> = None;
-
         // A closure that returns a future, allowing it to be called multiple times.
         let check_url = |url: String,
                          element_selector: Selector,
@@ -399,7 +397,7 @@ fn test_web_id_stability() {
         };
 
         // Test Dataiku page
-        browser_window = Some(
+        let mut browser_window = Some(
             check_url(
                 "https://pages.dataiku.com/guide-to-ai-agents".to_string(),
                 Selector::Name("Get Ahead With Agentic AI".to_string()),
@@ -409,7 +407,14 @@ fn test_web_id_stability() {
             .await,
         );
 
-        // wait 30 seconds
+        // Close the first browser window
+        if let Some(window) = browser_window.take() {
+            window
+                .close()
+                .expect("Failed to close first browser window.");
+        }
+
+        // wait 10 seconds
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
 
         // Test Luma page
