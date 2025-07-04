@@ -19,7 +19,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::fs;
-use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -90,6 +89,8 @@ struct McpExecArgs {
 enum McpCommands {
     /// Interactive chat with MCP server
     Chat(McpChatArgs),
+    /// Interactive AI-powered chat with MCP server
+    AiChat(McpChatArgs),
     /// Execute a single MCP tool
     Exec(McpExecArgs),
 }
@@ -637,27 +638,27 @@ fn run_command(program: &str, args: &[&str]) -> Result<(), Box<dyn std::error::E
 }
 
 fn handle_mcp_command(cmd: McpCommands) {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let transport = match cmd {
+        McpCommands::Chat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+        McpCommands::AiChat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+        McpCommands::Exec(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+    };
 
-    match cmd {
-        McpCommands::Chat(args) => {
-            runtime.block_on(async {
-                let transport = parse_transport(args.url, args.command);
-                if let Err(e) = mcp_client::interactive_chat(transport).await {
-                    eprintln!("❌ MCP chat error: {}", e);
-                    std::process::exit(1);
-                }
-            });
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+
+    let result = rt.block_on(async {
+        match cmd {
+            McpCommands::Chat(_) => mcp_client::interactive_chat(transport).await,
+            McpCommands::AiChat(_) => mcp_client::natural_language_chat(transport).await,
+            McpCommands::Exec(args) => {
+                mcp_client::execute_command(transport, args.tool, args.args).await
+            }
         }
-        McpCommands::Exec(args) => {
-            runtime.block_on(async {
-                let transport = parse_transport(args.url, args.command);
-                if let Err(e) = mcp_client::execute_command(transport, args.tool, args.args).await {
-                    eprintln!("❌ MCP execution error: {}", e);
-                    std::process::exit(1);
-                }
-            });
-        }
+    });
+
+    if let Err(e) = result {
+        eprintln!("❌ MCP command error: {}", e);
+        std::process::exit(1);
     }
 }
 
