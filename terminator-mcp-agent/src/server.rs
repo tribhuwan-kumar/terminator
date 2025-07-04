@@ -10,7 +10,7 @@ use crate::utils::{
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
-use rmcp::handler::server::tool::{Parameters, RequestHandlerExtra};
+use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
@@ -1716,12 +1716,11 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Execute a sequence of tools with real-time progress streaming. Sends progress notifications as each step executes. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')."
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')."
     )]
     pub async fn execute_sequence(
         &self,
         Parameters(args): Parameters<ExecuteSequenceArgs>,
-        extra: RequestHandlerExtra,
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::{SequenceItem, ToolCall, ToolGroup};
 
@@ -1756,133 +1755,27 @@ impl DesktopWrapper {
             }
         }
 
-        // Build execution plan
-        let mut plan_steps = Vec::new();
-        let mut step_counter = 0;
-
-        for item in &sequence_items {
-            match item {
-                SequenceItem::Tool { tool_call } => {
-                    step_counter += 1;
-                    plan_steps.push(json!({
-                        "step": step_counter,
-                        "tool_name": tool_call.tool_name,
-                        "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
-                        "status": "pending"
-                    }));
-                }
-                SequenceItem::Group { tool_group } => {
-                    for tool_call in &tool_group.steps {
-                        step_counter += 1;
-                        plan_steps.push(json!({
-                            "step": step_counter,
-                            "tool_name": tool_call.tool_name,
-                            "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
-                            "group_name": tool_group.group_name,
-                            "status": "pending"
-                        }));
-                    }
-                }
-            }
-        }
-
-        let execution_plan = json!({
-            "total_steps": step_counter,
-            "steps": plan_steps
-        });
-
-        // Send initial execution plan notification
-        extra
-            .send_logging_message(
-                "info",
-                json!({
-                    "type": "execution_plan",
-                    "total_steps": step_counter,
-                    "steps": plan_steps
-                }),
-            )
-            .await?;
-
-        let mut step_results = Vec::new();
+        let mut results = Vec::new();
         let mut sequence_had_errors = false;
         let mut sequence_should_stop = false;
         let start_time = chrono::Utc::now();
-        let mut executed_steps = 0;
-        let mut successful_steps = 0;
-        let mut failed_steps = 0;
-
-        // Send sequence start notification
-        extra
-            .send_logging_message(
-                "info",
-                json!({
-                    "type": "sequence_start",
-                    "total_steps": step_counter,
-                    "started_at": start_time.to_rfc3339()
-                }),
-            )
-            .await?;
 
         for (item_index, item) in sequence_items.iter().enumerate() {
             match item {
                 SequenceItem::Tool { tool_call } => {
-                    executed_steps += 1;
-
-                    // Send step start notification
-                    extra.send_logging_message("info", json!({
-                        "type": "step_start",
-                        "step": executed_steps,
-                        "total_steps": step_counter,
-                        "tool_name": &tool_call.tool_name,
-                        "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
-                        "progress": format!("{}/{}", executed_steps, step_counter)
-                    })).await?;
-
-                    let step_start = chrono::Utc::now();
-
                     let (result, error_occurred) = self
                         .execute_single_tool(tool_call, item_index, include_detailed)
                         .await;
 
-                    let step_completed = chrono::Utc::now();
-                    let step_duration = (step_completed - step_start).num_milliseconds();
-                    let status = if result["status"] == "success" {
-                        successful_steps += 1;
-                        "success"
-                    } else {
-                        failed_steps += 1;
+                    if result["status"] != "success" {
                         sequence_had_errors = true;
-                        "error"
-                    };
+                    }
 
                     if error_occurred {
                         sequence_should_stop = true;
                     }
 
-                    let step_result = json!({
-                        "step": executed_steps,
-                        "tool_name": tool_call.tool_name,
-                        "status": status,
-                        "started_at": step_start.to_rfc3339(),
-                        "completed_at": step_completed.to_rfc3339(),
-                        "duration_ms": step_duration,
-                        "progress": format!("{}/{}", executed_steps, step_counter),
-                        "result": result
-                    });
-
-                    step_results.push(step_result.clone());
-
-                    // Send step complete notification
-                    extra.send_logging_message("info", json!({
-                        "type": "step_complete",
-                        "step": executed_steps,
-                        "total_steps": step_counter,
-                        "tool_name": &tool_call.tool_name,
-                        "status": status,
-                        "duration_ms": step_duration,
-                        "progress": format!("{}/{}", executed_steps, step_counter),
-                        "result_summary": if include_detailed { &result } else { &json!({"status": status}) }
-                    })).await?;
+                    results.push(result);
 
                     if sequence_should_stop && stop_on_error {
                         break;
@@ -1890,109 +1783,52 @@ impl DesktopWrapper {
                 }
                 SequenceItem::Group { tool_group } => {
                     let mut group_had_errors = false;
+                    let mut group_results = Vec::new();
                     let is_skippable = tool_group.skippable.unwrap_or(false);
-
-                    // Send group start notification
-                    extra
-                        .send_logging_message(
-                            "info",
-                            json!({
-                                "type": "group_start",
-                                "group_name": &tool_group.group_name,
-                                "total_steps_in_group": tool_group.steps.len()
-                            }),
-                        )
-                        .await?;
-
                     for (step_index, tool_call) in tool_group.steps.iter().enumerate() {
-                        executed_steps += 1;
-
-                        // Send step start notification
-                        extra.send_logging_message("info", json!({
-                            "type": "step_start",
-                            "step": executed_steps,
-                            "total_steps": step_counter,
-                            "tool_name": &tool_call.tool_name,
-                            "group_name": &tool_group.group_name,
-                            "description": self.generate_step_description(&tool_call.tool_name, &tool_call.arguments),
-                            "progress": format!("{}/{}", executed_steps, step_counter)
-                        })).await?;
-
-                        let step_start = chrono::Utc::now();
-
                         let (result, error_occurred) = self
                             .execute_single_tool(tool_call, step_index, include_detailed)
                             .await;
 
-                        let step_completed = chrono::Utc::now();
-                        let step_duration = (step_completed - step_start).num_milliseconds();
+                        group_results.push(result.clone());
 
                         let tool_failed = result["status"] != "success";
-                        let status = if !tool_failed {
-                            successful_steps += 1;
-                            "success"
-                        } else {
-                            failed_steps += 1;
-                            group_had_errors = true;
-                            "error"
-                        };
-
-                        let step_result = json!({
-                            "step": executed_steps,
-                            "tool_name": tool_call.tool_name,
-                            "group_name": tool_group.group_name,
-                            "status": status,
-                            "started_at": step_start.to_rfc3339(),
-                            "completed_at": step_completed.to_rfc3339(),
-                            "duration_ms": step_duration,
-                            "progress": format!("{}/{}", executed_steps, step_counter),
-                            "result": result
-                        });
-
-                        step_results.push(step_result);
-
-                        // Send step complete notification
-                        extra.send_logging_message("info", json!({
-                            "type": "step_complete",
-                            "step": executed_steps,
-                            "total_steps": step_counter,
-                            "tool_name": &tool_call.tool_name,
-                            "group_name": &tool_group.group_name,
-                            "status": status,
-                            "duration_ms": step_duration,
-                            "progress": format!("{}/{}", executed_steps, step_counter),
-                            "result_summary": if include_detailed { &result } else { &json!({"status": status}) }
-                        })).await?;
-
                         if tool_failed {
+                            group_had_errors = true;
+
+                            // A tool failed. Check if we should break out of the group.
+                            // We break if the error is fatal (error_occurred) OR if the group
+                            // is designated as skippable (meaning we abandon it on any failure).
                             if error_occurred || is_skippable {
+                                // If the error was fatal AND the group was NOT skippable,
+                                // the entire sequence must stop.
                                 if error_occurred && !is_skippable {
                                     sequence_should_stop = true;
                                 }
-                                break;
+                                break; // Exit the loop for this group's steps.
                             }
                         }
                     }
 
-                    // Send group complete notification
-                    extra
-                        .send_logging_message(
-                            "info",
-                            json!({
-                                "type": "group_complete",
-                                "group_name": &tool_group.group_name,
-                                "had_errors": group_had_errors
-                            }),
-                        )
-                        .await?;
+                    let group_status = if group_had_errors {
+                        "partial_success"
+                    } else {
+                        "success"
+                    };
 
-                    if group_had_errors {
+                    if group_status != "success" {
                         sequence_had_errors = true;
                     }
 
                     if group_had_errors && !is_skippable && stop_on_error {
                         sequence_should_stop = true;
                     }
+
+                    results.push(json!({
+                        "group_name": tool_group.group_name,
+                        "status": group_status,
+                        "results": group_results
+                    }));
 
                     if sequence_should_stop && stop_on_error {
                         break;
@@ -2001,8 +1837,7 @@ impl DesktopWrapper {
             }
         }
 
-        let completed_time = chrono::Utc::now();
-        let total_duration = (completed_time - start_time).num_milliseconds();
+        let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
 
         let final_status = if !sequence_had_errors {
             "success"
@@ -2012,34 +1847,14 @@ impl DesktopWrapper {
             "completed_with_errors"
         };
 
-        let execution_summary = json!({
-            "total_steps": step_counter,
-            "executed_steps": executed_steps,
-            "successful_steps": successful_steps,
-            "failed_steps": failed_steps,
-            "total_duration_ms": total_duration,
-            "started_at": start_time.to_rfc3339(),
-            "completed_at": completed_time.to_rfc3339()
-        });
-
-        // Send sequence complete notification
-        extra
-            .send_logging_message(
-                "info",
-                json!({
-                    "type": "sequence_complete",
-                    "status": final_status,
-                    "execution_summary": &execution_summary
-                }),
-            )
-            .await?;
-
         let summary = json!({
             "action": "execute_sequence",
             "status": final_status,
-            "execution_plan": execution_plan,
-            "execution_summary": execution_summary,
-            "step_results": step_results
+            "total_tools": sequence_items.len(),
+            "executed_tools": results.len(),
+            "total_duration_ms": total_duration,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "results": results,
         });
 
         Ok(CallToolResult::success(vec![Content::json(summary)?]))
@@ -2812,7 +2627,6 @@ impl ServerHandler for DesktopWrapper {
                 .enable_prompts()
                 .enable_resources()
                 .enable_tools()
-                .enable_logging()
                 .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(get_server_instructions().to_string()),
