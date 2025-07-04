@@ -4520,6 +4520,7 @@ fn launch_app(
     };
 
     if pid > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
         get_application_pid(engine, pid as i32, display_name)
     } else {
         Err(Error::new(
@@ -4910,33 +4911,51 @@ fn get_smart_attributes(element: &UIElement) -> UIElementAttributes {
 fn launch_legacy_app(engine: &WindowsEngine, app_name: &str) -> Result<UIElement, AutomationError> {
     info!("Launching legacy app: {}", app_name);
     unsafe {
-        let mut sei = SHELLEXECUTEINFOW {
-            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-            fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
-            lpFile: PCWSTR(HSTRING::from(app_name).as_ptr()),
-            nShow: SW_SHOWNORMAL.0,
-            ..Default::default()
-        };
+        // Convert app_name to wide string
+        let mut app_name_wide: Vec<u16> =
+            app_name.encode_utf16().chain(std::iter::once(0)).collect();
 
-        if let Err(e) = ShellExecuteExW(&mut sei) {
+        // Prepare process startup info
+        let mut startup_info = windows::Win32::System::Threading::STARTUPINFOW::default();
+        startup_info.cb =
+            std::mem::size_of::<windows::Win32::System::Threading::STARTUPINFOW>() as u32;
+
+        // Prepare process info
+        let mut process_info = windows::Win32::System::Threading::PROCESS_INFORMATION::default();
+
+        // Create the process
+        let result = windows::Win32::System::Threading::CreateProcessW(
+            None, // Application name (null means use command line)
+            Some(windows::core::PWSTR::from_raw(app_name_wide.as_mut_ptr())), // Command line
+            None, // Process security attributes
+            None, // Thread security attributes
+            false, // Inherit handles
+            windows::Win32::System::Threading::CREATE_NEW_CONSOLE, // Creation flags
+            None, // Environment
+            None, // Current directory
+            &startup_info,
+            &mut process_info,
+        );
+
+        if result.is_err() {
             return Err(AutomationError::PlatformError(format!(
-                "Failed to launch legacy app '{}': {}",
-                app_name, e
+                "Failed to launch application '{}'",
+                app_name
             )));
         }
 
-        let _ = CloseHandle(sei.hProcess);
+        // Close thread handle as we don't need it
+        let _ = windows::Win32::Foundation::CloseHandle(process_info.hThread);
+
+        // Store process handle in a guard to ensure it's closed
+        let _process_handle = HandleGuard(process_info.hProcess);
+
+        // Get the PID
+        let pid = process_info.dwProcessId as i32;
+
+        // Wait a bit for the application to start
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+
+        get_application_pid(engine, pid, app_name)
     }
-
-    // After launching, wait a bit for the app to initialize.
-    std::thread::sleep(Duration::from_secs(2));
-
-    // The name might be different from the exe name. For notepad.exe, it's "Notepad".
-    let friendly_app_name = if app_name.eq_ignore_ascii_case("notepad.exe") {
-        "Notepad"
-    } else {
-        app_name.trim_end_matches(".exe")
-    };
-
-    engine.get_application_by_name(friendly_app_name)
 }
