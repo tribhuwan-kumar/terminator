@@ -1008,72 +1008,59 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<WaitForElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        // NOTE: wait_for_element has its own timeout/retry logic within the locator.
-        // Adding our external retry logic on top would be redundant and confusing.
-        // We will call the locator directly.
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let timeout = get_timeout(args.timeout_ms);
 
-        let condition_lower = args.condition.to_lowercase();
-        let result = match condition_lower.as_str() {
-            "exists" => match locator.wait(timeout).await {
-                Ok(_) => Ok(true),
-                Err(_) => Ok(false),
-            },
-            "visible" => match locator.wait(timeout).await {
-                Ok(element) => element.is_visible().map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to check visibility",
-                        Some(json!({"reason": e.to_string()})),
-                    )
-                }),
-                Err(e) => Err(McpError::internal_error(
-                    "Element not found",
-                    Some(json!({"reason": e.to_string()})),
-                )),
-            },
-            "enabled" => match locator.wait(timeout).await {
-                Ok(element) => element.is_enabled().map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to check enabled state",
-                        Some(json!({"reason": e.to_string()})),
-                    )
-                }),
-                Err(e) => Err(McpError::internal_error(
-                    "Element not found",
-                    Some(json!({"reason": e.to_string()})),
-                )),
-            },
-            "focused" => match locator.wait(timeout).await {
-                Ok(element) => element.is_focused().map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to check focus state",
-                        Some(json!({"reason": e.to_string()})),
-                    )
-                }),
-                Err(e) => Err(McpError::internal_error(
-                    "Element not found",
-                    Some(json!({"reason": e.to_string()})),
-                )),
-            },
-            _ => Err(McpError::invalid_params(
-                "Invalid condition. Valid conditions: exists, visible, enabled, focused",
-                Some(json!({"provided_condition": args.condition})),
-            )),
+        // Call the underlying wait function once and store its result.
+        let wait_result = locator.wait(timeout).await;
+
+        let (condition_met, maybe_element) = match wait_result {
+            Ok(element) => {
+                // Wait succeeded, now check the specific condition.
+                let condition_lower = args.condition.to_lowercase();
+                let met = match condition_lower.as_str() {
+                    "exists" => Ok(true),
+                    "visible" => element.is_visible(),
+                    "enabled" => element.is_enabled(),
+                    "focused" => element.is_focused(),
+                    _ => {
+                        return Err(McpError::invalid_params(
+                            "Invalid condition. Valid: exists, visible, enabled, focused",
+                            Some(json!({"provided_condition": args.condition})),
+                        ))
+                    }
+                }
+                .unwrap_or(false); // Default to false on property check error
+
+                (met, Some(element))
+            }
+            Err(_) => {
+                // If the element was not found, no condition can be met.
+                (false, None)
+            }
         };
 
-        match result {
-            Ok(condition_met) => Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "wait_for_element",
-                "status": "success",
-                "condition": args.condition,
-                "condition_met": condition_met,
-                "selector": args.selector,
-                "timeout_ms": args.timeout_ms.unwrap_or(5000),
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            }))?])),
-            Err(e) => Err(e),
+        // Build the result payload.
+        let mut result_json = json!({
+            "action": "wait_for_element",
+            "status": "success",
+            "condition": args.condition,
+            "condition_met": condition_met,
+            "selector": args.selector,
+            "timeout_ms": args.timeout_ms.unwrap_or(5000),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+
+        // Conditionally attach the UI tree if requested and an element was found.
+        if let Some(element) = maybe_element {
+            self.maybe_attach_tree(
+                args.include_tree.unwrap_or(false),
+                element.process_id().ok(),
+                &mut result_json,
+            );
         }
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(
