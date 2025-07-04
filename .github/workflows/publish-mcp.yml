@@ -84,7 +84,11 @@ jobs:
           $process = Start-Process -FilePath "npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}" -ArgumentList "--transport", "http", "--port", "3999" -PassThru
           Start-Sleep -Seconds 10
           try {
-            Invoke-WebRequest -Uri http://localhost:3999/health -UseBasicParsing
+            $response = Invoke-WebRequest -Uri http://localhost:3999/health -UseBasicParsing
+            $response.Content | ConvertFrom-Json | Out-Host
+            if ($response.StatusCode -ne 200) {
+              throw "Health check failed with status: $($response.StatusCode)"
+            }
             Write-Host "Health check passed"
           } catch {
             Write-Error "Failed to connect to health check endpoint: $_"
