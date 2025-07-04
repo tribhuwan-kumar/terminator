@@ -4443,15 +4443,14 @@ fn get_application_pid(
                 }
             }
         }
-        // If all else fails, return an error instead of recursing
+        // If all else fails, try to find the application by name
         debug!(
-            "Failed to get application by PID {} and child PID for: {}",
-            pid, app_name
+            "Failed to get application by PID and child PID, trying by name: {}",
+            app_name
         );
-        Err(AutomationError::ElementNotFound(format!(
-            "Could not find window for process '{}' (PID: {}) or its children",
-            app_name, pid
-        )))
+        let app = engine.get_application_by_name(app_name)?;
+        app.activate_window()?;
+        Ok(app)
     }
 }
 
