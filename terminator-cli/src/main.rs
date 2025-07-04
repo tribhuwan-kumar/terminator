@@ -23,7 +23,6 @@ use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-mod azure;
 mod mcp_client;
 
 #[derive(Parser)]
@@ -60,59 +59,6 @@ struct ReleaseArgs {
 }
 
 #[derive(Parser, Debug)]
-struct AzureCreateArgs {
-    /// Azure subscription ID (can also be set via AZURE_SUBSCRIPTION_ID env var)
-    #[clap(long, env = "AZURE_SUBSCRIPTION_ID")]
-    subscription_id: Option<String>,
-
-    /// Resource group name (default: terminator-rg-XXXX)
-    #[clap(long)]
-    resource_group: Option<String>,
-
-    /// Azure region (default: eastus)
-    #[clap(long, default_value = "eastus")]
-    location: String,
-
-    /// VM name (default: terminator-vm-XXXX)
-    #[clap(long)]
-    vm_name: Option<String>,
-
-    /// VM size (default: Standard_D2s_v3)
-    #[clap(long, default_value = "Standard_D2s_v3")]
-    vm_size: String,
-
-    /// Admin username (default: terminatoradmin)
-    #[clap(long, default_value = "terminatoradmin")]
-    admin_username: String,
-
-    /// Admin password (generated if not provided)
-    #[clap(long)]
-    admin_password: Option<String>,
-
-    /// Disable RDP access
-    #[clap(long)]
-    no_rdp: bool,
-
-    /// Disable WinRM access
-    #[clap(long)]
-    no_winrm: bool,
-
-    /// Save connection info to file
-    #[clap(long)]
-    save_to: Option<String>,
-}
-
-#[derive(Parser, Debug)]
-struct AzureDeleteArgs {
-    /// Resource group to delete
-    resource_group: String,
-
-    /// Azure subscription ID (can also be set via AZURE_SUBSCRIPTION_ID env var)
-    #[clap(long, env = "AZURE_SUBSCRIPTION_ID")]
-    subscription_id: Option<String>,
-}
-
-#[derive(Parser, Debug)]
 struct McpChatArgs {
     /// MCP server URL (e.g., http://localhost:3000)
     #[clap(long, short = 'u', conflicts_with = "command")]
@@ -141,14 +87,6 @@ struct McpExecArgs {
 }
 
 #[derive(Subcommand)]
-enum AzureCommands {
-    /// Create a new Windows VM with MCP server
-    Create(AzureCreateArgs),
-    /// Delete a resource group and all its resources
-    Delete(AzureDeleteArgs),
-}
-
-#[derive(Subcommand)]
 enum McpCommands {
     /// Interactive chat with MCP server
     Chat(McpChatArgs),
@@ -172,9 +110,6 @@ enum Commands {
     Tag,
     /// Full release: bump version + tag + push
     Release(ReleaseArgs),
-    /// Azure VM management commands
-    #[command(subcommand)]
-    Azure(AzureCommands),
     /// MCP client commands
     #[command(subcommand)]
     Mcp(McpCommands),
@@ -194,7 +129,6 @@ fn main() {
         Commands::Status => show_status(),
         Commands::Tag => tag_and_push(),
         Commands::Release(args) => full_release(&args.level.to_string()),
-        Commands::Azure(azure_cmd) => handle_azure_command(azure_cmd),
         Commands::Mcp(mcp_cmd) => handle_mcp_command(mcp_cmd),
     }
 }
@@ -698,95 +632,6 @@ fn run_command(program: &str, args: &[&str]) -> Result<(), Box<dyn std::error::E
         )
         .into());
     }
-
-    Ok(())
-}
-
-fn handle_azure_command(cmd: AzureCommands) {
-    // Create a tokio runtime for async operations
-    let runtime = tokio::runtime::Runtime::new().unwrap();
-
-    match cmd {
-        AzureCommands::Create(args) => {
-            runtime.block_on(async {
-                if let Err(e) = create_azure_vm_command(args).await {
-                    eprintln!("❌ Failed to create Azure VM: {}", e);
-                    std::process::exit(1);
-                }
-            });
-        }
-        AzureCommands::Delete(args) => {
-            runtime.block_on(async {
-                if let Err(e) = delete_azure_resources_command(args).await {
-                    eprintln!("❌ Failed to delete Azure resources: {}", e);
-                    std::process::exit(1);
-                }
-            });
-        }
-    }
-}
-
-async fn create_azure_vm_command(args: AzureCreateArgs) -> Result<()> {
-    create_azure_vm(args).await
-}
-
-async fn create_azure_vm(args: AzureCreateArgs) -> Result<()> {
-    let mut config = azure::AzureVmConfig::default();
-    if let Some(subscription_id) = &args.subscription_id {
-        config.subscription_id = subscription_id.clone();
-    } else if let Ok(sub_id) = std::env::var("AZURE_SUBSCRIPTION_ID") {
-        config.subscription_id = sub_id;
-    } else {
-        anyhow::bail!("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var");
-    }
-
-    if let Some(rg) = args.resource_group {
-        config.resource_group = rg;
-    }
-
-    config.location = args.location;
-
-    if let Some(vm_name) = args.vm_name {
-        config.vm_name = vm_name;
-    }
-
-    let manager = azure::AzureArmManager::new(config)?;
-    manager.create_vm().await?;
-
-    Ok(())
-}
-
-async fn delete_azure_resources_command(args: AzureDeleteArgs) -> Result<()> {
-    delete_azure_resources(args).await
-}
-
-async fn delete_azure_resources(args: AzureDeleteArgs) -> Result<()> {
-    let mut config = azure::AzureVmConfig::default();
-    if let Some(subscription_id) = &args.subscription_id {
-        config.subscription_id = subscription_id.clone();
-    } else if let Ok(sub_id) = std::env::var("AZURE_SUBSCRIPTION_ID") {
-        config.subscription_id = sub_id;
-    } else {
-        anyhow::bail!("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var");
-    }
-
-    println!(
-        "⚠️  WARNING: This will delete the resource group '{}' and ALL its resources!",
-        args.resource_group
-    );
-    println!("This action cannot be undone. Type 'yes' to confirm:");
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    if input.trim() != "yes" {
-        println!("Deletion cancelled.");
-        return Ok(());
-    }
-    config.resource_group = args.resource_group;
-
-    let manager = azure::AzureArmManager::new(config)?;
-    manager.delete_resource_group().await?;
 
     Ok(())
 }
