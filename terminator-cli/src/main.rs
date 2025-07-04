@@ -15,6 +15,7 @@
 //!   cargo run --bin terminator -- release    # Full release: bump patch + tag + push
 //!   cargo run --bin terminator -- release minor # Full release: bump minor + tag + push
 
+use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::fs;
@@ -95,10 +96,6 @@ struct AzureCreateArgs {
     /// Disable WinRM access
     #[clap(long)]
     no_winrm: bool,
-
-    /// Skip MCP server deployment
-    #[clap(long)]
-    no_mcp: bool,
 
     /// Save connection info to file
     #[clap(long)]
@@ -712,7 +709,7 @@ fn handle_azure_command(cmd: AzureCommands) {
     match cmd {
         AzureCommands::Create(args) => {
             runtime.block_on(async {
-                if let Err(e) = create_azure_vm(args).await {
+                if let Err(e) = create_azure_vm_command(args).await {
                     eprintln!("❌ Failed to create Azure VM: {}", e);
                     std::process::exit(1);
                 }
@@ -720,7 +717,7 @@ fn handle_azure_command(cmd: AzureCommands) {
         }
         AzureCommands::Delete(args) => {
             runtime.block_on(async {
-                if let Err(e) = delete_azure_resources(args).await {
+                if let Err(e) = delete_azure_resources_command(args).await {
                     eprintln!("❌ Failed to delete Azure resources: {}", e);
                     std::process::exit(1);
                 }
@@ -729,14 +726,19 @@ fn handle_azure_command(cmd: AzureCommands) {
     }
 }
 
-async fn create_azure_vm(args: AzureCreateArgs) -> Result<(), Box<dyn std::error::Error>> {
-    // Get subscription ID
-    let subscription_id = args.subscription_id
-        .ok_or("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var")?;
+async fn create_azure_vm_command(args: AzureCreateArgs) -> Result<()> {
+    create_azure_vm(args).await
+}
 
-    // Build VM configuration
+async fn create_azure_vm(args: AzureCreateArgs) -> Result<()> {
     let mut config = azure::AzureVmConfig::default();
-    config.subscription_id = subscription_id;
+    if let Some(subscription_id) = &args.subscription_id {
+        config.subscription_id = subscription_id.clone();
+    } else if let Ok(sub_id) = std::env::var("AZURE_SUBSCRIPTION_ID") {
+        config.subscription_id = sub_id;
+    } else {
+        anyhow::bail!("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var");
+    }
 
     if let Some(rg) = args.resource_group {
         config.resource_group = rg;
@@ -744,42 +746,30 @@ async fn create_azure_vm(args: AzureCreateArgs) -> Result<(), Box<dyn std::error
 
     config.location = args.location;
 
-    if let Some(name) = args.vm_name {
-        config.vm_name = name;
+    if let Some(vm_name) = args.vm_name {
+        config.vm_name = vm_name;
     }
 
-    config.vm_size = args.vm_size;
-    config.admin_username = args.admin_username;
-
-    if let Some(password) = args.admin_password {
-        config.admin_password = password;
-    }
-
-    config.enable_rdp = !args.no_rdp;
-    config.enable_winrm = !args.no_winrm;
-    config.deploy_mcp = !args.no_mcp;
-
-    // Create VM manager and deploy
-    let manager = azure::AzureVmManager::new(config)?;
-    let result = manager.create_vm().await?;
-
-    // Print connection info
-    result.print_connection_info();
-
-    // Save to file if requested
-    if let Some(filename) = args.save_to {
-        result.save_to_file(&filename)?;
-    }
+    let manager = azure::AzureArmManager::new(config)?;
+    manager.create_vm().await?;
 
     Ok(())
 }
 
-async fn delete_azure_resources(args: AzureDeleteArgs) -> Result<(), Box<dyn std::error::Error>> {
-    // Get subscription ID
-    let subscription_id = args.subscription_id
-        .ok_or("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var")?;
+async fn delete_azure_resources_command(args: AzureDeleteArgs) -> Result<()> {
+    delete_azure_resources(args).await
+}
 
-    // Confirm deletion
+async fn delete_azure_resources(args: AzureDeleteArgs) -> Result<()> {
+    let mut config = azure::AzureVmConfig::default();
+    if let Some(subscription_id) = &args.subscription_id {
+        config.subscription_id = subscription_id.clone();
+    } else if let Ok(sub_id) = std::env::var("AZURE_SUBSCRIPTION_ID") {
+        config.subscription_id = sub_id;
+    } else {
+        anyhow::bail!("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var");
+    }
+
     println!(
         "⚠️  WARNING: This will delete the resource group '{}' and ALL its resources!",
         args.resource_group
@@ -793,14 +783,9 @@ async fn delete_azure_resources(args: AzureDeleteArgs) -> Result<(), Box<dyn std
         println!("Deletion cancelled.");
         return Ok(());
     }
-
-    // Build configuration
-    let mut config = azure::AzureVmConfig::default();
-    config.subscription_id = subscription_id;
     config.resource_group = args.resource_group;
 
-    // Create VM manager and delete
-    let manager = azure::AzureVmManager::new(config)?;
+    let manager = azure::AzureArmManager::new(config)?;
     manager.delete_resource_group().await?;
 
     Ok(())
