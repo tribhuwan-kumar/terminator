@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
-use terminator::Desktop;
-use tracing::Level;
+use terminator::{AutomationError, Desktop, UIElement};
+use tracing::{warn, Level};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -80,6 +80,7 @@ pub struct LocatorArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -96,6 +97,7 @@ pub struct ClickElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -118,6 +120,7 @@ pub struct TypeIntoElementArgs {
     pub clear_before_typing: Option<bool>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -136,6 +139,7 @@ pub struct PressKeyArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -182,6 +186,7 @@ pub struct MouseDragArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -198,6 +203,7 @@ pub struct ValidateElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -218,6 +224,7 @@ pub struct HighlightElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -236,6 +243,7 @@ pub struct WaitForElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -270,6 +278,7 @@ pub struct SelectOptionArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -284,6 +293,7 @@ pub struct SetToggledArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -298,6 +308,7 @@ pub struct SetRangeValueArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -312,6 +323,7 @@ pub struct SetSelectedArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -331,6 +343,7 @@ pub struct ScrollElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -343,6 +356,7 @@ pub struct ActivateElementArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -408,6 +422,16 @@ pub enum SequenceItem {
     Group { tool_group: ToolGroup },
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseElementArgs {
+    pub selector: String,
+    pub alternative_selectors: Option<String>,
+    pub timeout_ms: Option<u64>,
+    pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
+}
+
 pub fn init_logging() -> Result<()> {
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
@@ -445,6 +469,18 @@ pub async fn find_element_with_fallbacks(
     use tokio::time::Duration;
 
     let timeout_duration = get_timeout(timeout_ms).unwrap_or(Duration::from_millis(3000));
+
+    // FAST PATH: If no alternatives provided, just use primary selector directly
+    if alternative_selectors.is_none() {
+        let locator = desktop.locator(terminator::Selector::from(primary_selector));
+        return match locator.first(Some(timeout_duration)).await {
+            Ok(element) => Ok((element, primary_selector.to_string())),
+            Err(e) => Err(terminator::AutomationError::ElementNotFound(format!(
+                "Primary selector '{}' failed: {}",
+                primary_selector, e
+            ))),
+        };
+    }
 
     // Parse comma-separated alternative selectors
     let alternative_selectors_vec: Option<Vec<String>> = alternative_selectors.map(|alts| {
@@ -596,4 +632,78 @@ pub struct ExportWorkflowSequenceArgs {
         description = "Known error conditions and their solutions from the successful run as a JSON array"
     )]
     pub known_error_handlers: Option<serde_json::Value>,
+}
+
+/// A robust helper that finds a UI element and executes a provided action on it,
+/// with built-in retry logic for both finding the element and performing the action.
+///
+/// This function is the standard way to interact with elements when reliability is key.
+///
+/// # Arguments
+/// * `desktop` - The active `Desktop` instance.
+/// * `primary_selector` - The main selector for the target element.
+/// * `alternatives` - A comma-separated string of fallback selectors.
+/// * `timeout_ms` - The timeout for the initial element search.
+/// * `retries` - The number of times to retry the *entire find-and-act sequence*.
+/// * `action` - An async closure that takes the found `UIElement` and performs an action,
+///              returning a `Result`.
+///
+/// # Returns
+/// A `Result` containing a tuple of the action's return value `T` and the `UIElement` on
+/// which the action was successfully performed.
+pub async fn find_and_execute_with_retry<F, Fut, T>(
+    desktop: &Desktop,
+    primary_selector: &str,
+    alternatives: Option<&str>,
+    timeout_ms: Option<u64>,
+    retries: Option<u32>,
+    action: F,
+) -> Result<((T, UIElement), String), anyhow::Error>
+where
+    F: Fn(UIElement) -> Fut,
+    Fut: std::future::Future<Output = Result<T, AutomationError>>,
+{
+    let retry_count = retries.unwrap_or(0);
+    let mut last_error: Option<anyhow::Error> = None;
+
+    for attempt in 0..=retry_count {
+        match find_element_with_fallbacks(desktop, primary_selector, alternatives, timeout_ms).await
+        {
+            Ok((element, successful_selector)) => match action(element.clone()).await {
+                Ok(result) => return Ok(((result, element), successful_selector)),
+                Err(e) => {
+                    last_error = Some(e.into());
+                    if attempt < retry_count {
+                        warn!(
+                            "Action failed on attempt {}/{}. Retrying... Error: {}",
+                            attempt + 1,
+                            retry_count + 1,
+                            last_error.as_ref().unwrap()
+                        );
+                        tokio::time::sleep(Duration::from_millis(250)).await; // Wait before next retry
+                    }
+                }
+            },
+            Err(e) => {
+                last_error = Some(e.into());
+                if attempt < retry_count {
+                    warn!(
+                        "Find element failed on attempt {}/{}. Retrying... Error: {}",
+                        attempt + 1,
+                        retry_count + 1,
+                        last_error.as_ref().unwrap()
+                    );
+                    // No need to sleep here, as find_element_with_fallbacks already has a timeout.
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow::anyhow!(
+            "Action failed after {} retries for selector '{}'",
+            retry_count + 1,
+            primary_selector
+        )
+    }))
 }
