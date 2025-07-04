@@ -24,23 +24,6 @@ cargo install --path terminator-cli
 
 ## Quick Start
 
-### 🚀 One-Liner Azure VM + MCP Deployment
-
-```bash
-# Prerequisites: Azure CLI installed and logged in
-az login
-
-# Deploy VM with MCP server in one command
-terminator azure create --subscription-id YOUR_SUB_ID --save-to vm.json
-
-# Chat with the deployed MCP server (wait ~2-3 minutes for VM to boot)
-terminator mcp chat --url http://$(jq -r .public_ip vm.json):3000
-```
-
-That's it! You now have a Windows VM running the Terminator MCP server.
-
-## Usage
-
 ### Version Management
 
 ```bash
@@ -62,3 +45,14 @@ terminator tag
 terminator release        # patch release
 terminator release minor  # minor release
 ```
+
+### Control remote computer through chat (MCP client)
+
+1. run the MCP server on your remote machine
+2. open port or ngrok
+3. `terminator mcp ai-chat --url https://xxx/mcp`
+
+<img width="1512" alt="Screenshot 2025-07-04 at 1 49 10 PM" src="https://github.com/user-attachments/assets/95355099-0130-4702-bd11-0278db181253" />
+
+
+
