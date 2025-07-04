@@ -1,4 +1,3 @@
-// this test is not compelte
 use crate::{AutomationError, Desktop};
 use tracing::Level;
 
@@ -10,39 +9,54 @@ async fn get_applications_test() -> Result<(), AutomationError> {
 
     let desktop = Desktop::new(false, false)?;
 
-    let applications = vec![
+    let applications_to_open = vec![
         "notepad",
-        "firefox private",
-        "edge",
+        "calculator",
         "paint",
     ];
 
-    for app in applications {
-        let opened_app = desktop.open_application(app)?;
-        std::thread::sleep(std::time::Duration::from_secs(5));
+    let mut opened_apps = Vec::new();
+    for app_name in &applications_to_open {
+        let opened_app = desktop.open_application(app_name)?;
+        tracing::info!("Opened application: {:?}", app_name);
+        opened_apps.push(opened_app);
+        std::thread::sleep(std::time::Duration::from_secs(5)); 
     }
 
-    let apps = desktop.applications()?;
-    tracing::info!("total apps: {:?}", apps.len());
+    let running_apps = desktop.applications()?;
+    tracing::info!("Total running applications: {:?}", running_apps.len());
 
-    for app in &apps {
-        tracing::info!("App Name: {:?}", app.name_or_empty());
-        let process_id = app.process_id().unwrap();
-        let output = std::process::Command::new("powershell")
-            .arg("-Command")
-            .arg(format!(
-                "Get-WmiObject Win32_Process | Where-Object {{ $_.ProcessId -eq {} }} | ForEach-Object {{ taskkill.exe /T /F /PID $_.ProcessId; Write-Output \"Process with PID $($_.ProcessId) has been terminated.\" }}",
-                process_id
-            ))
-            .output()
-            .unwrap();
+    for app_name in &applications_to_open {
+        let is_app_running = running_apps.iter().any(|app| {
+            app.name()
+                .map(|name| name.to_lowercase().contains(app_name))
+                .unwrap_or(false)
+        });
+        assert!(
+            is_app_running,
+            "Application '{}' is not found in the running applications list",
+            app_name
+        );
+    }
 
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("Command Output:\n{}", stdout);
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            eprintln!("Command Error:\n{}", stderr);
+    for opened_app in opened_apps {
+        if let Ok(process_id) = opened_app.process_id() {
+            let output = std::process::Command::new("powershell")
+                .arg("-Command")
+                .arg(format!(
+                    "Get-WmiObject Win32_Process | Where-Object {{ $_.ProcessId -eq {} }} | ForEach-Object {{ taskkill.exe /F /PID $_.ProcessId }}",
+                    process_id
+                ))
+                .output()
+                .unwrap();
+
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                tracing::info!("Closed application with PID {}: {}", process_id, stdout);
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::error!("Failed to close application with PID {}: {}", process_id, stderr);
+            }
         }
     }
 
