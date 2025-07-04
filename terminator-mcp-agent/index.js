@@ -128,6 +128,7 @@ if (argv.includes("--add-to-app")) {
 
   process.stdin.pipe(child.stdin);
   child.stdout.pipe(process.stdout);
+  child.stderr.pipe(process.stderr);
 
   function killProcess(proc) {
     if (!proc) return;
@@ -173,7 +174,9 @@ if (argv.includes("--add-to-app")) {
   process.on("exit", shutdown);
 
   child.on("exit", (code) => {
-    console.log(`[MCP exited with code ${code}]`);
+    if (code !== 0) {
+      console.error(`[MCP exited with code ${code}]`);
+    }
     process.exit(code);
   });
 }

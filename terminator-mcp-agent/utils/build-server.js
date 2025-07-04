@@ -72,3 +72,15 @@ if (!fs.existsSync(destDir)) {
 
 fs.copyFileSync(binaryPath, destPath);
 console.log(`Copied ${binaryPath} to ${destPath}`);
+
+if (platform === "darwin") {
+  console.log(`Signing ${destPath}...`);
+  try {
+    execSync(`codesign --force --deep --sign - ${destPath}`);
+    console.log("Signing successful.");
+  } catch (error) {
+    console.error("Signing failed. Please ensure you have Xcode Command Line Tools installed.");
+    console.error(error);
+    process.exit(1);
+  }
+}
