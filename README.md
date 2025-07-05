@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 
 > Computer use SDK for building agents that learn from human screen recordings. Accessibility-first. Cross-platform (Windows/macOS/Linux), near-deterministic.
 
-There are three paths to train determnisitic workflows with AI fallback:
+There are three paths to train deterministic workflows with AI fallback:
 
 1.  **AI-Assisted Workflow Building**: Use an MCP client like [Cursor](https://cursor.com) to iteratively build and test complex workflows with an AI assistant in a human-in-the-loop process.
 2.  **Record Human Baselines**: Use our open-source tools to record a human demonstrating a task (our MCP has a recording tool). This generates a baseline workflow that can be refined and automated.
