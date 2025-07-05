@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 
-> Build automations with >95% accuracy that run 10,000x faster than a human—all in minutes. Terminator is an AI-first, accessibility-driven SDK for creating near-deterministic GUI automation.
+> Computer use SDK for building agents that learn from human screen recordings. Accessibility-first. Cross-platform (Windows/macOS/Linux), near-deterministic.
 
 There are three paths to building powerful workflows:
 
