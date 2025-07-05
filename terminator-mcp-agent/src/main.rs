@@ -1,4 +1,3 @@
-use crate::utils::init_logging;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use rmcp::{
@@ -10,9 +9,8 @@ use rmcp::{
     ServiceExt,
 };
 use std::net::SocketAddr;
-
-pub mod server;
-pub mod utils;
+use terminator_mcp_agent::server;
+use terminator_mcp_agent::utils::init_logging;
 
 #[derive(Parser, Debug)]
 #[command(

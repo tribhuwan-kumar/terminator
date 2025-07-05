@@ -1,3 +1,4 @@
+use crate::output_parser;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, CloseElementArgs, DelayArgs,
@@ -1969,7 +1970,7 @@ impl DesktopWrapper {
             "completed_with_errors"
         };
 
-        let summary = json!({
+        let mut summary = json!({
             "action": "execute_sequence",
             "status": final_status,
             "total_tools": sequence_items.len(),
@@ -1978,6 +1979,25 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "results": results,
         });
+
+        if let Some(parser_def) = args.output_parser {
+            match output_parser::run_output_parser(&parser_def, &summary) {
+                Ok(Some(parsed_data)) => {
+                    if let Some(obj) = summary.as_object_mut() {
+                        obj.insert("parsed_output".to_string(), parsed_data);
+                    }
+                }
+                Ok(None) => {
+                    // UI tree not found, which is not an error, just means nothing to parse.
+                }
+                Err(e) => {
+                    warn!("Output parser failed: {}", e);
+                    if let Some(obj) = summary.as_object_mut() {
+                        obj.insert("parser_error".to_string(), json!(e.to_string()));
+                    }
+                }
+            }
+        }
 
         Ok(CallToolResult::success(vec![Content::json(summary)?]))
     }
@@ -2031,7 +2051,7 @@ impl DesktopWrapper {
                     "index": index,
                     "status": if is_skippable_error { "skipped" } else { "error" },
                     "duration_ms": duration_ms,
-                    "error": e.to_string(),
+                    "error": format!("{}", e),
                 });
 
                 if !is_skippable_error {

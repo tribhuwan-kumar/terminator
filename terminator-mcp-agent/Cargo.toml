@@ -32,6 +32,7 @@ base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }
 axum = "0.8"
 terminator-workflow-recorder = { path = "../terminator-workflow-recorder" }
+jsonpath_lib = "0.3.0"
 
 [dev-dependencies]
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d61ebd6e8385cbc4aa105d4e25774fc1a59c", features = [

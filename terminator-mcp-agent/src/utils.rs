@@ -409,6 +409,10 @@ pub struct ExecuteSequenceArgs {
         description = "Whether to include detailed results from each tool execution (default: true)"
     )]
     pub include_detailed_results: Option<bool>,
+    #[schemars(
+        description = "An optional, JSON-defined parser to process the final tool output and extract structured data."
+    )]
+    pub output_parser: Option<serde_json::Value>,
 }
 
 // Keep the old structures for internal use

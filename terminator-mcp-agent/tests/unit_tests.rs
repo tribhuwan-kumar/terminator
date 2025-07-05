@@ -17,6 +17,7 @@ fn test_execute_sequence_args_serialization() {
         }],
         stop_on_error: Some(false),
         include_detailed_results: Some(true),
+        output_parser: None,
     };
 
     let json = serde_json::to_string(&args).unwrap();
