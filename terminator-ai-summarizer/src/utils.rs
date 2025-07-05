@@ -8,11 +8,11 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    #[arg(short, long, default_value = "you're are screen summarizer assitant and here is the data from screen as context. the screen data would be in json format. summarize it consicely")]
+    #[arg(short, long, default_value = "you're are screen summarizer assitant and here is the data from screen ui element tree as context. the screen ui element tree data would be in json format. summarize the screen text consicely")]
     pub system_prompt: String,
     #[arg(short, long, default_value = "gemma3:1b")]
     pub model: String,
-    #[arg(short, long, default_value = "ctrl+shift+j")]
+    #[arg(short, long, default_value = "ctrl+alt+j")]
     pub hotkey: String,
 }
 
