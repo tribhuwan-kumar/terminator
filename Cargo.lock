@@ -4619,6 +4619,7 @@ dependencies = [
  "serde",
  "serde_json",
  "terminator-rs",
+ "terminator-workflow-recorder",
  "tokio",
  "tokio-test",
  "tracing",

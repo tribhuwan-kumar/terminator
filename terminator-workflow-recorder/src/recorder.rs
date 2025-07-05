@@ -455,7 +455,7 @@ impl WorkflowRecorderConfig {
 /// The workflow recorder
 pub struct WorkflowRecorder {
     /// The recorded workflow
-    workflow: Arc<Mutex<RecordedWorkflow>>,
+    pub workflow: Arc<Mutex<RecordedWorkflow>>,
 
     /// The event sender
     event_tx: broadcast::Sender<WorkflowEvent>,
