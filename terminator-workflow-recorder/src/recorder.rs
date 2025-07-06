@@ -136,6 +136,8 @@ pub struct WorkflowRecorderConfig {
     /// # Examples
     ///
     /// ```rust
+    /// use terminator_workflow_recorder::WorkflowRecorderConfig;
+    ///
     /// let mut config = WorkflowRecorderConfig::default();
     /// config.enable_multithreading = true;  // Use multithreaded COM (MTA)
     /// config.enable_multithreading = false; // Use apartment threaded COM (STA) - default
