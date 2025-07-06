@@ -1988,10 +1988,12 @@ impl DesktopWrapper {
                     }
                 }
                 Ok(None) => {
+                    if let Some(obj) = summary.as_object_mut() {
+                        obj.insert("parsed_output".to_string(), json!({}));
+                    }
                     // UI tree not found, which is not an error, just means nothing to parse.
                 }
                 Err(e) => {
-                    warn!("Output parser failed: {}", e);
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parser_error".to_string(), json!(e.to_string()));
                     }

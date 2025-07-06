@@ -97,22 +97,43 @@ pub enum ConditionOperator {
 pub fn run_output_parser(parser_def_val: &Value, tool_output: &Value) -> Result<Option<Value>> {
     let parser_def: OutputParserDefinition = serde_json::from_value(parser_def_val.clone())?;
 
-    let ui_tree = find_tree_in_json_result(tool_output, &parser_def.ui_tree_json_path)?;
+    let parsed_tree =
+        find_and_parse_tree_from_json_result(tool_output, &parser_def.ui_tree_json_path)?;
 
-    match ui_tree {
+    match parsed_tree {
         Some(tree) => {
             let mut extracted_items = Vec::new();
-            find_items_in_node(tree, &parser_def, &mut extracted_items);
+            find_items_in_node(&tree, &parser_def, &mut extracted_items);
             Ok(Some(json!(extracted_items)))
         }
         None => Ok(None),
     }
 }
 
-/// Finds the UI tree in a given JSON result using JSONPath.
-fn find_tree_in_json_result<'a>(json_result: &'a Value, path: &str) -> Result<Option<&'a Value>> {
-    let paths = jsonpath_lib::select(json_result, path)?;
-    Ok(paths.first().copied())
+/// Finds the UI tree in a given JSON result, parsing it from a string if necessary.
+///
+/// This function is crucial because tool outputs often wrap their detailed JSON responses
+/// within a single string field (e.g., in a 'text' property). This function handles that
+/// by first selecting the node with JSONPath, checking if it's a string, and if so,
+/// parsing that string into a `serde_json::Value`.
+fn find_and_parse_tree_from_json_result(json_result: &Value, path: &str) -> Result<Option<Value>> {
+    let selected_nodes = jsonpath_lib::select(json_result, path)?;
+    if let Some(node) = selected_nodes.first() {
+        if let Some(s) = node.as_str() {
+            let parsed_json: Value = serde_json::from_str(s)?;
+
+            if let Value::Object(mut map) = parsed_json {
+                if let Some(ui_tree) = map.remove("ui_tree") {
+                    return Ok(Some(ui_tree));
+                }
+                return Ok(Some(Value::Object(map)));
+            }
+
+            return Ok(Some(parsed_json));
+        }
+        return Ok(Some((*node).clone()));
+    }
+    Ok(None)
 }
 
 /// Recursively traverses the UI tree to find nodes that match the container definition.
@@ -146,7 +167,9 @@ fn check_node_as_container(node: &Value, container_def: &ItemContainerDefinition
     // 2. Check if the node's children meet the logical conditions
     let children = match node.get("children").and_then(|c| c.as_array()) {
         Some(c) => c,
-        None => return false, // No children, so can't meet child conditions
+        None => {
+            return false;
+        }
     };
 
     let logic_ok = match container_def.child_conditions.logic {
@@ -185,7 +208,9 @@ fn extract_fields_from_container(
                     .iter()
                     .all(|cond| check_property_condition(child, cond))
                 {
-                    if let Some(value) = child.get(&from_child.extract_property).cloned() {
+                    if let Some(value) =
+                        get_property_value(child, &from_child.extract_property).cloned()
+                    {
                         extracted_object.insert(field_name.clone(), value);
                         break;
                     }
@@ -199,7 +224,9 @@ fn extract_fields_from_container(
                     .iter()
                     .all(|cond| check_property_condition(child, cond))
                 {
-                    if let Some(value) = child.get(&from_children.extract_property).cloned() {
+                    if let Some(value) =
+                        get_property_value(child, &from_children.extract_property).cloned()
+                    {
                         found_values.push(value);
                     }
                 }
@@ -208,7 +235,7 @@ fn extract_fields_from_container(
                 if let Some(separator) = &from_children.join_with {
                     let joined = found_values
                         .iter()
-                        .map(|v| v.as_str().unwrap_or(""))
+                        .filter_map(|v| v.as_str())
                         .collect::<Vec<_>>()
                         .join(separator);
                     extracted_object.insert(field_name.clone(), json!(joined));
@@ -229,29 +256,46 @@ fn extract_fields_from_container(
 /// Checks if a set of children nodes satisfies a given condition.
 fn check_child_condition(children: &[Value], condition: &ChildCondition) -> bool {
     if let Some(exists_child) = &condition.exists_child {
-        return children.iter().any(|child| {
+        let result = children.iter().any(|child| {
             exists_child
                 .conditions
                 .iter()
                 .all(|cond| check_property_condition(child, cond))
         });
+        return result;
     }
     false
 }
 
+/// Gets a property from a node, checking the top level first, then a nested 'attributes' object.
+fn get_property_value<'a>(node: &'a Value, property: &str) -> Option<&'a Value> {
+    if let Some(value) = node.get(property) {
+        return Some(value);
+    }
+    if let Some(attributes) = node.get("attributes") {
+        if let Some(value) = attributes.get(property) {
+            return Some(value);
+        }
+    }
+    None
+}
+
 /// Checks if a node's property matches a specific condition.
 fn check_property_condition(node: &Value, condition: &PropertyCondition) -> bool {
-    let prop_value = match node.get(&condition.property).and_then(|v| v.as_str()) {
+    let prop_value = match get_property_value(node, &condition.property).and_then(|v| v.as_str()) {
         Some(s) => s,
-        None => return false,
+        None => {
+            return false;
+        }
     };
 
-    match &condition.operator {
+    let result = match &condition.operator {
         ConditionOperator::Equals(val) => prop_value == val,
         ConditionOperator::StartsWith(val) => prop_value.starts_with(val),
         ConditionOperator::Contains(val) => prop_value.contains(val),
         ConditionOperator::IsOneOf(vals) => vals.iter().any(|v| v == prop_value),
-    }
+    };
+    result
 }
 
 #[cfg(test)]
