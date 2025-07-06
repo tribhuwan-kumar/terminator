@@ -21,5 +21,4 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d6
 ] }
 ollama-rs = "0.3.2"
 arboard = "3.6.0"
-global-hotkey = { git = "https://github.com/tauri-apps/global-hotkey.git", rev = "dc7a755790ccbef1971b6c59eceb90d107df1feb" }
-tao = "0.34.0"
+rdev = "0.5.3"
