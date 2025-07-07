@@ -405,10 +405,7 @@ impl AccessibilityEngine for WindowsEngine {
             })
             .collect();
 
-        debug!(
-            "Found '{}' application windows",
-            filtered_elements.len()
-        );
+        debug!("Found '{}' application windows", filtered_elements.len());
 
         let arc_elements: Vec<UIElement> = filtered_elements
             .into_iter()
