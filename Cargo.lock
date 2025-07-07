@@ -4595,7 +4595,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.6.16"
+version = "0.6.17"
 dependencies = [
  "anthropic-sdk",
  "anyhow",
@@ -4617,7 +4617,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.6.16"
+version = "0.6.17"
 dependencies = [
  "anyhow",
  "axum",
@@ -4641,7 +4641,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.6.16"
+version = "0.6.17"
 dependencies = [
  "napi",
  "napi-build",
@@ -4653,7 +4653,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.6.16"
+version = "0.6.17"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4667,7 +4667,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.6.16"
+version = "0.6.17"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4704,7 +4704,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.6.16"
+version = "0.6.17"
 dependencies = [
  "arboard",
  "async-stream",
@@ -5130,8 +5130,9 @@ dependencies = [
 
 [[package]]
 name = "uiautomation"
-version = "0.21.4"
-source = "git+https://github.com/mediar-ai/uiautomation-rs?branch=main#c2a65b79632b7b7023b54f32a5b9066c90087c91"
+version = "0.21.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5c6db49f456471eccacfe0143a3d628143abc348d4de2cf42fcc67e52dd3ad4"
 dependencies = [
  "chrono",
  "uiautomation_derive",
@@ -5142,7 +5143,8 @@ dependencies = [
 [[package]]
 name = "uiautomation_derive"
 version = "0.7.2"
-source = "git+https://github.com/mediar-ai/uiautomation-rs?branch=main#c2a65b79632b7b7023b54f32a5b9066c90087c91"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a386bae68971053d37b7bd04e63d1423b0127ac3730ab9ff72e05ebd4f25634d"
 dependencies = [
  "proc-macro2",
  "quote",

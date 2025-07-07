@@ -41,11 +41,11 @@ rand = "0.8"                      # For random element selection in benchmarks
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
-# uiautomation = { version = "0.21.4", features = ["event", "pattern"] }
-uiautomation = { git = "https://github.com/mediar-ai/uiautomation-rs", branch = "main", features = [
-    "event",
-    "pattern",
-] }
+uiautomation = { version = "0.21.6", features = ["event", "pattern"] }
+# uiautomation = { git = "https://github.com/mediar-ai/uiautomation-rs", branch = "main", features = [
+#     "event",
+#     "pattern",
+# ] }
 windows = { version = "0.61.1", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",

@@ -61,17 +61,17 @@ windows = { version = "0.61.1", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
-# uiautomation = { version = "0.21.2", features = [
-#     "clipboard",
-#     "input",
-#     "process",
-# ] }
-# https://github.com/mediar-ai/uiautomation-rs 
-uiautomation = { git = "https://github.com/mediar-ai/uiautomation-rs", branch = "main", features = [
+uiautomation = { version = "0.21.6", features = [
     "clipboard",
     "input",
     "process",
 ] }
+# https://github.com/mediar-ai/uiautomation-rs 
+# uiautomation = { git = "https://github.com/mediar-ai/uiautomation-rs", branch = "main", features = [
+#     "clipboard",
+#     "input",
+#     "process",
+# ] }
 sysinfo = "0.34.2"
 
 [[example]]
