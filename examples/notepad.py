@@ -16,19 +16,22 @@ async def run_notepad():
         editor.highlight(duration_ms=5000)  # Red color (Default) for 5 seconds
 
         if platform.release() == "11":
+            add_button = await editor.locator("name:Add New Tab").first()
+            add_button.highlight(
+                color=0x0000FF,
+                duration_ms=2000,
+            )  # Blue color for 2 seconds
+            add_button.click()
             document = await editor.locator("role:Document").first()
             document.highlight(
-                color=0x00FF00, duration_ms=2000
+                color=0x00FF00,
+                duration_ms=2000,
             )  # Green color for 2 seconds
-            AddButton = await editor.locator("name:Add New Tab").first()
-            AddButton.highlight(
-                color=0x0000FF, duration_ms=2000
-            )  # Blue color for 2 seconds
-            AddButton.click()
         else:
             document = await editor.locator("role:Edit").first()
             document.highlight(
-                color=0x00FF00, duration_ms=2000
+                color=0x00FF00,
+                duration_ms=2000,
             )  # Green color for 2 seconds
 
         print("typing text...")
@@ -54,7 +57,8 @@ async def run_notepad():
         save_dialog = editor.locator("window:Save As")
         save_dialog_window = await save_dialog.first()
         save_dialog_window.highlight(
-            color=0xFF00FF, duration_ms=3000
+            color=0xFF00FF,
+            duration_ms=3000,
         )  # Magenta color for 3 seconds
         await asyncio.sleep(1)
         file_name_edit_box = (
@@ -64,71 +68,54 @@ async def run_notepad():
             .first()
         )
         file_name_edit_box.highlight(
-            color=0xFFFF00, duration_ms=3000
+            color=0xFFFF00,
+            duration_ms=3000,
         )  # Yellow color for 3 seconds
 
         home_dir = os.path.expanduser("~")
         file_path = os.path.join(home_dir, "terminator_notepad_test.md")
         file_name_edit_box.type_text(file_path)
+        file_already_exists = os.path.exists(file_path)
 
-        # Get the pane and explore its contents
         pane = await save_dialog.locator("role:Pane").first()
-        pane.highlight(color=0x00FFFF, duration_ms=3000)  # Cyan color for 3 seconds
-        pane_elements = pane.explore()
+        pane.highlight(
+            color=0x00FFFF,
+            duration_ms=3000,
+        )  # Cyan color for 3 seconds
 
         # Find and click the Save as type ComboBox
         # This changes the file type to `All Files` so that we can save it in any file format
-        for child in pane_elements.children:
-            if (
-                child.role == "ComboBox"
-                and child.suggested_selector
-                and child.name == "Save as type:"
-            ):
-                combo_box = await save_dialog.locator(child.suggested_selector).first()
-                combo_box.highlight(
-                    color=0xFFA500, duration_ms=2000
-                )  # Orange color for 2 seconds
-                combo_box.click()
-                combo_box.press_key("{Ctrl}a")
-                break
+        save_as_type_combo_box = await save_dialog.locator(
+            "ComboBox:Save as type:"
+        ).first()
+        save_as_type_combo_box.highlight(
+            color=0xFFA500,
+            duration_ms=2000,
+        )  # Orange color for 2 seconds
+        save_as_type_combo_box.click()
+        save_as_type_combo_box.press_key("{Ctrl}a")
 
         # Find and click the Save button
-        save_dialog_ele = await save_dialog.first()
-        window_elements = save_dialog_ele.explore()
-        for child in window_elements.children:
-            if (
-                child.role == "Button"
-                and child.suggested_selector
-                and child.name == "Save"
-            ):
-                save_button = await save_dialog.locator(
-                    child.suggested_selector
-                ).first()
-                save_button.highlight(
-                    color=0x800080, duration_ms=2000
-                )  # Purple color for 2 seconds
-                save_button.click()
-                break
+        save_button = await save_dialog.locator("Button:Save").first()
+        save_button.highlight(
+            color=0x800080,
+            duration_ms=2000,
+        )  # Purple color for 2 seconds
+        save_button.click()
+
+        print("save button clicked")
 
         # Handle the confirmation dialog if file exists
-        try:
-            save_dialog_ele = await save_dialog.first()
-            confirm_overwrite = save_dialog_ele.explore()
-            for child in confirm_overwrite.children:
-                if (
-                    child.role == "Window"
-                    and child.suggested_selector
-                    and "Confirm Save As" in child.text
-                ):
-                    save_button = (
-                        await save_dialog.locator(child.suggested_selector)
-                        .locator("Name:Yes")
-                        .first()
-                    )
-                    save_button.click()
-                    break
-        except:
-            pass
+        if file_already_exists:
+            confirm_overwrite = (
+                await save_dialog.locator("Window:Confirm Save As")
+                .locator("Name:Yes")
+                .first()
+            )
+            confirm_overwrite.click()
+            print("confirm overwrite clicked")
+
+        print("File saved successfully!")
 
     except terminator.PlatformError as e:
         print(f"Platform Error: {e}")

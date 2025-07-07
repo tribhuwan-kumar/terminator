@@ -1,6 +1,158 @@
 import asyncio
 import terminator
 import os
+import platform
+import enum
+
+
+def is_windows_11():
+    version = platform.version()
+    return platform.system() == "Windows" and int(version.split(".")[2]) >= 22000
+
+
+class Shape(enum.Enum):
+    ROUNDED_RECTANGLE = "Rounded rectangle"
+    TRIANGLE = "Triangle"
+    RIGHT_TRIANGLE = "Right triangle"
+    RECTANGLE = "Rectangle"
+    OVAL = "Oval"
+    LINE = "Line"
+    CURVE = "Curve"
+    POLYGON = "Polygon"
+    DIAMOND = "Diamond"
+    PENTAGON = "Pentagon"
+    HEXAGON = "Hexagon"
+    RIGHT_ARROW = "Right arrow"
+    LEFT_ARROW = "Left arrow"
+    UP_ARROW = "Up arrow"
+    DOWN_ARROW = "Down arrow"
+    FOUR_POINT_STAR = "Four-point star"
+    FIVE_POINT_STAR = "Five-point star"
+    SIX_POINT_STAR = "Six-point star"
+    ROUNDED_RECTANGULAR_CALLOUT = "Rounded rectangular callout"
+    OVAL_CALLOUT = "Oval callout"
+    CLOUD_CALLOUT = "Cloud callout"
+    HEART = "Heart"
+    LIGHTNING = "Lightning"
+
+    def get_platform_name(self):
+        if self == Shape.RIGHT_TRIANGLE:
+            return "Right triangle" if is_windows_11() else "Right-angled triangle"
+        return self.value
+
+
+class Brush(enum.Enum):
+    BRUSH = "Brush"
+    CALLIGRAPHY_BRUSH = "Calligraphy brush"
+    CALLIGRAPHY_PEN = "Calligraphy pen"
+    AIRBRUSH = "Airbrush"
+    OIL_BRUSH = "Oil brush"
+    CRAYON = "Crayon"
+    MARKER = "Marker"
+    NATURAL_PENCIL = "Natural pencil"
+    WATERCOLOUR_BRUSH = "Watercolour brush"
+
+    def get_platform_name(self):
+        if self == Brush.CALLIGRAPHY_BRUSH:
+            return "Calligraphy brush" if is_windows_11() else "Calligraphy brush 1"
+        if self == Brush.CALLIGRAPHY_PEN:
+            return "Calligraphy pen" if is_windows_11() else "Calligraphy brush 2"
+        return self.value
+
+
+async def select_shape(shape: Shape, paint_window, desktop):
+    """
+    Select a shape tool by its name from the Shapes toolbar.
+    Only valid shape names from the Shape enum are allowed.
+    """
+    shape_name = shape.get_platform_name()
+    print(f"Selecting shape tool: {shape_name}")
+    if is_windows_11():
+        shapes_box = paint_window.locator("Group:Shapes").locator("role:List")
+    else:
+        more_shapes_button = await (
+            paint_window.locator("Pane:UIRibbonDockTop")
+            .locator("Pane:Lower Ribbon")
+            .locator("Name:Shapes")
+            .locator("Group:Shapes")
+            .locator("Button:Shapes")
+            .first()
+        )
+        more_shapes_button.click()
+        await asyncio.sleep(0.2)
+        shapes_box = desktop.locator("window:Shapes").locator("List:Shapes")
+    tool = await shapes_box.locator(f"Name:{shape_name}").first()
+    tool.click()
+    await asyncio.sleep(0.5)
+
+
+async def select_brush(brush: Brush, paint_window, desktop):
+    """
+    Select a brush tool by its name from the Brushes window.
+    Only valid brush names from the Brush enum are allowed.
+    """
+    brush_name = brush.get_platform_name()
+    print(f"Selecting brush: {brush_name}")
+    # Open the Brushes dropdown
+    if is_windows_11():
+        brushes_button = await (
+            paint_window.locator("Group:Brushes").locator("Name:Brushes").first()
+        )
+        brushes_button.perform_action("expand_collapse")
+        brushes_group = paint_window.locator("role:Menu")
+        brush_elem = await (
+            brushes_group.locator(f"Name:{brush_name}").locator("role:Image").first()
+        )
+    else:
+        tool_panel = paint_window.locator("Pane:UIRibbonDockTop").locator(
+            "Pane:Lower Ribbon"
+        )
+        brushes_button = await (
+            tool_panel.locator("Name:Brushes").locator("Button:Brushes").first()
+        )
+        brushes_button.click()
+        await asyncio.sleep(0.5)
+        brushes_group = desktop.locator("List:Brushes")
+        brush_elem = await brushes_group.locator(f"Name:{brush_name}").first()
+    brush_elem.click()
+    await asyncio.sleep(0.5)
+
+
+async def save_as_dialog(paint_window, file_path):
+    """
+    Open the Save As dialog in Paint and save the file to the specified file_path.
+    Handles overwrite confirmation if the file already exists.
+    """
+    print("Opening Save As dialog...")
+    paint_window.press_key("{Ctrl}s")
+    await asyncio.sleep(1)
+
+    print("Entering file name...")
+    save_dialog = paint_window.locator("window:Save As")
+    file_name_edit_box = await (
+        save_dialog.locator("role:Pane")
+        .locator("role:ComboBox")
+        .locator("role:Edit")
+        .first()
+    )
+    file_name_edit_box.type_text(file_path)
+    file_already_exists = os.path.exists(file_path)
+
+    # Find and click the Save button
+    save_button = await save_dialog.locator("Button:Save").first()
+    save_button.click()
+
+    print("save button clicked")
+
+    # Handle the confirmation dialog if file exists
+    if file_already_exists:
+        confirm_overwrite = await (
+            save_dialog.locator("Window:Confirm Save As").locator("Button:Yes").first()
+        )
+        confirm_overwrite.click()
+        print("confirm overwrite clicked")
+
+    print("File saved successfully!")
 
 
 async def run_mspaint():
@@ -8,7 +160,8 @@ async def run_mspaint():
     try:
         print("Opening Microsoft Paint...")
         paint_window = desktop.open_application("mspaint.exe")
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
+        paint_window.maximize_window()
 
         # The following selectors may need adjustment depending on Paint version
         # Try to locate the canvas
@@ -16,116 +169,33 @@ async def run_mspaint():
         canvas_bounds = canvas.bounds()
         print(f"Canvas bounds: {canvas_bounds}")
 
-        # Restore original panel, tool_panel, and shapes_toolbar selectors
-        panel = paint_window.locator("Pane:UIRibbonDockTop")
-        tool_panel = panel.locator("Pane:Lower Ribbon")
-        shapes_toolbar = tool_panel.locator("Name:Shapes")
-
-        # Helper to click the 'More Shapes' button if needed
-        async def click_more_shapes_button():
-            """
-            Click the 'More Shapes' button in the Shapes toolbar if it exists.
-            This may be needed to reveal additional shapes in some Paint versions.
-            """
-            shapes_group = await shapes_toolbar.locator("Group:Shapes").first()
-            shapes_group_ele = shapes_group.explore()
-            for child in shapes_group_ele.children:
-                if (
-                    child.role == "Button"
-                    and child.suggested_selector
-                    and child.name == "Shapes"
-                ):
-                    more_shapes_button = await shapes_toolbar.locator(
-                        child.suggested_selector
-                    ).first()
-                    more_shapes_button.click()
-                    break
-
-        # Helper to select a shape tool by name
-        async def select_shape(shape_name):
-            """
-            Select a shape tool by its name from the Shapes toolbar.
-            Available shapes:
-            - Line: Straight line tool
-            - Curve: Curved line tool
-            - Oval: Circle/ellipse shape
-            - Rectangle: Basic rectangle shape
-            - Rounded rectangle: Rectangle with rounded corners
-            - Polygon: Multi-sided shape
-            - Triangle: Three-sided shape
-            - Right-angled triangle: Triangle with 90 degree angle
-            - Diamond: Diamond/rhombus shape
-            - Pentagon: Five-sided shape
-            - Hexagon: Six-sided shape
-            - Right arrow: Arrow pointing right
-            - Left arrow: Arrow pointing left
-            - Up arrow: Arrow pointing up
-            - Down arrow: Arrow pointing down
-            - Four-point star: Star with 4 points
-            - Five-point star: Star with 5 points
-            - Six-point star: Star with 6 points
-            - Rounded rectangular callout: Speech bubble with rounded rectangle
-            - Oval callout: Speech bubble with oval shape
-            - Cloud callout: Speech bubble with cloud shape
-            - Heart: Heart shape
-            - Lightning: Lightning bolt shape
-            """
-            print(f"Selecting shape tool: {shape_name}")
-            await click_more_shapes_button()
-            await asyncio.sleep(0.2)
-
-            shapes_box = desktop.locator("window:Shapes").locator("List:Shapes")
-            tool = await shapes_box.locator(f"Name:{shape_name}").first()
-            tool.click()
-            await asyncio.sleep(0.5)
-
-        async def select_brush(brush_name):
-            """
-            Select a brush tool by its name from the Brushes window.
-            Available brushes (from exploration):
-            - Brush
-            - Calligraphy brush 1
-            - Calligraphy brush 2
-            - Airbrush
-            - Oil brush
-            - Crayon
-            - Marker
-            - Natural pencil
-            - Watercolour brush
-            """
-            print(f"Selecting brush: {brush_name}")
-            # Open the Brushes dropdown
-            brushes_button = (
-                await tool_panel.locator("Name:Brushes")
-                .locator("Button:Brushes")
-                .first()
-            )
-            brushes_button.click()
-            await asyncio.sleep(0.5)
-
-            brushes_group = desktop.locator("List:Brushes")
-            brush = await brushes_group.locator(f"Name:{brush_name}").first()
-            brush.click()
+        if is_windows_11():
+            print("Zooming in...")
+            paint_window.press_key("{Ctrl}1")
             await asyncio.sleep(0.5)
 
         # Draw shapes
-        await select_shape("Rounded rectangle")
-        canvas.mouse_drag(200, 200, 450, 450)
-        await asyncio.sleep(1)
+        await select_shape(Shape.ROUNDED_RECTANGLE, paint_window, desktop)
+        if is_windows_11():
+            canvas.mouse_drag(280, 280, 530, 530)
+        else:
+            canvas.mouse_drag(200, 200, 450, 450)
 
-        await select_shape("Triangle")
-        canvas.mouse_drag(225, 225, 425, 425)
-        await asyncio.sleep(1)
+        await select_shape(Shape.TRIANGLE, paint_window, desktop)
+        if is_windows_11():
+            canvas.mouse_drag(305, 305, 505, 505)
+        else:
+            canvas.mouse_drag(225, 225, 425, 425)
 
         # Select the pencil tool
-        # pencil = await tool_panel.locator('Name:Tools').locator('Name:Pencil').first()
+        # pencil = await paint_window.locator('Name:Tools').locator('Name:Pencil').first()
         # pencil.click()
 
-        await select_brush("Calligraphy brush 1")
+        await select_brush(Brush.CALLIGRAPHY_BRUSH, paint_window, desktop)
 
         # Draw the word TERMINATOR in block letters
-        start_x = 460
-        start_y = 280
+        start_x = 580 if is_windows_11() else 460
+        start_y = 400 if is_windows_11() else 280
         letter_width = 60
         letter_height = 40
         spacing = 10
@@ -219,61 +289,9 @@ async def run_mspaint():
         x += letter_width + spacing
 
         # Open Save As dialog
-        print("Opening Save As dialog...")
-        paint_window.press_key("{Ctrl}s")
-        await asyncio.sleep(1)
-
-        # Enter file name
-        print("Entering file name...")
-        save_dialog = paint_window.locator("window:Save As")
-        file_name_edit_box = (
-            await save_dialog.locator("role:Pane")
-            .locator("role:ComboBox")
-            .locator("role:Edit")
-            .first()
-        )
-
         home_dir = os.path.expanduser("~")
         file_path = os.path.join(home_dir, "terminator_paint_test.png")
-        file_name_edit_box.type_text(file_path)
-
-        # Find and click the Save button
-        save_dialog_ele = await save_dialog.first()
-        window_elements = save_dialog_ele.explore()
-        for child in window_elements.children:
-            if (
-                child.role == "Button"
-                and child.suggested_selector
-                and child.name == "Save"
-            ):
-                save_button = await save_dialog.locator(
-                    child.suggested_selector
-                ).first()
-                save_button.click()
-                break
-        print("Save button clicked")
-
-        # Handle the confirmation dialog if file exists
-        try:
-            save_dialog_ele = await save_dialog.first()
-            confirm_overwrite = save_dialog_ele.explore()
-            for child in confirm_overwrite.children:
-                if (
-                    child.role == "Window"
-                    and child.suggested_selector
-                    and "Confirm Save As" in child.text
-                ):
-                    save_button = (
-                        await save_dialog.locator(child.suggested_selector)
-                        .locator("Name:Yes")
-                        .first()
-                    )
-                    save_button.click()
-                    break
-        except:
-            pass
-
-        print("File saved successfully!")
+        await save_as_dialog(paint_window, file_path)
 
     except terminator.PlatformError as e:
         print(f"Platform Error: {e}")

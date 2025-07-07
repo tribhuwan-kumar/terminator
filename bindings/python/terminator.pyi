@@ -565,6 +565,20 @@ class UIElement:
         Returns:
             None
         """
+    def minimize_window(self) -> None:
+        r"""
+        Minimize the window containing this element.
+        
+        Returns:
+            None
+        """
+    def maximize_window(self) -> None:
+        r"""
+        Maximize the window containing this element.
+        
+        Returns:
+            None
+        """
     def is_focused(self) -> builtins.bool:
         r"""
         Check if element is focused.
@@ -694,6 +708,41 @@ class UIElement:
         
         Returns:
             Monitor: The monitor information for the display containing this element.
+        """
+    def select_option(self, option_name:builtins.str) -> None:
+        r"""
+        Selects an option in a dropdown or combobox by its visible text.
+        
+        Args:
+            option_name (str): The visible text of the option to select.
+        
+        Returns:
+            None
+        """
+    def list_options(self) -> builtins.list[builtins.str]:
+        r"""
+        Lists all available option strings from a dropdown or list box.
+        
+        Returns:
+            List[str]: List of available option strings.
+        """
+    def is_toggled(self) -> builtins.bool:
+        r"""
+        Checks if a control (like a checkbox or toggle switch) is currently toggled on.
+        
+        Returns:
+            bool: True if the control is toggled on.
+        """
+    def set_toggled(self, state:builtins.bool) -> None:
+        r"""
+        Sets the state of a toggleable control.
+        It only performs an action if the control is not already in the desired state.
+        
+        Args:
+            state (bool): The desired toggle state.
+        
+        Returns:
+            None
         """
 
 class UIElementAttributes:

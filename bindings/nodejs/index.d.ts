@@ -51,6 +51,7 @@ export interface UIElementAttributes {
   description?: string
   properties: Record<string, string | undefined | null>
   isKeyboardFocusable?: boolean
+  bounds?: Bounds
 }
 export interface ExploredElementDetail {
   role: string
@@ -134,12 +135,6 @@ export declare class Desktop {
    */
   activateApplication(name: string): void
   /**
-   * (async) Capture a screenshot of the primary monitor.
-   *
-   * @returns {Promise<ScreenshotResult>} The screenshot data.
-   */
-  captureScreen(): Promise<ScreenshotResult>
-  /**
    * (async) Run a shell command.
    *
    * @param {string} [windowsCommand] - Command to run on Windows.
@@ -147,19 +142,6 @@ export declare class Desktop {
    * @returns {Promise<CommandOutput>} The command output.
    */
   runCommand(windowsCommand?: string | undefined | null, unixCommand?: string | undefined | null): Promise<CommandOutput>
-  /**
-   * (async) Get the name of the currently active monitor.
-   *
-   * @returns {Promise<string>} The name of the active monitor.
-   */
-  getActiveMonitorName(): Promise<string>
-  /**
-   * (async) Capture a screenshot of a specific monitor.
-   *
-   * @param {string} name - The name of the monitor to capture.
-   * @returns {Promise<ScreenshotResult>} The screenshot data.
-   */
-  captureMonitorByName(name: string): Promise<ScreenshotResult>
   /**
    * (async) Perform OCR on an image file.
    *
@@ -401,6 +383,10 @@ export declare class Element {
   scroll(direction: string, amount: number): void
   /** Activate the window containing this element. */
   activateWindow(): void
+  /** Minimize the window containing this element. */
+  minimizeWindow(): void
+  /** Maximize the window containing this element. */
+  maximizeWindow(): void
   /**
    * Check if element is focused.
    *
@@ -459,12 +445,6 @@ export declare class Element {
    */
   window(): Element | null
   /**
-   * Explore this element and its direct children.
-   *
-   * @returns {ExploreResponse} Details about the element and its children.
-   */
-  explore(): ExploreResponse
-  /**
    * Highlights the element with a colored border.
    *
    * @param {number} [color] - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
@@ -505,6 +485,33 @@ export declare class Element {
    * @returns {Monitor} The monitor information for the display containing this element.
    */
   monitor(): Monitor
+  /**
+   * Selects an option in a dropdown or combobox by its visible text.
+   *
+   * @param {string} optionName - The visible text of the option to select.
+   * @returns {void}
+   */
+  selectOption(optionName: string): void
+  /**
+   * Lists all available option strings from a dropdown or list box.
+   *
+   * @returns {Array<string>} List of available option strings.
+   */
+  listOptions(): Array<string>
+  /**
+   * Checks if a control (like a checkbox or toggle switch) is currently toggled on.
+   *
+   * @returns {boolean} True if the control is toggled on.
+   */
+  isToggled(): boolean
+  /**
+   * Sets the state of a toggleable control.
+   * It only performs an action if the control is not already in the desired state.
+   *
+   * @param {boolean} state - The desired toggle state.
+   * @returns {void}
+   */
+  setToggled(state: boolean): void
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
@@ -551,7 +558,6 @@ export declare class Locator {
    * @returns {Locator} A new locator with the chained selector.
    */
   locator(selector: string | Selector): Locator
-  toString(): string
 }
 /** Selector for locating UI elements. Provides a typed alternative to the string based selector API. */
 export declare class Selector {
@@ -575,5 +581,4 @@ export declare class Selector {
   chain(other: Selector): Selector
   /** Filter by visibility. */
   visible(isVisible: boolean): Selector
-  toString(): string
 }

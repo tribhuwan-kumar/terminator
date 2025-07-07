@@ -2797,6 +2797,54 @@ impl UIElementImpl for WindowsUIElement {
         Ok(())
     }
 
+    fn maximize_window(&self) -> Result<(), AutomationError> {
+        debug!("Maximizing window for element: {:?}", self.element.0);
+
+        // First try using the WindowPattern which is the preferred method
+        if let Ok(window_pattern) = self.element.0.get_pattern::<patterns::UIWindowPattern>() {
+            debug!("Using WindowPattern to maximize window");
+            window_pattern
+                .set_window_visual_state(uiautomation::types::WindowVisualState::Maximized)
+                .map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to maximize window using WindowPattern: {}",
+                        e
+                    ))
+                })?;
+            debug!("Window maximized successfully using WindowPattern");
+            return Ok(());
+        }
+
+        // Fallback to native Windows API if WindowPattern is not available
+        debug!("WindowPattern not available, falling back to native Windows API");
+        let hwnd = match self.element.0.get_native_window_handle() {
+            Ok(handle) => handle,
+            Err(_) => {
+                return Err(AutomationError::PlatformError(
+                    "Could not get native window handle for maximize operation".to_string(),
+                ));
+            }
+        };
+
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_MAXIMIZE};
+
+        unsafe {
+            let hwnd_param: windows::Win32::Foundation::HWND = hwnd.into();
+
+            // Maximize the window
+            let result = ShowWindow(hwnd_param, SW_MAXIMIZE);
+
+            if result.as_bool() {
+                debug!("Window maximized successfully using native API");
+            } else {
+                debug!("Window was already maximized or maximize operation had no effect");
+            }
+        }
+
+        debug!("Window maximize operation completed");
+        Ok(())
+    }
+
     fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError> {
         let control_type = self
             .element
@@ -4545,6 +4593,7 @@ fn launch_app(
     };
 
     if pid > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(1000));
         get_application_pid(engine, pid as i32, display_name)
     } else {
         Err(Error::new(
@@ -4935,33 +4984,65 @@ fn get_smart_attributes(element: &UIElement) -> UIElementAttributes {
 fn launch_legacy_app(engine: &WindowsEngine, app_name: &str) -> Result<UIElement, AutomationError> {
     info!("Launching legacy app: {}", app_name);
     unsafe {
-        let mut sei = SHELLEXECUTEINFOW {
-            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
-            fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
-            lpFile: PCWSTR(HSTRING::from(app_name).as_ptr()),
-            nShow: SW_SHOWNORMAL.0,
+        // Convert app_name to wide string
+        let mut app_name_wide: Vec<u16> =
+            app_name.encode_utf16().chain(std::iter::once(0)).collect();
+
+        // Prepare process startup info
+        let startup_info = windows::Win32::System::Threading::STARTUPINFOW {
+            cb: std::mem::size_of::<windows::Win32::System::Threading::STARTUPINFOW>() as u32,
             ..Default::default()
         };
 
-        if let Err(e) = ShellExecuteExW(&mut sei) {
+        // Prepare process info
+        let mut process_info = windows::Win32::System::Threading::PROCESS_INFORMATION::default();
+
+        // Create the process
+        let result = windows::Win32::System::Threading::CreateProcessW(
+            None, // Application name (null means use command line)
+            Some(windows::core::PWSTR::from_raw(app_name_wide.as_mut_ptr())), // Command line
+            None, // Process security attributes
+            None, // Thread security attributes
+            false, // Inherit handles
+            windows::Win32::System::Threading::CREATE_NEW_CONSOLE, // Creation flags
+            None, // Environment
+            None, // Current directory
+            &startup_info,
+            &mut process_info,
+        );
+
+        if result.is_err() {
             return Err(AutomationError::PlatformError(format!(
-                "Failed to launch legacy app '{}': {}",
-                app_name, e
+                "Failed to launch application '{}'",
+                app_name
             )));
         }
 
-        let _ = CloseHandle(sei.hProcess);
+        // Close thread handle as we don't need it
+        let _ = windows::Win32::Foundation::CloseHandle(process_info.hThread);
+
+        // Store process handle in a guard to ensure it's closed
+        let _process_handle = HandleGuard(process_info.hProcess);
+
+        // Get the PID
+        let pid = process_info.dwProcessId as i32;
+
+        // Extract process name from process_info (unused variable)
+        let process_name = get_process_name_by_pid(pid).unwrap_or_else(|_| app_name.to_string());
+
+        match get_application_pid(engine, pid as i32, app_name) {
+            Ok(app) => Ok(app),
+            Err(_) => {
+                let new_pid = get_pid_by_name(&process_name);
+                if new_pid.is_none() {
+                    return Err(AutomationError::PlatformError(format!(
+                        "Failed to get PID for launched process: {}",
+                        process_name
+                    )));
+                }
+                // Try again with the extracted PID
+                get_application_pid(engine, new_pid.unwrap(), app_name)
+            }
+        }
     }
-
-    // After launching, wait a bit for the app to initialize.
-    std::thread::sleep(Duration::from_secs(2));
-
-    // The name might be different from the exe name. For notepad.exe, it's "Notepad".
-    let friendly_app_name = if app_name.eq_ignore_ascii_case("notepad.exe") {
-        "Notepad"
-    } else {
-        app_name.trim_end_matches(".exe")
-    };
-
-    engine.get_application_by_name(friendly_app_name)
 }
