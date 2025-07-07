@@ -4,14 +4,16 @@ use anyhow::Result;
 use std::sync::Mutex;
 use arboard::Clipboard;
 use tracing::{debug, info, error};
-use crate::utils::{init_logging, Args};
-use crate::client::get_mcp_tool_result;
-use crate::ollama::summrize_by_ollama;
 use rdev::{listen, Event, EventType, Key};
+use crate::{
+    utils::{init_logging, Args},
+    client::get_mcp_tool_result,
+    ollama::summrize_by_ollama,
+};
 
-mod utils;
-mod ollama;
 mod client;
+mod ollama;
+mod utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -47,7 +49,7 @@ async fn main() -> Result<()> {
                         *alt = true;
                     }
                 }
-                EventType::KeyPress(Key::Alt) => {
+                EventType::KeyRelease(Key::Alt) => {
                     if let Ok(mut alt) = alt_state.lock() {
                         *alt = false;
                     }
@@ -84,28 +86,38 @@ async fn main() -> Result<()> {
             match get_mcp_tool_result("get_focused_window_tree".to_string(), None).await {
                 Ok(result) => {
                     debug!("current screen context captured: {}", result);
-
-                    match summrize_by_ollama(&args.model, &args.system_prompt, &result).await {
-                        Ok(response) => {
-                            debug!("ai summarized generated, copying to clipboard...");
-                            match Clipboard::new() {
-                                Ok(mut clipboard) => {
-                                    if let Err(e) = clipboard.set_text(response) {
-                                        error!("failed to copy to clipboard: {}", e);
-                                    } else {
-                                        error!("Context successfully copied to clipboard!");
-                                    }
-                                }
-                                Err(e) => error!("Failed to access clipboard: {}", e),
+                    let text_to_copy = if args.ai_mode {
+                        match summrize_by_ollama(&args.model, &args.system_prompt, &result).await {
+                            Ok(summary) => {
+                                debug!("ai summary generated successfully");
+                                summary
+                            }
+                            Err(e) => {
+                                error!("failed to summarize with Ollama: {}", e);
+                                continue;
                             }
                         }
-                        Err(e) => error!("Failed to process with Ollama: {}", e),
+                    } else {
+                        result.to_string()
+                    };
+
+                    debug!("copying text to clipboard...");
+                    match Clipboard::new() {
+                        Ok(mut clipboard) => {
+                            if let Err(e) = clipboard.set_text(text_to_copy) {
+                                error!("failed to copy to clipboard: {}", e);
+                            } else {
+                                info!("context successfully copied to clipboard!");
+                            }
+                        }
+                        Err(e) => error!("failed to access clipboard: {}", e),
                     }
                 }
-                Err(e) => error!("Failed to capture context: {}", e),
+                Err(e) => error!("failed to capture context: {}", e),
             }
+
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-    }
+}
 }
 

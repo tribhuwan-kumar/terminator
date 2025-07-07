@@ -14,6 +14,8 @@ pub struct Args {
     pub model: String,
     #[arg(short, long, default_value = "ctrl+alt+j")]
     pub hotkey: String,
+    #[arg(short, long, action = clap::ArgAction::SetTrue)]
+    pub ai_mode: bool,
 }
 
 pub fn init_logging() -> Result<()> {
