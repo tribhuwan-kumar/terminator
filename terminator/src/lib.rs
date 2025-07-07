@@ -306,12 +306,14 @@ impl Desktop {
     ///
     /// ```no_run
     /// use terminator::Desktop;
-    /// let desktop = Desktop::new_default()?;
-    /// let monitors = desktop.list_monitors().await?;
-    /// for monitor in monitors {
-    ///     println!("Monitor: {} ({}x{})", monitor.name, monitor.width, monitor.height);
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let monitors = desktop.list_monitors().await.unwrap();
+    ///     for monitor in monitors {
+    ///         println!("Monitor: {} ({}x{})", monitor.name, monitor.width, monitor.height);
+    ///     }
     /// }
-    /// # Ok::<(), terminator::AutomationError>(())
     /// ```
     #[instrument(skip(self))]
     pub async fn list_monitors(&self) -> Result<Vec<Monitor>, AutomationError> {
@@ -324,12 +326,14 @@ impl Desktop {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terminator::Desktop;
-    /// let desktop = Desktop::new_default()?;
-    /// let primary = desktop.get_primary_monitor().await?;
-    /// println!("Primary monitor: {}", primary.name);
-    /// # Ok::<(), terminator::AutomationError>(())
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let primary = desktop.get_primary_monitor().await.unwrap();
+    ///     println!("Primary monitor: {}", primary.name);
+    /// }
     /// ```
     #[instrument(skip(self))]
     pub async fn get_primary_monitor(&self) -> Result<Monitor, AutomationError> {
@@ -342,12 +346,14 @@ impl Desktop {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terminator::Desktop;
-    /// let desktop = Desktop::new_default()?;
-    /// let active = desktop.get_active_monitor().await?;
-    /// println!("Active monitor: {}", active.name);
-    /// # Ok::<(), terminator::AutomationError>(())
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let active = desktop.get_active_monitor().await.unwrap();
+    ///     println!("Active monitor: {}", active.name);
+    /// }
     /// ```
     #[instrument(skip(self))]
     pub async fn get_active_monitor(&self) -> Result<Monitor, AutomationError> {
@@ -358,11 +364,13 @@ impl Desktop {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terminator::Desktop;
-    /// let desktop = Desktop::new_default()?;
-    /// let monitor = desktop.get_monitor_by_id("monitor_id").await?;
-    /// # Ok::<(), terminator::AutomationError>(())
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let monitor = desktop.get_monitor_by_id("monitor_id").await.unwrap();
+    /// }
     /// ```
     #[instrument(skip(self, id))]
     pub async fn get_monitor_by_id(&self, id: &str) -> Result<Monitor, AutomationError> {
@@ -373,11 +381,13 @@ impl Desktop {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terminator::Desktop;
-    /// let desktop = Desktop::new_default()?;
-    /// let monitor = desktop.get_monitor_by_name("Dell Monitor").await?;
-    /// # Ok::<(), terminator::AutomationError>(())
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let monitor = desktop.get_monitor_by_name("Dell Monitor").await.unwrap();
+    /// }
     /// ```
     #[instrument(skip(self, name))]
     pub async fn get_monitor_by_name(&self, name: &str) -> Result<Monitor, AutomationError> {
@@ -388,12 +398,14 @@ impl Desktop {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terminator::Desktop;
-    /// let desktop = Desktop::new_default()?;
-    /// let monitor = desktop.get_primary_monitor().await?;
-    /// let screenshot = desktop.capture_monitor(&monitor).await?;
-    /// # Ok::<(), terminator::AutomationError>(())
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let monitor = desktop.get_primary_monitor().await.unwrap();
+    ///     let screenshot = desktop.capture_monitor(&monitor).await.unwrap();
+    /// }
     /// ```
     #[instrument(skip(self, monitor))]
     pub async fn capture_monitor(
@@ -411,14 +423,16 @@ impl Desktop {
     ///
     /// # Examples
     ///
-    /// ```
+    /// ```no_run
     /// use terminator::Desktop;
-    /// let desktop = Desktop::new_default()?;
-    /// let screenshots = desktop.capture_all_monitors().await?;
-    /// for (monitor, screenshot) in screenshots {
-    ///     println!("Captured monitor: {} ({}x{})", monitor.name, screenshot.width, screenshot.height);
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let screenshots = desktop.capture_all_monitors().await.unwrap();
+    ///     for (monitor, screenshot) in screenshots {
+    ///         println!("Captured monitor: {} ({}x{})", monitor.name, screenshot.width, screenshot.height);
+    ///     }
     /// }
-    /// # Ok::<(), terminator::AutomationError>(())
     /// ```
     #[instrument(skip(self))]
     pub async fn capture_all_monitors(
