@@ -4628,6 +4628,7 @@ dependencies = [
  "image",
  "jsonpath_lib",
  "rand 0.8.5",
+ "reqwest",
  "rmcp",
  "serde",
  "serde_json",
