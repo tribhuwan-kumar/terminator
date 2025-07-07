@@ -290,6 +290,28 @@ impl UIElement {
             .map_err(automation_error_to_pyerr)
     }
 
+    #[pyo3(name = "minimize_window", text_signature = "($self)")]
+    /// Minimize the window containing this element.
+    ///
+    /// Returns:
+    ///     None
+    pub fn minimize_window(&self) -> PyResult<()> {
+        self.inner
+            .minimize_window()
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "maximize_window", text_signature = "($self)")]
+    /// Maximize the window containing this element.
+    ///
+    /// Returns:
+    ///     None
+    pub fn maximize_window(&self) -> PyResult<()> {
+        self.inner
+            .maximize_window()
+            .map_err(automation_error_to_pyerr)
+    }
+
     #[pyo3(name = "is_focused", text_signature = "($self)")]
     /// Check if element is focused.
     ///
@@ -487,6 +509,53 @@ impl UIElement {
         self.inner
             .monitor()
             .map(crate::types::Monitor::from)
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "select_option", text_signature = "($self, option_name)")]
+    /// Selects an option in a dropdown or combobox by its visible text.
+    ///
+    /// Args:
+    ///     option_name (str): The visible text of the option to select.
+    ///
+    /// Returns:
+    ///     None
+    pub fn select_option(&self, option_name: &str) -> PyResult<()> {
+        self.inner
+            .select_option(option_name)
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "list_options", text_signature = "($self)")]
+    /// Lists all available option strings from a dropdown or list box.
+    ///
+    /// Returns:
+    ///     List[str]: List of available option strings.
+    pub fn list_options(&self) -> PyResult<Vec<String>> {
+        self.inner.list_options().map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "is_toggled", text_signature = "($self)")]
+    /// Checks if a control (like a checkbox or toggle switch) is currently toggled on.
+    ///
+    /// Returns:
+    ///     bool: True if the control is toggled on.
+    pub fn is_toggled(&self) -> PyResult<bool> {
+        self.inner.is_toggled().map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "set_toggled", text_signature = "($self, state)")]
+    /// Sets the state of a toggleable control.
+    /// It only performs an action if the control is not already in the desired state.
+    ///
+    /// Args:
+    ///     state (bool): The desired toggle state.
+    ///
+    /// Returns:
+    ///     None
+    pub fn set_toggled(&self, state: bool) -> PyResult<()> {
+        self.inner
+            .set_toggled(state)
             .map_err(automation_error_to_pyerr)
     }
 }

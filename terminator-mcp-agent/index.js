@@ -99,10 +99,8 @@ if (argv.includes("--add-to-app")) {
     addToApp(app);
     process.exit(0);
   }
-}
-
-// Default or --start: run the agent
-if (argv.length === 0 || argv.includes("--start")) {
+} else {
+  // Default: run the agent and forward arguments
   const { pkg, bin, npmDir } = getPlatformInfo();
   let binary;
 
@@ -120,13 +118,17 @@ if (argv.length === 0 || argv.includes("--start")) {
     }
   }
 
-  const child = spawn(binary, [], {
+  // Filter out --start if it exists, as it's for the wrapper script
+  const agentArgs = argv.filter((arg) => arg !== "--start");
+
+  const child = spawn(binary, agentArgs, {
     stdio: ["pipe", "pipe", "pipe"],
     shell: true,
   });
 
   process.stdin.pipe(child.stdin);
   child.stdout.pipe(process.stdout);
+  child.stderr.pipe(process.stderr);
 
   function killProcess(proc) {
     if (!proc) return;
@@ -134,11 +136,11 @@ if (argv.length === 0 || argv.includes("--start")) {
     if (process.platform === "win32") {
       try {
         execSync(`taskkill /PID ${pid} /T /F`);
-      } catch (e) {}
+      } catch (e) { }
     } else {
       try {
         process.kill(-pid, "SIGKILL");
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -155,7 +157,7 @@ if (argv.length === 0 || argv.includes("--start")) {
           } else {
             try {
               process.kill(child.pid, "SIGTERM");
-            } catch (e) {}
+            } catch (e) { }
             setTimeout(() => {
               if (!child.killed) killProcess(child);
             }, 2000);
@@ -172,7 +174,9 @@ if (argv.length === 0 || argv.includes("--start")) {
   process.on("exit", shutdown);
 
   child.on("exit", (code) => {
-    console.log(`[MCP exited with code ${code}]`);
+    if (code !== 0) {
+      console.error(`[MCP exited with code ${code}]`);
+    }
     process.exit(code);
   });
 }

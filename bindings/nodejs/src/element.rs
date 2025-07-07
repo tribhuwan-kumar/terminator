@@ -236,6 +236,18 @@ impl Element {
         self.inner.activate_window().map_err(map_error)
     }
 
+    /// Minimize the window containing this element.
+    #[napi]
+    pub fn minimize_window(&self) -> napi::Result<()> {
+        self.inner.minimize_window().map_err(map_error)
+    }
+
+    /// Maximize the window containing this element.
+    #[napi]
+    pub fn maximize_window(&self) -> napi::Result<()> {
+        self.inner.maximize_window().map_err(map_error)
+    }
+
     /// Check if element is focused.
     ///
     /// @returns {boolean} True if the element is focused.
@@ -409,5 +421,40 @@ impl Element {
             .monitor()
             .map(crate::types::Monitor::from)
             .map_err(map_error)
+    }
+
+    /// Selects an option in a dropdown or combobox by its visible text.
+    ///
+    /// @param {string} optionName - The visible text of the option to select.
+    /// @returns {void}
+    #[napi]
+    pub fn select_option(&self, option_name: String) -> napi::Result<()> {
+        self.inner.select_option(&option_name).map_err(map_error)
+    }
+
+    /// Lists all available option strings from a dropdown or list box.
+    ///
+    /// @returns {Array<string>} List of available option strings.
+    #[napi]
+    pub fn list_options(&self) -> napi::Result<Vec<String>> {
+        self.inner.list_options().map_err(map_error)
+    }
+
+    /// Checks if a control (like a checkbox or toggle switch) is currently toggled on.
+    ///
+    /// @returns {boolean} True if the control is toggled on.
+    #[napi]
+    pub fn is_toggled(&self) -> napi::Result<bool> {
+        self.inner.is_toggled().map_err(map_error)
+    }
+
+    /// Sets the state of a toggleable control.
+    /// It only performs an action if the control is not already in the desired state.
+    ///
+    /// @param {boolean} state - The desired toggle state.
+    /// @returns {void}
+    #[napi]
+    pub fn set_toggled(&self, state: bool) -> napi::Result<()> {
+        self.inner.set_toggled(state).map_err(map_error)
     }
 }

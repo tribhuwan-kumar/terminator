@@ -15,14 +15,13 @@
 //!   cargo run --bin terminator -- release    # Full release: bump patch + tag + push
 //!   cargo run --bin terminator -- release minor # Full release: bump minor + tag + push
 
+use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::fs;
-use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-mod azure;
 mod mcp_client;
 
 #[derive(Parser)]
@@ -59,63 +58,6 @@ struct ReleaseArgs {
 }
 
 #[derive(Parser, Debug)]
-struct AzureCreateArgs {
-    /// Azure subscription ID (can also be set via AZURE_SUBSCRIPTION_ID env var)
-    #[clap(long, env = "AZURE_SUBSCRIPTION_ID")]
-    subscription_id: Option<String>,
-
-    /// Resource group name (default: terminator-rg-XXXX)
-    #[clap(long)]
-    resource_group: Option<String>,
-
-    /// Azure region (default: eastus)
-    #[clap(long, default_value = "eastus")]
-    location: String,
-
-    /// VM name (default: terminator-vm-XXXX)
-    #[clap(long)]
-    vm_name: Option<String>,
-
-    /// VM size (default: Standard_D2s_v3)
-    #[clap(long, default_value = "Standard_D2s_v3")]
-    vm_size: String,
-
-    /// Admin username (default: terminatoradmin)
-    #[clap(long, default_value = "terminatoradmin")]
-    admin_username: String,
-
-    /// Admin password (generated if not provided)
-    #[clap(long)]
-    admin_password: Option<String>,
-
-    /// Disable RDP access
-    #[clap(long)]
-    no_rdp: bool,
-
-    /// Disable WinRM access
-    #[clap(long)]
-    no_winrm: bool,
-
-    /// Skip MCP server deployment
-    #[clap(long)]
-    no_mcp: bool,
-
-    /// Save connection info to file
-    #[clap(long)]
-    save_to: Option<String>,
-}
-
-#[derive(Parser, Debug)]
-struct AzureDeleteArgs {
-    /// Resource group to delete
-    resource_group: String,
-
-    /// Azure subscription ID (can also be set via AZURE_SUBSCRIPTION_ID env var)
-    #[clap(long, env = "AZURE_SUBSCRIPTION_ID")]
-    subscription_id: Option<String>,
-}
-
-#[derive(Parser, Debug)]
 struct McpChatArgs {
     /// MCP server URL (e.g., http://localhost:3000)
     #[clap(long, short = 'u', conflicts_with = "command")]
@@ -144,17 +86,11 @@ struct McpExecArgs {
 }
 
 #[derive(Subcommand)]
-enum AzureCommands {
-    /// Create a new Windows VM with MCP server
-    Create(AzureCreateArgs),
-    /// Delete a resource group and all its resources
-    Delete(AzureDeleteArgs),
-}
-
-#[derive(Subcommand)]
 enum McpCommands {
     /// Interactive chat with MCP server
     Chat(McpChatArgs),
+    /// Interactive AI-powered chat with MCP server
+    AiChat(McpChatArgs),
     /// Execute a single MCP tool
     Exec(McpExecArgs),
 }
@@ -175,9 +111,6 @@ enum Commands {
     Tag,
     /// Full release: bump version + tag + push
     Release(ReleaseArgs),
-    /// Azure VM management commands
-    #[command(subcommand)]
-    Azure(AzureCommands),
     /// MCP client commands
     #[command(subcommand)]
     Mcp(McpCommands),
@@ -197,7 +130,6 @@ fn main() {
         Commands::Status => show_status(),
         Commands::Tag => tag_and_push(),
         Commands::Release(args) => full_release(&args.level.to_string()),
-        Commands::Azure(azure_cmd) => handle_azure_command(azure_cmd),
         Commands::Mcp(mcp_cmd) => handle_mcp_command(mcp_cmd),
     }
 }
@@ -705,129 +637,28 @@ fn run_command(program: &str, args: &[&str]) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-fn handle_azure_command(cmd: AzureCommands) {
-    // Create a tokio runtime for async operations
-    let runtime = tokio::runtime::Runtime::new().unwrap();
-
-    match cmd {
-        AzureCommands::Create(args) => {
-            runtime.block_on(async {
-                if let Err(e) = create_azure_vm(args).await {
-                    eprintln!("❌ Failed to create Azure VM: {}", e);
-                    std::process::exit(1);
-                }
-            });
-        }
-        AzureCommands::Delete(args) => {
-            runtime.block_on(async {
-                if let Err(e) = delete_azure_resources(args).await {
-                    eprintln!("❌ Failed to delete Azure resources: {}", e);
-                    std::process::exit(1);
-                }
-            });
-        }
-    }
-}
-
-async fn create_azure_vm(args: AzureCreateArgs) -> Result<(), Box<dyn std::error::Error>> {
-    // Get subscription ID
-    let subscription_id = args.subscription_id
-        .ok_or("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var")?;
-
-    // Build VM configuration
-    let mut config = azure::AzureVmConfig::default();
-    config.subscription_id = subscription_id;
-
-    if let Some(rg) = args.resource_group {
-        config.resource_group = rg;
-    }
-
-    config.location = args.location;
-
-    if let Some(name) = args.vm_name {
-        config.vm_name = name;
-    }
-
-    config.vm_size = args.vm_size;
-    config.admin_username = args.admin_username;
-
-    if let Some(password) = args.admin_password {
-        config.admin_password = password;
-    }
-
-    config.enable_rdp = !args.no_rdp;
-    config.enable_winrm = !args.no_winrm;
-    config.deploy_mcp = !args.no_mcp;
-
-    // Create VM manager and deploy
-    let manager = azure::AzureVmManager::new(config)?;
-    let result = manager.create_vm().await?;
-
-    // Print connection info
-    result.print_connection_info();
-
-    // Save to file if requested
-    if let Some(filename) = args.save_to {
-        result.save_to_file(&filename)?;
-    }
-
-    Ok(())
-}
-
-async fn delete_azure_resources(args: AzureDeleteArgs) -> Result<(), Box<dyn std::error::Error>> {
-    // Get subscription ID
-    let subscription_id = args.subscription_id
-        .ok_or("Azure subscription ID must be provided via --subscription-id or AZURE_SUBSCRIPTION_ID env var")?;
-
-    // Confirm deletion
-    println!(
-        "⚠️  WARNING: This will delete the resource group '{}' and ALL its resources!",
-        args.resource_group
-    );
-    println!("This action cannot be undone. Type 'yes' to confirm:");
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    if input.trim() != "yes" {
-        println!("Deletion cancelled.");
-        return Ok(());
-    }
-
-    // Build configuration
-    let mut config = azure::AzureVmConfig::default();
-    config.subscription_id = subscription_id;
-    config.resource_group = args.resource_group;
-
-    // Create VM manager and delete
-    let manager = azure::AzureVmManager::new(config)?;
-    manager.delete_resource_group().await?;
-
-    Ok(())
-}
-
 fn handle_mcp_command(cmd: McpCommands) {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let transport = match cmd {
+        McpCommands::Chat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+        McpCommands::AiChat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+        McpCommands::Exec(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+    };
 
-    match cmd {
-        McpCommands::Chat(args) => {
-            runtime.block_on(async {
-                let transport = parse_transport(args.url, args.command);
-                if let Err(e) = mcp_client::interactive_chat(transport).await {
-                    eprintln!("❌ MCP chat error: {}", e);
-                    std::process::exit(1);
-                }
-            });
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+
+    let result = rt.block_on(async {
+        match cmd {
+            McpCommands::Chat(_) => mcp_client::interactive_chat(transport).await,
+            McpCommands::AiChat(_) => mcp_client::natural_language_chat(transport).await,
+            McpCommands::Exec(args) => {
+                mcp_client::execute_command(transport, args.tool, args.args).await
+            }
         }
-        McpCommands::Exec(args) => {
-            runtime.block_on(async {
-                let transport = parse_transport(args.url, args.command);
-                if let Err(e) = mcp_client::execute_command(transport, args.tool, args.args).await {
-                    eprintln!("❌ MCP execution error: {}", e);
-                    std::process::exit(1);
-                }
-            });
-        }
+    });
+
+    if let Err(e) = result {
+        eprintln!("❌ MCP command error: {}", e);
+        std::process::exit(1);
     }
 }
 

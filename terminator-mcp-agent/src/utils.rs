@@ -5,6 +5,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use terminator::{AutomationError, Desktop, UIElement};
+use tokio::sync::Mutex;
 use tracing::{warn, Level};
 use tracing_subscriber::EnvFilter;
 
@@ -31,6 +32,8 @@ pub struct DesktopWrapper {
     pub desktop: Arc<Desktop>,
     #[serde(skip)]
     pub tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
+    #[serde(skip)]
+    pub recorder: Arc<Mutex<Option<terminator_workflow_recorder::WorkflowRecorder>>>,
 }
 
 impl Default for DesktopWrapper {
@@ -406,6 +409,10 @@ pub struct ExecuteSequenceArgs {
         description = "Whether to include detailed results from each tool execution (default: true)"
     )]
     pub include_detailed_results: Option<bool>,
+    #[schemars(
+        description = "An optional, JSON-defined parser to process the final tool output and extract structured data."
+    )]
+    pub output_parser: Option<serde_json::Value>,
 }
 
 // Keep the old structures for internal use
@@ -706,4 +713,16 @@ where
             primary_selector
         )
     }))
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RecordWorkflowArgs {
+    /// The action to perform: 'start' to begin recording, 'stop' to end and save.
+    pub action: String,
+    /// A descriptive name for the workflow being recorded. Required when starting.
+    pub workflow_name: Option<String>,
+    /// Optional file path to save the workflow. If not provided, a default path will be used.
+    pub file_path: Option<String>,
+    /// Sets the recording to a low-energy mode to reduce system load, which can help prevent lag on less powerful machines.
+    pub low_energy_mode: Option<bool>,
 }

@@ -1,12 +1,13 @@
+use crate::output_parser;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, CloseElementArgs, DelayArgs,
     EmptyArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
     GetClipboardArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
     HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
-    PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
-    SetSelectedArgs, SetToggledArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs,
-    WaitForElementArgs,
+    PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs,
+    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, ToolCall, TypeIntoElementArgs,
+    ValidateElementArgs, WaitForElementArgs,
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
@@ -23,7 +24,9 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 use terminator::{Browser, Desktop, Selector, UIElement};
-use tracing::warn;
+use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
+use tokio::sync::Mutex;
+use tracing::{info, warn};
 
 // New imports for image encoding
 use base64::{engine::general_purpose, Engine as _};
@@ -174,6 +177,7 @@ impl DesktopWrapper {
         Ok(Self {
             desktop: Arc::new(desktop),
             tool_router: Self::tool_router(),
+            recorder: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -1716,6 +1720,125 @@ impl DesktopWrapper {
     }
 
     #[tool(
+        description = "Records a user's UI interactions into a reusable workflow file. Use action: 'start' to begin recording and 'stop' to end and save the workflow. This allows a human to demonstrate a task for the AI to learn."
+    )]
+    pub async fn record_workflow(
+        &self,
+        Parameters(args): Parameters<RecordWorkflowArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut recorder_guard = self.recorder.lock().await;
+
+        match args.action.as_str() {
+            "start" => {
+                if recorder_guard.is_some() {
+                    return Err(McpError::invalid_params(
+                        "Recording is already in progress. Please stop the current recording first.",
+                        None,
+                    ));
+                }
+
+                let workflow_name = args.workflow_name.ok_or_else(|| {
+                    McpError::invalid_params(
+                        "`workflow_name` is required to start recording.",
+                        None,
+                    )
+                })?;
+
+                let config = if args.low_energy_mode.unwrap_or(false) {
+                    // This uses a config optimized for performance, which importantly disables
+                    // text input completion tracking, a feature the user found caused lag. [[memory:523310]]
+                    PerformanceMode::low_energy_config()
+                } else {
+                    WorkflowRecorderConfig::default()
+                };
+
+                let mut recorder = WorkflowRecorder::new(workflow_name.clone(), config);
+                recorder.start().await.map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to start recorder",
+                        Some(json!({ "error": e.to_string() })),
+                    )
+                })?;
+
+                *recorder_guard = Some(recorder);
+
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "record_workflow",
+                    "status": "started",
+                    "workflow_name": workflow_name,
+                    "message": "Recording started. Perform the UI actions you want to record. Call this tool again with action: 'stop' to finish."
+                }))?]))
+            }
+            "stop" => {
+                let mut recorder = recorder_guard.take().ok_or_else(|| {
+                    McpError::invalid_params(
+                        "No recording is currently in progress. Please start a recording first.",
+                        None,
+                    )
+                })?;
+
+                recorder.stop().await.map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to stop recorder",
+                        Some(json!({ "error": e.to_string() })),
+                    )
+                })?;
+
+                let workflow_name = {
+                    let workflow = recorder.workflow.lock().unwrap();
+                    workflow.name.clone()
+                };
+
+                let file_name = args.file_path.unwrap_or_else(|| {
+                    let sanitized_name = workflow_name.to_lowercase().replace(' ', "_");
+                    format!(
+                        "{}_workflow_{}.json",
+                        sanitized_name,
+                        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                    )
+                });
+
+                // Save in the system's temporary directory to ensure write permissions
+                let save_dir = std::env::temp_dir().join("terminator_workflows");
+                std::fs::create_dir_all(&save_dir).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to create workflow directory in temp folder",
+                        Some(json!({ "error": e.to_string(), "path": save_dir.to_string_lossy() })),
+                    )
+                })?;
+
+                let file_path = save_dir.join(file_name);
+
+                info!("Saving workflow to {}", file_path.display());
+
+                recorder.save(&file_path).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to save workflow",
+                        Some(
+                            json!({ "error": e.to_string(), "path": file_path.to_string_lossy() }),
+                        ),
+                    )
+                })?;
+
+                let file_content = std::fs::read_to_string(&file_path).unwrap_or_default();
+
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "record_workflow",
+                    "status": "stopped",
+                    "workflow_name": workflow_name,
+                    "message": "Recording stopped and workflow saved.",
+                    "file_path": file_path,
+                    "file_content": file_content
+                }))?]))
+            }
+            _ => Err(McpError::invalid_params(
+                "Invalid action. Must be 'start' or 'stop'.",
+                Some(json!({ "provided_action": args.action })),
+            )),
+        }
+    }
+
+    #[tool(
         description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')."
     )]
     pub async fn execute_sequence(
@@ -1847,7 +1970,7 @@ impl DesktopWrapper {
             "completed_with_errors"
         };
 
-        let summary = json!({
+        let mut summary = json!({
             "action": "execute_sequence",
             "status": final_status,
             "total_tools": sequence_items.len(),
@@ -1856,6 +1979,27 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "results": results,
         });
+
+        if let Some(parser_def) = args.output_parser {
+            match output_parser::run_output_parser(&parser_def, &summary) {
+                Ok(Some(parsed_data)) => {
+                    if let Some(obj) = summary.as_object_mut() {
+                        obj.insert("parsed_output".to_string(), parsed_data);
+                    }
+                }
+                Ok(None) => {
+                    if let Some(obj) = summary.as_object_mut() {
+                        obj.insert("parsed_output".to_string(), json!({}));
+                    }
+                    // UI tree not found, which is not an error, just means nothing to parse.
+                }
+                Err(e) => {
+                    if let Some(obj) = summary.as_object_mut() {
+                        obj.insert("parser_error".to_string(), json!(e.to_string()));
+                    }
+                }
+            }
+        }
 
         Ok(CallToolResult::success(vec![Content::json(summary)?]))
     }
@@ -1909,7 +2053,7 @@ impl DesktopWrapper {
                     "index": index,
                     "status": if is_skippable_error { "skipped" } else { "error" },
                     "duration_ms": duration_ms,
-                    "error": e.to_string(),
+                    "error": format!("{}", e),
                 });
 
                 if !is_skippable_error {
@@ -2199,6 +2343,15 @@ impl DesktopWrapper {
                     Some(json!({"error": e.to_string()})),
                 )),
             },
+            "record_workflow" => {
+                match serde_json::from_value::<RecordWorkflowArgs>(arguments.clone()) {
+                    Ok(args) => self.record_workflow(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for record_workflow",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),

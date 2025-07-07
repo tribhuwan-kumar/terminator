@@ -100,6 +100,9 @@ mod text_input_tracker_tests {
         fn minimize_window(&self) -> Result<(), AutomationError> {
             unimplemented!()
         }
+        fn maximize_window(&self) -> Result<(), AutomationError> {
+            unimplemented!()
+        }
         fn clone_box(&self) -> Box<dyn UIElementImpl> {
             Box::new(self.clone())
         }

@@ -32,6 +32,7 @@ async fn test_execute_sequence_direct() {
         items: vec![],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
+        output_parser: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -62,6 +63,7 @@ async fn test_validate_element_direct() {
 
     // Test validate_element with a non-existent element
     let args = ValidateElementArgs {
+        retries: Some(0),
         selector: "#99999999999".to_string(),
         alternative_selectors: None,
         timeout_ms: Some(100),
@@ -106,6 +108,7 @@ async fn test_execute_sequence_with_invalid_tool_stops() {
         }],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
+        output_parser: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -175,6 +178,7 @@ async fn test_continue_on_error_allows_sequence_to_proceed() {
         ],
         stop_on_error: Some(false), // Sequence-level stop is false
         include_detailed_results: Some(true),
+        output_parser: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -242,6 +246,7 @@ async fn test_execute_sequence_delays() {
         ],
         stop_on_error: Some(true),
         include_detailed_results: Some(false),
+        output_parser: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -290,6 +295,7 @@ async fn test_sequence_with_skippable_failing_group() {
         ],
         stop_on_error: Some(true), // stop_on_error is true, but the failing group is skippable
         include_detailed_results: Some(true),
+        output_parser: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await.unwrap();
@@ -345,6 +351,7 @@ async fn test_sequence_with_unskippable_failing_group_stops() {
         ],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
+        output_parser: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await.unwrap();
@@ -403,6 +410,7 @@ async fn test_stop_on_error_halts_sequence() {
         ],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
+        output_parser: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;

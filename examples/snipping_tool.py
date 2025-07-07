@@ -3,24 +3,46 @@ import terminator
 import os
 import math
 from enum import Enum
+import platform
 
 desktop = terminator.Desktop(log_level="error")
 
 
+def is_windows_11():
+    version = platform.version()
+    return platform.system() == "Windows" and int(version.split(".")[2]) >= 22000
+
+
 class SnipMode(Enum):
-    FREEFORM = "Free-form Snip"
-    RECTANGULAR = "Rectangular Snip"
-    WINDOW = "Window Snip"
-    FULL_SCREEN = "Full-screen Snip"
+    FREEFORM = ("Freeform", "Free-form Snip")
+    RECTANGULAR = ("Rectangle", "Rectangular Snip")
+    WINDOW = ("Window", "Window Snip")
+    FULL_SCREEN = ("Full screen", "Full-screen Snip")
+
+    def __init__(self, win11_label, win10_label):
+        self._win11_label = win11_label
+        self._win10_label = win10_label
+
+    @property
+    def value(self):
+        return self._win11_label if is_windows_11() else self._win10_label
 
 
 async def select_snip_mode(app_window: terminator.Locator, mode: SnipMode):
     print(f"Selecting snip mode: {mode.value}")
-    button = await app_window.locator("SplitButton:Mode").first()
-    button.click()
-    menu = desktop.locator("Menu:Context")
-    mode_button = await menu.locator(f"Name:{mode.value}").first()
-    mode_button.click()
+    if is_windows_11():
+        button = await app_window.locator("ComboBox:Snipping Mode").first()
+        options = button.list_options()
+        for option in options:
+            if option == mode.value:
+                button.select_option(option)
+                break
+    else:
+        button = await app_window.locator("SplitButton:Mode").first()
+        button.click()
+        menu = desktop.locator("Menu:Context")
+        mode_button = await menu.locator(f"Name:{mode.value}").first()
+        mode_button.click()
 
 
 async def draw_polygon(
@@ -53,13 +75,24 @@ async def draw_polygon(
 async def run_snipping_tool():
     try:
         print("Opening Snipping Tool...")
-        desktop.open_application("SnippingTool.exe")
-        await asyncio.sleep(2)
+        app = desktop.open_application("SnippingTool.exe")
 
         app_window: terminator.Locator = desktop.locator("window:Snipping Tool")
 
+        if is_windows_11():
+            toggle = await app_window.locator("Name:Capture mode").first()
+            if toggle.name() != "Capture mode set to snipping":
+                toggle.set_toggled(not toggle.is_toggled())
+
         await select_snip_mode(app_window, SnipMode.FREEFORM)
         await asyncio.sleep(1)
+
+        if is_windows_11():
+            new_screenshot_button = await app_window.locator(
+                "Name:New screenshot"
+            ).first()
+            new_screenshot_button.click()
+
         N = 100  # Number of sides for a near-circle
         screen: terminator.UIElement = await app_window.first()
         await draw_polygon(screen, 300, 300, 200, N, 1, 0.01)
@@ -84,43 +117,29 @@ async def run_snipping_tool():
         home_dir = os.path.expanduser("~")
         file_path = os.path.join(home_dir, "terminator_snip_test.png")
         file_name_edit_box.type_text(file_path)
+        file_already_exists = os.path.exists(file_path)
 
         # Find and click the Save button
-        save_dialog_ele = await save_dialog.first()
-        window_elements = save_dialog_ele.explore()
-        for child in window_elements.children:
-            if (
-                child.role == "Button"
-                and child.suggested_selector
-                and child.name == "Save"
-            ):
-                save_button = await save_dialog.locator(
-                    child.suggested_selector
-                ).first()
-                save_button.click()
-                break
+        save_button = await save_dialog.locator("Button:Save").first()
+        save_button.click()
+
+        print("save button clicked")
 
         # Handle the confirmation dialog if file exists
-        try:
-            save_dialog_ele = await save_dialog.first()
-            confirm_overwrite = save_dialog_ele.explore()
-            for child in confirm_overwrite.children:
-                if (
-                    child.role == "Window"
-                    and child.suggested_selector
-                    and "Confirm Save As" in child.text
-                ):
-                    save_button = (
-                        await save_dialog.locator(child.suggested_selector)
-                        .locator("Name:Yes")
-                        .first()
-                    )
-                    save_button.click()
-                    break
-        except:
-            pass
+        if file_already_exists:
+            confirm_overwrite = (
+                await save_dialog.locator("Window:Confirm Save As")
+                .locator("Name:Yes")
+                .first()
+            )
+            confirm_overwrite.click()
+            print("confirm overwrite clicked")
 
         print("File saved successfully!")
+
+        print("Closing Snipping Tool...")
+        app = await app_window.first()
+        app.close()
 
     except terminator.PlatformError as e:
         print(f"Platform Error: {e}")

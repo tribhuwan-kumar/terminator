@@ -1,4 +1,3 @@
-use crate::utils::init_logging;
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use rmcp::{
@@ -10,9 +9,8 @@ use rmcp::{
     ServiceExt,
 };
 use std::net::SocketAddr;
-
-pub mod server;
-pub mod utils;
+use terminator_mcp_agent::server;
+use terminator_mcp_agent::utils::init_logging;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -93,11 +91,14 @@ async fn main() -> Result<()> {
                 Default::default(),
             );
 
-            let router = axum::Router::new().nest_service("/mcp", service);
+            let router = axum::Router::new()
+                .route("/health", axum::routing::get(health_check))
+                .nest_service("/mcp", service);
             let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
 
             println!("Streamable HTTP server running on http://{}", addr);
             println!("Connect your MCP client to: http://{}/mcp", addr);
+            println!("Health check available at: http://{}/health", addr);
             println!("Press Ctrl+C to stop");
 
             axum::serve(tcp_listener, router)
@@ -111,4 +112,11 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn health_check() -> impl axum::response::IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(serde_json::json!({"status": "ok"})),
+    )
 }
