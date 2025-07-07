@@ -1633,6 +1633,48 @@ impl UIElementImpl for MacOSUIElement {
         }
     }
 
+    fn maximize_window(&self) -> Result<(), AutomationError> {
+        // On macOS, try to maximize the window containing this element
+        debug!("Maximizing window for element: {:?}", self.element.0);
+
+        // Try to find the window element
+        match self.window() {
+            Ok(Some(window)) => {
+                // Try to use the AXZoomButton action if available
+                let zoom_button_attr = AXAttribute::new(&CFString::new("AXZoomButton"));
+                if let Some(macos_window) = window.as_any().downcast_ref::<MacOSUIElement>() {
+                    if let Ok(zoom_button_value) =
+                        macos_window.element.0.attribute(&zoom_button_attr)
+                    {
+                        if let Some(zoom_button) = zoom_button_value.downcast_into::<AXUIElement>()
+                        {
+                            let press_action = CFString::new("AXPress");
+                            if zoom_button.perform_action(&press_action).is_ok() {
+                                debug!("Window maximized using AXZoomButton");
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+
+                // AXZoomButton not available or failed
+                Err(AutomationError::PlatformError(
+                    "AXZoomButton not available for window maximize".to_string(),
+                ))
+            }
+            Ok(None) => {
+                // No window found
+                Err(AutomationError::PlatformError(
+                    "No window found for maximize operation".to_string(),
+                ))
+            }
+            Err(e) => Err(AutomationError::PlatformError(format!(
+                "Failed to get window for maximize: {}",
+                e
+            ))),
+        }
+    }
+
     fn mouse_drag(
         &self,
         _start_x: f64,

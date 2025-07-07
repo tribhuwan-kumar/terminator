@@ -32,7 +32,7 @@ async def play_livestream_youtube_video(youtube_link):
     try:
         print("Opening VLC media player...")
         vlc_window = desktop.open_application(
-            "C:\\Program Files\\VideoLAN\VLC\\vlc.exe"
+            "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
         )
         await asyncio.sleep(2)
 
@@ -82,38 +82,33 @@ async def play_local_video(video_filename="my_video.mp4"):
     desktop = terminator.Desktop(log_level="error")
     try:
         print("Opening VLC media player...")
-        desktop.open_application("vlc.exe")
+        vlc_window = desktop.open_application("vlc.exe")
         await asyncio.sleep(2)
 
-        vlc_window = desktop.locator("window:VLC media player")
         print("Opening Media menu...")
-        await vlc_window.press_key("{Alt}")
-        await vlc_window.press_key("m")
+        vlc_window.press_key("{Alt}")
+        vlc_window.press_key("m")
         print("Selecting Open File...")
         try:
-            open_file_btn = desktop.locator("Name:Open File...")
-            await open_file_btn.click()
+            open_file_btn = await desktop.locator("Name:Open File...").first()
+            open_file_btn.click()
         except Exception:
-            await vlc_window.press_key("{Ctrl}o")
+            vlc_window.press_key("{Ctrl}o")
         await asyncio.sleep(1)
 
         print("Searching for specific video...")
-        file_dialog = desktop.locator("Window:Select one or more files to open")
+        file_dialog = await desktop.locator(
+            "Window:Select one or more files to open"
+        ).first()
         await asyncio.sleep(1)
-        file_name_edit_box = file_dialog.locator("role:ComboBox").locator("role:Edit")
-        await file_name_edit_box.type_text(video_filename)
+        file_name_edit_box = (
+            await file_dialog.locator("role:ComboBox").locator("role:Edit").first()
+        )
+        file_name_edit_box.type_text(video_filename)
 
-        window_elements = await desktop.locator(
-            "Name:Select one or more files to open"
-        ).explore()
-        for child in window_elements.children:
-            if (
-                child.role == "Button"
-                and child.suggested_selector
-                and child.name == "Open"
-            ):
-                open_button = file_dialog.locator(child.suggested_selector)
-                await open_button.click()
+        for child in file_dialog.children():
+            if child.role() == "Button" and child.name() == "Open":
+                child.click()
                 print("Open button clicked!")
                 break
         await asyncio.sleep(1)
@@ -122,11 +117,11 @@ async def play_local_video(video_filename="my_video.mp4"):
         print("Waiting 2 seconds before pausing...")
         await asyncio.sleep(2)
         print("Pausing video...")
-        await vlc_window.press_key(" ")
+        vlc_window.press_key(" ")
         print("Video paused. Waiting 2 seconds...")
         await asyncio.sleep(2)
         print("Resuming video...")
-        await vlc_window.press_key(" ")
+        vlc_window.press_key(" ")
         print("Video resumed!")
     except terminator.PlatformError as e:
         print(f"Platform Error: {e}")

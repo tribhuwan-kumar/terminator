@@ -302,6 +302,9 @@ pub trait UIElementImpl: Send + Sync + Debug {
     // New method to minimize the window containing the element
     fn minimize_window(&self) -> Result<(), AutomationError>;
 
+    // New method to maximize the window containing the element
+    fn maximize_window(&self) -> Result<(), AutomationError>;
+
     // Add a method to clone the box
     fn clone_box(&self) -> Box<dyn UIElementImpl>;
 
@@ -630,6 +633,10 @@ impl UIElement {
 
     pub fn minimize_window(&self) -> Result<(), AutomationError> {
         self.inner.minimize_window()
+    }
+
+    pub fn maximize_window(&self) -> Result<(), AutomationError> {
+        self.inner.maximize_window()
     }
 
     /// Get the element's name
