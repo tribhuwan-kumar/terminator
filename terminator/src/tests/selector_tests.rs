@@ -25,10 +25,21 @@ impl AppFixture {
                 Ok(app) => {
                     // Wait a bit for the app to be fully ready
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    // Maximize the window to ensure a consistent UI layout for tests
+                    if let Err(e) = app.maximize_window() {
+                        // Log a warning if maximizing fails, but don't panic the test
+                        eprintln!(
+                            "Warning: Could not maximize window for '{}': {}",
+                            app_name, e
+                        );
+                    }
                     Some(app)
                 }
                 Err(e) => {
-                    panic!("Failed to open application '{app_name}' for testing: {e}");
+                    panic!(
+                        "Failed to open application '{}' for testing: {}",
+                        app_name, e
+                    );
                 }
             }
         });
@@ -182,7 +193,7 @@ fn test_click_by_position_in_settings() {
 fn test_stable_id_across_sessions() {
     // Helper function to run the stability check on a given app
     fn check_id_stability(app_name: &str, selector: Selector, element_description: &str) {
-        println!("\n--- Testing ID stability for {app_name} ---");
+        println!("\n--- Testing ID stability for {} ---", app_name);
         let fixture = AppFixture::new(app_name);
         let desktop = fixture.desktop.clone();
         let rt = &fixture.rt;
@@ -257,6 +268,7 @@ fn test_stable_id_across_sessions() {
         "'System' button",
     );
 }
+
 #[test]
 fn test_web_id_stability() {
     println!("\n--- Testing Web ID stability (Rigorous) ---");

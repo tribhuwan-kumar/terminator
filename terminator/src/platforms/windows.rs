@@ -666,9 +666,11 @@ impl AccessibilityEngine for WindowsEngine {
                     .from_ref(root_ele)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Use the common function to generate ID
-                        match generate_element_id(e) {
+                        match generate_element_id(e)
+                            .map(|id| id.to_string().chars().take(6).collect::<String>())
+                        {
                             Ok(calculated_id) => {
-                                let matches = calculated_id.to_string() == target_id;
+                                let matches = calculated_id == target_id;
                                 if matches {
                                     debug!("Found matching element with ID: {}", calculated_id);
                                 }
@@ -1042,9 +1044,11 @@ impl AccessibilityEngine for WindowsEngine {
                     .depth(500)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Use the common function to generate ID
-                        match generate_element_id(e) {
+                        match generate_element_id(e)
+                            .map(|id| id.to_string().chars().take(6).collect::<String>())
+                        {
                             Ok(calculated_id) => {
-                                let matches = calculated_id.to_string() == target_id;
+                                let matches = calculated_id == target_id;
                                 if matches {
                                     debug!("Found matching element with ID: {}", calculated_id);
                                 }
@@ -2354,14 +2358,14 @@ fn get_element_children_with_timeout(
 
 // thread-safety
 #[derive(Clone)]
-pub struct ThreadSafeWinUIElement(Arc<uiautomation::UIElement>);
+pub(crate) struct ThreadSafeWinUIElement(pub(crate) Arc<uiautomation::UIElement>);
 
 // send and sync for wrapper
 unsafe impl Send for ThreadSafeWinUIElement {}
 unsafe impl Sync for ThreadSafeWinUIElement {}
 
 pub struct WindowsUIElement {
-    element: ThreadSafeWinUIElement,
+    pub(crate) element: ThreadSafeWinUIElement,
 }
 
 impl Debug for WindowsUIElement {
@@ -2377,7 +2381,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn id(&self) -> Option<String> {
-        Some(self.object_id().to_string())
+        Some(self.object_id().to_string().chars().take(6).collect())
     }
 
     fn role(&self) -> String {
@@ -4690,50 +4694,82 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
 }
 
 // Add this function before the WindowsUIElement implementation
-fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, AutomationError> {
-    // Get stable properties that are less likely to change
-    // Try cached versions first, fallback to live versions
-    let control_type = element
-        .get_cached_control_type()
-        .or_else(|_| element.get_control_type())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get control type: {e}")))?;
-    let name = element
-        .get_cached_name()
-        .or_else(|_| element.get_name())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get name: {e}")))?;
+pub(crate) fn generate_element_id(
+    element: &uiautomation::UIElement,
+) -> Result<usize, AutomationError> {
+    // Attempt to get stable properties first
     let automation_id = element
-        .get_cached_automation_id()
-        .or_else(|_| element.get_automation_id())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get automation ID: {e}")))?;
-    let class_name = element
-        .get_cached_classname()
-        .or_else(|_| element.get_classname())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get classname: {e}")))?;
-    let help_text = element
-        .get_cached_help_text()
-        .or_else(|_| element.get_help_text())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get help text: {e}")))?;
+        .get_automation_id()
+        .map(|s| if s.is_empty() { None } else { Some(s) })
+        .unwrap_or(None);
+    let role = element
+        .get_control_type()
+        .map(|s| if s == ControlType::Custom { None } else { Some(s) })
+        .unwrap_or(None);
+    let name = element
+        .get_name()
+        .map(|s| if s.is_empty() { None } else { Some(s) })
+        .unwrap_or(None);
 
-    // Create a stable string representation
-    let id_string = format!("{control_type}:{name}:{automation_id}:{class_name}:{help_text}");
+    // Prioritize AutomationId if available and persistent
+    if let Some(id) = automation_id {
+        if !id.is_empty() {
+            // Combine with ClassName for more stability, as AutomationId can sometimes be non-unique
+            let combined = if let Some(role) = role {
+                format!("{role}-{id}")
+            } else {
+                id
+            };
+            let hash = blake3::hash(combined.as_bytes());
+            return Ok(hash.as_bytes()[0..8]
+                .try_into()
+                .map(u64::from_le_bytes)
+                .unwrap() as usize);
+        }
+    }
 
-    // Generate a hash from the stable string
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    id_string.hash(&mut hasher);
-    let hash = hasher.finish() as usize;
+    // Fallback to a combination of other properties if AutomationId is not available
+    let mut to_hash = String::new();
+    if let Some(role) = role {
+        to_hash.push_str(&role.to_string());
+    }
+    if let Some(n) = name {
+        to_hash.push_str(&n);
+    }
 
-    Ok(hash)
+    // If still no stable properties, use bounds as a fallback for more stability
+    if to_hash.is_empty() {
+        if let Ok(rect) = element.get_bounding_rectangle() {
+            to_hash.push_str(&format!(
+                "{}:{}:{}:{}",
+                rect.get_left(),
+                rect.get_top(),
+                rect.get_width(),
+                rect.get_height()
+            ));
+        }
+    }
+
+    // As a last resort for elements with no stable identifiers, use the object's memory address.
+    // This is NOT stable across sessions, but provides a unique ID within a single session.
+    if to_hash.is_empty() {
+        let element_arc = Arc::new(element.clone());
+        let ptr = Arc::as_ptr(&element_arc);
+        return Ok(ptr as usize);
+    }
+
+    let hash = blake3::hash(to_hash.as_bytes());
+    Ok(hash.as_bytes()[0..8]
+        .try_into()
+        .map(u64::from_le_bytes)
+        .unwrap() as usize)
 }
 
 // Add this function after the generate_element_id function and before the tests module
 /// Converts a raw uiautomation::UIElement to a terminator UIElement
 pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIElement) -> UIElement {
-    let arc_element = ThreadSafeWinUIElement(Arc::new(element));
-    UIElement::new(Box::new(WindowsUIElement {
-        element: arc_element,
-    }))
+    let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
+    UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
 }
 
 // Helper function to create UIAutomation instance with proper COM initialization
