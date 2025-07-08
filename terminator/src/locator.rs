@@ -88,13 +88,12 @@ impl Locator {
             engine.find_element(&selector, root.as_ref(), Some(effective_timeout))
         })
         .await
-        .map_err(|e| AutomationError::PlatformError(format!("Task join error: {}", e)))?
+        .map_err(|e| AutomationError::PlatformError(format!("Task join error: {e}")))?
         .map_err(|e| {
             // The engine returns ElementNotFound on timeout. We convert it to a more specific Timeout error here.
             if let AutomationError::ElementNotFound(inner_msg) = e {
                 AutomationError::Timeout(format!(
-                    "Timed out after {:?} waiting for element {:?}. Original error: {}",
-                    effective_timeout, selector_string, inner_msg
+                    "Timed out after {effective_timeout:?} waiting for element {selector_string:?}. Original error: {inner_msg}"
                 ))
             } else {
                 e

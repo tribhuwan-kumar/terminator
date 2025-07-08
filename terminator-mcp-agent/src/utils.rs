@@ -493,8 +493,7 @@ pub async fn find_element_with_fallbacks(
         return match locator.first(Some(timeout_duration)).await {
             Ok(element) => Ok((element, primary_selector.to_string())),
             Err(e) => Err(terminator::AutomationError::ElementNotFound(format!(
-                "Primary selector '{}' failed: {}",
-                primary_selector, e
+                "Primary selector '{primary_selector}' failed: {e}"
             ))),
         };
     }
@@ -581,11 +580,11 @@ pub async fn find_element_with_fallbacks(
                 }
             }
             Ok(Err((selector, error))) => {
-                errors.push(format!("'{}': {}", selector, error));
+                errors.push(format!("'{selector}': {error}"));
                 completed_tasks = remaining_tasks;
             }
             Err(join_error) => {
-                errors.push(format!("Task error: {}", join_error));
+                errors.push(format!("Task error: {join_error}"));
                 completed_tasks = remaining_tasks;
             }
         }
@@ -663,7 +662,6 @@ pub struct ExportWorkflowSequenceArgs {
 /// * `timeout_ms` - The timeout for the initial element search.
 /// * `retries` - The number of times to retry the *entire find-and-act sequence*.
 /// * `action` - An async closure that takes the found `UIElement` and performs an action,
-///              returning a `Result`.
 ///
 /// # Returns
 /// A `Result` containing a tuple of the action's return value `T` and the `UIElement` on

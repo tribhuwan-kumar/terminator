@@ -46,7 +46,7 @@ enum BumpLevel {
 
 impl std::fmt::Display for BumpLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", format!("{:?}", self).to_lowercase())
+        write!(f, "{}", format!("{self:?}").to_lowercase())
     }
 }
 
@@ -219,8 +219,7 @@ fn sync_cargo_versions() -> Result<(), Box<dyn std::error::Error>> {
                     if &line_clone[range.clone()] != workspace_version.as_str() {
                         lines[i].replace_range(range, &workspace_version);
                         println!(
-                            "✅ Updated 'terminator' dependency version to {}.",
-                            workspace_version
+                            "✅ Updated 'terminator' dependency version to {workspace_version}."
                         );
                         deps_version_updated = true;
                     } else {
@@ -289,12 +288,12 @@ fn parse_version(version: &str) -> Result<(u32, u32, u32), Box<dyn std::error::E
 }
 
 fn bump_version(bump_type: &str) {
-    println!("🔄 Bumping {} version...", bump_type);
+    println!("🔄 Bumping {bump_type} version...");
 
     let current_version = match get_workspace_version() {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("❌ Failed to get current version: {}", e);
+            eprintln!("❌ Failed to get current version: {e}");
             return;
         }
     };
@@ -302,7 +301,7 @@ fn bump_version(bump_type: &str) {
     let (major, minor, patch) = match parse_version(&current_version) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("❌ Failed to parse version {}: {}", current_version, e);
+            eprintln!("❌ Failed to parse version {current_version}: {e}");
             return;
         }
     };
@@ -312,19 +311,19 @@ fn bump_version(bump_type: &str) {
         "minor" => format!("{}.{}.0", major, minor + 1),
         "major" => format!("{}.0.0", major + 1),
         _ => {
-            eprintln!("❌ Invalid bump type: {}", bump_type);
+            eprintln!("❌ Invalid bump type: {bump_type}");
             return;
         }
     };
 
-    println!("📝 {} → {}", current_version, new_version);
+    println!("📝 {current_version} → {new_version}");
 
     if let Err(e) = set_workspace_version(&new_version) {
-        eprintln!("❌ Failed to update workspace version: {}", e);
+        eprintln!("❌ Failed to update workspace version: {e}");
         return;
     }
 
-    println!("✅ Updated workspace version to {}", new_version);
+    println!("✅ Updated workspace version to {new_version}");
     sync_all_versions();
 }
 
@@ -333,19 +332,19 @@ fn sync_all_versions() {
 
     // First, sync versions within Cargo.toml
     if let Err(e) = sync_cargo_versions() {
-        eprintln!("❌ Failed to sync versions in Cargo.toml: {}", e);
+        eprintln!("❌ Failed to sync versions in Cargo.toml: {e}");
         return;
     }
 
     let workspace_version = match get_workspace_version() {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("❌ Failed to get workspace version: {}", e);
+            eprintln!("❌ Failed to get workspace version: {e}");
             return;
         }
     };
 
-    println!("📦 Workspace version: {}", workspace_version);
+    println!("📦 Workspace version: {workspace_version}");
 
     // Sync Node.js bindings
     sync_nodejs_bindings(&workspace_version);
@@ -356,14 +355,14 @@ fn sync_all_versions() {
     // Update Cargo.lock
     println!("🔒 Updating Cargo.lock...");
     if let Err(e) = run_command("cargo", &["check", "--quiet"]) {
-        eprintln!("⚠️  Warning: Failed to update Cargo.lock: {}", e);
+        eprintln!("⚠️  Warning: Failed to update Cargo.lock: {e}");
     }
 
     println!("✅ All versions synchronized!");
 }
 
 fn sync_nodejs_bindings(version: &str) {
-    println!("📦 Syncing Node.js bindings to version {}...", version);
+    println!("📦 Syncing Node.js bindings to version {version}...");
 
     let nodejs_dir = Path::new("bindings/nodejs");
     if !nodejs_dir.exists() {
@@ -373,19 +372,16 @@ fn sync_nodejs_bindings(version: &str) {
 
     // Update package.json directly
     if let Err(e) = update_package_json("bindings/nodejs/package.json", version) {
-        eprintln!(
-            "⚠️  Warning: Failed to update Node.js package.json directly: {}",
-            e
-        );
+        eprintln!("⚠️  Warning: Failed to update Node.js package.json directly: {e}");
     } else {
-        println!("✅ Updated Node.js package.json to {}", version);
+        println!("✅ Updated Node.js package.json to {version}");
     }
 
     // Run sync script if it exists
     let original_dir = match env::current_dir() {
         Ok(dir) => dir,
         Err(e) => {
-            eprintln!("❌ Could not get current directory: {}", e);
+            eprintln!("❌ Could not get current directory: {e}");
             return;
         }
     };
@@ -399,7 +395,7 @@ fn sync_nodejs_bindings(version: &str) {
         }
         // Always change back to the original directory
         if let Err(e) = env::set_current_dir(&original_dir) {
-            eprintln!("❌ Failed to restore original directory: {}", e);
+            eprintln!("❌ Failed to restore original directory: {e}");
             std::process::exit(1); // Exit if we can't get back, to avoid further errors
         }
     } else {
@@ -417,10 +413,7 @@ fn sync_mcp_agent(version: &str) {
 
     // Update main package.json
     if let Err(e) = update_package_json("terminator-mcp-agent/package.json", version) {
-        eprintln!(
-            "⚠️  Warning: Failed to update MCP agent package.json: {}",
-            e
-        );
+        eprintln!("⚠️  Warning: Failed to update MCP agent package.json: {e}");
         return;
     }
 
@@ -453,7 +446,7 @@ fn sync_mcp_agent(version: &str) {
     let original_dir = match env::current_dir() {
         Ok(dir) => dir,
         Err(e) => {
-            eprintln!("❌ Could not get current directory: {}", e);
+            eprintln!("❌ Could not get current directory: {e}");
             return;
         }
     };
@@ -466,7 +459,7 @@ fn sync_mcp_agent(version: &str) {
         }
         // Always change back to the original directory
         if let Err(e) = env::set_current_dir(&original_dir) {
-            eprintln!("❌ Failed to restore original directory: {}", e);
+            eprintln!("❌ Failed to restore original directory: {e}");
             std::process::exit(1);
         }
     }
@@ -505,7 +498,7 @@ fn show_status() {
     println!("============================");
 
     let workspace_version = get_workspace_version().unwrap_or_else(|_| "ERROR".to_string());
-    println!("📦 Workspace version: {}", workspace_version);
+    println!("📦 Workspace version: {workspace_version}");
 
     // Show package versions
     let nodejs_version = get_package_version("bindings/nodejs/package.json");
@@ -513,8 +506,8 @@ fn show_status() {
 
     println!();
     println!("Package versions:");
-    println!("  Node.js bindings: {}", nodejs_version);
-    println!("  MCP agent:        {}", mcp_version);
+    println!("  Node.js bindings: {nodejs_version}");
+    println!("  MCP agent:        {mcp_version}");
 
     // Git status
     println!();
@@ -526,7 +519,7 @@ fn show_status() {
         } else {
             println!("  ⚠️  Uncommitted changes:");
             for line in status.lines().take(5) {
-                println!("     {}", line);
+                println!("     {line}");
             }
         }
     }
@@ -550,12 +543,12 @@ fn tag_and_push() {
     let version = match get_workspace_version() {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("❌ Failed to get current version: {}", e);
+            eprintln!("❌ Failed to get current version: {e}");
             return;
         }
     };
 
-    println!("🏷️  Tagging and pushing version {}...", version);
+    println!("🏷️  Tagging and pushing version {version}...");
 
     // Check for uncommitted changes
     if let Ok(output) = Command::new("git").args(["diff", "--name-only"]).output() {
@@ -563,21 +556,21 @@ fn tag_and_push() {
         if !diff.trim().is_empty() {
             println!("⚠️  Uncommitted changes detected. Committing...");
             if let Err(e) = run_command("git", &["add", "."]) {
-                eprintln!("❌ Failed to git add: {}", e);
+                eprintln!("❌ Failed to git add: {e}");
                 return;
             }
             if let Err(e) = run_command(
                 "git",
-                &["commit", "-m", &format!("Bump version to {}", version)],
+                &["commit", "-m", &format!("Bump version to {version}")],
             ) {
-                eprintln!("❌ Failed to git commit: {}", e);
+                eprintln!("❌ Failed to git commit: {e}");
                 return;
             }
         }
     }
 
     // Create tag
-    let tag = format!("v{}", version);
+    let tag = format!("v{version}");
     if let Err(e) = run_command(
         "git",
         &[
@@ -585,33 +578,30 @@ fn tag_and_push() {
             "-a",
             &tag,
             "-m",
-            &format!("Release version {}", version),
+            &format!("Release version {version}"),
         ],
     ) {
-        eprintln!("❌ Failed to create tag: {}", e);
+        eprintln!("❌ Failed to create tag: {e}");
         return;
     }
 
     // Push changes and tag
     if let Err(e) = run_command("git", &["push", "origin", "main"]) {
-        eprintln!("❌ Failed to push changes: {}", e);
+        eprintln!("❌ Failed to push changes: {e}");
         return;
     }
 
     if let Err(e) = run_command("git", &["push", "origin", &tag]) {
-        eprintln!("❌ Failed to push tag: {}", e);
+        eprintln!("❌ Failed to push tag: {e}");
         return;
     }
 
-    println!("✅ Successfully released version {}!", version);
+    println!("✅ Successfully released version {version}!");
     println!("🔗 Check CI: https://github.com/mediar-ai/terminator/actions");
 }
 
 fn full_release(bump_type: &str) {
-    println!(
-        "🚀 Starting full release process with {} bump...",
-        bump_type
-    );
+    println!("🚀 Starting full release process with {bump_type} bump...");
     bump_version(bump_type);
     tag_and_push();
 }
@@ -657,7 +647,7 @@ fn handle_mcp_command(cmd: McpCommands) {
     });
 
     if let Err(e) = result {
-        eprintln!("❌ MCP command error: {}", e);
+        eprintln!("❌ MCP command error: {e}");
         std::process::exit(1);
     }
 }

@@ -30,8 +30,7 @@ async fn get_applications_test() -> Result<(), AutomationError> {
         });
         assert!(
             is_app_running,
-            "Application '{}' is not found in the running applications list",
-            app_name
+            "Application '{app_name}' is not found in the running applications list"
         );
     }
 
@@ -40,8 +39,7 @@ async fn get_applications_test() -> Result<(), AutomationError> {
             let output = std::process::Command::new("powershell")
                 .arg("-Command")
                 .arg(format!(
-                    "Get-WmiObject Win32_Process | Where-Object {{ $_.ProcessId -eq {} }} | ForEach-Object {{ taskkill.exe /F /PID $_.ProcessId }}",
-                    process_id
+                    "Get-WmiObject Win32_Process | Where-Object {{ $_.ProcessId -eq {process_id} }} | ForEach-Object {{ taskkill.exe /F /PID $_.ProcessId }}"
                 ))
                 .output()
                 .unwrap();

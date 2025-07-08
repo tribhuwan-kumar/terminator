@@ -15,14 +15,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Serialize UIElement directly (using our Serialize implementation)
     let json = serde_json::to_string_pretty(&root)?;
     println!("Serialized UIElement:");
-    println!("{}", json);
+    println!("{json}");
 
     println!("\n=== SerializableUIElement Round-trip ===");
     // Convert to SerializableUIElement and serialize
     let serializable = root.to_serializable();
     let serializable_json = serializable.to_json()?;
     println!("Serialized SerializableUIElement:");
-    println!("{}", serializable_json);
+    println!("{serializable_json}");
 
     // Deserialize back from JSON
     let deserialized = SerializableUIElement::from_json(&serializable_json)?;
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Serialize the collection
             let children_json = serde_json::to_string_pretty(&serializable_children)?;
             println!("Serialized children collection:");
-            println!("{}", children_json);
+            println!("{children_json}");
 
             // Deserialize the collection
             let deserialized_children: Vec<SerializableUIElement> =
@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let custom_json = custom_element.to_json()?;
     println!("Custom SerializableUIElement:");
-    println!("{}", custom_json);
+    println!("{custom_json}");
 
     // Round-trip test
     let custom_deserialized = SerializableUIElement::from_json(&custom_json)?;

@@ -97,13 +97,13 @@ impl WindowsRecorder {
             };
             let hr = CoInitializeEx(None, threading_model);
             if hr.is_err() && hr != windows::Win32::Foundation::RPC_E_CHANGED_MODE {
-                let err_msg = format!("Failed to initialize COM for new thread: {:?}", hr);
+                let err_msg = format!("Failed to initialize COM for new thread: {hr:?}");
                 error!("{}", err_msg);
                 return Err(err_msg);
             }
         }
         UIAutomation::new_direct().map_err(|e| {
-            let err_msg = format!("Failed to create UIAutomation instance directly: {}", e);
+            let err_msg = format!("Failed to create UIAutomation instance directly: {e}");
             error!("{}", err_msg);
             err_msg
         })

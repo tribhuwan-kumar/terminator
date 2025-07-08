@@ -1,4 +1,3 @@
-use serde_json;
 use terminator::{AutomationError, Desktop, Selector};
 use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -22,7 +21,7 @@ async fn main() -> Result<(), AutomationError> {
     match desktop.applications() {
         Ok(apps) => {
             let app_names: Vec<String> = apps.iter().filter_map(|app| app.name()).collect();
-            println!("Currently running applications: {:?}", app_names);
+            println!("Currently running applications: {app_names:?}");
             info!("Found {} applications", apps.len());
         }
         Err(e) => {
@@ -40,7 +39,7 @@ async fn main() -> Result<(), AutomationError> {
             println!("  Name: {:?}", attrs.name);
             println!("  Role: {}", attrs.role);
             if let Ok(pid) = cursor_app.process_id() {
-                println!("  Process ID: {}", pid);
+                println!("  Process ID: {pid}");
             }
 
             // --- Find a button within "Cursor" using locator('role:button').first() ---
@@ -65,10 +64,10 @@ async fn main() -> Result<(), AutomationError> {
                     println!("  Button Name: {:?}", button_attrs.name);
                     println!("  Button Role: {}", button_attrs.role);
                     if let Some(value) = &button_attrs.value {
-                        println!("  Button Value: {}", value);
+                        println!("  Button Value: {value}");
                     }
                     if let Some(description) = &button_attrs.description {
-                        println!("  Button Description: {}", description);
+                        println!("  Button Description: {description}");
                     }
                 }
                 Err(e) => match e {
@@ -88,7 +87,7 @@ async fn main() -> Result<(), AutomationError> {
                 match desktop.get_window_tree(pid, None, None) {
                     Ok(window_tree) => match serde_json::to_string_pretty(&window_tree) {
                         Ok(json) => {
-                            println!("Window Tree JSON:\n{}", json);
+                            println!("Window Tree JSON:\n{json}");
                         }
                         Err(e) => {
                             warn!("Failed to serialize window tree: {}", e);

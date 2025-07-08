@@ -16,7 +16,7 @@ fn start_test_server() -> (String, Arc<tiny_http::Server>) {
         }
     });
 
-    (format!("http://127.0.0.1:{}", port), server_arc)
+    (format!("http://127.0.0.1:{port}"), server_arc)
 }
 
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn test_wait_for_element_on_webpage() {
         terminator::AutomationError::Timeout(_) => {
             // This is the expected outcome
         }
-        e => panic!("Expected a Timeout error, but got {:?}", e),
+        e => panic!("Expected a Timeout error, but got {e:?}"),
     }
 
     browser_window.close().unwrap();

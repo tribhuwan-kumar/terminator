@@ -1,7 +1,7 @@
 use std::time::Duration;
 use terminator::Desktop;
 use terminator_workflow_recorder::{
-    ButtonClickEvent, TextInputCompletedEvent, TextInputMethod, WorkflowEvent, WorkflowRecorder,
+    TextInputCompletedEvent, TextInputMethod, WorkflowEvent, WorkflowRecorder,
     WorkflowRecorderConfig,
 };
 use tokio::time::sleep;
@@ -18,7 +18,7 @@ where
     match tokio::time::timeout(timeout, async {
         while let Some(event) = event_stream.next().await {
             if predicate(&event) {
-                println!("✅ {}: Found expected event.", description);
+                println!("✅ {description}: Found expected event.");
                 return Some(event);
             }
         }
@@ -27,8 +27,8 @@ where
     .await
     {
         Ok(Some(event)) => event,
-        Ok(None) => panic!("❌ {}: Stream ended before event was found.", description),
-        Err(_) => panic!("❌ {}: Timed out waiting for event.", description),
+        Ok(None) => panic!("❌ {description}: Stream ended before event was found."),
+        Err(_) => panic!("❌ {description}: Timed out waiting for event."),
     }
 }
 
@@ -43,14 +43,14 @@ where
     match tokio::time::timeout(check_duration, event_stream.next()).await {
         Ok(Some(event)) => {
             if predicate(&event) {
-                panic!("❌ {}: Unexpected event found: {:?}", description, event);
+                panic!("❌ {description}: Unexpected event found: {event:?}");
             }
             // An event we didn't care about was consumed. In a real scenario, this might need to be buffered and re-emitted.
             // For this test's purpose, we assume the unexpected event won't appear as the very next item.
         }
         _ => {
             // Timeout or stream ended, which means no immediate event was found. This is good.
-            println!("✅ {}: No unexpected event found.", description);
+            println!("✅ {description}: No unexpected event found.");
         }
     }
 }
@@ -81,7 +81,7 @@ async fn test_text_input_completion_comprehensive() -> Result<(), Box<dyn std::e
     match recorder.start().await {
         Ok(_) => println!("✅ Recording started successfully"),
         Err(e) => {
-            println!("❌ Failed to start recording: {:?}", e);
+            println!("❌ Failed to start recording: {e:?}");
             return Err(e.into());
         }
     }
@@ -135,7 +135,7 @@ async fn test_text_input_completion_comprehensive() -> Result<(), Box<dyn std::e
     match recorder.stop().await {
         Ok(_) => println!("✅ Recording stopped successfully"),
         Err(e) => {
-            println!("❌ Failed to stop recording: {:?}", e);
+            println!("❌ Failed to stop recording: {e:?}");
             return Err(e.into());
         }
     }
@@ -186,7 +186,7 @@ async fn test_text_input_completion_comprehensive() -> Result<(), Box<dyn std::e
 
     println!("📊 Event breakdown:");
     for (event_type, count) in &event_counts {
-        println!("   - {}: {}", event_type, count);
+        println!("   - {event_type}: {count}");
     }
 
     // Analyze text input completion events
@@ -236,7 +236,7 @@ async fn test_text_input_completion_comprehensive() -> Result<(), Box<dyn std::e
         .collect();
 
     assert!(
-        typed_events.len() >= 1,
+        !typed_events.is_empty(),
         "Expected at least 1 event with keystroke counts > 0, got {}",
         typed_events.len()
     );
@@ -464,7 +464,7 @@ async fn test_basic_recording_works() -> Result<(), Box<dyn std::error::Error>> 
 
     // Just verify we got some events
     assert!(
-        all_events.len() > 0,
+        !all_events.is_empty(),
         "Expected some events, got {}",
         all_events.len()
     );
@@ -603,7 +603,7 @@ async fn test_text_input_run_dialog() -> Result<(), Box<dyn std::error::Error>> 
 
     println!("📊 Event breakdown:");
     for (event_type, count) in &event_counts {
-        println!("   - {}: {}", event_type, count);
+        println!("   - {event_type}: {count}");
     }
 
     // Analyze text input completion events
@@ -641,7 +641,7 @@ async fn test_text_input_run_dialog() -> Result<(), Box<dyn std::error::Error>> 
 
     // We should have at least 1 text input completion event
     assert!(
-        text_input_events.len() >= 1,
+        !text_input_events.is_empty(),
         "Expected at least 1 text input completion event, got {}",
         text_input_events.len()
     );
@@ -680,9 +680,9 @@ async fn test_autocomplete_suggestion_selection() -> Result<(), Box<dyn std::err
         .to_string()
         .replace("\\\\?\\", ""); // Fix for Windows long paths
 
-    let url = format!("file:///{}", html_path);
+    let url = format!("file:///{html_path}");
 
-    println!("📄 Opening test page: {}", url);
+    println!("📄 Opening test page: {url}");
     let browser = desktop.open_url(&url, None)?;
     sleep(Duration::from_secs(2)).await;
 

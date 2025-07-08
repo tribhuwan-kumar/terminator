@@ -24,10 +24,7 @@ fn get_agent_binary_path() -> PathBuf {
 async fn test_mcp_client_list_tools() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
         return Ok(());
     }
@@ -72,10 +69,7 @@ async fn test_mcp_client_list_tools() -> Result<()> {
 async fn test_execute_sequence_empty() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -119,10 +113,7 @@ async fn test_execute_sequence_empty() -> Result<()> {
 async fn test_validate_element() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -162,10 +153,7 @@ async fn test_validate_element() -> Result<()> {
 async fn test_execute_sequence_with_tools() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -227,10 +215,7 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
 async fn test_execute_sequence_stop_on_error() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -285,10 +270,7 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
 async fn test_server_info() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -309,10 +291,7 @@ async fn test_server_info() -> Result<()> {
 async fn test_execute_sequence_with_delays() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -379,10 +358,7 @@ async fn test_execute_sequence_with_delays() -> Result<()> {
 async fn test_export_workflow_sequence() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
         return Ok(());
     }
@@ -558,10 +534,7 @@ async fn test_export_workflow_sequence() -> Result<()> {
 async fn test_export_workflow_sequence_minimal() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
         return Ok(());
     }
@@ -637,7 +610,7 @@ async fn test_execute_sequence_real_ui_workflow() -> Result<()> {
         }
     };
 
-    println!("Fetching workflow from: {}", workflow_url);
+    println!("Fetching workflow from: {workflow_url}");
     let response = reqwest::get(&workflow_url).await?.text().await?;
     let payload: serde_json::Value = serde_json::from_str(&response)?;
 
@@ -653,10 +626,7 @@ async fn test_execute_sequence_real_ui_workflow() -> Result<()> {
 
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
         return Ok(());
     }
