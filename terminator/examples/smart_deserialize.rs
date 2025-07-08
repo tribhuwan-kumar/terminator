@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Serialize to JSON
     let json = serde_json::to_string_pretty(&live_element)?;
     println!("\n=== Serialized JSON ===");
-    println!("{}", json);
+    println!("{json}");
 
     // Deserialize back to UIElement
     // This will find the actual element in the UI tree
@@ -41,18 +41,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\n=== Testing Element Operations ===");
             match deserialized.children() {
                 Ok(children) => println!("✅ Successfully got {} children", children.len()),
-                Err(e) => println!("❌ Failed to get children: {}", e),
+                Err(e) => println!("❌ Failed to get children: {e}"),
             }
 
             // Test bounds access
             match deserialized.bounds() {
-                Ok(bounds) => println!("✅ Bounds: {:?}", bounds),
-                Err(e) => println!("❌ Failed to get bounds: {}", e),
+                Ok(bounds) => println!("✅ Bounds: {bounds:?}"),
+                Err(e) => println!("❌ Failed to get bounds: {e}"),
             }
         }
         Err(e) => {
             println!("\n=== Deserialization Failed ===");
-            println!("Error: {}", e);
+            println!("Error: {e}");
             println!("This is expected if the element no longer exists in the UI tree");
         }
     }
@@ -81,12 +81,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Test that we can interact with it
                     match deserialized_child.bounds() {
-                        Ok(bounds) => println!("Child bounds: {:?}", bounds),
-                        Err(e) => println!("Failed to get child bounds: {}", e),
+                        Ok(bounds) => println!("Child bounds: {bounds:?}"),
+                        Err(e) => println!("Failed to get child bounds: {e}"),
                     }
                 }
                 Err(e) => {
-                    println!("❌ Failed to deserialize child: {}", e);
+                    println!("❌ Failed to deserialize child: {e}");
                 }
             }
         }
@@ -108,10 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match serde_json::from_str::<terminator::UIElement>(manual_json) {
         Ok(_) => println!("❌ Unexpectedly succeeded in deserializing non-existent element"),
-        Err(e) => println!(
-            "✅ Correctly failed to deserialize non-existent element: {}",
-            e
-        ),
+        Err(e) => println!("✅ Correctly failed to deserialize non-existent element: {e}"),
     }
 
     println!("\n=== Summary ===");

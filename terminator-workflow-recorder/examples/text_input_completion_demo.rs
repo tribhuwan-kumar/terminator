@@ -124,10 +124,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     println!("📊 RECORDING SUMMARY");
     println!("===================");
-    println!("  ⌨️  Keyboard events: {}", keyboard_count);
-    println!("  🎯 Text completion events: {}", text_completion_count);
-    println!("  🖱️  Mouse events: {}", mouse_count);
-    println!("  📋 Other events: {}", other_count);
+    println!("  ⌨️  Keyboard events: {keyboard_count}");
+    println!("  🎯 Text completion events: {text_completion_count}");
+    println!("  🖱️  Mouse events: {mouse_count}");
+    println!("  📋 Other events: {other_count}");
     println!(
         "  📈 Total events: {}",
         keyboard_count + text_completion_count + mouse_count + other_count

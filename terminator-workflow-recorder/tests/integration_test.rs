@@ -137,12 +137,12 @@ async fn test_e2e_text_input_completion() {
     }
 
     println!("📊 Event Analysis:");
-    println!("   - Keyboard events: {}", keyboard_events);
+    println!("   - Keyboard events: {keyboard_events}");
     println!(
         "   - Text input completion events: {}",
         text_input_completion_events.len()
     );
-    println!("   - Mouse events: {}", mouse_events);
+    println!("   - Mouse events: {mouse_events}");
 
     // Step 12: Verify text input completion events
     println!("\n🔍 Verifying Text Input Completion Events:");
@@ -213,7 +213,7 @@ async fn test_e2e_text_input_completion() {
         .collect::<Vec<_>>()
         .join(" ");
 
-    println!("\n📝 All captured text: '{}'", all_captured_text);
+    println!("\n📝 All captured text: '{all_captured_text}'");
 
     // Should contain some of our typed content
     assert!(
@@ -221,8 +221,7 @@ async fn test_e2e_text_input_completion() {
             || all_captured_text.contains("World")
             || all_captured_text.contains("Terminator")
             || all_captured_text.contains("line 2"),
-        "❌ Captured text doesn't contain expected content. Got: '{}'",
-        all_captured_text
+        "❌ Captured text doesn't contain expected content. Got: '{all_captured_text}'"
     );
 
     // Step 15: Clean up - Close Notepad
@@ -235,7 +234,7 @@ async fn test_e2e_text_input_completion() {
         .await
     {
         if let Err(e) = notepad_window.press_key("{Alt}{F4}") {
-            println!("⚠️  Failed to close Notepad gracefully: {}", e);
+            println!("⚠️  Failed to close Notepad gracefully: {e}");
         }
 
         // If there's a save dialog, click "Don't Save"
@@ -255,10 +254,7 @@ async fn test_e2e_text_input_completion() {
         "   - Successfully captured {} text input completion events",
         text_input_completion_events.len()
     );
-    println!(
-        "   - Successfully captured {} individual keyboard events",
-        keyboard_events
-    );
+    println!("   - Successfully captured {keyboard_events} individual keyboard events");
     println!("   - High-level semantic aggregation is working correctly!");
     println!("   - Text content verification passed");
 }
@@ -321,11 +317,11 @@ async fn test_text_input_event_latency() {
             println!("⌨️  Typing text: '{}'", &test_text);
 
             input.type_text(&test_text, true).unwrap_or_else(|e| {
-                println!("❌ Failed to type text: {}", e);
+                println!("❌ Failed to type text: {e}");
                 // std::process::exit(1);
             });
             input.press_key("{Tab}").unwrap_or_else(|e| {
-                println!("❌ Failed to press Tab: {}", e);
+                println!("❌ Failed to press Tab: {e}");
                 // std::process::exit(1);
             });
         }
@@ -383,12 +379,11 @@ async fn test_text_input_event_latency() {
     );
 
     let latency = start_time.elapsed();
-    println!("✅ Text input event latency: {:?}", latency);
+    println!("✅ Text input event latency: {latency:?}");
 
     assert!(
         latency < Duration::from_secs(2),
-        "❌ Event latency is too high: {:?}. Expected < 2s.",
-        latency
+        "❌ Event latency is too high: {latency:?}. Expected < 2s."
     );
 
     println!("\n✅ Latency Test PASSED!");

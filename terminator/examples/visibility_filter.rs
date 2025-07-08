@@ -39,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         Err(e) => {
-            println!("FAILURE: Did not find visible editor: {}", e);
+            println!("FAILURE: Did not find visible editor: {e}");
         }
     }
 
@@ -67,10 +67,7 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         Err(e) => {
-            println!(
-                "SUCCESS: Correctly failed to find non-visible editor: {}",
-                e
-            );
+            println!("SUCCESS: Correctly failed to find non-visible editor: {e}");
         }
     }
 

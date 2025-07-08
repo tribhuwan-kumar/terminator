@@ -23,7 +23,7 @@ async fn main() -> Result<(), AutomationError> {
         for (i, tree) in app_trees.iter().enumerate() {
             println!("\n----- Tree {} -----", i + 1);
             // Using debug print for a detailed view of the UINode struct.
-            println!("{:#?}", tree);
+            println!("{tree:#?}");
         }
     }
 

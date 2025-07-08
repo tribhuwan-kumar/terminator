@@ -22,7 +22,7 @@ async fn test_execute_sequence_direct() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Skipping test due to Desktop initialization failure: {}", e);
+            eprintln!("Skipping test due to Desktop initialization failure: {e}");
             return;
         }
     };
@@ -57,7 +57,7 @@ async fn test_validate_element_direct() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Skipping test due to Desktop initialization failure: {}", e);
+            eprintln!("Skipping test due to Desktop initialization failure: {e}");
             return;
         }
     };
@@ -91,7 +91,7 @@ async fn test_execute_sequence_with_invalid_tool_stops() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Skipping test due to Desktop initialization failure: {}", e);
+            eprintln!("Skipping test due to Desktop initialization failure: {e}");
             return;
         }
     };
@@ -150,7 +150,7 @@ async fn test_continue_on_error_allows_sequence_to_proceed() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Skipping test due to Desktop initialization failure: {}", e);
+            eprintln!("Skipping test due to Desktop initialization failure: {e}");
             return;
         }
     };
@@ -218,7 +218,7 @@ async fn test_execute_sequence_delays() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Skipping test due to Desktop initialization failure: {}", e);
+            eprintln!("Skipping test due to Desktop initialization failure: {e}");
             return;
         }
     };
@@ -322,8 +322,7 @@ async fn test_sequence_with_skippable_failing_group() {
 
     assert_eq!(
         parsed["status"], "completed_with_errors",
-        "Sequence should complete with errors due to the failing skippable group. Full response: {:?}",
-        parsed
+        "Sequence should complete with errors due to the failing skippable group. Full response: {parsed:?}"
     );
     assert_eq!(parsed["executed_tools"], 2);
 
@@ -401,7 +400,7 @@ async fn test_stop_on_error_halts_sequence() {
     let desktop = match DesktopWrapper::new().await {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("Skipping test due to Desktop initialization failure: {}", e);
+            eprintln!("Skipping test due to Desktop initialization failure: {e}");
             return;
         }
     };

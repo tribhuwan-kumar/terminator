@@ -28,10 +28,7 @@ impl AppFixture {
                     Some(app)
                 }
                 Err(e) => {
-                    panic!(
-                        "Failed to open application '{}' for testing: {}",
-                        app_name, e
-                    );
+                    panic!("Failed to open application '{app_name}' for testing: {e}");
                 }
             }
         });
@@ -45,13 +42,10 @@ impl Drop for AppFixture {
     fn drop(&mut self) {
         if let Some(app) = self.app.take() {
             let app_name = app.name().unwrap_or_else(|| "unknown".to_string());
-            println!("--- Tearing down test, closing '{}' ---", app_name);
+            println!("--- Tearing down test, closing '{app_name}' ---");
             if let Err(e) = app.close() {
                 // It might already be closed, so just log the error.
-                eprintln!(
-                    "Error closing application '{}' during test teardown: {}",
-                    app_name, e
-                );
+                eprintln!("Error closing application '{app_name}' during test teardown: {e}");
             }
             // Give a moment for the process to terminate
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -79,11 +73,11 @@ fn test_id_selector_finds_element() {
 
         // 2. Get the ID of the target element.
         let target_id = text_area.id().expect("Text area should have an ID.");
-        println!("Found text area with ID: {}", target_id);
+        println!("Found text area with ID: {target_id}");
         assert!(!target_id.is_empty(), "Element ID should not be empty.");
 
         // 3. Create an ID selector from the retrieved ID.
-        let id_selector_str = format!("#{}", target_id);
+        let id_selector_str = format!("#{target_id}");
         let id_selector = Selector::from(id_selector_str.as_str());
 
         // 4. Use the ID selector to find the element again.
@@ -102,7 +96,7 @@ fn test_id_selector_finds_element() {
             "The ID of the found element must match the target ID."
         );
 
-        println!("✅ Successfully found element by ID: {}", target_id);
+        println!("✅ Successfully found element by ID: {target_id}");
     });
 }
 
@@ -133,12 +127,11 @@ fn test_click_by_position_in_settings() {
         let center_x = (x + width / 2.0) as i32;
         let center_y = (y + height / 2.0) as i32;
         println!(
-            "Found 'System' button at ({}, {}). Clicking center at ({}, {})",
-            x, y, center_x, center_y
+            "Found 'System' button at ({x}, {y}). Clicking center at ({center_x}, {center_y})"
         );
 
         // 3. Create a position selector for the center point.
-        let pos_selector = Selector::from(format!("pos:{},{}", center_x, center_y).as_str());
+        let pos_selector = Selector::from(format!("pos:{center_x},{center_y}").as_str());
 
         // 4. Use the position selector to find the element and click it.
         let element_at_pos = desktop
@@ -189,7 +182,7 @@ fn test_click_by_position_in_settings() {
 fn test_stable_id_across_sessions() {
     // Helper function to run the stability check on a given app
     fn check_id_stability(app_name: &str, selector: Selector, element_description: &str) {
-        println!("\n--- Testing ID stability for {} ---", app_name);
+        println!("\n--- Testing ID stability for {app_name} ---");
         let fixture = AppFixture::new(app_name);
         let desktop = fixture.desktop.clone();
         let rt = &fixture.rt;
@@ -205,15 +198,13 @@ fn test_stable_id_across_sessions() {
                 .await
                 .unwrap_or_else(|e| {
                     panic!(
-                        "Could not find the {} in {} (first attempt): {}",
-                        element_description, app_name, e
+                        "Could not find the {element_description} in {app_name} (first attempt): {e}"
                     )
                 });
 
             let id_1 = element_1.id().expect("Element should have an ID.");
             println!(
-                "Found {} in {}. First ID: {}",
-                element_description, app_name, id_1
+                "Found {element_description} in {app_name}. First ID: {id_1}"
             );
             assert!(!id_1.is_empty(), "First element ID should not be empty.");
 
@@ -224,28 +215,24 @@ fn test_stable_id_across_sessions() {
                 .await
                 .unwrap_or_else(|e| {
                     panic!(
-                        "Could not find the {} in {} (second attempt): {}",
-                        element_description, app_name, e
+                        "Could not find the {element_description} in {app_name} (second attempt): {e}"
                     )
                 });
 
             let id_2 = element_2.id().expect("Element should have an ID.");
             println!(
-                "Found {} in {} again. Second ID: {}",
-                element_description, app_name, id_2
+                "Found {element_description} in {app_name} again. Second ID: {id_2}"
             );
             assert!(!id_2.is_empty(), "Second element ID should not be empty.");
 
             // 3. Verify that the IDs are identical.
             assert_eq!(
                 id_1, id_2,
-                "The ID for the {} in {} should be stable across sessions.",
-                element_description, app_name
+                "The ID for the {element_description} in {app_name} should be stable across sessions."
             );
 
             println!(
-                "✅ ID for {} in {} is stable.",
-                element_description, app_name
+                "✅ ID for {element_description} in {app_name} is stable."
             );
         });
     }
@@ -284,7 +271,7 @@ fn test_web_id_stability() {
                          expected_title_part: String| {
             let desktop = desktop.clone();
             async move {
-                println!("-- Checking URL: {} --", url);
+                println!("-- Checking URL: {url} --");
 
                 // 1. Use the correct open_url function to launch and navigate.
                 let app = desktop
@@ -294,7 +281,7 @@ fn test_web_id_stability() {
                 // Allow a few seconds for the browser to initialize and start navigation.
                 tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-                println!("✅ Browser opened to {}", url);
+                println!("✅ Browser opened to {url}");
 
                 // 2. RIGOROUS: Poll until the window title confirms navigation.
                 let nav_timeout = std::time::Duration::from_secs(20);
@@ -303,7 +290,7 @@ fn test_web_id_stability() {
                 while start_time.elapsed() < nav_timeout {
                     if let Some(name) = app.name() {
                         if name.contains(&expected_title_part) {
-                            println!("✅ Navigation confirmed: Window title is '{}'", name);
+                            println!("✅ Navigation confirmed: Window title is '{name}'");
                             navigated = true;
                             break;
                         }
@@ -312,8 +299,7 @@ fn test_web_id_stability() {
                 }
                 assert!(
                     navigated,
-                    "Navigation failed: Window title did not contain '{}' within timeout.",
-                    expected_title_part
+                    "Navigation failed: Window title did not contain '{expected_title_part}' within timeout."
                 );
 
                 // 3. Find the target element on the page for the first time.
@@ -324,13 +310,12 @@ fn test_web_id_stability() {
                     .await
                     .unwrap_or_else(|e| {
                         panic!(
-                            "Could not find '{}' on {} (first attempt): {}",
-                            element_description, url, e
+                            "Could not find '{element_description}' on {url} (first attempt): {e}"
                         )
                     });
 
                 let id_1 = element_1.id().expect("Element should have an ID.");
-                println!("Found '{}'. First ID: {}", element_description, id_1);
+                println!("Found '{element_description}'. First ID: {id_1}");
 
                 // 4. Find the browser's 'Reload' button and click it to refresh the page.
                 let reload_button = app
@@ -354,7 +339,7 @@ fn test_web_id_stability() {
                 while reload_start_time.elapsed() < nav_timeout {
                     if let Some(name) = app.name() {
                         if name.contains(&expected_title_part) {
-                            println!("✅ Reload confirmed: Window title is '{}'", name);
+                            println!("✅ Reload confirmed: Window title is '{name}'");
                             reloaded = true;
                             break;
                         }
@@ -363,8 +348,7 @@ fn test_web_id_stability() {
                 }
                 assert!(
                     reloaded,
-                    "Page reload failed: Window title did not contain '{}' after reload.",
-                    expected_title_part
+                    "Page reload failed: Window title did not contain '{expected_title_part}' after reload."
                 );
 
                 // 6. Find the same element again after the reload.
@@ -375,21 +359,19 @@ fn test_web_id_stability() {
                     .await
                     .unwrap_or_else(|e| {
                         panic!(
-                            "Could not find '{}' on {} (second attempt, after reload): {}",
-                            element_description, url, e
+                            "Could not find '{element_description}' on {url} (second attempt, after reload): {e}"
                         )
                     });
 
                 let id_2 = element_2.id().expect("Element should have a second ID.");
-                println!("Found '{}' again. Second ID: {}", element_description, id_2);
+                println!("Found '{element_description}' again. Second ID: {id_2}");
 
                 // 7. Assert that the IDs are identical, proving stability.
                 assert_eq!(
                     id_1, id_2,
-                    "Web element ID for '{}' should be stable after a page reload.",
-                    element_description
+                    "Web element ID for '{element_description}' should be stable after a page reload."
                 );
-                println!("✅ ID for '{}' is stable on {}.", element_description, url);
+                println!("✅ ID for '{element_description}' is stable on {url}.");
 
                 // Return the app window for closing later
                 app

@@ -178,10 +178,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::io::Write::flush(&mut std::io::stdout()).unwrap();
 
             if avg_cpu > 80.0 {
-                println!("\n⚠️  HIGH CPU: {:.1}%", avg_cpu);
+                println!("\n⚠️  HIGH CPU: {avg_cpu:.1}%");
             }
             if memory_percent > 85.0 {
-                println!("\n⚠️  HIGH MEMORY: {:.1}%", memory_percent);
+                println!("\n⚠️  HIGH MEMORY: {memory_percent:.1}%");
             }
         }
     });
@@ -227,8 +227,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Save files
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-    let workflow_filename = format!("workflow_{}.json", timestamp);
-    let performance_filename = format!("performance_{}.json", timestamp);
+    let workflow_filename = format!("workflow_{timestamp}.json");
+    let performance_filename = format!("performance_{timestamp}.json");
 
     recorder.save(&workflow_filename)?;
 
@@ -423,7 +423,7 @@ fn print_final_summary(report: &PerformanceReport, workflow_file: &str, performa
                 time,
                 event.cpu_usage,
                 match event.recorder_cpu {
-                    Some(cpu) => format!("{:.1}%", cpu),
+                    Some(cpu) => format!("{cpu:.1}%"),
                     None => "Unknown".to_string(),
                 }
             );
@@ -431,8 +431,8 @@ fn print_final_summary(report: &PerformanceReport, workflow_file: &str, performa
     }
 
     println!("\n💾 Files Saved:");
-    println!("   📝 Workflow: {}", workflow_file);
-    println!("   📊 Performance: {}", performance_file);
+    println!("   📝 Workflow: {workflow_file}");
+    println!("   📊 Performance: {performance_file}");
     println!("\n✅ Analysis complete! Check the JSON files for detailed data.");
 }
 

@@ -130,14 +130,11 @@ async fn main() -> Result<(), AutomationError> {
             }
             Err(e) => {
                 #[cfg(debug_assertions)]
-                eprintln!(
-                    "[DEBUG] Failed to get windows for app '{}': {}",
-                    app_title, e
-                );
+                eprintln!("[DEBUG] Failed to get windows for app '{app_title}': {e}");
             }
         }
 
-        println!("Application: {} (PID: {})", app_title, pid);
+        println!("Application: {app_title} (PID: {pid})");
         if window_titles.is_empty() {
             println!("  (No windows found)");
         } else {
@@ -162,16 +159,14 @@ fn get_app_info(
     #[cfg(target_os = "windows")]
     let process_name = {
         use terminator::platforms::windows::get_process_name_by_pid;
-        get_process_name_by_pid(pid as i32).unwrap_or_else(|_| format!("Unknown-{}", pid))
+        get_process_name_by_pid(pid as i32).unwrap_or_else(|_| format!("Unknown-{pid}"))
     };
 
     #[cfg(not(target_os = "windows"))]
     let process_name = format!("Process-{}", pid);
 
     // Get window/app title
-    let window_title = app
-        .name()
-        .unwrap_or_else(|| format!("Unnamed-App-{}", index));
+    let window_title = app.name().unwrap_or_else(|| format!("Unnamed-App-{index}"));
 
     Ok((pid, process_name, window_title))
 }
@@ -187,8 +182,8 @@ async fn detect_browser_tabs(desktop: &Desktop) -> Result<(), AutomationError> {
             let title = attrs.name.unwrap_or("Unknown".to_string());
 
             println!("Current browser window:");
-            println!("  PID: {}", pid);
-            println!("  Title: {}", title);
+            println!("  PID: {pid}");
+            println!("  Title: {title}");
             println!("  Role: {}", attrs.role);
 
             // Try to find all browser tabs/documents

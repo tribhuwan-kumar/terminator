@@ -29,7 +29,7 @@ async fn main() -> Result<(), AutomationError> {
                 use terminator::platforms::windows::get_process_name_by_pid;
                 let process_name =
                     get_process_name_by_pid(pid as i32).unwrap_or_else(|_| "Unknown".to_string());
-                println!("  PID {}: {} - {}", pid, process_name, name);
+                println!("  PID {pid}: {process_name} - {name}");
             }
 
             #[cfg(not(target_os = "windows"))]
@@ -48,7 +48,7 @@ async fn main() -> Result<(), AutomationError> {
                 use terminator::platforms::windows::get_process_name_by_pid;
                 let process_name =
                     get_process_name_by_pid(*pid as i32).unwrap_or_else(|_| "Unknown".to_string());
-                println!("\nBrowser found - {} (PID: {})", process_name, pid);
+                println!("\nBrowser found - {process_name} (PID: {pid})");
             }
 
             #[cfg(not(target_os = "windows"))]
@@ -77,7 +77,7 @@ async fn demonstrate_window_targeting(
         return Ok(());
     }
 
-    println!("\n  --- Window Targeting Examples for PID {} ---", pid);
+    println!("\n  --- Window Targeting Examples for PID {pid} ---");
 
     // Example 1: Get window tree by PID only (no title filter)
     println!("  1. Getting window tree by PID only...");
@@ -89,7 +89,7 @@ async fn demonstrate_window_targeting(
             );
         }
         Err(e) => {
-            println!("     ✗ Failed: {}", e);
+            println!("     ✗ Failed: {e}");
         }
     }
 
@@ -97,10 +97,7 @@ async fn demonstrate_window_targeting(
     if let Some(first_window_title) = windows.first() {
         // Extract a meaningful part of the title for targeting
         let title_part = extract_meaningful_title_part(first_window_title);
-        println!(
-            "  2. Getting window tree by PID + title filter '{}'...",
-            title_part
-        );
+        println!("  2. Getting window tree by PID + title filter '{title_part}'...");
 
         match desktop.get_window_tree(pid, Some(&title_part), None) {
             Ok(tree) => {
@@ -110,7 +107,7 @@ async fn demonstrate_window_targeting(
                 );
             }
             Err(e) => {
-                println!("     ✗ Failed: {}", e);
+                println!("     ✗ Failed: {e}");
             }
         }
     }
@@ -125,7 +122,7 @@ async fn demonstrate_window_targeting(
             );
         }
         Err(e) => {
-            println!("     ✗ Failed: {}", e);
+            println!("     ✗ Failed: {e}");
         }
     }
 
@@ -142,7 +139,7 @@ async fn demonstrate_window_targeting(
                 );
             }
             Err(e) => {
-                println!("     ✗ Title-only approach failed: {}", e);
+                println!("     ✗ Title-only approach failed: {e}");
                 println!("       (This shows why PID+title approach is more reliable)");
             }
         }

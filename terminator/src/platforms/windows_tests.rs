@@ -30,11 +30,10 @@ fn test_get_process_name_by_pid_current_process() {
         process_name
             .chars()
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_'),
-        "Process name should contain only alphanumeric characters, hyphens, and underscores: {}",
-        process_name
+        "Process name should contain only alphanumeric characters, hyphens, and underscores: {process_name}"
     );
 
-    println!("Current process name: {}", process_name);
+    println!("Current process name: {process_name}");
 }
 
 #[test]
@@ -87,9 +86,9 @@ fn test_tree_building_performance_stress_test() {
             let tree_depth = calculate_tree_depth(&tree);
 
             println!("=== Stress Test Results ===");
-            println!("Tree building time: {:?}", total_time);
-            println!("Total elements in tree: {}", element_count);
-            println!("Tree depth: {}", tree_depth);
+            println!("Tree building time: {total_time:?}");
+            println!("Total elements in tree: {element_count}");
+            println!("Tree depth: {tree_depth}");
             println!(
                 "Elements per second: {:.2}",
                 element_count as f64 / total_time.as_secs_f64()
@@ -99,14 +98,11 @@ fn test_tree_building_performance_stress_test() {
 
             // Don't make the test too strict, but it shouldn't take forever
             if total_time > std::time::Duration::from_secs(30) {
-                println!(
-                    "Warning: Tree building took longer than expected: {:?}",
-                    total_time
-                );
+                println!("Warning: Tree building took longer than expected: {total_time:?}");
             }
         }
         Err(e) => {
-            println!("Tree building failed in stress test: {}", e);
+            println!("Tree building failed in stress test: {e}");
             // Don't fail the test, just log the issue
         }
     }
@@ -148,11 +144,11 @@ fn test_get_process_name_by_pid_system_process() {
     for pid in system_pids {
         match get_process_name_by_pid(pid) {
             Ok(name) => {
-                println!("System process {}: {}", pid, name);
+                println!("System process {pid}: {name}");
                 assert!(!name.is_empty(), "System process name should not be empty");
             }
             Err(e) => {
-                println!("Could not get name for system process {}: {}", pid, e);
+                println!("Could not get name for system process {pid}: {e}");
                 // Don't fail the test as access might be restricted
             }
         }
@@ -173,11 +169,11 @@ fn test_open_regular_application() {
     let test_apps = vec!["notepad", "calc", "mspaint"];
 
     for app_name in test_apps {
-        println!("Testing application opening: {}", app_name);
+        println!("Testing application opening: {app_name}");
 
         match engine.open_application(app_name) {
             Ok(app_element) => {
-                println!("Successfully opened {}", app_name);
+                println!("Successfully opened {app_name}");
                 let attrs = app_element.attributes();
                 println!(
                     "App attributes - Role: {}, Name: {:?}",
@@ -191,10 +187,7 @@ fn test_open_regular_application() {
                 let _ = app_element.press_key("Alt+F4");
             }
             Err(e) => {
-                println!(
-                    "Could not open {}: {} (this might be expected)",
-                    app_name, e
-                );
+                println!("Could not open {app_name}: {e} (this might be expected)");
             }
         }
     }
@@ -215,11 +208,11 @@ fn test_open_uwp_application() {
     let test_apps = vec!["Microsoft Store", "Settings", "Photos"];
 
     for app_name in test_apps {
-        println!("Testing UWP application opening: {}", app_name);
+        println!("Testing UWP application opening: {app_name}");
 
         match engine.open_application(app_name) {
             Ok(app_element) => {
-                println!("Successfully opened UWP app {}", app_name);
+                println!("Successfully opened UWP app {app_name}");
                 let attrs = app_element.attributes();
                 println!(
                     "UWP app attributes - Role: {}, Name: {:?}",
@@ -233,10 +226,7 @@ fn test_open_uwp_application() {
                 let _ = app_element.press_key("Alt+F4");
             }
             Err(e) => {
-                println!(
-                    "Could not open UWP app {}: {} (this might be expected)",
-                    app_name, e
-                );
+                println!("Could not open UWP app {app_name}: {e} (this might be expected)");
             }
         }
     }
@@ -252,8 +242,7 @@ fn test_browser_title_matching() {
     assert!(is_browser, "Should detect as browser title");
     assert!(
         parts.len() >= 2,
-        "Should split browser title into parts: {:?}",
-        parts
+        "Should split browser title into parts: {parts:?}"
     );
 
     // Should contain both the page title and the browser name
@@ -275,12 +264,11 @@ fn test_browser_title_matching() {
 
     assert!(
         similarity > 0.3,
-        "Should have reasonable similarity: {}",
-        similarity
+        "Should have reasonable similarity: {similarity}"
     );
 
-    println!("Browser title parts: {:?}", parts);
-    println!("Similarity score: {:.2}", similarity);
+    println!("Browser title parts: {parts:?}");
+    println!("Similarity score: {similarity:.2}");
 }
 
 #[test]
@@ -300,15 +288,13 @@ fn test_browser_title_matching_edge_cases() {
         let (is_browser, parts) = WindowsEngine::extract_browser_info(title);
         assert_eq!(
             is_browser, expected_is_browser,
-            "Browser detection failed for: '{}', expected: {}, got: {}",
-            title, expected_is_browser, is_browser
+            "Browser detection failed for: '{title}', expected: {expected_is_browser}, got: {is_browser}"
         );
 
         if is_browser {
             assert!(
                 !parts.is_empty(),
-                "Browser title should have parts: '{}'",
-                title
+                "Browser title should have parts: '{title}'"
             );
         }
     }
@@ -341,15 +327,11 @@ fn test_similarity_calculation_edge_cases() {
         } else {
             assert!(
                 similarity >= min_expected - 0.2 && similarity <= 1.0,
-                "Similarity for '{}' vs '{}' should be around {}, got: {:.2}",
-                text1,
-                text2,
-                min_expected,
-                similarity
+                "Similarity for '{text1}' vs '{text2}' should be around {min_expected}, got: {similarity:.2}"
             );
         }
 
-        println!("'{}' vs '{}' = {:.2}", text1, text2, similarity);
+        println!("'{text1}' vs '{text2}' = {similarity:.2}");
     }
 }
 
@@ -371,8 +353,8 @@ fn test_find_best_title_match_browser_scenario() {
     assert!(is_target_browser, "Target should be detected as browser");
     assert!(is_window_browser, "Window should be detected as browser");
 
-    println!("Target parts: {:?}", target_parts);
-    println!("Window parts: {:?}", window_parts);
+    println!("Target parts: {target_parts:?}");
+    println!("Window parts: {window_parts:?}");
 
     // Test similarity between parts
     let mut max_similarity = 0.0f64;
@@ -380,15 +362,14 @@ fn test_find_best_title_match_browser_scenario() {
         for window_part in &window_parts {
             let similarity = WindowsEngine::calculate_similarity(target_part, window_part);
             max_similarity = max_similarity.max(similarity);
-            println!("'{}' vs '{}' = {:.2}", target_part, window_part, similarity);
+            println!("'{target_part}' vs '{window_part}' = {similarity:.2}");
         }
     }
 
     // Should find a good match since both contain "Chrome Web Store - Google Chrome"
     assert!(
         max_similarity > 0.6,
-        "Should find good similarity between browser titles, got: {:.2}",
-        max_similarity
+        "Should find good similarity between browser titles, got: {max_similarity:.2}"
     );
 }
 
@@ -420,8 +401,7 @@ fn test_enhanced_error_messages() {
     );
     assert!(
         browser_windows.len() >= 2,
-        "Should find multiple browser windows: {:?}",
-        browser_windows
+        "Should find multiple browser windows: {browser_windows:?}"
     );
 
     // Verify the specific windows we expect
@@ -449,7 +429,7 @@ fn test_unified_tree_api_with_config() {
     let app = match engine.open_application("calc") {
         Ok(app) => app,
         Err(e) => {
-            println!("Cannot open Calculator: {}, skipping test", e);
+            println!("Cannot open Calculator: {e}, skipping test");
             return;
         }
     };
@@ -506,9 +486,9 @@ fn test_unified_tree_api_with_config() {
     );
 
     // Fast mode should generally be faster than full mode
-    println!("Fast mode: {:?}", fast_duration);
-    println!("Full mode: {:?}", full_duration);
-    println!("Default mode: {:?}", default_duration);
+    println!("Fast mode: {fast_duration:?}");
+    println!("Full mode: {full_duration:?}");
+    println!("Default mode: {default_duration:?}");
 
     // Count elements to ensure we get reasonable results
     if let (Ok(fast_tree), Ok(full_tree), Ok(default_tree)) =
@@ -518,9 +498,9 @@ fn test_unified_tree_api_with_config() {
         let full_count = count_tree_elements(full_tree);
         let default_count = count_tree_elements(default_tree);
 
-        println!("Fast mode elements: {}", fast_count);
-        println!("Full mode elements: {}", full_count);
-        println!("Default mode elements: {}", default_count);
+        println!("Fast mode elements: {fast_count}");
+        println!("Full mode elements: {full_count}");
+        println!("Default mode elements: {default_count}");
 
         // All modes should find the same number of elements
         assert_eq!(

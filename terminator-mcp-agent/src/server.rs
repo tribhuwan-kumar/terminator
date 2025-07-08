@@ -62,7 +62,7 @@ fn build_element_info(element: &UIElement) -> Value {
     let suggested_selector = if !name.is_empty() && role != "Unknown" {
         format!("{}|{}", &role, &name)
     } else {
-        format!("#{}", id)
+        format!("#{id}")
     };
 
     json!({
@@ -174,11 +174,11 @@ fn evaluate_condition(condition_str: &str, variables: &Value) -> bool {
         if let Some(lhs_val) = variables.pointer(&pointer) {
             let is_equal = if let Some(rhs_str) = rhs_str_val {
                 // RHS is a string
-                lhs_val.as_str().map_or(false, |s| s == rhs_str)
+                lhs_val.as_str() == Some(rhs_str)
             } else if let Some(rhs_bool_str) = rhs_bool_val_str {
                 // RHS is a boolean
                 let rhs_bool = rhs_bool_str == "true";
-                lhs_val.as_bool().map_or(false, |b| b == rhs_bool)
+                lhs_val.as_bool() == Some(rhs_bool)
             } else {
                 false // Should not happen with this regex
             };
@@ -3054,10 +3054,9 @@ Your most reliable strategy is to inspect the application's UI structure *before
 *   **Selector matches wrong element:** Use numeric ID when name is empty.
 
 Contextual information:
-- The current date and time is {}.
-- Current operating system: {}.
-- Current working directory: {}.
-",
-        current_date_time, current_os, current_working_dir
+- The current date and time is {current_date_time}.
+- Current operating system: {current_os}.
+- Current working directory: {current_working_dir}.
+"
     )
 }

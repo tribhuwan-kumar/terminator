@@ -5,31 +5,29 @@ use terminator::errors::AutomationError;
 pub fn map_error(err: AutomationError) -> napi::Error {
     match err {
         AutomationError::ElementNotFound(msg) => {
-            napi::Error::new(Status::InvalidArg, format!("ELEMENT_NOT_FOUND: {}", msg))
+            napi::Error::new(Status::InvalidArg, format!("ELEMENT_NOT_FOUND: {msg}"))
         }
         AutomationError::Timeout(msg) => napi::Error::new(
             Status::GenericFailure,
-            format!("OPERATION_TIMED_OUT: {}", msg),
+            format!("OPERATION_TIMED_OUT: {msg}"),
         ),
-        AutomationError::PermissionDenied(msg) => napi::Error::new(
-            Status::GenericFailure,
-            format!("PERMISSION_DENIED: {}", msg),
-        ),
-        AutomationError::PlatformError(e) => {
-            napi::Error::new(Status::GenericFailure, format!("PLATFORM_ERROR: {}", e))
+        AutomationError::PermissionDenied(msg) => {
+            napi::Error::new(Status::GenericFailure, format!("PERMISSION_DENIED: {msg}"))
         }
-        AutomationError::UnsupportedOperation(msg) => napi::Error::new(
-            Status::InvalidArg,
-            format!("UNSUPPORTED_OPERATION: {}", msg),
-        ),
+        AutomationError::PlatformError(e) => {
+            napi::Error::new(Status::GenericFailure, format!("PLATFORM_ERROR: {e}"))
+        }
+        AutomationError::UnsupportedOperation(msg) => {
+            napi::Error::new(Status::InvalidArg, format!("UNSUPPORTED_OPERATION: {msg}"))
+        }
         AutomationError::UnsupportedPlatform(msg) => {
-            napi::Error::new(Status::InvalidArg, format!("UNSUPPORTED_PLATFORM: {}", msg))
+            napi::Error::new(Status::InvalidArg, format!("UNSUPPORTED_PLATFORM: {msg}"))
         }
         AutomationError::InvalidArgument(e) => {
-            napi::Error::new(Status::InvalidArg, format!("INVALID_ARGUMENT: {}", e))
+            napi::Error::new(Status::InvalidArg, format!("INVALID_ARGUMENT: {e}"))
         }
         AutomationError::Internal(e) => {
-            napi::Error::new(Status::GenericFailure, format!("INTERNAL_ERROR: {}", e))
+            napi::Error::new(Status::GenericFailure, format!("INTERNAL_ERROR: {e}"))
         }
     }
 }

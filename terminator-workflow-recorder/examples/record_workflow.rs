@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("     └─ Role: {}", button_event.button_role);
 
                     if let Some(ref description) = button_event.button_description {
-                        println!("     └─ Description: \"{}\"", description);
+                        println!("     └─ Description: \"{description}\"");
                     }
 
                     if let Some(ref ui_element) = button_event.metadata.ui_element {
@@ -173,8 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if let Some(ch) = kb_event.character {
                             println!(
-                                "⌨️  Keyboard {}: {}'{}' (Latency: {:?})",
-                                event_count, modifiers, ch, latency
+                                "⌨️  Keyboard {event_count}: {modifiers}'{ch}' (Latency: {latency:?})"
                             );
                         } else {
                             println!(
@@ -197,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                             if let Some(ref name) = ui_element.name() {
                                 if !name.is_empty() {
-                                    println!("     └─ Element: \"{}\"", name);
+                                    println!("     └─ Element: \"{name}\"");
                                 }
                             }
                         }
@@ -211,7 +210,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             content.clone()
                         };
-                        println!("     └─ Content: \"{}\"", preview);
+                        println!("     └─ Content: \"{preview}\"");
                     }
                 }
                 terminator_workflow_recorder::WorkflowEvent::TextSelection(selection_event) => {
@@ -226,7 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         selection_event.selected_text.clone()
                     };
 
-                    println!("     └─ Text: \"{}\"", preview);
+                    println!("     └─ Text: \"{preview}\"");
 
                     if let Some(ref ui_element) = selection_event.metadata.ui_element {
                         // Highlight the text selection element in yellow
@@ -311,7 +310,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         terminator_workflow_recorder::TextInputMethod::Mixed => "🔀 Mixed",
                     };
-                    println!("     └─ Method: {}", method_icon);
+                    println!("     └─ Method: {method_icon}");
 
                     // Show application context and highlight the input field
                     if let Some(ref ui_element) = text_input_event.metadata.ui_element {
@@ -348,11 +347,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         terminator_workflow_recorder::ApplicationSwitchMethod::StartMenu => "🔍 Start Menu",
                         terminator_workflow_recorder::ApplicationSwitchMethod::Other => "❓ Other",
                     };
-                    println!("     └─ Method: {}", method_icon);
+                    println!("     └─ Method: {method_icon}");
 
                     // Show dwell time if available
                     if let Some(dwell_time) = app_switch_event.dwell_time_ms {
-                        println!("     └─ Previous app usage: {}ms", dwell_time);
+                        println!("     └─ Previous app usage: {dwell_time}ms");
                     }
 
                     // Highlight the UI element involved in app switching (like taskbar button)
@@ -414,14 +413,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                             if let Some(ref name) = ui_element.name() {
                                 if !name.is_empty() {
-                                    println!("     └─ Element: \"{}\"", name);
+                                    println!("     └─ Element: \"{name}\"");
                                 }
                             }
 
                             // Show element text if available
                             if let Ok(text) = ui_element.text(1) {
                                 if !text.is_empty() && text.len() <= 100 {
-                                    println!("     └─ Text: \"{}\"", text);
+                                    println!("     └─ Text: \"{text}\"");
                                 }
                             }
                         }
@@ -442,7 +441,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             from_url.clone()
                         };
-                        println!("     └─ FROM URL: {}", from_display);
+                        println!("     └─ FROM URL: {from_display}");
                     }
 
                     if let Some(ref to_url) = tab_nav_event.to_url {
@@ -451,7 +450,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             to_url.clone()
                         };
-                        println!("     └─ TO URL: {}", to_display);
+                        println!("     └─ TO URL: {to_display}");
                     }
 
                     // Show FROM → TO titles clearly
@@ -461,7 +460,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             from_title.clone()
                         };
-                        println!("     └─ FROM Title: \"{}\"", from_title_display);
+                        println!("     └─ FROM Title: \"{from_title_display}\"");
                     }
 
                     if let Some(ref to_title) = tab_nav_event.to_title {
@@ -470,7 +469,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             to_title.clone()
                         };
-                        println!("     └─ TO Title: \"{}\"", to_title_display);
+                        println!("     └─ TO Title: \"{to_title_display}\"");
                     }
 
                     // print browser name
@@ -496,11 +495,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         terminator_workflow_recorder::TabNavigationMethod::LinkNewTab => "🔗 Link",
                         _ => "❓ Other",
                     };
-                    println!("     └─ Method: {}", method_icon);
+                    println!("     └─ Method: {method_icon}");
 
                     // Show page dwell time if available
                     if let Some(dwell_time) = tab_nav_event.page_dwell_time_ms {
-                        println!("     └─ Previous page time: {}ms", dwell_time);
+                        println!("     └─ Previous page time: {dwell_time}ms");
                     }
 
                     // Highlight the UI element involved in tab navigation (like tab bar, address bar)
@@ -518,7 +517,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if let Some(ref name) = ui_element.name() {
                             if !name.is_empty() {
-                                println!("     └─ Element Name: \"{}\"", name);
+                                println!("     └─ Element Name: \"{name}\"");
                             }
                         }
                     }

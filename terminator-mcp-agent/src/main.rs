@@ -70,10 +70,10 @@ async fn main() -> Result<()> {
                 .await?
                 .with_service(move || desktop.clone());
 
-            println!("SSE server running on http://{}", addr);
+            println!("SSE server running on http://{addr}");
             println!("Connect your MCP client to:");
-            println!("  SSE endpoint: http://{}/sse", addr);
-            println!("  Message endpoint: http://{}/message", addr);
+            println!("  SSE endpoint: http://{addr}/sse");
+            println!("  Message endpoint: http://{addr}/message");
             println!("Press Ctrl+C to stop");
 
             tokio::signal::ctrl_c().await?;
@@ -96,9 +96,9 @@ async fn main() -> Result<()> {
                 .nest_service("/mcp", service);
             let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
 
-            println!("Streamable HTTP server running on http://{}", addr);
-            println!("Connect your MCP client to: http://{}/mcp", addr);
-            println!("Health check available at: http://{}/health", addr);
+            println!("Streamable HTTP server running on http://{addr}");
+            println!("Connect your MCP client to: http://{addr}/mcp");
+            println!("Health check available at: http://{addr}/health");
             println!("Press Ctrl+C to stop");
 
             axum::serve(tcp_listener, router)

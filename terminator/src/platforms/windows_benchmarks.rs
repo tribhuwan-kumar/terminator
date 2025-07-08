@@ -99,7 +99,7 @@ mod performance_benchmarks {
         ];
 
         for (name, target, app_type) in test_scenarios {
-            println!("\n📊 Testing: {}", name);
+            println!("\n📊 Testing: {name}");
             println!("----------------------------------------");
 
             // Launch application/open URL with improved browser handling
@@ -118,12 +118,12 @@ mod performance_benchmarks {
                     for (browser_name, browser_cmd) in browsers {
                         match engine.open_url(target, Some(browser_cmd)) {
                             Ok(element) => {
-                                println!("  ✅ Opened in {}", browser_name);
+                                println!("  ✅ Opened in {browser_name}");
                                 opened_element = Some(element);
                                 break;
                             }
                             Err(e) => {
-                                println!("  ⚠️ {} not available: {}", browser_name, e);
+                                println!("  ⚠️ {browser_name} not available: {e}");
                                 last_error = Some(e);
                             }
                         }
@@ -135,10 +135,7 @@ mod performance_benchmarks {
                             element
                         }
                         None => {
-                            println!(
-                                "❌ Failed to open {} in any browser: {:?}",
-                                target, last_error
-                            );
+                            println!("❌ Failed to open {target} in any browser: {last_error:?}");
                             continue;
                         }
                     }
@@ -150,10 +147,7 @@ mod performance_benchmarks {
                             element
                         }
                         Err(e) => {
-                            println!(
-                                "❌ Failed to open {}: {} (app may not be installed)",
-                                target, e
-                            );
+                            println!("❌ Failed to open {target}: {e} (app may not be installed)");
                             continue;
                         }
                     }
@@ -177,7 +171,7 @@ mod performance_benchmarks {
             let pid = match app_element.process_id() {
                 Ok(pid) => pid,
                 Err(e) => {
-                    println!("❌ Could not get process ID: {}", e);
+                    println!("❌ Could not get process ID: {e}");
                     let _ = app_element.close();
                     tokio::time::sleep(Duration::from_millis(500)).await;
                     continue;
@@ -223,10 +217,10 @@ mod performance_benchmarks {
                     // Display detailed metrics
                     println!("\n  📈 Performance Metrics:");
                     println!("     Duration: {}ms", duration.as_millis());
-                    println!("     Elements Processed: {}", element_count);
-                    println!("     Memory Delta: {}MB", memory_delta);
-                    println!("     CPU Load: {}%", cpu_delta);
-                    println!("     Process CPU Time: {}ms", process_cpu_delta);
+                    println!("     Elements Processed: {element_count}");
+                    println!("     Memory Delta: {memory_delta}MB");
+                    println!("     CPU Load: {cpu_delta}%");
+                    println!("     Process CPU Time: {process_cpu_delta}ms");
                     println!(
                         "     Throughput: {:.1} elements/ms",
                         element_count as f64 / duration.as_millis() as f64
@@ -240,18 +234,18 @@ mod performance_benchmarks {
                         cpu_delta,
                         app_type,
                     );
-                    println!("     Performance Rating: {}", performance_rating);
+                    println!("     Performance Rating: {performance_rating}");
 
                     // Add complexity assessment
                     let complexity_rating = assess_complexity(element_count);
-                    println!("     Complexity Level: {}", complexity_rating);
+                    println!("     Complexity Level: {complexity_rating}");
 
                     // Add CPU efficiency assessment
                     let cpu_efficiency = assess_cpu_efficiency(cpu_delta, element_count);
-                    println!("     CPU Efficiency: {}", cpu_efficiency);
+                    println!("     CPU Efficiency: {cpu_efficiency}");
                 }
                 Err(e) => {
-                    println!("❌ Failed: {}", e);
+                    println!("❌ Failed: {e}");
                     continue;
                 }
             }
@@ -260,8 +254,8 @@ mod performance_benchmarks {
             println!("  🔄 Closing application...");
             let close_result = close_application_with_retry(&app_element, app_type).await;
             match close_result {
-                Ok(method) => println!("  ✅ Closed successfully using: {}", method),
-                Err(e) => println!("  ⚠️ Close failed: {}", e),
+                Ok(method) => println!("  ✅ Closed successfully using: {method}"),
+                Err(e) => println!("  ⚠️ Close failed: {e}"),
             }
 
             tokio::time::sleep(Duration::from_millis(1000)).await; // Longer cleanup wait
@@ -281,7 +275,7 @@ mod performance_benchmarks {
         // Try the built-in close method first
         match app_element.close() {
             Ok(_) => return Ok("UIElement.close()".to_string()),
-            Err(e) => println!("    ⚠️ UIElement.close() failed: {}", e),
+            Err(e) => println!("    ⚠️ UIElement.close() failed: {e}"),
         }
 
         // For browsers, try specific close methods

@@ -1,5 +1,4 @@
 use std::time::{Duration, Instant};
-use sysinfo;
 use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio_stream::StreamExt;
 
@@ -57,7 +56,7 @@ mod tests {
                     sample_count += 1;
 
                     if sample_count % 50 == 0 {
-                        println!("📊 CPU: {:.1}%, Memory: {} KB", cpu_percent, memory_kb);
+                        println!("📊 CPU: {cpu_percent:.1}%, Memory: {memory_kb} KB");
                     }
                 }
                 thread::sleep(Duration::from_millis(100)); // Sample every 100ms
@@ -102,15 +101,13 @@ mod tests {
 
                                     for (i, ch) in slow_text.chars().enumerate() {
                                         let char_start = Instant::now();
-                                        if let Err(_) =
-                                            text_element.type_text(&ch.to_string(), false)
-                                        {
-                                            println!("⚠️ Type error at char {}", i);
+                                        if text_element.type_text(&ch.to_string(), false).is_err() {
+                                            println!("⚠️ Type error at char {i}");
                                         }
                                         let char_duration = char_start.elapsed();
 
                                         if char_duration > Duration::from_millis(50) {
-                                            println!("🐌 SLOW char {}: {:?}", ch, char_duration);
+                                            println!("🐌 SLOW char {ch}: {char_duration:?}");
                                         }
 
                                         tokio::time::sleep(Duration::from_millis(150)).await;
@@ -131,15 +128,13 @@ mod tests {
 
                                     for (i, ch) in medium_text.chars().enumerate() {
                                         let char_start = Instant::now();
-                                        if let Err(_) =
-                                            text_element.type_text(&ch.to_string(), false)
-                                        {
-                                            println!("⚠️ Type error at char {}", i);
+                                        if text_element.type_text(&ch.to_string(), false).is_err() {
+                                            println!("⚠️ Type error at char {i}");
                                         }
                                         let char_duration = char_start.elapsed();
 
                                         if char_duration > Duration::from_millis(30) {
-                                            println!("⚡ SLOW char {}: {:?}", ch, char_duration);
+                                            println!("⚡ SLOW char {ch}: {char_duration:?}");
                                         }
 
                                         tokio::time::sleep(Duration::from_millis(80)).await;
@@ -161,10 +156,8 @@ mod tests {
 
                                     for (i, ch) in fast_text.chars().enumerate() {
                                         let char_start = Instant::now();
-                                        if let Err(_) =
-                                            text_element.type_text(&ch.to_string(), false)
-                                        {
-                                            println!("⚠️ Type error at char {}", i);
+                                        if text_element.type_text(&ch.to_string(), false).is_err() {
+                                            println!("⚠️ Type error at char {i}");
                                         }
                                         let char_duration = char_start.elapsed();
 
@@ -172,8 +165,7 @@ mod tests {
                                             slow_chars += 1;
                                             if char_duration > Duration::from_millis(100) {
                                                 println!(
-                                                    "🔥 VERY SLOW char {}: {:?}",
-                                                    ch, char_duration
+                                                    "🔥 VERY SLOW char {ch}: {char_duration:?}"
                                                 );
                                             }
                                         }
@@ -201,18 +193,13 @@ mod tests {
 
                                     for (i, ch) in burst_text.chars().enumerate() {
                                         let char_start = Instant::now();
-                                        if let Err(_) =
-                                            text_element.type_text(&ch.to_string(), false)
-                                        {
-                                            println!("⚠️ Type error at char {}", i);
+                                        if text_element.type_text(&ch.to_string(), false).is_err() {
+                                            println!("⚠️ Type error at char {i}");
                                         }
                                         let char_duration = char_start.elapsed();
 
                                         if char_duration > Duration::from_millis(15) {
-                                            println!(
-                                                "💥 SLOW burst char {}: {:?}",
-                                                ch, char_duration
-                                            );
+                                            println!("💥 SLOW burst char {ch}: {char_duration:?}");
                                         }
 
                                         // Burst pattern: 10 fast chars, then pause
@@ -234,17 +221,17 @@ mod tests {
                                     println!("\n✅ All typing performance tests completed!");
                                 }
                                 Err(e) => {
-                                    println!("❌ Could not find text editor: {}", e);
+                                    println!("❌ Could not find text editor: {e}");
                                 }
                             }
                         }
                         Err(e) => {
-                            println!("❌ Failed to open Notepad: {}", e);
+                            println!("❌ Failed to open Notepad: {e}");
                         }
                     }
                 }
                 Err(e) => {
-                    println!("❌ Failed to initialize Terminator: {}", e);
+                    println!("❌ Failed to initialize Terminator: {e}");
                 }
             }
         });
@@ -268,19 +255,16 @@ mod tests {
                         total_keystroke_processing_time += processing_time;
 
                         if processing_time > Duration::from_millis(10) {
-                            println!("🐌 SLOW keyboard event processing: {:?}", processing_time);
+                            println!("🐌 SLOW keyboard event processing: {processing_time:?}");
                         }
 
                         if keyboard_events % 50 == 0 {
-                            println!("⌨️ Processed {} keyboard events", keyboard_events);
+                            println!("⌨️ Processed {keyboard_events} keyboard events");
                         }
                     }
                     WorkflowEvent::TextInputCompleted(_) => {
                         text_completion_events += 1;
-                        println!(
-                            "🔥 TEXT COMPLETION EVENT! (Total: {})",
-                            text_completion_events
-                        );
+                        println!("🔥 TEXT COMPLETION EVENT! (Total: {text_completion_events})");
                     }
                     _ => {}
                 }
@@ -312,13 +296,13 @@ mod tests {
         // DETAILED PERFORMANCE RESULTS
         println!("\n🎯 TYPING PERFORMANCE & CPU LOAD RESULTS:");
         println!("{}", "=".repeat(80));
-        println!("  ⏱️  Total Test Duration: {:?}", total_duration);
+        println!("  ⏱️  Total Test Duration: {total_duration:?}");
         println!("  📊 Events Captured:");
-        println!("    📈 Total Events: {}", event_count);
-        println!("    ⌨️  Keyboard Events: {}", keyboard_events);
-        println!("    📝 Text Completions: {}", text_completion_events);
+        println!("    📈 Total Events: {event_count}");
+        println!("    ⌨️  Keyboard Events: {keyboard_events}");
+        println!("    📝 Text Completions: {text_completion_events}");
         println!("  🖥️  System Performance:");
-        println!("    🔥 Peak CPU Usage: {:.1}%", max_cpu_percent);
+        println!("    🔥 Peak CPU Usage: {max_cpu_percent:.1}%");
         println!(
             "    🧠 Peak Memory Usage: {} KB ({:.1} MB)",
             max_memory_kb,
@@ -328,11 +312,8 @@ mod tests {
         if keyboard_events > 0 {
             let avg_processing_time = total_keystroke_processing_time / keyboard_events as u32;
             println!("  ⌨️  Keyboard Performance:");
-            println!("    ⚡ Average Processing Time: {:?}", avg_processing_time);
-            println!(
-                "    📊 Total Processing Time: {:?}",
-                total_keystroke_processing_time
-            );
+            println!("    ⚡ Average Processing Time: {avg_processing_time:?}");
+            println!("    📊 Total Processing Time: {total_keystroke_processing_time:?}");
             println!(
                 "    💾 Memory per Keystroke: {:.1} KB",
                 max_memory_kb as f64 / keyboard_events as f64
@@ -349,40 +330,27 @@ mod tests {
         // Performance analysis and optimization recommendations
         println!("\n📈 TYPING LAG ANALYSIS:");
         if max_cpu_percent > 50.0 {
-            println!(
-                "🔥 HIGH CPU USAGE: {:.1}% - This could cause typing lag!",
-                max_cpu_percent
-            );
+            println!("🔥 HIGH CPU USAGE: {max_cpu_percent:.1}% - This could cause typing lag!");
             println!(
                 "💡 RECOMMENDATION: Optimize UI element capture or reduce monitoring frequency"
             );
         } else if max_cpu_percent > 25.0 {
-            println!(
-                "⚠️ MODERATE CPU USAGE: {:.1}% - Watch for typing lag",
-                max_cpu_percent
-            );
+            println!("⚠️ MODERATE CPU USAGE: {max_cpu_percent:.1}% - Watch for typing lag");
         } else {
-            println!(
-                "✅ LOW CPU USAGE: {:.1}% - Good performance",
-                max_cpu_percent
-            );
+            println!("✅ LOW CPU USAGE: {max_cpu_percent:.1}% - Good performance");
         }
 
         if keyboard_events > 0 {
             let avg_ms = total_keystroke_processing_time.as_millis() / keyboard_events as u128;
             if avg_ms > 10 {
                 println!(
-                    "🐌 SLOW KEYSTROKE PROCESSING: {}ms average - This causes typing lag!",
-                    avg_ms
+                    "🐌 SLOW KEYSTROKE PROCESSING: {avg_ms}ms average - This causes typing lag!"
                 );
                 println!("💡 RECOMMENDATION: Optimize keyboard event handling pipeline");
             } else if avg_ms > 5 {
-                println!(
-                    "⚠️ MODERATE processing time: {}ms average per keystroke",
-                    avg_ms
-                );
+                println!("⚠️ MODERATE processing time: {avg_ms}ms average per keystroke");
             } else {
-                println!("✅ FAST keystroke processing: {}ms average", avg_ms);
+                println!("✅ FAST keystroke processing: {avg_ms}ms average");
             }
         }
 
@@ -393,14 +361,10 @@ mod tests {
         };
         if memory_efficiency > 1000.0 {
             println!(
-                "🧠 HIGH MEMORY per keystroke: {:.1} KB - Consider optimization",
-                memory_efficiency
+                "🧠 HIGH MEMORY per keystroke: {memory_efficiency:.1} KB - Consider optimization"
             );
         } else {
-            println!(
-                "✅ GOOD memory efficiency: {:.1} KB per keystroke",
-                memory_efficiency
-            );
+            println!("✅ GOOD memory efficiency: {memory_efficiency:.1} KB per keystroke");
         }
 
         // Performance assertions

@@ -27,8 +27,8 @@ async fn main() -> Result<(), AutomationError> {
 
     // Print the JSON tree using serde_json
     match serde_json::to_string_pretty(&tree) {
-        Ok(json_str) => println!("{}", json_str),
-        Err(e) => eprintln!("Failed to serialize tree to JSON: {}", e),
+        Ok(json_str) => println!("{json_str}"),
+        Err(e) => eprintln!("Failed to serialize tree to JSON: {e}"),
     }
 
     Ok(())
