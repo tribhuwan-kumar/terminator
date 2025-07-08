@@ -362,7 +362,7 @@ pub struct ActivateElementArgs {
     pub retries: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
 pub struct ToolCall {
     #[schemars(description = "The name of the tool to be executed.")]
     pub tool_name: String,
@@ -395,6 +395,12 @@ pub struct SequenceStep {
     pub steps: Option<Vec<ToolCall>>,
     #[schemars(description = "Whether the group is skippable on error (for grouped steps)")]
     pub skippable: Option<bool>,
+    #[schemars(
+        description = "An optional condition to determine if this step should run. e.g., '{{var}} == true'"
+    )]
+    pub condition: Option<String>,
+    #[schemars(description = "Number of times to retry this step or group on failure.")]
+    pub retries: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -403,6 +409,10 @@ pub struct ExecuteSequenceArgs {
         description = "Array of steps to execute. Each step can be either a single tool (with tool_name and arguments) or a group (with group_name and steps)."
     )]
     pub items: Vec<SequenceStep>,
+    #[schemars(
+        description = "A key-value map of variables to be substituted into step arguments and conditions."
+    )]
+    pub variables: Option<serde_json::Value>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
     #[schemars(

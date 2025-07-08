@@ -56,3 +56,6 @@ tower-http = { version = "0.6.2", features = ["cors", "limit"] }
 # Workflow recorder dependencies
 chrono = "0.4"
 ctrlc = "3.4"
+
+
+regex = "1.10.5"

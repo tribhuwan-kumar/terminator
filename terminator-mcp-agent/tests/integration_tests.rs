@@ -33,6 +33,7 @@ async fn test_execute_sequence_direct() {
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
         output_parser: None,
+        variables: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -105,10 +106,13 @@ async fn test_execute_sequence_with_invalid_tool_stops() {
             group_name: None,
             steps: None,
             skippable: None,
+            condition: None,
+            retries: None,
         }],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
         output_parser: None,
+        variables: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -162,6 +166,8 @@ async fn test_continue_on_error_allows_sequence_to_proceed() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
             SequenceStep {
                 tool_name: Some("validate_element".to_string()),
@@ -174,11 +180,14 @@ async fn test_continue_on_error_allows_sequence_to_proceed() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
         ],
         stop_on_error: Some(false), // Sequence-level stop is false
         include_detailed_results: Some(true),
         output_parser: None,
+        variables: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -230,6 +239,8 @@ async fn test_execute_sequence_delays() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
             SequenceStep {
                 tool_name: Some("validate_element".to_string()),
@@ -242,11 +253,14 @@ async fn test_execute_sequence_delays() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
         ],
         stop_on_error: Some(true),
         include_detailed_results: Some(false),
         output_parser: None,
+        variables: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;
@@ -281,6 +295,8 @@ async fn test_sequence_with_skippable_failing_group() {
                 arguments: None,
                 continue_on_error: None,
                 delay_ms: None,
+                condition: None,
+                retries: None,
             },
             // A regular successful tool that should be executed
             SequenceStep {
@@ -291,11 +307,14 @@ async fn test_sequence_with_skippable_failing_group() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
         ],
         stop_on_error: Some(true), // stop_on_error is true, but the failing group is skippable
         include_detailed_results: Some(true),
         output_parser: None,
+        variables: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await.unwrap();
@@ -337,6 +356,8 @@ async fn test_sequence_with_unskippable_failing_group_stops() {
                 arguments: None,
                 continue_on_error: None,
                 delay_ms: None,
+                condition: None,
+                retries: None,
             },
             // This tool should NOT be executed
             SequenceStep {
@@ -347,11 +368,14 @@ async fn test_sequence_with_unskippable_failing_group_stops() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
         ],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
         output_parser: None,
+        variables: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await.unwrap();
@@ -394,6 +418,8 @@ async fn test_stop_on_error_halts_sequence() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
             SequenceStep {
                 tool_name: Some("validate_element".to_string()),
@@ -406,11 +432,14 @@ async fn test_stop_on_error_halts_sequence() {
                 group_name: None,
                 steps: None,
                 skippable: None,
+                condition: None,
+                retries: None,
             },
         ],
         stop_on_error: Some(true),
         include_detailed_results: Some(true),
         output_parser: None,
+        variables: None,
     };
 
     let result = desktop.execute_sequence(Parameters(args)).await;

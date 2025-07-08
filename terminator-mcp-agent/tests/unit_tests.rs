@@ -14,10 +14,13 @@ fn test_execute_sequence_args_serialization() {
             group_name: None,
             steps: None,
             skippable: None,
+            condition: None,
+            retries: None,
         }],
         stop_on_error: Some(false),
         include_detailed_results: Some(true),
         output_parser: None,
+        variables: None,
     };
 
     let json = serde_json::to_string(&args).unwrap();

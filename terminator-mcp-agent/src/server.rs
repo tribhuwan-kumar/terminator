@@ -11,6 +11,7 @@ use crate::utils::{
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
+use regex::Regex;
 use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
@@ -104,6 +105,111 @@ fn build_element_not_found_error(
     });
 
     McpError::resource_not_found("Element not found", Some(error_payload))
+}
+
+/// Substitutes `{{variable}}` placeholders in a JSON value.
+fn substitute_variables(args: &mut Value, variables: &Value) {
+    match args {
+        Value::Object(map) => {
+            for (_, value) in map {
+                substitute_variables(value, variables);
+            }
+        }
+        Value::Array(arr) => {
+            for value in arr {
+                substitute_variables(value, variables);
+            }
+        }
+        Value::String(s) => {
+            let re = Regex::new(r"\{\{([a-zA-Z0-9_.-]+)\}\}").unwrap();
+            let mut new_s = s.clone();
+
+            // First, check for a full match, which allows replacing a string with any other JSON type.
+            if let Some(caps) = re.captures(s) {
+                if &format!("{{{{{}}}}}", &caps[1]) == s {
+                    let pointer = format!("/{}", &caps[1].replace('.', "/"));
+                    if let Some(replacement_val) = variables.pointer(&pointer) {
+                        *args = replacement_val.clone();
+                        return; // Value replaced, no further processing needed for this branch.
+                    }
+                }
+            }
+
+            // If not a full match, perform partial replacement, which always results in a string.
+            for cap in re.captures_iter(s) {
+                if let Some(var_name_match) = cap.get(1) {
+                    let var_name = var_name_match.as_str();
+                    let pointer = format!("/{}", var_name.replace('.', "/"));
+                    if let Some(replacement_val) = variables.pointer(&pointer) {
+                        let replacement_str = match replacement_val {
+                            Value::String(str_val) => str_val.clone(),
+                            other => other.to_string(),
+                        };
+                        new_s = new_s.replace(&cap[0], &replacement_str);
+                    }
+                }
+            }
+            *s = new_s;
+        }
+        _ => {} // Other types are left as is
+    }
+}
+
+/// Evaluates a simple condition string like `'{{var}} == "value"'`.
+/// Returns `true` if the condition is met or if the condition string is invalid.
+fn evaluate_condition(condition_str: &str, variables: &Value) -> bool {
+    // Substitute variables in the condition string first
+    let re = Regex::new(r"\{\{([a-zA-Z0-9_.-]+)\}\}").unwrap();
+    let mut substituted_cond = condition_str.to_string();
+    if let Some(caps) = re.captures(condition_str) {
+        if let Some(var_name_match) = caps.get(1) {
+            let var_name = var_name_match.as_str();
+            let pointer = format!("/{}", var_name.replace('.', "/"));
+            if let Some(value) = variables.pointer(&pointer) {
+                // When substituting, we need to be careful about types.
+                // For direct comparison, we'll format the value as a string that can be parsed back.
+                let value_str = match value {
+                    Value::String(s) => format!("'{}'", s), // Add quotes for string literals
+                    other => other.to_string(),
+                };
+                substituted_cond = substituted_cond.replace(&caps[0], &value_str);
+            } else {
+                return false; // Variable not found, condition cannot be met.
+            }
+        }
+    }
+
+    // Regex to parse 'lhs op rhs'
+    let re_op = Regex::new(r"^\s*'(.*)'\s*(==|!=)\s*'(.*)'\s*$").unwrap(); // String vs String
+    let re_op_bool = Regex::new(r"^\s*(true|false)\s*(==|!=)\s*(true|false)\s*$").unwrap(); // Bool vs Bool
+
+    if let Some(caps) = re_op.captures(&substituted_cond) {
+        let lhs = &caps[1];
+        let op = &caps[2];
+        let rhs = &caps[3];
+        return match op {
+            "==" => lhs == rhs,
+            "!=" => lhs != rhs,
+            _ => true, // Should not happen
+        };
+    }
+
+    if let Some(caps) = re_op_bool.captures(&substituted_cond) {
+        let lhs: bool = caps[1].parse().unwrap_or(false);
+        let op = &caps[2];
+        let rhs: bool = caps[3].parse().unwrap_or(false);
+        return match op {
+            "==" => lhs == rhs,
+            "!=" => lhs != rhs,
+            _ => true,
+        };
+    }
+
+    warn!(
+        "Could not parse condition: '{}'. Defaulting to true.",
+        condition_str
+    );
+    true // If parsing fails, default to running the step.
 }
 
 /// Waits for a detectable UI change after an action, like an element disappearing or focus shifting.
@@ -458,7 +564,29 @@ impl DesktopWrapper {
                 .wait(Some(std::time::Duration::from_millis(500)))
                 .await
             {
+                let current_text = updated_element.text(0).unwrap_or_default();
+                let should_clear = args.clear_before_typing.unwrap_or(true);
+                let text_matches = if should_clear {
+                    current_text == args.text_to_type
+                } else {
+                    current_text.contains(&args.text_to_type)
+                };
+
+                if !text_matches {
+                    return Err(McpError::internal_error(
+                        "Text verification failed after typing.",
+                        Some(json!({
+                            "expected_text": args.text_to_type,
+                            "actual_text": current_text,
+                            "element": build_element_info(&updated_element),
+                            "selector_used": successful_selector,
+                        })),
+                    ));
+                }
+
                 let verification = json!({
+                    "text_value_after": current_text,
+                    "text_check_passed": text_matches,
                     "element_focused": updated_element.is_focused().unwrap_or(false),
                     "element_enabled": updated_element.is_enabled().unwrap_or(false),
                     "verification_timestamp": chrono::Utc::now().to_rfc3339()
@@ -466,6 +594,13 @@ impl DesktopWrapper {
                 if let Some(obj) = result_json.as_object_mut() {
                     obj.insert("verification".to_string(), verification);
                 }
+            } else {
+                return Err(McpError::internal_error(
+                    "Failed to find element for verification after typing.",
+                    Some(json!({
+                        "selector_used": successful_selector,
+                    })),
+                ));
             }
         }
 
@@ -1849,24 +1984,25 @@ impl DesktopWrapper {
 
         let stop_on_error = args.stop_on_error.unwrap_or(true);
         let include_detailed = args.include_detailed_results.unwrap_or(true);
+        let variables = args.variables.clone().unwrap_or_else(|| json!({}));
 
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
-        for step in args.items {
-            if let Some(tool_name) = step.tool_name {
+        for step in &args.items {
+            if let Some(tool_name) = &step.tool_name {
                 // This is a single tool step
                 let tool_call = ToolCall {
-                    tool_name,
-                    arguments: step.arguments.unwrap_or(serde_json::json!({})),
+                    tool_name: tool_name.clone(),
+                    arguments: step.arguments.clone().unwrap_or(serde_json::json!({})),
                     continue_on_error: step.continue_on_error,
                     delay_ms: step.delay_ms,
                 };
                 sequence_items.push(SequenceItem::Tool { tool_call });
-            } else if let Some(group_name) = step.group_name {
+            } else if let Some(group_name) = &step.group_name {
                 // This is a group step
                 let tool_group = ToolGroup {
-                    group_name,
-                    steps: step.steps.unwrap_or_default(),
+                    group_name: group_name.clone(),
+                    steps: step.steps.clone().unwrap_or_default(),
                     skippable: step.skippable,
                 };
                 sequence_items.push(SequenceItem::Group { tool_group });
@@ -1883,80 +2019,128 @@ impl DesktopWrapper {
         let mut sequence_should_stop = false;
         let start_time = chrono::Utc::now();
 
-        for (item_index, item) in sequence_items.iter().enumerate() {
-            match item {
-                SequenceItem::Tool { tool_call } => {
-                    let (result, error_occurred) = self
-                        .execute_single_tool(tool_call, item_index, include_detailed)
-                        .await;
+        for (item_index, item) in sequence_items.iter_mut().enumerate() {
+            let (condition, retries) = {
+                let original_step = &args.items[item_index];
+                (
+                    original_step.condition.clone(),
+                    original_step.retries.unwrap_or(0),
+                )
+            };
 
-                    if result["status"] != "success" {
-                        sequence_had_errors = true;
-                    }
-
-                    if error_occurred {
-                        sequence_should_stop = true;
-                    }
-
-                    results.push(result);
-
-                    if sequence_should_stop && stop_on_error {
-                        break;
-                    }
+            // 1. Evaluate condition
+            if let Some(cond_str) = condition {
+                if !evaluate_condition(&cond_str, &variables) {
+                    info!(
+                        "Skipping step {} due to condition: {}",
+                        item_index, cond_str
+                    );
+                    results.push(json!({
+                        "index": item_index,
+                        "status": "skipped",
+                        "reason": format!("Condition not met: {}", cond_str)
+                    }));
+                    continue;
                 }
-                SequenceItem::Group { tool_group } => {
-                    let mut group_had_errors = false;
-                    let mut group_results = Vec::new();
-                    let is_skippable = tool_group.skippable.unwrap_or(false);
-                    for (step_index, tool_call) in tool_group.steps.iter().enumerate() {
+            }
+
+            // 2. Execute with retries
+            let mut final_result = json!(null);
+            let mut success = false;
+            for attempt in 0..=retries {
+                match item {
+                    SequenceItem::Tool { tool_call } => {
+                        // Substitute variables in arguments before execution
+                        substitute_variables(&mut tool_call.arguments, &variables);
+
                         let (result, error_occurred) = self
-                            .execute_single_tool(tool_call, step_index, include_detailed)
+                            .execute_single_tool(tool_call, item_index, include_detailed)
                             .await;
 
-                        group_results.push(result.clone());
-
-                        let tool_failed = result["status"] != "success";
-                        if tool_failed {
-                            group_had_errors = true;
-
-                            // A tool failed. Check if we should break out of the group.
-                            // We break if the error is fatal (error_occurred) OR if the group
-                            // is designated as skippable (meaning we abandon it on any failure).
-                            if error_occurred || is_skippable {
-                                // If the error was fatal AND the group was NOT skippable,
-                                // the entire sequence must stop.
-                                if error_occurred && !is_skippable {
-                                    sequence_should_stop = true;
-                                }
-                                break; // Exit the loop for this group's steps.
-                            }
+                        final_result = result.clone();
+                        if result["status"] == "success" {
+                            success = true;
+                            break;
                         }
-                    }
 
-                    let group_status = if group_had_errors {
-                        "partial_success"
-                    } else {
-                        "success"
-                    };
-
-                    if group_status != "success" {
+                        if error_occurred {
+                            sequence_should_stop = true;
+                        }
                         sequence_had_errors = true;
                     }
+                    SequenceItem::Group { tool_group } => {
+                        let mut group_had_errors = false;
+                        let mut group_results = Vec::new();
+                        let is_skippable = tool_group.skippable.unwrap_or(false);
 
-                    if group_had_errors && !is_skippable && stop_on_error {
-                        sequence_should_stop = true;
-                    }
+                        for (step_index, step_tool_call) in tool_group.steps.iter_mut().enumerate()
+                        {
+                            // Substitute variables in arguments before execution
+                            substitute_variables(&mut step_tool_call.arguments, &variables);
 
-                    results.push(json!({
-                        "group_name": tool_group.group_name,
-                        "status": group_status,
-                        "results": group_results
-                    }));
+                            let (result, error_occurred) = self
+                                .execute_single_tool(step_tool_call, step_index, include_detailed)
+                                .await;
 
-                    if sequence_should_stop && stop_on_error {
-                        break;
+                            group_results.push(result.clone());
+
+                            let tool_failed = result["status"] != "success";
+                            if tool_failed {
+                                group_had_errors = true;
+                                if error_occurred || is_skippable {
+                                    if error_occurred && !is_skippable {
+                                        sequence_should_stop = true;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+
+                        let group_status = if group_had_errors {
+                            "partial_success"
+                        } else {
+                            "success"
+                        };
+
+                        if group_status != "success" {
+                            sequence_had_errors = true;
+                        } else {
+                            // If the group was successful, we don't need to consider sequence_had_errors
+                        }
+
+                        if group_had_errors && !is_skippable && stop_on_error {
+                            sequence_should_stop = true;
+                        }
+
+                        final_result = json!({
+                            "group_name": &tool_group.group_name,
+                            "status": group_status,
+                            "results": group_results
+                        });
+
+                        if !group_had_errors {
+                            success = true;
+                            break; // Group succeeded, break retry loop.
+                        }
                     }
                 }
+                if success {
+                    break;
+                }
+                if attempt < retries {
+                    warn!(
+                        "Step {} failed on attempt {}/{}. Retrying...",
+                        item_index,
+                        attempt + 1,
+                        retries
+                    );
+                    tokio::time::sleep(Duration::from_millis(500)).await; // Wait before retry
+                }
+            }
+            results.push(final_result);
+
+            if sequence_should_stop && stop_on_error {
+                break;
             }
         }
 
@@ -2016,7 +2200,11 @@ impl DesktopWrapper {
             .strip_prefix("mcp_terminator-mcp-agent_")
             .unwrap_or(&tool_call.tool_name);
 
-        let tool_result = self.dispatch_tool(tool_name, &tool_call.arguments).await;
+        let arguments = tool_call.arguments.clone();
+        // The substitution is now done at the higher level in `execute_sequence`.
+        // This function now receives arguments with variables already substituted.
+
+        let tool_result = self.dispatch_tool(tool_name, &arguments).await;
 
         let (processed_result, error_occurred) = match tool_result {
             Ok(result) => {
