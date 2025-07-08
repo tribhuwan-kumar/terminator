@@ -158,58 +158,43 @@ fn substitute_variables(args: &mut Value, variables: &Value) {
 /// Evaluates a simple condition string like `'{{var}} == "value"'`.
 /// Returns `true` if the condition is met or if the condition string is invalid.
 fn evaluate_condition(condition_str: &str, variables: &Value) -> bool {
-    // Substitute variables in the condition string first
-    let re = Regex::new(r"\{\{([a-zA-Z0-9_.-]+)\}\}").unwrap();
-    let mut substituted_cond = condition_str.to_string();
+    // Regex to capture `{{variable}}`, `operator`, and `value`.
+    // It handles single-quoted strings and boolean literals (true/false) on the RHS.
+    let re =
+        Regex::new(r"^\s*\{\{([a-zA-Z0-9_.-]+)\}\}\s*(==|!=)\s*(?:'([^']*)'|(true|false))\s*$")
+            .unwrap();
+
     if let Some(caps) = re.captures(condition_str) {
-        if let Some(var_name_match) = caps.get(1) {
-            let var_name = var_name_match.as_str();
-            let pointer = format!("/{}", var_name.replace('.', "/"));
-            if let Some(value) = variables.pointer(&pointer) {
-                // When substituting, we need to be careful about types.
-                // For direct comparison, we'll format the value as a string that can be parsed back.
-                let value_str = match value {
-                    Value::String(s) => format!("'{}'", s), // Add quotes for string literals
-                    other => other.to_string(),
-                };
-                substituted_cond = substituted_cond.replace(&caps[0], &value_str);
+        let var_name = &caps[1];
+        let op = &caps[2];
+        let rhs_str_val = caps.get(3).map(|m| m.as_str());
+        let rhs_bool_val_str = caps.get(4).map(|m| m.as_str());
+
+        let pointer = format!("/{}", var_name.replace('.', "/"));
+        if let Some(lhs_val) = variables.pointer(&pointer) {
+            let is_equal = if let Some(rhs_str) = rhs_str_val {
+                // RHS is a string
+                lhs_val.as_str().map_or(false, |s| s == rhs_str)
+            } else if let Some(rhs_bool_str) = rhs_bool_val_str {
+                // RHS is a boolean
+                let rhs_bool = rhs_bool_str == "true";
+                lhs_val.as_bool().map_or(false, |b| b == rhs_bool)
             } else {
-                return false; // Variable not found, condition cannot be met.
-            }
+                false // Should not happen with this regex
+            };
+
+            return if op == "==" { is_equal } else { !is_equal };
+        } else {
+            // Variable not found in context
+            return false;
         }
-    }
-
-    // Regex to parse 'lhs op rhs'
-    let re_op = Regex::new(r"^\s*'(.*)'\s*(==|!=)\s*'(.*)'\s*$").unwrap(); // String vs String
-    let re_op_bool = Regex::new(r"^\s*(true|false)\s*(==|!=)\s*(true|false)\s*$").unwrap(); // Bool vs Bool
-
-    if let Some(caps) = re_op.captures(&substituted_cond) {
-        let lhs = &caps[1];
-        let op = &caps[2];
-        let rhs = &caps[3];
-        return match op {
-            "==" => lhs == rhs,
-            "!=" => lhs != rhs,
-            _ => true, // Should not happen
-        };
-    }
-
-    if let Some(caps) = re_op_bool.captures(&substituted_cond) {
-        let lhs: bool = caps[1].parse().unwrap_or(false);
-        let op = &caps[2];
-        let rhs: bool = caps[3].parse().unwrap_or(false);
-        return match op {
-            "==" => lhs == rhs,
-            "!=" => lhs != rhs,
-            _ => true,
-        };
     }
 
     warn!(
         "Could not parse condition: '{}'. Defaulting to true.",
         condition_str
     );
-    true // If parsing fails, default to running the step.
+    true
 }
 
 /// Waits for a detectable UI change after an action, like an element disappearing or focus shifting.
@@ -228,7 +213,7 @@ async fn wait_for_ui_change(
         return "untracked_element_clicked_fixed_delay".to_string();
     }
 
-    let original_selector = Selector::from(format!("#{}", original_element_id).as_str());
+    let original_selector = Selector::from(format!("#{original_element_id}").as_str());
 
     while start.elapsed() < timeout {
         // Check 1: Did focus change? This is often the quickest indicator.
@@ -420,7 +405,7 @@ impl DesktopWrapper {
                 let suggested_selector = if !app_name.is_empty() {
                     format!("{}|{}", &app_role, &app_name)
                 } else {
-                    format!("#{}", app_id)
+                    format!("#{app_id}")
                 };
 
                 tokio::spawn(async move {
@@ -2046,7 +2031,6 @@ impl DesktopWrapper {
 
             // 2. Execute with retries
             let mut final_result = json!(null);
-            let mut success = false;
             for attempt in 0..=retries {
                 match item {
                     SequenceItem::Tool { tool_call } => {
@@ -2059,7 +2043,6 @@ impl DesktopWrapper {
 
                         final_result = result.clone();
                         if result["status"] == "success" {
-                            success = true;
                             break;
                         }
 
@@ -2119,13 +2102,9 @@ impl DesktopWrapper {
                         });
 
                         if !group_had_errors {
-                            success = true;
                             break; // Group succeeded, break retry loop.
                         }
                     }
-                }
-                if success {
-                    break;
                 }
                 if attempt < retries {
                     warn!(
@@ -2841,7 +2820,7 @@ impl DesktopWrapper {
                     .and_then(|v| v.as_str())
                     .unwrap_or("option")
             ),
-            _ => format!("Execute {}", tool_name),
+            _ => format!("Execute {tool_name}"),
         }
     }
 
