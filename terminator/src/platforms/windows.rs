@@ -4704,37 +4704,35 @@ pub(crate) fn generate_element_id(
         .unwrap_or(None);
     let role = element
         .get_control_type()
-        .map(|s| if s == ControlType::Custom { None } else { Some(s) })
+        .map(|s| {
+            if s == ControlType::Custom {
+                None
+            } else {
+                Some(s)
+            }
+        })
         .unwrap_or(None);
     let name = element
         .get_name()
         .map(|s| if s.is_empty() { None } else { Some(s) })
         .unwrap_or(None);
+    let class_name = element
+        .get_classname()
+        .map(|s| if s.is_empty() { None } else { Some(s) })
+        .unwrap_or(None);
 
-    // Prioritize AutomationId if available and persistent
-    if let Some(id) = automation_id {
-        if !id.is_empty() {
-            // Combine with ClassName for more stability, as AutomationId can sometimes be non-unique
-            let combined = if let Some(role) = role {
-                format!("{role}-{id}")
-            } else {
-                id
-            };
-            let hash = blake3::hash(combined.as_bytes());
-            return Ok(hash.as_bytes()[0..8]
-                .try_into()
-                .map(u64::from_le_bytes)
-                .unwrap() as usize);
-        }
-    }
-
-    // Fallback to a combination of other properties if AutomationId is not available
     let mut to_hash = String::new();
+    if let Some(id) = automation_id {
+        to_hash.push_str(&id);
+    }
     if let Some(role) = role {
         to_hash.push_str(&role.to_string());
     }
     if let Some(n) = name {
         to_hash.push_str(&n);
+    }
+    if let Some(cn) = class_name {
+        to_hash.push_str(&cn);
     }
 
     // If still no stable properties, use bounds as a fallback for more stability

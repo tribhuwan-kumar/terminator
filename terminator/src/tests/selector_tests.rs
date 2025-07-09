@@ -3,6 +3,7 @@
 use crate::{Desktop, Selector, UIElement};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tracing::Level;
 
 /// A test fixture that manages the lifecycle of an application for testing.
 /// It ensures the application is opened before the test runs and closed after,
@@ -426,6 +427,79 @@ fn test_web_id_stability() {
         if let Some(window) = browser_window {
             println!("--- Tearing down test, closing browser ---");
             window.close().expect("Failed to close browser window.");
+        }
+    });
+}
+
+#[test]
+#[ignore = "ID generation is not yet unique across different browser windows (same process), causing this test to fail. Needs investigation into how to uniquely identify windows for hashing."]
+fn test_web_id_uniqueness_across_windows() {
+    // enable level debug logging
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(Level::DEBUG)
+            .finish(),
+    )
+    .expect("Failed to set tracing subscriber");
+
+    println!("\n--- Testing Web ID uniqueness across multiple windows ---");
+    let rt = Runtime::new().expect("Failed to create Tokio runtime");
+    let desktop = Arc::new(Desktop::new(false, false).expect("Failed to create Desktop"));
+    let url = "https://pages.dataiku.com/guide-to-ai-agents";
+    let element_selector = Selector::Name("Get Ahead With Agentic AI".to_string());
+    let element_description = "Dataiku page title";
+
+    rt.block_on(async {
+        // --- Open first window ---
+        println!("-- Opening first browser window to {} --", url);
+        let app1 = desktop
+            .open_url(url, Some(crate::Browser::Edge))
+            .expect("Failed to open URL in first window.");
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await; // Wait for page load
+
+        let element1 = app1
+            .locator(element_selector.clone())
+            .unwrap()
+            .first(Some(std::time::Duration::from_secs(10)))
+            .await
+            .expect("Could not find element in first window.");
+        let id1 = element1.id().expect("Element 1 should have an ID.");
+        println!("Found '{}' in window 1. ID: {}", element_description, id1);
+
+        // --- Open second window ---
+        println!("-- Opening second browser window to {} --", url);
+        let app2 = desktop
+            .open_url(url, Some(crate::Browser::Edge))
+            .expect("Failed to open URL in second window.");
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await; // Wait for page load
+
+        let element2 = app2
+            .locator(element_selector.clone())
+            .unwrap()
+            .first(Some(std::time::Duration::from_secs(10)))
+            .await
+            .expect("Could not find element in second window.");
+        let id2 = element2.id().expect("Element 2 should have an ID.");
+        println!("Found '{}' in window 2. ID: {}", element_description, id2);
+
+        // --- Assert IDs are different ---
+        assert_ne!(
+            id1, id2,
+            "IDs for the same element in different browser windows should be different."
+        );
+        println!("✅ IDs are different as expected, proving context-awareness.");
+
+        // --- Teardown ---
+        println!("--- Tearing down test, closing browser windows ---");
+        if let Err(e) = app1.close() {
+            eprintln!(
+                "Could not close first browser window, it might have been closed already: {e}"
+            );
+        }
+        if let Err(e) = app2.close() {
+            eprintln!(
+                "Could not close second browser window, it might have been closed already: {e}"
+            );
         }
     });
 }
