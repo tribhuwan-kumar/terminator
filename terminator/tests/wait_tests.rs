@@ -1,5 +1,4 @@
-use std::{sync::Arc, thread, time::Duration};
-use terminator::{Desktop, Selector};
+use std::{sync::Arc, thread};
 
 fn start_test_server() -> (String, Arc<tiny_http::Server>) {
     let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
