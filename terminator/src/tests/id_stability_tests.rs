@@ -94,4 +94,4 @@ async fn test_element_id_stability_across_restarts() -> Result<(), AutomationErr
     );
 
     Ok(())
-} 
+}
