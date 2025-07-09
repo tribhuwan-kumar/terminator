@@ -9,7 +9,6 @@ use image::{ImageBuffer, Rgba};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::panic;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -2829,31 +2828,14 @@ impl UIElementImpl for WindowsUIElement {
         );
 
         if use_clipboard {
-            let element_clone = self.element.0.clone();
-            let text_clone = text.to_string();
-
-            // Using catch_unwind to handle potential panics in the uiautomation library.
-            let result = panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                element_clone.send_text_by_clipboard(&text_clone)
-            }));
-
-            match result {
-                Ok(Ok(())) => Ok(()), // Success
-                Ok(Err(e)) => {
-                    // The library returned an error, which we can handle.
-                    warn!(
-                        "Clipboard typing failed with an error: {:?}. Falling back to key-by-key input.",
+            // Try clipboard typing first
+            match self.element.0.send_text_by_clipboard(text) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    // Clipboard method failed, fall back to key-by-key typing
+                    debug!(
+                        "Clipboard typing returned error: {:?}. Using key-by-key input instead.",
                         e
-                    );
-                    self.element
-                        .0
-                        .send_text(text, 10)
-                        .map_err(|e| AutomationError::PlatformError(e.to_string()))
-                }
-                Err(_) => {
-                    // A panic was caught.
-                    warn!(
-                        "Clipboard typing panicked. This is likely a bug in the underlying UI automation library. Falling back to key-by-key input."
                     );
                     self.element
                         .0
