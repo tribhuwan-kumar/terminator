@@ -413,10 +413,11 @@ pub struct SequenceStep {
     pub steps: Option<Vec<ToolCall>>,
     #[schemars(description = "Whether the group is skippable on error (for grouped steps)")]
     pub skippable: Option<bool>,
+    #[serde(rename = "if", skip_serializing_if = "Option::is_none")]
     #[schemars(
-        description = "An optional condition to determine if this step should run. e.g., '{{var}} == true'"
+        description = "An optional expression to determine if this step should run. e.g., \"policy.use_max_budget == true\" or \"contains(policy.product_types, 'FEX')\""
     )]
-    pub condition: Option<String>,
+    pub r#if: Option<String>,
     #[schemars(description = "Number of times to retry this step or group on failure.")]
     pub retries: Option<u32>,
 }

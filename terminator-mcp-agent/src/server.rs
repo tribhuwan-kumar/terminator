@@ -1,3 +1,4 @@
+use crate::expression_eval;
 use crate::output_parser;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
@@ -153,48 +154,6 @@ fn substitute_variables(args: &mut Value, variables: &Value) {
         }
         _ => {} // Other types are left as is
     }
-}
-
-/// Evaluates a simple condition string like `'{{var}} == "value"'`.
-/// Returns `true` if the condition is met or if the condition string is invalid.
-fn evaluate_condition(condition_str: &str, variables: &Value) -> bool {
-    // Regex to capture `{{variable}}`, `operator`, and `value`.
-    // It handles single-quoted strings and boolean literals (true/false) on the RHS.
-    let re =
-        Regex::new(r"^\s*\{\{([a-zA-Z0-9_.-]+)\}\}\s*(==|!=)\s*(?:'([^']*)'|(true|false))\s*$")
-            .unwrap();
-
-    if let Some(caps) = re.captures(condition_str) {
-        let var_name = &caps[1];
-        let op = &caps[2];
-        let rhs_str_val = caps.get(3).map(|m| m.as_str());
-        let rhs_bool_val_str = caps.get(4).map(|m| m.as_str());
-
-        let pointer = format!("/{}", var_name.replace('.', "/"));
-        if let Some(lhs_val) = variables.pointer(&pointer) {
-            let is_equal = if let Some(rhs_str) = rhs_str_val {
-                // RHS is a string
-                lhs_val.as_str() == Some(rhs_str)
-            } else if let Some(rhs_bool_str) = rhs_bool_val_str {
-                // RHS is a boolean
-                let rhs_bool = rhs_bool_str == "true";
-                lhs_val.as_bool() == Some(rhs_bool)
-            } else {
-                false // Should not happen with this regex
-            };
-
-            return if op == "==" { is_equal } else { !is_equal };
-        } else {
-            // Variable not found in context
-            return false;
-        }
-    }
-
-    warn!(
-        "Could not parse condition: '{}'. Defaulting to true.",
-        condition_str
-    );
-    true
 }
 
 /// Waits for a detectable UI change after an action, like an element disappearing or focus shifting.
@@ -2012,7 +1971,7 @@ impl DesktopWrapper {
 
             // 1. Evaluate condition
             if let Some(cond_str) = condition {
-                if !evaluate_condition(&cond_str, &variables) {
+                if !expression_eval::evaluate(&cond_str, &variables) {
                     info!(
                         "Skipping step {} due to condition: {}",
                         item_index, cond_str
