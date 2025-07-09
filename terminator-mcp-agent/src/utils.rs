@@ -467,10 +467,15 @@ pub struct CloseElementArgs {
     pub retries: Option<u32>,
 }
 
-#[derive(Debug, serde::Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
 pub struct ZoomArgs {
-    pub level: Option<u32>,
+    pub level: u32,
+}
+
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+pub struct SetZoomArgs {
+    /// The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)
+    pub percentage: u32,
 }
 
 pub fn init_logging() -> Result<()> {
