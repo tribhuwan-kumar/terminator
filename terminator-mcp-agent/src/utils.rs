@@ -299,6 +299,24 @@ pub struct SetToggledArgs {
     pub retries: Option<u32>,
 }
 
+#[derive(Debug, serde::Deserialize, JsonSchema)]
+pub struct MaximizeWindowArgs {
+    pub selector: String,
+    pub alternative_selectors: Option<String>,
+    pub include_tree: Option<bool>,
+    pub timeout_ms: Option<u64>,
+    pub retries: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, JsonSchema)]
+pub struct MinimizeWindowArgs {
+    pub selector: String,
+    pub alternative_selectors: Option<String>,
+    pub include_tree: Option<bool>,
+    pub timeout_ms: Option<u64>,
+    pub retries: Option<u32>,
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SetRangeValueArgs {
     #[schemars(description = "A string selector to locate the range-based element.")]
@@ -447,6 +465,12 @@ pub struct CloseElementArgs {
     pub timeout_ms: Option<u64>,
     pub include_tree: Option<bool>,
     pub retries: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoomArgs {
+    pub level: Option<u32>,
 }
 
 pub fn init_logging() -> Result<()> {

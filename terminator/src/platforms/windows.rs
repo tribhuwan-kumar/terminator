@@ -2253,6 +2253,25 @@ impl AccessibilityEngine for WindowsEngine {
         Ok(result)
     }
 
+    fn press_key(&self, key: &str) -> Result<(), AutomationError> {
+        let focused_element = self.get_focused_element()?;
+        focused_element.press_key(key)
+    }
+
+    fn zoom_in(&self, level: u32) -> Result<(), AutomationError> {
+        for _ in 0..level {
+            self.press_key("{Ctrl}=")?;
+        }
+        Ok(())
+    }
+
+    fn zoom_out(&self, level: u32) -> Result<(), AutomationError> {
+        for _ in 0..level {
+            self.press_key("{Ctrl}-")?;
+        }
+        Ok(())
+    }
+
     /// Enable downcasting to concrete engine types
     fn as_any(&self) -> &dyn std::any::Any {
         self

@@ -4,10 +4,10 @@ use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, CloseElementArgs, DelayArgs,
     EmptyArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
     GetClipboardArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
-    HighlightElementArgs, LocatorArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs,
-    PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs,
-    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, ToolCall, TypeIntoElementArgs,
-    ValidateElementArgs, WaitForElementArgs,
+    HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
+    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
+    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
+    ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
@@ -2519,6 +2519,38 @@ impl DesktopWrapper {
                     )),
                 }
             }
+            "maximize_window" => {
+                match serde_json::from_value::<MaximizeWindowArgs>(arguments.clone()) {
+                    Ok(args) => self.maximize_window(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for maximize_window",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "minimize_window" => {
+                match serde_json::from_value::<MinimizeWindowArgs>(arguments.clone()) {
+                    Ok(args) => self.minimize_window(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for minimize_window",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "zoom_in" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
+                Ok(args) => self.zoom_in(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for zoom_in",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "zoom_out" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
+                Ok(args) => self.zoom_out(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for zoom_out",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),
@@ -2884,6 +2916,126 @@ impl DesktopWrapper {
                 }
             }
         }
+    }
+
+    #[tool(description = "Maximizes a window.")]
+    async fn maximize_window(
+        &self,
+        Parameters(args): Parameters<MaximizeWindowArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_and_execute_with_retry;
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+            args.retries,
+            |element| async move { element.maximize_window() },
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e,
+            )),
+        }?;
+
+        let element_info = build_element_info(&element);
+
+        let mut result_json = json!({
+            "action": "maximize_window",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(description = "Minimizes a window.")]
+    async fn minimize_window(
+        &self,
+        Parameters(args): Parameters<MinimizeWindowArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::utils::find_and_execute_with_retry;
+
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.timeout_ms,
+            args.retries,
+            |element| async move { element.minimize_window() },
+        )
+        .await
+        {
+            Ok(((result, element), selector)) => Ok(((result, element), selector)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                e,
+            )),
+        }?;
+
+        let element_info = build_element_info(&element);
+
+        let mut result_json = json!({
+            "action": "minimize_window",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        self.maybe_attach_tree(
+            args.include_tree.unwrap_or(true),
+            element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(description = "Zooms in on the current view (e.g., a web page).")]
+    async fn zoom_in(
+        &self,
+        Parameters(args): Parameters<ZoomArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let level = args.level.unwrap_or(1);
+        self.desktop.zoom_in(level).await.map_err(|e| {
+            McpError::internal_error("Failed to zoom in", Some(json!({"reason": e.to_string()})))
+        })?;
+        Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "zoom_in",
+            "status": "success",
+            "level": level,
+        }))?]))
+    }
+
+    #[tool(description = "Zooms out on the current view (e.g., a web page).")]
+    async fn zoom_out(
+        &self,
+        Parameters(args): Parameters<ZoomArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let level = args.level.unwrap_or(1);
+        self.desktop.zoom_out(level).await.map_err(|e| {
+            McpError::internal_error("Failed to zoom out", Some(json!({"reason": e.to_string()})))
+        })?;
+        Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "zoom_out",
+            "status": "success",
+            "level": level,
+        }))?]))
     }
 }
 

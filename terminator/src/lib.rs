@@ -633,6 +633,18 @@ impl Desktop {
 
         Ok(windows)
     }
+
+    pub async fn press_key(&self, key: &str) -> Result<(), AutomationError> {
+        self.engine.press_key(key)
+    }
+
+    pub async fn zoom_in(&self, level: u32) -> Result<(), AutomationError> {
+        self.engine.zoom_in(level)
+    }
+
+    pub async fn zoom_out(&self, level: u32) -> Result<(), AutomationError> {
+        self.engine.zoom_out(level)
+    }
 }
 
 impl Clone for Desktop {
