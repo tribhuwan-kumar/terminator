@@ -1816,6 +1816,15 @@ impl AccessibilityEngine for LinuxEngine {
             "zoom_out is not implemented for LinuxEngine yet".to_string(),
         ))
     }
+
+    fn set_zoom(&self, _percentage: u32) -> Result<(), AutomationError> {
+        // On Linux, zoom is typically controlled via Ctrl+Plus/Minus/0
+        // The implementation would be similar to Windows
+        // For now, returning unimplemented
+        Err(AutomationError::UnsupportedOperation(
+            "set_zoom is not implemented for LinuxEngine yet".to_string(),
+        ))
+    }
 }
 
 impl LinuxUIElement {

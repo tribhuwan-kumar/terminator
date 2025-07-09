@@ -4035,4 +4035,13 @@ impl AccessibilityEngine for MacOSEngine {
             "zoom_out is not implemented for MacOSEngine yet".to_string(),
         ))
     }
+
+    fn set_zoom(&self, _percentage: u32) -> Result<(), AutomationError> {
+        // On macOS, zoom is typically controlled via Cmd+Plus/Minus/0
+        // However, the implementation would be similar to Windows
+        // For now, returning unimplemented
+        Err(AutomationError::UnsupportedOperation(
+            "set_zoom is not implemented for MacOSEngine yet".to_string(),
+        ))
+    }
 }

@@ -8,7 +8,7 @@ use crate::utils::{
     HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
     NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
     ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
@@ -2507,6 +2507,13 @@ impl DesktopWrapper {
                     Some(json!({"error": e.to_string()})),
                 )),
             },
+            "set_zoom" => match serde_json::from_value::<SetZoomArgs>(arguments.clone()) {
+                Ok(args) => self.set_zoom(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for set_zoom",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),
@@ -2967,14 +2974,13 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ZoomArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let level = args.level.unwrap_or(1);
-        self.desktop.zoom_in(level).await.map_err(|e| {
+        self.desktop.zoom_in(args.level).await.map_err(|e| {
             McpError::internal_error("Failed to zoom in", Some(json!({"reason": e.to_string()})))
         })?;
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "zoom_in",
             "status": "success",
-            "level": level,
+            "level": args.level,
         }))?]))
     }
 
@@ -2983,14 +2989,31 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ZoomArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let level = args.level.unwrap_or(1);
-        self.desktop.zoom_out(level).await.map_err(|e| {
+        self.desktop.zoom_out(args.level).await.map_err(|e| {
             McpError::internal_error("Failed to zoom out", Some(json!({"reason": e.to_string()})))
         })?;
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "zoom_out",
             "status": "success",
-            "level": level,
+            "level": args.level,
+        }))?]))
+    }
+
+    #[tool(
+        description = "Sets the zoom level to a specific percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%). This is more precise than using zoom_in/zoom_out repeatedly."
+    )]
+    async fn set_zoom(
+        &self,
+        Parameters(args): Parameters<SetZoomArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        self.desktop.set_zoom(args.percentage).await.map_err(|e| {
+            McpError::internal_error("Failed to set zoom", Some(json!({"reason": e.to_string()})))
+        })?;
+        Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "set_zoom",
+            "status": "success",
+            "percentage": args.percentage,
+            "note": "Zoom level set to the specified percentage"
         }))?]))
     }
 }

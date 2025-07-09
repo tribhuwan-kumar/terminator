@@ -180,6 +180,8 @@ pub trait AccessibilityEngine: Send + Sync {
     fn press_key(&self, key: &str) -> Result<(), AutomationError>;
     fn zoom_in(&self, level: u32) -> Result<(), AutomationError>;
     fn zoom_out(&self, level: u32) -> Result<(), AutomationError>;
+    /// Sets the zoom level to a specific percentage (e.g., 100 for 100%, 150 for 150%)
+    fn set_zoom(&self, percentage: u32) -> Result<(), AutomationError>;
 
     /// Get the complete UI tree for a window identified by process ID and optional title
     /// This is the single tree building function - replaces get_window_tree_by_title and get_window_tree_by_pid_and_title
