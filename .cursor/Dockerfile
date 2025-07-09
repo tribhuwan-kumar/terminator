@@ -1,3 +1,4 @@
+# escape=`
 # Specifies the base image for the container. Using Windows Server Core 2022.
 FROM mcr.microsoft.com/windows/servercore:ltsc2022
 
@@ -42,15 +43,6 @@ RUN rustup default stable; `
 
 # Sets the working directory inside the container.
 WORKDIR /app
-
-# Copies all project files from the host to the container's working directory.
-# For faster builds, this could be optimized to first copy only dependency-defining files (like Cargo.toml, package.json),
-# install dependencies, and then copy the source code.
-COPY . .
-
-# Builds the entire Rust workspace in release mode.
-# This step will compile all crates, including the main library and agents.
-RUN cargo build --release
 
 # Sets the default command to execute when the container starts.
 # Opens a PowerShell session for interactive use.
