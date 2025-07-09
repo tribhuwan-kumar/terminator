@@ -4,7 +4,7 @@ mod functional_verification_tests;
 mod get_applications_tests;
 #[cfg(test)]
 mod high_level_inputs_tests;
-#[cfg(test)]
+#[cfg(all(test, target_os = "windows"))]
 mod id_stability_tests;
 #[cfg(test)]
 mod performance_tests;
