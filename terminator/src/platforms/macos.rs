@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::{debug, info, instrument, warn, Level};
 use uni_ocr::{OcrEngine, OcrProvider};
 
