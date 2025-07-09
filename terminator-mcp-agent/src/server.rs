@@ -496,10 +496,7 @@ impl DesktopWrapper {
             let text_to_type = text_to_type.clone();
             async move {
                 if should_clear {
-                    if let Err(clear_error) = element
-                        .press_key("{Ctrl}a")
-                        .and_then(|_| element.press_key("{Delete}"))
-                    {
+                    if let Err(clear_error) = element.set_value("") {
                         warn!(
                             "Warning: Failed to clear element before typing: {}",
                             clear_error
