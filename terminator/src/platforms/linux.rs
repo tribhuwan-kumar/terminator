@@ -1798,6 +1798,24 @@ impl AccessibilityEngine for LinuxEngine {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+
+    fn press_key(&self, _key: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "press_key is not implemented for LinuxEngine yet".to_string(),
+        ))
+    }
+
+    fn zoom_in(&self, _level: u32) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "zoom_in is not implemented for LinuxEngine yet".to_string(),
+        ))
+    }
+
+    fn zoom_out(&self, _level: u32) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "zoom_out is not implemented for LinuxEngine yet".to_string(),
+        ))
+    }
 }
 
 impl LinuxUIElement {
