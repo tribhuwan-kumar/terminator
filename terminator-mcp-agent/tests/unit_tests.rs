@@ -4,34 +4,32 @@ use terminator_mcp_agent::utils::{ExecuteSequenceArgs, SequenceStep, ToolCall};
 #[test]
 fn test_execute_sequence_args_serialization() {
     let args = ExecuteSequenceArgs {
-        items: vec![SequenceStep {
+        steps: vec![SequenceStep {
             tool_name: Some("click_element".to_string()),
             arguments: Some(json!({
                 "selector": "button|Submit"
             })),
             continue_on_error: Some(true),
             delay_ms: Some(100),
-            group_name: None,
-            steps: None,
-            skippable: None,
-            condition: None,
-            retries: None,
+            ..Default::default()
         }],
         stop_on_error: Some(false),
         include_detailed_results: Some(true),
         output_parser: None,
         variables: None,
+        inputs: None,
+        selectors: None,
     };
 
     let json = serde_json::to_string(&args).unwrap();
-    assert!(json.contains("items"));
+    assert!(json.contains("steps"));
     assert!(json.contains("click_element"));
 }
 
 #[test]
 fn test_execute_sequence_args_deserialization() {
     let json = r#"{
-        "items": [{
+        "steps": [{
             "tool_name": "another_tool",
             "arguments": {"foo": "bar"},
             "continue_on_error": false,
@@ -43,18 +41,18 @@ fn test_execute_sequence_args_deserialization() {
 
     let deserialized: ExecuteSequenceArgs = serde_json::from_str(json).unwrap();
 
-    // Verify the items content
-    assert_eq!(deserialized.items.len(), 1);
+    // Verify the steps content
+    assert_eq!(deserialized.steps.len(), 1);
     assert_eq!(
-        deserialized.items[0].tool_name,
+        deserialized.steps[0].tool_name,
         Some("another_tool".to_string())
     );
     assert_eq!(
-        deserialized.items[0].arguments.as_ref().unwrap()["foo"],
+        deserialized.steps[0].arguments.as_ref().unwrap()["foo"],
         "bar"
     );
-    assert_eq!(deserialized.items[0].continue_on_error, Some(false));
-    assert_eq!(deserialized.items[0].delay_ms, Some(200));
+    assert_eq!(deserialized.steps[0].continue_on_error, Some(false));
+    assert_eq!(deserialized.steps[0].delay_ms, Some(200));
 
     assert_eq!(deserialized.stop_on_error, Some(true));
     assert_eq!(deserialized.include_detailed_results, Some(false));
@@ -63,13 +61,13 @@ fn test_execute_sequence_args_deserialization() {
 #[test]
 fn test_execute_sequence_args_default_values() {
     let json = r#"{
-        "items": []
+        "steps": []
     }"#;
 
     let args: ExecuteSequenceArgs = serde_json::from_str(json).unwrap();
 
     // Verify it's an empty array
-    assert_eq!(args.items.len(), 0);
+    assert_eq!(args.steps.len(), 0);
 
     assert_eq!(args.stop_on_error, None);
     assert_eq!(args.include_detailed_results, None);
@@ -94,11 +92,11 @@ fn test_tool_call_defaults() {
 fn test_execute_sequence_minimal() {
     // Test minimal valid execute sequence args
     let json_str = r#"{
-        "items": []
+        "steps": []
     }"#;
 
     let args: ExecuteSequenceArgs = serde_json::from_str(json_str).unwrap();
-    assert_eq!(args.items.len(), 0);
+    assert_eq!(args.steps.len(), 0);
     assert_eq!(args.stop_on_error, None);
     assert_eq!(args.include_detailed_results, None);
 }

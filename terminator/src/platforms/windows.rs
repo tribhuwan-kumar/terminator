@@ -663,6 +663,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Use the common function to generate ID
                         match generate_element_id(e)
@@ -777,6 +778,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_automation_id() {
                             Ok(id) => {
@@ -908,6 +910,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.is_offscreen() {
                             Ok(is_offscreen) => Ok(is_offscreen != visibility),
@@ -938,6 +941,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_localized_control_type() {
                             Ok(lct) => Ok(lct == lr),
@@ -1041,7 +1045,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
-                    .depth(500)
+                    .depth(50)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Use the common function to generate ID
                         match generate_element_id(e)
@@ -1146,6 +1150,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(50) // Add depth limit
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_automation_id() {
                             Ok(id) => {
@@ -1232,6 +1237,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(50)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.is_offscreen() {
                             Ok(is_offscreen) => Ok(is_offscreen != visibility),
@@ -2274,79 +2280,36 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     fn set_zoom(&self, percentage: u32) -> Result<(), AutomationError> {
-        // First, try to use UI Automation Transform pattern if available
-        // if let Ok(current_element) = self.get_focused_element() {
-        //     if let Some(win_element) = current_element.inner.downcast_ref::<WindowsUIElement>() {
-        //         // Try to get the window that contains this element
-        //         let window = self.find_containing_window(&win_element.element.0)?;
+        // Fallback approach using keyboard shortcuts. This works for most browsers and many applications.
+        // NOTE: This method is imprecise because browser zoom levels are not always linear (e.g., 90%, 100%, 110%, 125%).
+        // It avoids using Ctrl+0 to reset zoom, as that can trigger unwanted website-specific shortcuts.
+        // Instead, it zooms out fully to a known minimum state and then zooms in to the target level.
 
-        //         // Check if the window supports ITransformProvider2 (which includes zoom)
-        //         // Note: The uiautomation crate might not have this pattern yet,
-        //         // so we'll use a fallback approach for now
-        //     }
-        // }
+        const ZOOM_STEP: u32 = 10; // Assumed average step for zoom changes.
+        const MIN_ZOOM: u32 = 25; // Assumed minimum zoom level for most browsers.
+        const MAX_ZOOM_OUT_STEPS: u32 = 50; // A high number of steps to ensure we reach the minimum zoom.
 
-        // Fallback approach using keyboard shortcuts
-        // This works for most browsers and many applications
+        // Zoom out completely to reach a known state (minimum zoom).
+        self.zoom_out(MAX_ZOOM_OUT_STEPS)?;
 
-        // Common zoom levels in browsers (each Ctrl++ or Ctrl+- is typically 10% or 25%)
-        // We'll assume 10% steps which is common in Chrome, Firefox, Edge
-        const ZOOM_STEP: u32 = 10;
+        // A small delay to allow the UI to process the zoom changes.
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
-        // First reset to 100% zoom
-        self.press_key("{Ctrl}0")?;
-
-        // Small delay to ensure the reset completes
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
-        if percentage == 100 {
-            // Already at 100% after reset
+        if percentage <= MIN_ZOOM {
+            // The target is at or below the assumed minimum, so we're done.
             return Ok(());
         }
 
-        // Calculate how many steps we need
-        let steps = if percentage > 100 {
-            (percentage - 100) / ZOOM_STEP
-        } else {
-            (100 - percentage) / ZOOM_STEP
-        };
+        // From the minimum zoom, calculate how many steps to zoom in.
+        // We add half of ZOOM_STEP for rounding.
+        let steps_to_zoom_in = (percentage.saturating_sub(MIN_ZOOM) + ZOOM_STEP / 2) / ZOOM_STEP;
 
-        // Apply the zoom steps
-        if percentage > 100 {
-            self.zoom_in(steps)?;
-        } else {
-            self.zoom_out(steps)?;
+        if steps_to_zoom_in > 0 {
+            self.zoom_in(steps_to_zoom_in)?;
         }
 
         Ok(())
     }
-
-    // Helper function to find the containing window of an element
-    // fn find_containing_window(
-    //     &self,
-    //     element: &uiautomation::UIElement,
-    // ) -> Result<uiautomation::UIElement, AutomationError> {
-    //     let mut current = element.clone();
-
-    //     loop {
-    //         // Check if current element is a window
-    //         if let Ok(control_type) = current.get_control_type() {
-    //             if control_type == ControlType::Window || control_type == ControlType::Pane {
-    //                 return Ok(current);
-    //             }
-    //         }
-
-    //         // Move to parent
-    //         match current.get_parent() {
-    //             Ok(parent) => current = parent,
-    //             Err(_) => {
-    //                 return Err(AutomationError::ElementNotFound(
-    //                     "Could not find containing window".to_string(),
-    //                 ));
-    //             }
-    //         }
-    //     }
-    // }
 
     /// Enable downcasting to concrete engine types
     fn as_any(&self) -> &dyn std::any::Any {

@@ -1,9 +1,10 @@
 use serde_json::Value;
 use tracing::warn;
 
-// Helper to get a value from the variables JSON using a dot-separated path.
+// Helper to get a value from the variables JSON.
 fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
-    variables.pointer(&format!("/{}", path.replacen('.', "/", 1)))
+    // Only access top-level keys. No more dot notation for nested objects.
+    variables.get(path)
 }
 
 // Main evaluation function.
@@ -63,12 +64,16 @@ fn evaluate_contains(collection: &Value, item: &str) -> bool {
 
 // Parses simple expressions like "variable == 'value'" or "variable == true"
 fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option<bool> {
-    let parts: Vec<&str> = expr.split_whitespace().collect();
-    if parts.len() != 3 {
+    let (var_path, op, raw_rhs) = if let Some(pos) = expr.find("==") {
+        (&expr[..pos], "==", &expr[pos + 2..])
+    } else if let Some(pos) = expr.find("!=") {
+        (&expr[..pos], "!=", &expr[pos + 2..])
+    } else {
         return None;
-    }
+    };
 
-    let (var_path, op, raw_rhs) = (parts[0], parts[1], parts[2]);
+    let var_path = var_path.trim();
+    let raw_rhs = raw_rhs.trim();
 
     let lhs = get_value(var_path, variables)?;
 
@@ -85,7 +90,7 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
     match op {
         "==" => Some(are_equal),
         "!=" => Some(!are_equal),
-        _ => None,
+        _ => None, // Should be unreachable
     }
 }
 
@@ -97,44 +102,50 @@ mod tests {
     #[test]
     fn test_evaluate_binary_expressions() {
         let vars = json!({
-            "policy": {
-                "use_max_budget": false,
-                "coverage_type": "Graded"
-            }
+            "use_max_budget": false,
+            "coverage_type": "Graded"
         });
 
-        assert!(evaluate("policy.use_max_budget == false", &vars));
-        assert!(!evaluate("policy.use_max_budget == true", &vars));
-        assert!(evaluate("policy.coverage_type == 'Graded'", &vars));
-        assert!(evaluate("policy.coverage_type != 'Standard'", &vars));
+        assert!(evaluate("use_max_budget == false", &vars));
+        assert!(!evaluate("use_max_budget == true", &vars));
+        assert!(evaluate("coverage_type == 'Graded'", &vars));
+        assert!(evaluate("coverage_type != 'Standard'", &vars));
     }
 
     #[test]
     fn test_evaluate_contains() {
         let vars = json!({
-            "policy": {
-                "product_types": ["FEX", "Term"],
-                "description": "Final Expense"
-            }
+            "product_types": ["FEX", "Term"],
+            "description": "Final Expense"
         });
 
-        assert!(evaluate("contains(policy.product_types, 'FEX')", &vars));
-        assert!(!evaluate("contains(policy.product_types, 'MedSup')", &vars));
-        assert!(evaluate("contains(policy.description, 'Expense')", &vars));
+        assert!(evaluate("contains(product_types, 'FEX')", &vars));
+        assert!(!evaluate("contains(product_types, 'MedSup')", &vars));
+        assert!(evaluate("contains(description, 'Expense')", &vars));
     }
 
     #[test]
     fn test_evaluate_starts_with() {
-        let vars = json!({ "applicant": { "name": "John Doe" } });
-        assert!(evaluate("startsWith(applicant.name, 'John')", &vars));
-        assert!(!evaluate("startsWith(applicant.name, 'Doe')", &vars));
+        let vars = json!({ "name": "John Doe" });
+        assert!(evaluate("startsWith(name, 'John')", &vars));
+        assert!(!evaluate("startsWith(name, 'Doe')", &vars));
     }
 
     #[test]
     fn test_evaluate_ends_with() {
-        let vars = json!({ "applicant": { "name": "John Doe" } });
-        assert!(evaluate("endsWith(applicant.name, 'Doe')", &vars));
-        assert!(!evaluate("endsWith(applicant.name, 'John')", &vars));
+        let vars = json!({ "name": "John Doe" });
+        assert!(evaluate("endsWith(name, 'Doe')", &vars));
+        assert!(!evaluate("endsWith(name, 'John')", &vars));
+    }
+
+    #[test]
+    fn test_string_with_spaces() {
+        let vars = json!({
+            "quote_type": "Face Amount"
+        });
+
+        assert!(evaluate("quote_type == 'Face Amount'", &vars));
+        assert!(!evaluate("quote_type == 'Monthly Amount'", &vars));
     }
 
     #[test]

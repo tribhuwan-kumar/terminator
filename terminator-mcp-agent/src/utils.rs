@@ -398,7 +398,7 @@ pub struct ToolCall {
 }
 
 // Simplified structure for Gemini compatibility
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone, Default)]
 pub struct SequenceStep {
     #[schemars(description = "The name of the tool to execute (for single tool steps)")]
     pub tool_name: Option<String>,
@@ -423,7 +423,7 @@ pub struct SequenceStep {
     pub retries: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Default, JsonSchema)]
 pub struct ExecuteSequenceArgs {
     #[schemars(description = "The steps of the workflow to execute in order.")]
     pub steps: Vec<SequenceStep>,

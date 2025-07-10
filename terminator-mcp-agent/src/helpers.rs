@@ -93,34 +93,39 @@ pub fn substitute_variables(args: &mut Value, variables: &Value) {
             }
         }
         Value::String(s) => {
+            // This regex finds all occurrences of {{variable.name}}
             let re = Regex::new(r"\{\{([a-zA-Z0-9_.-]+)\}\}").unwrap();
-            let mut new_s = s.clone();
 
-            // First, check for a full match, which allows replacing a string with any other JSON type.
+            // Handle full string replacement first, e.g., args is "{{my_var}}"
             if let Some(caps) = re.captures(s) {
-                if &format!("{{{{{}}}}}", &caps[1]) == s {
-                    let pointer = format!("/{}", &caps[1].replacen('.', "/", 1));
+                if caps.get(0).unwrap().as_str() == s {
+                    let var_name = caps.get(1).unwrap().as_str().trim();
+                    let pointer = format!("/{}", var_name.replace('.', "/"));
                     if let Some(replacement_val) = variables.pointer(&pointer) {
                         *args = replacement_val.clone();
-                        return; // Value replaced, no further processing needed for this branch.
                     }
+                    return; // Return after full replacement
                 }
             }
 
-            // If not a full match, perform partial replacement, which always results in a string.
-            for cap in re.captures_iter(s) {
-                if let Some(var_name_match) = cap.get(1) {
-                    let var_name = var_name_match.as_str();
-                    let pointer = format!("/{}", var_name.replacen('.', "/", 1));
-                    if let Some(replacement_val) = variables.pointer(&pointer) {
-                        let replacement_str = match replacement_val {
-                            Value::String(str_val) => str_val.clone(),
-                            other => other.to_string(),
-                        };
-                        new_s = new_s.replace(&cap[0], &replacement_str);
-                    }
-                }
-            }
+            // Handle partial replacement, e.g., "Hello, {{user.name}}!"
+            let new_s = re
+                .replace_all(s, |caps: &regex::Captures| {
+                    let var_name = caps.get(1).unwrap().as_str().trim();
+                    let pointer = format!("/{}", var_name.replace('.', "/"));
+                    variables
+                        .pointer(&pointer)
+                        .map(|v| {
+                            if v.is_string() {
+                                v.as_str().unwrap().to_string()
+                            } else {
+                                v.to_string()
+                            }
+                        })
+                        .unwrap_or_else(|| caps.get(0).unwrap().as_str().to_string())
+                })
+                .to_string();
+
             *s = new_s;
         }
         _ => {} // Other types are left as is
@@ -315,23 +320,4 @@ pub fn should_capture_tree(tool_name: &str, index: usize, total_steps: usize) ->
     matches!(tool_name, "navigate_browser" | "open_application")
         || index % 5 == 0
         || index == total_steps - 1
-}
-
-/// Inserts a value into a nested JSON object based on splitting the key by the first underscore.
-/// For example, `policy_use_max_budget` becomes `{ "policy": { "use_max_budget": ... } }`.
-pub fn insert_nested_by_first_underscore(
-    root: &mut serde_json::Map<String, Value>,
-    key: &str,
-    value: Value,
-) {
-    if let Some((group, rest)) = key.split_once('_') {
-        let group_map = root
-            .entry(group.to_string())
-            .or_insert_with(|| Value::Object(serde_json::Map::new()))
-            .as_object_mut()
-            .unwrap(); // This is safe because we just inserted it.
-        group_map.insert(rest.to_string(), value);
-    } else {
-        root.insert(key.to_string(), value);
-    }
 }

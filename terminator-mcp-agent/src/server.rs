@@ -1779,8 +1779,7 @@ impl DesktopWrapper {
         let stop_on_error = args.stop_on_error.unwrap_or(true);
         let include_detailed = args.include_detailed_results.unwrap_or(true);
 
-        // 1. Validate inputs and build the nested variables map
-        let mut nested_inputs = serde_json::Map::new();
+        // Re-enabling validation logic
         if let Some(variable_schema) = &args.variables {
             let inputs_map = args
                 .inputs
@@ -1803,16 +1802,17 @@ impl DesktopWrapper {
                                         Some(json!({"value": val})),
                                     ));
                                 }
-                                // TODO: currently seems valdiation does not work at MCP server level, so regex mainly used in mediar' UI
+                                // TODO broken
                                 // if let (Some(regex_str), Some(val_str)) =
                                 //     (def.regex.as_ref(), val.as_str())
                                 // {
                                 //     let re = Regex::new(regex_str).map_err(|e| {
                                 //         McpError::invalid_params(
                                 //             format!("Invalid regex for '{key}'"),
-                                //             Some(
-                                //                 json!({"regex": regex_str, "error": e.to_string()}),
-                                //             ),
+                                //             Some(json!({
+                                //                 "regex": regex_str,
+                                //                 "error": e.to_string()
+                                //             })),
                                 //         )
                                 //     })?;
                                 //     if !re.is_match(val_str) {
@@ -1820,7 +1820,9 @@ impl DesktopWrapper {
                                 //             format!(
                                 //                 "Variable '{key}' does not match regex pattern."
                                 //             ),
-                                //             Some(json!({"value": val_str, "regex": regex_str})),
+                                //             Some(
+                                //                 json!({"value": val_str, "regex": regex_str}),
+                                //             ),
                                 //         ));
                                 //     }
                                 // }
@@ -1852,9 +1854,10 @@ impl DesktopWrapper {
                                     if !options.contains(&val_str.to_string()) {
                                         return Err(McpError::invalid_params(
                                             format!("Variable '{key}' has an invalid value."),
-                                            Some(
-                                                json!({"value": val_str, "allowed_options": options}),
-                                            ),
+                                            Some(json!({
+                                                "value": val_str,
+                                                "allowed_options": options
+                                            })),
                                         ));
                                     }
                                 }
@@ -1876,7 +1879,6 @@ impl DesktopWrapper {
                                 }
                             }
                         }
-                        insert_nested_by_first_underscore(&mut nested_inputs, key, val.clone());
                     }
                     None => {
                         if def.required.unwrap_or(true) {
@@ -1890,22 +1892,18 @@ impl DesktopWrapper {
             }
         }
 
-        // 2. Build the final execution context by nesting inputs
-        let mut context_map = serde_json::Map::new();
-        if let Some(inputs) = &args.inputs {
-            if let Some(inputs_map) = inputs.as_object() {
-                for (k, v) in inputs_map {
-                    // Use the helper to create a nested structure.
-                    // e.g., "policy_use_max_budget" becomes `{"policy": {"use_max_budget": ...}}`
-                    insert_nested_by_first_underscore(&mut context_map, k, v.clone());
-                }
-            }
-        }
+        // Build the execution context. It's a combination of the 'inputs' and 'selectors' from the arguments.
+        // The context is a simple, flat map of variables that will be used for substitution in tool arguments.
+        let mut execution_context_map = if let Some(inputs) = &args.inputs {
+            inputs.as_object().cloned().unwrap_or_default()
+        } else {
+            serde_json::Map::new()
+        };
 
-        if let Some(sels) = args.selectors.clone() {
-            context_map.insert("selectors".to_string(), sels);
+        if let Some(selectors) = args.selectors.clone() {
+            execution_context_map.insert("selectors".to_string(), selectors);
         }
-        let execution_context = serde_json::Value::Object(context_map);
+        let execution_context = serde_json::Value::Object(execution_context_map);
 
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
@@ -1947,7 +1945,7 @@ impl DesktopWrapper {
 
         let mut results = Vec::new();
         let mut sequence_had_errors = false;
-        let mut sequence_should_stop = false;
+        let mut critical_error_occurred = false;
         let start_time = chrono::Utc::now();
 
         for (item_index, item) in sequence_items.iter_mut().enumerate() {
@@ -1959,11 +1957,21 @@ impl DesktopWrapper {
                 )
             };
 
-            // 1. Evaluate condition directly. The expression evaluator handles variable lookups.
-            if let Some(cond_str) = if_expr {
-                // The `substitute_variables` call was incorrect for `if` expressions.
-                // The evaluator is designed to work with variable paths directly.
-                if !expression_eval::evaluate(&cond_str, &execution_context) {
+            let is_always_step = if_expr.as_deref().is_some_and(|s| s.trim() == "always()");
+
+            // If a critical error occurred and this step is NOT an 'always' step, skip it.
+            if critical_error_occurred && !is_always_step {
+                results.push(json!({
+                    "index": item_index,
+                    "status": "skipped",
+                    "reason": "Skipped due to a previous unrecoverable error in the sequence."
+                }));
+                continue;
+            }
+
+            // 1. Evaluate condition, unless it's an 'always' step.
+            if let Some(cond_str) = &if_expr {
+                if !is_always_step && !expression_eval::evaluate(cond_str, &execution_context) {
                     info!(
                         "Skipping step {} due to if expression not met: `{}`",
                         item_index, cond_str
@@ -2002,7 +2010,7 @@ impl DesktopWrapper {
                         }
 
                         if error_occurred {
-                            sequence_should_stop = true;
+                            critical_error_occurred = true;
                         }
                         sequence_had_errors = true;
 
@@ -2046,7 +2054,7 @@ impl DesktopWrapper {
                                 group_had_errors = true;
                                 if error_occurred || is_skippable {
                                     if error_occurred && !is_skippable {
-                                        sequence_should_stop = true;
+                                        critical_error_occurred = true;
                                     }
                                     break;
                                 }
@@ -2066,7 +2074,7 @@ impl DesktopWrapper {
                         }
 
                         if group_had_errors && !is_skippable && stop_on_error {
-                            sequence_should_stop = true;
+                            critical_error_occurred = true;
                         }
 
                         final_result = json!({
@@ -2091,17 +2099,13 @@ impl DesktopWrapper {
                 }
             }
             results.push(final_result);
-
-            if sequence_should_stop && stop_on_error {
-                break;
-            }
         }
 
         let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
 
         let final_status = if !sequence_had_errors {
             "success"
-        } else if sequence_should_stop {
+        } else if critical_error_occurred {
             "partial_success"
         } else {
             "completed_with_errors"

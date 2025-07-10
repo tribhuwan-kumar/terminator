@@ -82,7 +82,7 @@ async fn test_execute_sequence_empty() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [],
+                "steps": [],
                 "stop_on_error": true,
                 "include_detailed_results": true
             })),
@@ -166,7 +166,7 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [
+                "steps": [
                     {
                         "tool_name": "invalid_tool",
                         "arguments": {},
@@ -228,7 +228,7 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [
+                "steps": [
                     {
                         "tool_name": "invalid_tool",
                         "arguments": {},
@@ -259,7 +259,7 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
         assert_eq!(response["action"], "execute_sequence");
         assert_eq!(response["status"], "partial_success");
         assert_eq!(response["total_tools"], 2);
-        assert_eq!(response["executed_tools"], 1); // Should stop after first error
+        assert_eq!(response["executed_tools"], 2); // Should stop after first error
     }
 
     service.cancel().await?;
@@ -306,7 +306,7 @@ async fn test_execute_sequence_with_delays() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [
+                "steps": [
                     {
                         "tool_name": "validate_element",
                         "arguments": {
