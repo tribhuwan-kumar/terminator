@@ -1285,9 +1285,7 @@ impl AccessibilityEngine for WindowsEngine {
                 })?;
                 Ok(convert_uiautomation_element_to_terminator(element))
             }
-            Selector::Invalid(reason) => {
-                Err(AutomationError::InvalidSelector(reason.clone()))
-            }
+            Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
         }
     }
 

@@ -766,6 +766,9 @@ fn find_elements_inner<'a>(
             Selector::Role { .. } | Selector::Name(_) => {
                 // Supported - continue to processing below
             }
+            Selector::Invalid(reason) => {
+                return Err(AutomationError::InvalidArgument(reason.clone()));
+            }
         }
         // Only Role and Name selectors are supported below
         let root_binding = linux_engine.get_root_element();
