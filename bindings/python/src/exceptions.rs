@@ -29,7 +29,11 @@ create_exception!(
     pyo3::exceptions::PyRuntimeError
 );
 create_exception!(terminator, InternalError, pyo3::exceptions::PyRuntimeError);
-create_exception!(terminator, InvalidSelectorError, pyo3::exceptions::PyRuntimeError);
+create_exception!(
+    terminator,
+    InvalidSelectorError,
+    pyo3::exceptions::PyRuntimeError
+);
 
 use ::terminator_core::errors::AutomationError;
 

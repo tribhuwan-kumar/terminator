@@ -478,7 +478,6 @@ pub struct VariableDefinition {
     pub required: Option<bool>,
 }
 
-
 // Keep the old structures for internal use
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ToolGroup {

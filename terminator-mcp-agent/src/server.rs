@@ -12,7 +12,6 @@ use crate::utils::{
     SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
-use regex::Regex;
 use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
@@ -1804,26 +1803,27 @@ impl DesktopWrapper {
                                         Some(json!({"value": val})),
                                     ));
                                 }
-                                if let (Some(regex_str), Some(val_str)) =
-                                    (def.regex.as_ref(), val.as_str())
-                                {
-                                    let re = Regex::new(regex_str).map_err(|e| {
-                                        McpError::invalid_params(
-                                            format!("Invalid regex for '{key}'"),
-                                            Some(
-                                                json!({"regex": regex_str, "error": e.to_string()}),
-                                            ),
-                                        )
-                                    })?;
-                                    if !re.is_match(val_str) {
-                                        return Err(McpError::invalid_params(
-                                            format!(
-                                                "Variable '{key}' does not match regex pattern."
-                                            ),
-                                            Some(json!({"value": val_str, "regex": regex_str})),
-                                        ));
-                                    }
-                                }
+                                // TODO: currently seems valdiation does not work at MCP server level, so regex mainly used in mediar' UI
+                                // if let (Some(regex_str), Some(val_str)) =
+                                //     (def.regex.as_ref(), val.as_str())
+                                // {
+                                //     let re = Regex::new(regex_str).map_err(|e| {
+                                //         McpError::invalid_params(
+                                //             format!("Invalid regex for '{key}'"),
+                                //             Some(
+                                //                 json!({"regex": regex_str, "error": e.to_string()}),
+                                //             ),
+                                //         )
+                                //     })?;
+                                //     if !re.is_match(val_str) {
+                                //         return Err(McpError::invalid_params(
+                                //             format!(
+                                //                 "Variable '{key}' does not match regex pattern."
+                                //             ),
+                                //             Some(json!({"value": val_str, "regex": regex_str})),
+                                //         ));
+                                //     }
+                                // }
                             }
                             crate::utils::VariableType::Number => {
                                 if !val.is_number() {
