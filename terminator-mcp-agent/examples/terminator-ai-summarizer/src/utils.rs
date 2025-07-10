@@ -8,7 +8,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    #[arg(short, long, default_value = "you're are screen summarizer assitant and here is the data from screen ui element tree as context. the screen ui element tree data would be in json format. summarize the screen text consicely")]
+    #[arg(short, long, default_value = "you're are screen summarizer assitant and here is the data of ui element tree as context. the ui element tree data would be in json format. use the `name` and `text` attr of ui tree to summarize the screen context consicely")]
     pub system_prompt: String,
     #[arg(short, long, default_value = "gemma3:1b")]
     pub model: String,
@@ -39,6 +39,9 @@ pub fn init_logging() -> Result<()> {
 }
 
 pub fn get_agent_binary_path() -> PathBuf {
+    if let Ok(env_path) = std::env::var("TERMINATOR_AGENT_PATH") {
+        return PathBuf::from(env_path);
+    }
     let mut path = env::current_dir().unwrap();
     path.push("target");
     path.push("release");
