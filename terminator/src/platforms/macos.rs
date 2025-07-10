@@ -2851,6 +2851,7 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
                 "Position selector not yet supported for macOS".to_string(),
             )),
+            Selector::Invalid(reason) => Err(AutomationError::InvalidArgument(reason.clone())),
         }
     }
 
@@ -3136,6 +3137,7 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
                 "Position selector not yet supported for macOS".to_string(),
             )),
+            Selector::Invalid(reason) => Err(AutomationError::InvalidArgument(reason.clone())),
         }
     }
 
