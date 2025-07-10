@@ -1961,25 +1961,22 @@ impl DesktopWrapper {
         let start_time = chrono::Utc::now();
 
         for (item_index, item) in sequence_items.iter_mut().enumerate() {
-            let (condition, retries) = {
+            let (if_expr, retries) = {
                 let original_step = &args.items[item_index];
                 (
-                    original_step.condition.clone(),
+                    original_step.r#if.clone(),
                     original_step.retries.unwrap_or(0),
                 )
             };
 
             // 1. Evaluate condition
-            if let Some(cond_str) = condition {
+            if let Some(cond_str) = if_expr {
                 if !expression_eval::evaluate(&cond_str, &variables) {
-                    info!(
-                        "Skipping step {} due to condition: {}",
-                        item_index, cond_str
-                    );
+                    info!("Skipping step {} due to if_expr: {}", item_index, cond_str);
                     results.push(json!({
                         "index": item_index,
                         "status": "skipped",
-                        "reason": format!("Condition not met: {}", cond_str)
+                        "reason": format!("if_expr not met: {}", cond_str)
                     }));
                     continue;
                 }

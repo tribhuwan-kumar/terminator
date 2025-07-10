@@ -2273,16 +2273,16 @@ impl AccessibilityEngine for WindowsEngine {
 
     fn set_zoom(&self, percentage: u32) -> Result<(), AutomationError> {
         // First, try to use UI Automation Transform pattern if available
-        if let Ok(current_element) = self.get_focused_element() {
-            if let Some(win_element) = current_element.inner.downcast_ref::<WindowsUIElement>() {
-                // Try to get the window that contains this element
-                let window = self.find_containing_window(&win_element.element.0)?;
+        // if let Ok(current_element) = self.get_focused_element() {
+        //     if let Some(win_element) = current_element.inner.downcast_ref::<WindowsUIElement>() {
+        //         // Try to get the window that contains this element
+        //         let window = self.find_containing_window(&win_element.element.0)?;
 
-                // Check if the window supports ITransformProvider2 (which includes zoom)
-                // Note: The uiautomation crate might not have this pattern yet,
-                // so we'll use a fallback approach for now
-            }
-        }
+        //         // Check if the window supports ITransformProvider2 (which includes zoom)
+        //         // Note: The uiautomation crate might not have this pattern yet,
+        //         // so we'll use a fallback approach for now
+        //     }
+        // }
 
         // Fallback approach using keyboard shortcuts
         // This works for most browsers and many applications
@@ -2320,31 +2320,31 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     // Helper function to find the containing window of an element
-    fn find_containing_window(
-        &self,
-        element: &uiautomation::UIElement,
-    ) -> Result<uiautomation::UIElement, AutomationError> {
-        let mut current = element.clone();
+    // fn find_containing_window(
+    //     &self,
+    //     element: &uiautomation::UIElement,
+    // ) -> Result<uiautomation::UIElement, AutomationError> {
+    //     let mut current = element.clone();
 
-        loop {
-            // Check if current element is a window
-            if let Ok(control_type) = current.get_control_type() {
-                if control_type == ControlType::Window || control_type == ControlType::Pane {
-                    return Ok(current);
-                }
-            }
+    //     loop {
+    //         // Check if current element is a window
+    //         if let Ok(control_type) = current.get_control_type() {
+    //             if control_type == ControlType::Window || control_type == ControlType::Pane {
+    //                 return Ok(current);
+    //             }
+    //         }
 
-            // Move to parent
-            match current.get_parent() {
-                Ok(parent) => current = parent,
-                Err(_) => {
-                    return Err(AutomationError::ElementNotFound(
-                        "Could not find containing window".to_string(),
-                    ));
-                }
-            }
-        }
-    }
+    //         // Move to parent
+    //         match current.get_parent() {
+    //             Ok(parent) => current = parent,
+    //             Err(_) => {
+    //                 return Err(AutomationError::ElementNotFound(
+    //                     "Could not find containing window".to_string(),
+    //                 ));
+    //             }
+    //         }
+    //     }
+    // }
 
     /// Enable downcasting to concrete engine types
     fn as_any(&self) -> &dyn std::any::Any {
