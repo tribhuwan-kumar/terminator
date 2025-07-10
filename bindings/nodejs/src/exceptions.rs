@@ -29,5 +29,8 @@ pub fn map_error(err: AutomationError) -> napi::Error {
         AutomationError::Internal(e) => {
             napi::Error::new(Status::GenericFailure, format!("INTERNAL_ERROR: {e}"))
         }
+        AutomationError::InvalidSelector(e) => {
+            napi::Error::new(Status::InvalidArg, format!("INVALID_SELECTOR: {e}"))
+        }
     }
 }

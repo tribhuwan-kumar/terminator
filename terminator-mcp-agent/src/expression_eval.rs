@@ -3,7 +3,7 @@ use tracing::warn;
 
 // Helper to get a value from the variables JSON using a dot-separated path.
 fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
-    variables.pointer(&format!("/{}", path.replace('.', "/")))
+    variables.pointer(&format!("/{}", path.replacen('.', "/", 1)))
 }
 
 // Main evaluation function.

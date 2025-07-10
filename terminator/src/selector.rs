@@ -29,6 +29,8 @@ pub enum Selector {
     LocalizedRole(String),
     /// Select by position (x,y) on screen
     Position(i32, i32),
+    /// Represents an invalid selector string, with a reason.
+    Invalid(String),
 }
 
 impl std::fmt::Display for Selector {
@@ -128,7 +130,9 @@ impl From<&str> for Selector {
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
             _ if s.to_lowercase().starts_with("text:") => Selector::Text(s[5..].to_string()),
-            _ => Selector::Name(s.to_string()),
+            _ => Selector::Invalid(format!(
+                "Unknown selector format: \"{s}\". Use prefixes like 'role:', 'name:', 'id:', 'text:', 'nativeid:', 'classname:', or 'pos:' to specify the selector type."
+            )),
         }
     }
 }

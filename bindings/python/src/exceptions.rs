@@ -29,6 +29,7 @@ create_exception!(
     pyo3::exceptions::PyRuntimeError
 );
 create_exception!(terminator, InternalError, pyo3::exceptions::PyRuntimeError);
+create_exception!(terminator, InvalidSelectorError, pyo3::exceptions::PyRuntimeError);
 
 use ::terminator_core::errors::AutomationError;
 
@@ -44,5 +45,6 @@ pub fn automation_error_to_pyerr(e: AutomationError) -> pyo3::PyErr {
         AutomationError::UnsupportedPlatform(_) => UnsupportedPlatformError::new_err(msg),
         AutomationError::InvalidArgument(_) => InvalidArgumentError::new_err(msg),
         AutomationError::Internal(_) => InternalError::new_err(msg),
+        AutomationError::InvalidSelector(_) => InvalidSelectorError::new_err(msg),
     }
 }

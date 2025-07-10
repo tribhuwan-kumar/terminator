@@ -25,4 +25,7 @@ pub enum AutomationError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Invalid selector: {0}")]
+    InvalidSelector(String),
 }

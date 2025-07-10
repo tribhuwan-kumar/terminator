@@ -968,6 +968,7 @@ impl AccessibilityEngine for WindowsEngine {
                     "`Position` selector not supported".to_string(),
                 ))
             }
+            Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
         }
     }
 
@@ -1283,6 +1284,9 @@ impl AccessibilityEngine for WindowsEngine {
                     ))
                 })?;
                 Ok(convert_uiautomation_element_to_terminator(element))
+            }
+            Selector::Invalid(reason) => {
+                Err(AutomationError::InvalidSelector(reason.clone()))
             }
         }
     }

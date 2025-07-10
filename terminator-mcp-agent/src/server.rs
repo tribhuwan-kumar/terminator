@@ -1,4 +1,5 @@
 use crate::expression_eval;
+use crate::helpers::*;
 use crate::output_parser;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
@@ -10,7 +11,6 @@ use crate::utils::{
     ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
     SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
-use chrono::Local;
 use image::{ExtendedColorType, ImageEncoder};
 use regex::Regex;
 use rmcp::handler::server::tool::Parameters;
@@ -33,171 +33,6 @@ use tracing::{info, warn};
 // New imports for image encoding
 use base64::{engine::general_purpose, Engine as _};
 use image::codecs::png::PngEncoder;
-
-/// Helper function to parse comma-separated alternative selectors into a Vec<String>
-fn parse_alternative_selectors(alternatives: Option<&str>) -> Vec<String> {
-    alternatives
-        .map(|alts| {
-            alts.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Helper function to get all selectors tried (primary + alternatives) for error reporting
-fn get_selectors_tried(primary: &str, alternatives: Option<&str>) -> Vec<String> {
-    let mut all = vec![primary.to_string()];
-    all.extend(parse_alternative_selectors(alternatives));
-    all
-}
-
-/// Builds a standardized JSON object with detailed information about a UIElement.
-/// This includes a suggested selector that prioritizes role|name over just the ID.
-fn build_element_info(element: &UIElement) -> Value {
-    let id = element.id().unwrap_or_default();
-    let role = element.role();
-    let name = element.name().unwrap_or_default();
-
-    let suggested_selector = if !name.is_empty() && role != "Unknown" {
-        format!("{}|{}", &role, &name)
-    } else {
-        format!("#{id}")
-    };
-
-    json!({
-        "name": name,
-        "role": role,
-        "id": id,
-        "suggested_selector": suggested_selector,
-        "application": element.application_name(),
-        "window_title": element.window_title(),
-        "process_id": element.process_id().unwrap_or(0),
-        "is_focused": element.is_focused().unwrap_or(false),
-        "text": element.text(0).unwrap_or_default(),
-        "bounds": element.bounds().map(|b| json!({
-            "x": b.0, "y": b.1, "width": b.2, "height": b.3
-        })).unwrap_or(json!(null)),
-        "enabled": element.is_enabled().unwrap_or(false),
-        "is_selected": element.is_selected().unwrap_or(false),
-        "is_toggled": element.is_toggled().unwrap_or(false),
-        "keyboard_focusable": element.is_keyboard_focusable().unwrap_or(false),
-    })
-}
-
-/// Builds a standardized, actionable error when an element cannot be found.
-fn build_element_not_found_error(
-    primary_selector: &str,
-    alternatives: Option<&str>,
-    original_error: anyhow::Error,
-) -> McpError {
-    let selectors_tried = get_selectors_tried(primary_selector, alternatives);
-    let error_payload = json!({
-        "error_type": "ElementNotFound",
-        "message": format!("The specified element could not be found after trying all selectors. Original error: {}", original_error),
-        "selectors_tried": selectors_tried,
-        "suggestions": [
-            "Call `get_window_tree` again to get a fresh view of the UI; it might have changed.",
-            "Verify the element's 'name' and 'role' in the new UI tree. The 'name' attribute might be empty or different from the visible text.",
-            "If the element has no 'name', use its numeric ID selector (e.g., '#12345'). This is required for many clickable 'Group' elements.",
-            "Use `validate_element` with your selectors to debug existence issues before calling an action tool."
-        ]
-    });
-
-    McpError::resource_not_found("Element not found", Some(error_payload))
-}
-
-/// Substitutes `{{variable}}` placeholders in a JSON value.
-fn substitute_variables(args: &mut Value, variables: &Value) {
-    match args {
-        Value::Object(map) => {
-            for (_, value) in map {
-                substitute_variables(value, variables);
-            }
-        }
-        Value::Array(arr) => {
-            for value in arr {
-                substitute_variables(value, variables);
-            }
-        }
-        Value::String(s) => {
-            let re = Regex::new(r"\{\{([a-zA-Z0-9_.-]+)\}\}").unwrap();
-            let mut new_s = s.clone();
-
-            // First, check for a full match, which allows replacing a string with any other JSON type.
-            if let Some(caps) = re.captures(s) {
-                if &format!("{{{{{}}}}}", &caps[1]) == s {
-                    let pointer = format!("/{}", &caps[1].replace('.', "/"));
-                    if let Some(replacement_val) = variables.pointer(&pointer) {
-                        *args = replacement_val.clone();
-                        return; // Value replaced, no further processing needed for this branch.
-                    }
-                }
-            }
-
-            // If not a full match, perform partial replacement, which always results in a string.
-            for cap in re.captures_iter(s) {
-                if let Some(var_name_match) = cap.get(1) {
-                    let var_name = var_name_match.as_str();
-                    let pointer = format!("/{}", var_name.replace('.', "/"));
-                    if let Some(replacement_val) = variables.pointer(&pointer) {
-                        let replacement_str = match replacement_val {
-                            Value::String(str_val) => str_val.clone(),
-                            other => other.to_string(),
-                        };
-                        new_s = new_s.replace(&cap[0], &replacement_str);
-                    }
-                }
-            }
-            *s = new_s;
-        }
-        _ => {} // Other types are left as is
-    }
-}
-
-/// Waits for a detectable UI change after an action, like an element disappearing or focus shifting.
-/// This is more efficient than a fixed sleep, as it returns as soon as a change is detected.
-async fn wait_for_ui_change(
-    desktop: &Desktop,
-    original_element_id: &str,
-    timeout: Duration,
-) -> String {
-    let start = tokio::time::Instant::now();
-
-    // If the element has no unique ID, we cannot reliably track it.
-    // In this case, we fall back to a brief, fixed delay.
-    if original_element_id.is_empty() {
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        return "untracked_element_clicked_fixed_delay".to_string();
-    }
-
-    let original_selector = Selector::from(format!("#{original_element_id}").as_str());
-
-    while start.elapsed() < timeout {
-        // Check 1: Did focus change? This is often the quickest indicator.
-        if let Ok(focused_element) = desktop.focused_element() {
-            if focused_element.id_or_empty() != original_element_id {
-                return format!("focus_changed_to: #{}", focused_element.id_or_empty());
-            }
-        }
-
-        // Check 2: Did the original element disappear? (e.g., a dialog closed)
-        if desktop
-            .locator(original_selector.clone())
-            .first(Some(Duration::from_millis(20)))
-            .await
-            .is_err()
-        {
-            return "element_disappeared".to_string();
-        }
-
-        // Yield to the scheduler and wait before the next poll.
-        tokio::time::sleep(Duration::from_millis(30)).await;
-    }
-
-    "no_significant_change_detected".to_string()
-}
 
 #[tool_router]
 impl DesktopWrapper {
@@ -546,7 +381,8 @@ impl DesktopWrapper {
         }
 
         // Always attach tree for better context, or if an override is provided
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -605,7 +441,8 @@ impl DesktopWrapper {
         });
 
         // Always attach tree for better context
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -654,7 +491,8 @@ impl DesktopWrapper {
             "selectors_tried": vec![args.selector],
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             true, // press_key_global does not have include_tree option
             element.process_id().ok(),
             &mut result_json,
@@ -700,7 +538,8 @@ impl DesktopWrapper {
             "element": element_info,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             true, // press_key_global does not have include_tree option
             element.process_id().ok(),
             &mut result_json,
@@ -771,7 +610,8 @@ impl DesktopWrapper {
         });
 
         // Always attach UI tree for activated elements to help with next actions
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -952,7 +792,8 @@ impl DesktopWrapper {
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -997,7 +838,8 @@ impl DesktopWrapper {
                     "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 });
-                self.maybe_attach_tree(
+                maybe_attach_tree(
+                    &self.desktop,
                     args.include_tree.unwrap_or(true),
                     element.process_id().ok(),
                     &mut result_json,
@@ -1072,7 +914,8 @@ impl DesktopWrapper {
             "duration_ms": args.duration_ms.unwrap_or(1000),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1133,7 +976,8 @@ impl DesktopWrapper {
 
         // Conditionally attach the UI tree if requested and an element was found.
         if let Some(element) = maybe_element {
-            self.maybe_attach_tree(
+            maybe_attach_tree(
+                &self.desktop,
                 args.include_tree.unwrap_or(false),
                 element.process_id().ok(),
                 &mut result_json,
@@ -1306,7 +1150,8 @@ impl DesktopWrapper {
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1356,7 +1201,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "option_selected": args.option_name,
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1403,7 +1249,8 @@ impl DesktopWrapper {
             "options": options,
             "count": options.len(),
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1451,7 +1298,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "state_set_to": args.state,
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1499,7 +1347,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "value_set_to": args.value,
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1547,7 +1396,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "state_set_to": args.state,
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1592,7 +1442,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "is_toggled": is_toggled,
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1637,7 +1488,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "value": value,
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1682,7 +1534,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "is_selected": is_selected,
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1786,7 +1639,8 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -1925,34 +1779,170 @@ impl DesktopWrapper {
 
         let stop_on_error = args.stop_on_error.unwrap_or(true);
         let include_detailed = args.include_detailed_results.unwrap_or(true);
-        let variables = args.variables.clone().unwrap_or_else(|| json!({}));
+
+        // 1. Validate inputs and build the nested variables map
+        let mut nested_inputs = serde_json::Map::new();
+        if let Some(variable_schema) = &args.variables {
+            let inputs_map = args
+                .inputs
+                .as_ref()
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default();
+
+            for (key, def) in variable_schema {
+                let value = inputs_map.get(key).or(def.default.as_ref());
+
+                match value {
+                    Some(val) => {
+                        // Validate the value against the definition
+                        match def.r#type {
+                            crate::utils::VariableType::String => {
+                                if !val.is_string() {
+                                    return Err(McpError::invalid_params(
+                                        format!("Variable '{key}' must be a string."),
+                                        Some(json!({"value": val})),
+                                    ));
+                                }
+                                if let (Some(regex_str), Some(val_str)) =
+                                    (def.regex.as_ref(), val.as_str())
+                                {
+                                    let re = Regex::new(regex_str).map_err(|e| {
+                                        McpError::invalid_params(
+                                            format!("Invalid regex for '{key}'"),
+                                            Some(
+                                                json!({"regex": regex_str, "error": e.to_string()}),
+                                            ),
+                                        )
+                                    })?;
+                                    if !re.is_match(val_str) {
+                                        return Err(McpError::invalid_params(
+                                            format!(
+                                                "Variable '{key}' does not match regex pattern."
+                                            ),
+                                            Some(json!({"value": val_str, "regex": regex_str})),
+                                        ));
+                                    }
+                                }
+                            }
+                            crate::utils::VariableType::Number => {
+                                if !val.is_number() {
+                                    return Err(McpError::invalid_params(
+                                        format!("Variable '{key}' must be a number."),
+                                        Some(json!({"value": val})),
+                                    ));
+                                }
+                            }
+                            crate::utils::VariableType::Boolean => {
+                                if !val.is_boolean() {
+                                    return Err(McpError::invalid_params(
+                                        format!("Variable '{key}' must be a boolean."),
+                                        Some(json!({"value": val})),
+                                    ));
+                                }
+                            }
+                            crate::utils::VariableType::Enum => {
+                                let val_str = val.as_str().ok_or_else(|| {
+                                    McpError::invalid_params(
+                                        format!("Enum variable '{key}' must be a string."),
+                                        Some(json!({"value": val})),
+                                    )
+                                })?;
+                                if let Some(options) = &def.options {
+                                    if !options.contains(&val_str.to_string()) {
+                                        return Err(McpError::invalid_params(
+                                            format!("Variable '{key}' has an invalid value."),
+                                            Some(
+                                                json!({"value": val_str, "allowed_options": options}),
+                                            ),
+                                        ));
+                                    }
+                                }
+                            }
+                            crate::utils::VariableType::Array => {
+                                if !val.is_array() {
+                                    return Err(McpError::invalid_params(
+                                        format!("Variable '{key}' must be an array."),
+                                        Some(json!({"value": val})),
+                                    ));
+                                }
+                            }
+                            crate::utils::VariableType::Object => {
+                                if !val.is_object() {
+                                    return Err(McpError::invalid_params(
+                                        format!("Variable '{key}' must be an object."),
+                                        Some(json!({"value": val})),
+                                    ));
+                                }
+                            }
+                        }
+                        insert_nested_by_first_underscore(&mut nested_inputs, key, val.clone());
+                    }
+                    None => {
+                        if def.required.unwrap_or(true) {
+                            return Err(McpError::invalid_params(
+                                format!("Required variable '{key}' is missing."),
+                                None,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Build the final execution context by nesting inputs
+        let mut context_map = serde_json::Map::new();
+        if let Some(inputs) = &args.inputs {
+            if let Some(inputs_map) = inputs.as_object() {
+                for (k, v) in inputs_map {
+                    // Use the helper to create a nested structure.
+                    // e.g., "policy_use_max_budget" becomes `{"policy": {"use_max_budget": ...}}`
+                    insert_nested_by_first_underscore(&mut context_map, k, v.clone());
+                }
+            }
+        }
+
+        if let Some(sels) = args.selectors.clone() {
+            context_map.insert("selectors".to_string(), sels);
+        }
+        let execution_context = serde_json::Value::Object(context_map);
 
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
-        for step in &args.items {
-            if let Some(tool_name) = &step.tool_name {
-                // This is a single tool step
+        for step in &args.steps {
+            let item = if let Some(tool_name) = &step.tool_name {
                 let tool_call = ToolCall {
                     tool_name: tool_name.clone(),
                     arguments: step.arguments.clone().unwrap_or(serde_json::json!({})),
                     continue_on_error: step.continue_on_error,
                     delay_ms: step.delay_ms,
                 };
-                sequence_items.push(SequenceItem::Tool { tool_call });
+                SequenceItem::Tool { tool_call }
             } else if let Some(group_name) = &step.group_name {
-                // This is a group step
                 let tool_group = ToolGroup {
                     group_name: group_name.clone(),
-                    steps: step.steps.clone().unwrap_or_default(),
+                    steps: step
+                        .steps
+                        .clone()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|s| ToolCall {
+                            tool_name: s.tool_name,
+                            arguments: s.arguments,
+                            continue_on_error: s.continue_on_error,
+                            delay_ms: s.delay_ms,
+                        })
+                        .collect(),
                     skippable: step.skippable,
                 };
-                sequence_items.push(SequenceItem::Group { tool_group });
+                SequenceItem::Group { tool_group }
             } else {
                 return Err(McpError::invalid_params(
                     "Each step must have either tool_name (for single tools) or group_name (for groups)",
                     Some(json!({"invalid_step": step})),
                 ));
-            }
+            };
+            sequence_items.push(item);
         }
 
         let mut results = Vec::new();
@@ -1962,17 +1952,22 @@ impl DesktopWrapper {
 
         for (item_index, item) in sequence_items.iter_mut().enumerate() {
             let (if_expr, retries) = {
-                let original_step = &args.items[item_index];
+                let original_step = &args.steps[item_index];
                 (
                     original_step.r#if.clone(),
                     original_step.retries.unwrap_or(0),
                 )
             };
 
-            // 1. Evaluate condition
+            // 1. Evaluate condition directly. The expression evaluator handles variable lookups.
             if let Some(cond_str) = if_expr {
-                if !expression_eval::evaluate(&cond_str, &variables) {
-                    info!("Skipping step {} due to if_expr: {}", item_index, cond_str);
+                // The `substitute_variables` call was incorrect for `if` expressions.
+                // The evaluator is designed to work with variable paths directly.
+                if !expression_eval::evaluate(&cond_str, &execution_context) {
+                    info!(
+                        "Skipping step {} due to if expression not met: `{}`",
+                        item_index, cond_str
+                    );
                     results.push(json!({
                         "index": item_index,
                         "status": "skipped",
@@ -1988,10 +1983,17 @@ impl DesktopWrapper {
                 match item {
                     SequenceItem::Tool { tool_call } => {
                         // Substitute variables in arguments before execution
-                        substitute_variables(&mut tool_call.arguments, &variables);
+                        let mut substituted_args = tool_call.arguments.clone();
+                        substitute_variables(&mut substituted_args, &execution_context);
 
                         let (result, error_occurred) = self
-                            .execute_single_tool(tool_call, item_index, include_detailed)
+                            .execute_single_tool(
+                                &tool_call.tool_name,
+                                &substituted_args,
+                                tool_call.continue_on_error.unwrap_or(false),
+                                item_index,
+                                include_detailed,
+                            )
                             .await;
 
                         final_result = result.clone();
@@ -2003,6 +2005,12 @@ impl DesktopWrapper {
                             sequence_should_stop = true;
                         }
                         sequence_had_errors = true;
+
+                        if let Some(delay_ms) = tool_call.delay_ms {
+                            if delay_ms > 0 {
+                                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            }
+                        }
                     }
                     SequenceItem::Group { tool_group } => {
                         let mut group_had_errors = false;
@@ -2012,13 +2020,26 @@ impl DesktopWrapper {
                         for (step_index, step_tool_call) in tool_group.steps.iter_mut().enumerate()
                         {
                             // Substitute variables in arguments before execution
-                            substitute_variables(&mut step_tool_call.arguments, &variables);
+                            let mut substituted_args = step_tool_call.arguments.clone();
+                            substitute_variables(&mut substituted_args, &execution_context);
 
                             let (result, error_occurred) = self
-                                .execute_single_tool(step_tool_call, step_index, include_detailed)
+                                .execute_single_tool(
+                                    &step_tool_call.tool_name,
+                                    &substituted_args,
+                                    step_tool_call.continue_on_error.unwrap_or(false),
+                                    step_index,
+                                    include_detailed,
+                                )
                                 .await;
 
                             group_results.push(result.clone());
+
+                            if let Some(delay_ms) = step_tool_call.delay_ms {
+                                if delay_ms > 0 {
+                                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                                }
+                            }
 
                             let tool_failed = result["status"] != "success";
                             if tool_failed {
@@ -2122,21 +2143,21 @@ impl DesktopWrapper {
 
     async fn execute_single_tool(
         &self,
-        tool_call: &crate::utils::ToolCall,
+        tool_name: &str,
+        arguments: &Value,
+        is_skippable: bool,
         index: usize,
         include_detailed: bool,
     ) -> (serde_json::Value, bool) {
         let tool_start_time = chrono::Utc::now();
-        let tool_name = tool_call
-            .tool_name
+        let tool_name_short = tool_name
             .strip_prefix("mcp_terminator-mcp-agent_")
-            .unwrap_or(&tool_call.tool_name);
+            .unwrap_or(tool_name);
 
-        let arguments = tool_call.arguments.clone();
         // The substitution is now done at the higher level in `execute_sequence`.
         // This function now receives arguments with variables already substituted.
 
-        let tool_result = self.dispatch_tool(tool_name, &arguments).await;
+        let tool_result = self.dispatch_tool(tool_name_short, arguments).await;
 
         let (processed_result, error_occurred) = match tool_result {
             Ok(result) => {
@@ -2157,7 +2178,7 @@ impl DesktopWrapper {
                 };
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
                 let result_json = json!({
-                    "tool_name": tool_call.tool_name,
+                    "tool_name": tool_name,
                     "index": index,
                     "status": "success",
                     "duration_ms": duration_ms,
@@ -2167,30 +2188,30 @@ impl DesktopWrapper {
             }
             Err(e) => {
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
-                let is_skippable_error = tool_call.continue_on_error.unwrap_or(false);
                 let error_result = json!({
-                    "tool_name": tool_call.tool_name,
+                    "tool_name": tool_name,
                     "index": index,
-                    "status": if is_skippable_error { "skipped" } else { "error" },
+                    "status": if is_skippable { "skipped" } else { "error" },
                     "duration_ms": duration_ms,
                     "error": format!("{}", e),
                 });
 
-                if !is_skippable_error {
+                if !is_skippable {
                     warn!(
                         "Tool '{}' at index {} failed. Reason: {}",
-                        tool_call.tool_name, index, e
+                        tool_name, index, e
                     );
                 }
-                (error_result, !is_skippable_error)
+                (error_result, !is_skippable)
             }
         };
 
-        if let Some(delay_ms) = tool_call.delay_ms {
-            if delay_ms > 0 {
-                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-            }
-        }
+        // This was moved from execute_single_tool to the main loop
+        // if let Some(delay_ms) = tool_call.delay_ms {
+        //     if delay_ms > 0 {
+        //         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        //     }
+        // }
         (processed_result, error_occurred)
     }
 
@@ -2636,10 +2657,10 @@ impl DesktopWrapper {
                 enhanced_steps.push(json!({
                     "step": step_counter,
                     "action": tool_name,
-                    "description": self.generate_step_description(tool_name, &tool_call.arguments),
+                    "description": generate_step_description(tool_name, &tool_call.arguments),
                     "tool_name": tool_name,
                     "arguments": enhanced_args,
-                    "wait_for": self.get_wait_condition(tool_name),
+                    "wait_for": get_wait_condition(tool_name),
                     "verify_success": add_validation_steps
                 }));
                 step_counter += 1;
@@ -2784,48 +2805,6 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(output)?]))
     }
 
-    // Helper methods for export_workflow_sequence
-    fn generate_step_description(&self, tool_name: &str, args: &serde_json::Value) -> String {
-        match tool_name {
-            "click_element" => format!(
-                "Click on element: {}",
-                args.get("selector")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-            ),
-            "type_into_element" => format!(
-                "Type '{}' into {}",
-                args.get("text_to_type")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(""),
-                args.get("selector")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("field")
-            ),
-            "navigate_browser" => format!(
-                "Navigate to {}",
-                args.get("url").and_then(|v| v.as_str()).unwrap_or("URL")
-            ),
-            "select_option" => format!(
-                "Select '{}' from dropdown",
-                args.get("option_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("option")
-            ),
-            _ => format!("Execute {tool_name}"),
-        }
-    }
-
-    fn get_wait_condition(&self, tool_name: &str) -> Option<String> {
-        match tool_name {
-            "click_element" => Some("Element state changes or UI updates".to_string()),
-            "type_into_element" => Some("Text appears in field".to_string()),
-            "navigate_browser" => Some("Page loads completely".to_string()),
-            "open_application" => Some("Application window appears".to_string()),
-            _ => None,
-        }
-    }
-
     fn extract_required_tools(&self, tool_calls: &[crate::utils::ToolCall]) -> Vec<String> {
         tool_calls
             .iter()
@@ -2860,22 +2839,6 @@ impl DesktopWrapper {
         }
 
         outcomes
-    }
-
-    // Helper to optionally attach UI tree to response
-    fn maybe_attach_tree(&self, include_tree: bool, pid_opt: Option<u32>, result_json: &mut Value) {
-        if !include_tree {
-            return;
-        }
-        if let Some(pid) = pid_opt {
-            if let Ok(tree) = self.desktop.get_window_tree(pid, None, None) {
-                if let Ok(tree_val) = serde_json::to_value(tree) {
-                    if let Some(obj) = result_json.as_object_mut() {
-                        obj.insert("ui_tree".to_string(), tree_val);
-                    }
-                }
-            }
-        }
     }
 
     #[tool(description = "Maximizes a window.")]
@@ -2913,7 +2876,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -2957,7 +2921,8 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
-        self.maybe_attach_tree(
+        maybe_attach_tree(
+            &self.desktop,
             args.include_tree.unwrap_or(true),
             element.process_id().ok(),
             &mut result_json,
@@ -3015,57 +2980,6 @@ impl DesktopWrapper {
     }
 }
 
-// Helper functions for export_workflow_sequence
-fn should_add_focus_check(tool_calls: &[crate::utils::ToolCall], current_index: usize) -> bool {
-    // Add focus check if:
-    // 1. It's the first UI interaction
-    // 2. Previous action was navigation or opened a new window
-    // 3. There was a significant gap (e.g., after get_window_tree or wait)
-
-    if current_index == 0 {
-        return true;
-    }
-
-    let prev_tool = &tool_calls[current_index - 1].tool_name;
-    matches!(
-        prev_tool.as_str(),
-        "navigate_browser"
-            | "open_application"
-            | "close_element"
-            | "get_window_tree"
-            | "get_applications"
-            | "activate_element"
-    )
-}
-
-fn is_state_changing_action(tool_name: &str) -> bool {
-    matches!(
-        tool_name,
-        "click_element"
-            | "type_into_element"
-            | "select_option"
-            | "set_toggled"
-            | "set_selected"
-            | "set_range_value"
-            | "invoke_element"
-            | "press_key"
-            | "mouse_drag"
-            | "scroll_element"
-    )
-}
-
-fn should_capture_tree(tool_name: &str, index: usize, total_steps: usize) -> bool {
-    // Capture tree at key points:
-    // 1. After major navigation
-    // 2. Before complex sequences
-    // 3. At regular intervals (every 5 steps)
-    // 4. Before the final action
-
-    matches!(tool_name, "navigate_browser" | "open_application")
-        || index % 5 == 0
-        || index == total_steps - 1
-}
-
 #[tool_handler]
 impl ServerHandler for DesktopWrapper {
     fn get_info(&self) -> ServerInfo {
@@ -3077,114 +2991,7 @@ impl ServerHandler for DesktopWrapper {
                 .enable_tools()
                 .build(),
             server_info: Implementation::from_build_env(),
-            instructions: Some(get_server_instructions().to_string()),
+            instructions: Some(crate::prompt::get_server_instructions().to_string()),
         }
     }
-}
-
-fn get_server_instructions() -> String {
-    let current_date_time = Local::now().to_string();
-    let current_os = env::consts::OS;
-    let current_working_dir = env::current_dir()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|_| "Unknown".to_string());
-
-    format!(
-        "
-You are an AI assistant designed to control a computer desktop. Your primary goal is to understand the user's request and translate it into a sequence of tool calls to automate GUI interactions.
-
-**Golden Rules for Robust Automation**
-
-1.  **CHECK FOCUS FIRST:** Before any `click`, `type`, or `press_key` action, you **MUST** verify the target application `is_focused` using `get_applications`. If it's not, you **MUST** call `activate_element` before proceeding. This is the #1 way to prevent sending commands to the wrong window.
-
-2.  **AVOID STALE STATE & CONTEXT COLLAPSE:** After any action that changes the UI context (closing a dialog, getting an error, a click that loads new content), the UI may have changed dramatically. **You MUST call `get_window_tree` again to get the current, fresh state before proceeding.** Failure to do so will cause you to act on a 'ghost' UI and fail. Do not trust a 'success' status alone; verify the outcome.
-
-3.  **WAIT AFTER NAVIGATION:** After actions like `click_element` on a link or `navigate_browser`, the UI needs time to load. You **MUST** explicitly wait. The best method is to use `wait_for_element` targeting a known element on the new page. Do not call `get_window_tree` immediately.
-
-4.  **CHECK BEFORE YOU ACT (Especially Toggles):** Before clicking a checkbox, radio button, or any toggleable item, **ALWAYS** use `is_toggled` or `is_selected` to check its current state. Only click if it's not already in the desired state to avoid accidentally undoing the action.
-
-5.  **HANDLE DISABLED ELEMENTS:** Before attempting to click a button or interact with an element, you **MUST** check if it is enabled. The `validate_element` and `get_window_tree` tools return an `enabled` property. If an element is disabled (e.g., a grayed-out 'Submit' button), do not try to click it. Instead, you must investigate the UI to figure out why it's disabled. Look for unchecked checkboxes, empty required fields, or other dependencies that must be satisfied first.
-
-6.  **USE PRECISE SELECTORS (ID IS YOUR FRIEND):** A `role|name` selector is good, but often, an element **does not have a `name` attribute** even if it contains visible text (the text is often a child element). Check the `get_window_tree` output carefully. If an element has an empty or generic name, you **MUST use its numeric ID (`\"#12345\"`) for selection.** Do not guess or hallucinate a `name` from the visual text; use the ID. This is critical for clickable `Group` elements which often lack a name.
-
-7.  **PREFER INVOKE OVER CLICK FOR BUTTONS:** When dealing with buttons, especially those that might not be in the viewport, **prefer `invoke_element` over `click_element`**. The `invoke_element` action is more reliable because it doesn't require the element to be scrolled into view. Use `click_element` only when you specifically need mouse interaction behavior (e.g., for links or UI elements that respond differently to clicks).
-
-8.  **USE SET_SELECTED FOR RADIO BUTTONS AND CHECKBOXES:** For radio buttons and selectable items, **always use `set_selected` with `state: true`** instead of `click_element`. This ensures the element reaches the desired state regardless of its current state. For checkboxes and toggle switches, use `set_toggled` with the desired state.
-
-
-**Tool Behavior & Metadata**
-
-Pay close attention to the tool descriptions for hints on their behavior.
-
-*   **Read-only tools** are safe to use for inspection and will not change the UI state (e.g., `validate_element`, `get_window_tree`).
-*   Tools that **may change the UI** require more care. After using one, consider calling `get_window_tree` again to get the latest UI state.
-*   Tools that **require focus** must only be used on the foreground application. Use `get_applications` to check focus and `activate_element` to bring an application to the front.
-
-**Core Workflow: Discover, then Act with Precision**
-
-Your most reliable strategy is to inspect the application's UI structure *before* trying to interact with it. Never guess selectors.
-
-1.  **Discover Running Applications:** Use `get_applications` to see what's running. This gives you the `name`, `id`, and `pid` (Process ID) for each application.
-
-2.  **Get the UI Tree:** This is the most important step. Once you have the `pid` of your target application, call `get_window_tree` with `include_tree: true`. This returns a complete, JSON-like structure of all UI elements in that application.
-
-3.  **Construct Smart Selector Strategies:** 
-    *   **Primary Strategy:** Use `role:Type|name:Name` when available, otherwise use the numeric ID (`\"#12345\"`).
-    *   **Multi-Selector Fallbacks:** Provide alternatives that are tried in parallel:
-        ```json
-        {{
-          \"selector\": \"role:Button|name:Submit\",
-          \"alternative_selectors\": \"#12345\"
-        }}
-        ```
-    *   **Avoid:** Generic selectors like `\"role:Button\"` alone - they're too ambiguous.
-
-**Action Examples**
-
-*   **Invoking a button (preferred over clicking):**
-    ```json
-    {{
-        \"tool_name\": \"invoke_element\",
-        \"args\": {{\"selector\": \"role:button|name:Login\"}}
-    }}
-    ```
-*   **Selecting a radio button (use set_selected, not click):**
-    ```json
-    {{
-        \"tool_name\": \"set_selected\",
-        \"args\": {{\"selector\": \"role:RadioButton|name:Male\", \"state\": true}}
-    }}
-    ```
-*   **Typing an email into an email field:**
-    ```json
-    {{
-        \"tool_name\": \"type_into_element\",
-        \"args\": {{\"selector\": \"edit|Email\", \"text_to_type\": \"user@example.com\"}}
-    }}
-    ```
-*   **Using alternative selectors for robustness:**
-    ```json
-    {{
-        \"tool_name\": \"invoke_element\",
-        \"args\": {{
-            \"selector\": \"#17517999067772859239\",
-            \"alternative_selectors\": \"role:Group|name:Run Quote\"
-        }}
-    }}
-    ```
-
-**Common Pitfalls & Solutions**
-
-*   **Click fails on buttons not in viewport:** Use `invoke_element` instead of `click_element`.
-*   **Radio button clicks don't register:** Use `set_selected` with `state: true`.
-*   **Form validation errors:** Verify all fields AND radio buttons/checkboxes before submitting.
-*   **Element not found after UI change:** Call `get_window_tree` again after UI changes.
-*   **Selector matches wrong element:** Use numeric ID when name is empty.
-
-Contextual information:
-- The current date and time is {current_date_time}.
-- Current operating system: {current_os}.
-- Current working directory: {current_working_dir}.
-"
-    )
 }

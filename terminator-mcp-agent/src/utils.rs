@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
@@ -424,14 +425,18 @@ pub struct SequenceStep {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExecuteSequenceArgs {
+    #[schemars(description = "The steps of the workflow to execute in order.")]
+    pub steps: Vec<SequenceStep>,
     #[schemars(
-        description = "Array of steps to execute. Each step can be either a single tool (with tool_name and arguments) or a group (with group_name and steps)."
+        description = "A key-value map defining the schema for dynamic variables (e.g., for UI generation)."
     )]
-    pub items: Vec<SequenceStep>,
+    pub variables: Option<HashMap<String, VariableDefinition>>,
     #[schemars(
-        description = "A key-value map of variables to be substituted into step arguments and conditions."
+        description = "A key-value map of the actual input values for the variables defined in the schema."
     )]
-    pub variables: Option<serde_json::Value>,
+    pub inputs: Option<serde_json::Value>,
+    #[schemars(description = "A key-value map of static UI element selectors for the workflow.")]
+    pub selectors: Option<serde_json::Value>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
     #[schemars(
@@ -443,6 +448,36 @@ pub struct ExecuteSequenceArgs {
     )]
     pub output_parser: Option<serde_json::Value>,
 }
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum VariableType {
+    String,
+    Number,
+    Boolean,
+    Enum,
+    Array,
+    Object,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+pub struct VariableDefinition {
+    #[schemars(description = "The data type of the variable.")]
+    pub r#type: VariableType,
+    #[schemars(description = "A user-friendly label for the variable, for UI generation.")]
+    pub label: String,
+    #[schemars(description = "A detailed description of what the variable is for.")]
+    pub description: Option<String>,
+    #[schemars(description = "The default value for the variable if not provided in the inputs.")]
+    pub default: Option<serde_json::Value>,
+    #[schemars(description = "For string types, a regex pattern for validation.")]
+    pub regex: Option<String>,
+    #[schemars(description = "For enum types, a list of allowed string values.")]
+    pub options: Option<Vec<String>>,
+    #[schemars(description = "Whether this variable is required. Defaults to true.")]
+    pub required: Option<bool>,
+}
+
 
 // Keep the old structures for internal use
 #[derive(Debug, Serialize, Deserialize)]
