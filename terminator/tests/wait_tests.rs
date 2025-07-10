@@ -21,6 +21,10 @@ fn start_test_server() -> (String, Arc<tiny_http::Server>) {
 #[tokio::test]
 #[cfg(target_os = "windows")]
 async fn test_wait_for_element_on_webpage() {
+    use std::time::Duration;
+
+    use terminator::{Desktop, Selector};
+
     let (server_url, _server) = start_test_server();
     let desktop = Desktop::new(false, false).unwrap();
 
