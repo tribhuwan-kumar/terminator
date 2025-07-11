@@ -1956,14 +1956,28 @@ impl DesktopWrapper {
         let max_iterations = sequence_items.len() * 10; // Prevent infinite fallback loops
         let mut iterations = 0usize;
 
+        // Build a map from step ID to its index for quick fallback lookup
+        use std::collections::HashMap;
+        let mut id_to_index: HashMap<String, usize> = HashMap::new();
+        for (idx, step) in args.steps.iter().enumerate() {
+            if let Some(id) = &step.id {
+                if id_to_index.insert(id.clone(), idx).is_some() {
+                    warn!(
+                        "Duplicate step id '{}' found; later occurrence overrides earlier.",
+                        id
+                    );
+                }
+            }
+        }
+
         while current_index < sequence_items.len() && iterations < max_iterations {
             iterations += 1;
 
             let original_step = &args.steps[current_index];
-            let (if_expr, retries, fallback_step_opt) = (
+            let (if_expr, retries, fallback_id_opt) = (
                 original_step.r#if.clone(),
                 original_step.retries.unwrap_or(0),
-                original_step.fallback_step,
+                original_step.fallback_id.clone(),
             );
 
             let is_always_step = if_expr.as_deref().is_some_and(|s| s.trim() == "always()");
@@ -2120,17 +2134,17 @@ impl DesktopWrapper {
 
             if step_succeeded {
                 current_index += 1;
-            } else if let Some(fb_idx) = fallback_step_opt {
-                if fb_idx < sequence_items.len() {
+            } else if let Some(fb_id) = fallback_id_opt {
+                if let Some(&fb_idx) = id_to_index.get(&fb_id) {
                     info!(
-                        "Step {} failed. Jumping to fallback step {} as specified.",
-                        current_index, fb_idx
+                        "Step {} failed. Jumping to fallback step with id '{}' (index {}).",
+                        current_index, fb_id, fb_idx
                     );
                     current_index = fb_idx;
                 } else {
                     warn!(
-                        "Invalid fallback_step index {} for step {}. Continuing to next step.",
-                        fb_idx, current_index
+                        "fallback_id '{}' for step {} not found. Continuing to next step.",
+                        fb_id, current_index
                     );
                     current_index += 1;
                 }
