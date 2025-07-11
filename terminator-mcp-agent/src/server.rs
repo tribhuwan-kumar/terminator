@@ -10,7 +10,8 @@ use crate::utils::{
     HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
     NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
     ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    SetValueArgs, SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs,
+    WaitForElementArgs, ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -3017,6 +3018,59 @@ impl DesktopWrapper {
             "percentage": args.percentage,
             "note": "Zoom level set to the specified percentage"
         }))?]))
+    }
+
+    #[tool(
+        description = "Sets the text value of an editable control (e.g., an input field) directly using the underlying accessibility API. This action requires the application to be focused and may change the UI."
+    )]
+    async fn set_value(
+        &self,
+        Parameters(args): Parameters<SetValueArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let value_to_set = args.value.clone();
+        let action = move |element: UIElement| {
+            let value_to_set = value_to_set.clone();
+            async move { element.set_value(&value_to_set) }
+        };
+
+        let ((_result, element), successful_selector) =
+            match find_and_execute_with_retry_with_fallback(
+                &self.desktop,
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
+                args.timeout_ms,
+                args.retries,
+                action,
+            )
+            .await
+            {
+                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Err(e) => Err(build_element_not_found_error(
+                    &args.selector,
+                    args.alternative_selectors.as_deref(),
+                    args.fallback_selectors.as_deref(),
+                    e,
+                )),
+            }?;
+
+        let element_info = build_element_info(&element);
+
+        let mut result_json = json!({
+            "action": "set_value",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "value_set_to": args.value,
+        });
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(true),
+            Some(element.process_id().unwrap_or(0)),
+            &mut result_json,
+        );
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 }
 
