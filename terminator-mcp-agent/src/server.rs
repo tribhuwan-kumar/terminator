@@ -1943,29 +1943,39 @@ impl DesktopWrapper {
             sequence_items.push(item);
         }
 
+        // ---------------------------
+        // Fallback-enabled execution loop (while-based)
+        // ---------------------------
+
         let mut results = Vec::new();
         let mut sequence_had_errors = false;
         let mut critical_error_occurred = false;
         let start_time = chrono::Utc::now();
 
-        for (item_index, item) in sequence_items.iter_mut().enumerate() {
-            let (if_expr, retries) = {
-                let original_step = &args.steps[item_index];
-                (
-                    original_step.r#if.clone(),
-                    original_step.retries.unwrap_or(0),
-                )
-            };
+        let mut current_index: usize = 0;
+        let max_iterations = sequence_items.len() * 10; // Prevent infinite fallback loops
+        let mut iterations = 0usize;
+
+        while current_index < sequence_items.len() && iterations < max_iterations {
+            iterations += 1;
+
+            let original_step = &args.steps[current_index];
+            let (if_expr, retries, fallback_step_opt) = (
+                original_step.r#if.clone(),
+                original_step.retries.unwrap_or(0),
+                original_step.fallback_step,
+            );
 
             let is_always_step = if_expr.as_deref().is_some_and(|s| s.trim() == "always()");
 
             // If a critical error occurred and this step is NOT an 'always' step, skip it.
             if critical_error_occurred && !is_always_step {
                 results.push(json!({
-                    "index": item_index,
+                    "index": current_index,
                     "status": "skipped",
                     "reason": "Skipped due to a previous unrecoverable error in the sequence."
                 }));
+                current_index += 1;
                 continue;
             }
 
@@ -1974,20 +1984,24 @@ impl DesktopWrapper {
                 if !is_always_step && !expression_eval::evaluate(cond_str, &execution_context) {
                     info!(
                         "Skipping step {} due to if expression not met: `{}`",
-                        item_index, cond_str
+                        current_index, cond_str
                     );
                     results.push(json!({
-                        "index": item_index,
+                        "index": current_index,
                         "status": "skipped",
                         "reason": format!("if_expr not met: {}", cond_str)
                     }));
+                    current_index += 1;
                     continue;
                 }
             }
 
             // 2. Execute with retries
             let mut final_result = json!(null);
+            let mut step_error_occurred = false;
+
             for attempt in 0..=retries {
+                let item = &mut sequence_items[current_index];
                 match item {
                     SequenceItem::Tool { tool_call } => {
                         // Substitute variables in arguments before execution
@@ -1999,7 +2013,7 @@ impl DesktopWrapper {
                                 &tool_call.tool_name,
                                 &substituted_args,
                                 tool_call.continue_on_error.unwrap_or(false),
-                                item_index,
+                                current_index,
                                 include_detailed,
                             )
                             .await;
@@ -2012,6 +2026,7 @@ impl DesktopWrapper {
                         if error_occurred {
                             critical_error_occurred = true;
                         }
+                        step_error_occurred = true;
                         sequence_had_errors = true;
 
                         if let Some(delay_ms) = tool_call.delay_ms {
@@ -2069,8 +2084,7 @@ impl DesktopWrapper {
 
                         if group_status != "success" {
                             sequence_had_errors = true;
-                        } else {
-                            // If the group was successful, we don't need to consider sequence_had_errors
+                            step_error_occurred = true;
                         }
 
                         if group_had_errors && !is_skippable && stop_on_error {
@@ -2091,14 +2105,42 @@ impl DesktopWrapper {
                 if attempt < retries {
                     warn!(
                         "Step {} failed on attempt {}/{}. Retrying...",
-                        item_index,
+                        current_index,
                         attempt + 1,
                         retries
                     );
                     tokio::time::sleep(Duration::from_millis(500)).await; // Wait before retry
                 }
             }
+
             results.push(final_result);
+
+            // Decide next index based on success or fallback
+            let step_succeeded = !step_error_occurred;
+
+            if step_succeeded {
+                current_index += 1;
+            } else if let Some(fb_idx) = fallback_step_opt {
+                if fb_idx < sequence_items.len() {
+                    info!(
+                        "Step {} failed. Jumping to fallback step {} as specified.",
+                        current_index, fb_idx
+                    );
+                    current_index = fb_idx;
+                } else {
+                    warn!(
+                        "Invalid fallback_step index {} for step {}. Continuing to next step.",
+                        fb_idx, current_index
+                    );
+                    current_index += 1;
+                }
+            } else {
+                current_index += 1;
+            }
+        }
+
+        if iterations >= max_iterations {
+            warn!("Maximum iteration count reached. Possible infinite fallback loop detected.");
         }
 
         let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();

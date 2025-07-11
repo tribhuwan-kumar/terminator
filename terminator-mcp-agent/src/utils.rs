@@ -421,6 +421,10 @@ pub struct SequenceStep {
     pub r#if: Option<String>,
     #[schemars(description = "Number of times to retry this step or group on failure.")]
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Optional zero-based index of the step to jump to if this step ultimately fails after all retries. Useful for implementing fallback flows."
+    )]
+    pub fallback_step: Option<usize>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Default, JsonSchema)]
