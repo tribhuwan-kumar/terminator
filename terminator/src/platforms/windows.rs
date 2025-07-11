@@ -835,49 +835,45 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                // Start with the initial root
-                let mut current_roots = if let Some(root) = root {
-                    vec![Some(root.clone())]
-                } else {
-                    vec![None]
-                };
+                let mut results = self.find_elements(&selectors[0], root, timeout, depth)?;
 
-                // Iterate through selectors, refining the list of matching elements
-                for (i, selector) in selectors.iter().enumerate() {
-                    let mut next_roots = Vec::new();
-                    let is_last_selector = i == selectors.len() - 1;
-
-                    for root_element in &current_roots {
-                        // Find elements matching the current selector within the current root
-                        let found_elements =
-                            self.find_elements(selector, root_element.as_ref(), timeout, depth)?;
-
-                        if is_last_selector {
-                            // If it's the last selector, collect all found elements
-                            next_roots.extend(found_elements.into_iter().map(Some));
-                        } else {
-                            // If not the last selector, and we found exactly one element,
-                            // use it as the root for the next iteration.
-                            if found_elements.len() == 1 {
-                                next_roots.push(Some(found_elements.into_iter().next().unwrap()));
-                            } else {
-                                // If 0 or >1 elements found before the last selector,
-                                // it means the path diverged or ended. No elements match the full chain.
-                                next_roots.clear();
-                                break;
-                            }
-                        }
+                for selector in selectors.iter().skip(1) {
+                    if results.is_empty() {
+                        break;
                     }
 
-                    current_roots = next_roots;
-                    if current_roots.is_empty() && !is_last_selector {
-                        // If no elements were found matching an intermediate selector, break early.
-                        break;
+                    if let Selector::Nth(index) = selector {
+                        let mut i = *index;
+                        let len = results.len();
+
+                        if i < 0 {
+                            // Convert negative index to positive
+                            i += len as i32;
+                        }
+
+                        if i >= 0 && (i as usize) < len {
+                            // Take the element at the index
+                            let selected = results.remove(i as usize);
+                            results = vec![selected];
+                        } else {
+                            // Index is out of bounds, so no elements match
+                            results.clear();
+                        }
+                    } else {
+                        let mut next_results = Vec::new();
+                        for element_root in &results {
+                            next_results.extend(self.find_elements(
+                                selector,
+                                Some(element_root),
+                                timeout,
+                                depth,
+                            )?);
+                        }
+                        results = next_results;
                     }
                 }
 
-                // Convert Vec<Option<UIElement>> to Vec<UIElement> by filtering out None values
-                Ok(current_roots.into_iter().flatten().collect())
+                Ok(results)
             }
             Selector::ClassName(classname) => {
                 debug!("searching elements by class name: {}", classname);
@@ -1084,6 +1080,9 @@ impl AccessibilityEngine for WindowsEngine {
                 Ok(results)
             }
             Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
+            Selector::Nth(_) => Err(AutomationError::InvalidSelector(
+                "Nth selector must be used as part of a chain (e.g. 'list >> nth=0')".to_string(),
+            )),
         }
     }
 
@@ -1093,386 +1092,14 @@ impl AccessibilityEngine for WindowsEngine {
         root: Option<&UIElement>,
         timeout: Option<Duration>,
     ) -> Result<UIElement, AutomationError> {
-        let root_ele = if let Some(el) = root {
-            if let Some(ele) = el.as_any().downcast_ref::<WindowsUIElement>() {
-                &ele.element.0
-            } else {
-                &Arc::new(self.automation.0.get_root_element().unwrap())
-            }
-        } else {
-            &Arc::new(self.automation.0.get_root_element().unwrap())
-        };
-
-        let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
-
-        match selector {
-            Selector::Role { role, name } => {
-                let win_control_type = map_generic_role_to_win_roles(role);
-                debug!(
-                    "searching element by role: {:?} (from: {}), name_filter: {:?}, timeout: {}ms, within: {:?}",
-                    win_control_type,
-                    role,
-                    name,
-                    timeout_ms,
-                    root_ele.get_name().unwrap_or_default()
-                );
-
-                let mut matcher_builder = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .control_type(win_control_type)
-                    .depth(50) // Default depth for find_element
-                    .timeout(timeout_ms as u64);
-
-                if let Some(name) = name {
-                    // use contains_name, its undetermined right now
-                    // wheather we should use `name` or `contains_name`
-                    matcher_builder = matcher_builder.filter(Box::new(NameFilter {
-                        value: name.clone(),
-                        casesensitive: false,
-                        partial: true,
-                    }));
-                }
-
-                let element = matcher_builder.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Role: '{role}' (mapped to {win_control_type:?}), Name: {name:?}, Root: {root:?}, Err: {e}"
-                    ))
-                })?;
-
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })))
-            }
-            Selector::Id(id) => {
-                debug!("Searching for element with ID: {}", id);
-                // Clone id to move into the closure
-                let target_id = id.strip_prefix('#').unwrap_or(id).to_string();
-                let matcher = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .depth(50)
-                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                        // Use the common function to generate ID
-                        match generate_element_id(e)
-                            .map(|id| id.to_string().chars().take(6).collect::<String>())
-                        {
-                            Ok(calculated_id) => {
-                                let matches = calculated_id == target_id;
-                                if matches {
-                                    debug!("Found matching element with ID: {}", calculated_id);
-                                }
-                                Ok(matches)
-                            }
-                            Err(e) => {
-                                debug!("Failed to generate ID for element: {}", e);
-                                Ok(false)
-                            }
-                        }
-                    }))
-                    .timeout(timeout_ms as u64);
-
-                debug!("Starting element search with timeout: {}ms", timeout_ms);
-                let element = matcher.find_first().map_err(|e| {
-                    debug!("Element search failed: {}", e);
-                    AutomationError::ElementNotFound(format!("ID: '{id}', Err: {e}"))
-                })?;
-
-                debug!("Found element matching ID: {}", id);
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })))
-            }
-            Selector::Name(name) => {
-                // find use create matcher api
-
-                debug!("searching element by name: {}", name);
-
-                let matcher = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .contains_name(name)
-                    .depth(50)
-                    .timeout(timeout_ms as u64);
-
-                let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!("Name: '{name}', Err: {e}"))
-                })?;
-
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })))
-            }
-            Selector::Text(text) => {
-                let filter = OrFilter {
-                    left: Box::new(NameFilter {
-                        value: String::from(text),
-                        casesensitive: false,
-                        partial: true,
-                    }),
-                    right: Box::new(ControlTypeFilter {
-                        control_type: ControlType::Text,
-                    }),
-                };
-                // Create a matcher that uses contains_name which is more reliable for text searching
-                let matcher = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .filter(Box::new(filter)) // This is the key improvement from the example
-                    .depth(50) // Search deep enough to find most elements
-                    .timeout(timeout_ms as u64); // Allow enough time for search
-
-                // Get the first matching element
-                let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Text: '{text}', Root: {root:?}, Err: {e}"
-                    ))
-                })?;
-
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })))
-            }
-            Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
-                "`Path` selector not supported".to_string(),
-            )),
-            Selector::NativeId(automation_id) => {
-                // for windows passing `UIProperty::AutomationID` as `NativeId`
-                debug!(
-                    "searching for element using AutomationId: {}",
-                    automation_id
-                );
-
-                let ele_id = automation_id.clone();
-                let matcher = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .depth(50) // Add depth limit
-                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                        match e.get_automation_id() {
-                            Ok(id) => {
-                                let matches = id == ele_id;
-                                if matches {
-                                    debug!("found matching element with AutomationID : {}", ele_id);
-                                }
-                                Ok(matches)
-                            }
-                            Err(err) => {
-                                debug!("failed to get AutomationId: {}", err);
-                                Ok(false)
-                            }
-                        }
-                    }))
-                    .timeout(timeout_ms as u64);
-
-                debug!("searching element with timeout: {}ms", timeout_ms);
-
-                let element = matcher.find_first().map_err(|e| {
-                    debug!("Element search failed: {}", e);
-                    AutomationError::ElementNotFound(format!(
-                        "AutomationId: '{automation_id}', Err: {e}"
-                    ))
-                })?;
-
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })))
-            }
-            Selector::Attributes(_attributes) => Err(AutomationError::UnsupportedOperation(
-                "`Attributes` selector not supported".to_string(),
-            )),
-            Selector::Filter(_filter) => Err(AutomationError::UnsupportedOperation(
-                "`Filter` selector not supported".to_string(),
-            )),
-            Selector::Chain(selectors) => {
-                if selectors.is_empty() {
-                    return Err(AutomationError::InvalidArgument(
-                        "Selector chain cannot be empty".to_string(),
-                    ));
-                }
-
-                // Recursively find the element by traversing the chain.
-                let mut current_element = root.cloned();
-                for selector in selectors {
-                    let found_element =
-                        self.find_element(selector, current_element.as_ref(), timeout)?;
-                    current_element = Some(found_element);
-                }
-
-                // Return the final single element found after the full chain traversal.
-                current_element.ok_or_else(|| {
-                    AutomationError::ElementNotFound(
-                        "Element not found after traversing chain".to_string(),
-                    )
-                })
-            }
-            Selector::ClassName(classname) => {
-                debug!("searching element by class name: {}", classname);
-                let matcher = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .filter(Box::new(ClassNameFilter {
-                        classname: classname.clone(),
-                    }))
-                    .depth(50)
-                    .timeout(timeout_ms as u64);
-                let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!("ClassName: '{classname}', Err: {e}"))
-                })?;
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })))
-            }
-            Selector::Visible(visibility) => {
-                let visibility = *visibility;
-                let matcher = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .depth(50)
-                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                        match e.is_offscreen() {
-                            Ok(is_offscreen) => Ok(is_offscreen != visibility),
-                            Err(e) => {
-                                debug!("failed to get visibility: {}", e);
-                                Ok(false)
-                            }
-                        }
-                    }))
-                    .timeout(timeout_ms as u64);
-                let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!("Visible: '{visibility}', Err: {e}"))
-                })?;
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: ThreadSafeWinUIElement(Arc::new(element)),
-                })))
-            }
-            Selector::LocalizedRole(localized_role) => {
-                debug!("searching element by localized role: {}", localized_role);
-                let lr = localized_role.clone();
-                let matcher = self
-                    .automation
-                    .0
-                    .create_matcher()
-                    .from_ref(root_ele)
-                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                        match e.get_localized_control_type() {
-                            Ok(lct) => Ok(lct == lr),
-                            Err(_) => Ok(false),
-                        }
-                    }))
-                    .depth(50)
-                    .timeout(timeout_ms as u64);
-                let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "LocalizedRole: '{localized_role}', Err: {e}"
-                    ))
-                })?;
-                let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-                Ok(UIElement::new(Box::new(WindowsUIElement {
-                    element: arc_ele,
-                })))
-            }
-            Selector::Position(x, y) => {
-                debug!("searching element at position: ({}, {})", x, y);
-                let point = uiautomation::types::Point::new(*x, *y);
-                let element = self.automation.0.element_from_point(point).map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "No element found at position ({x}, {y}): {e}"
-                    ))
-                })?;
-                Ok(convert_uiautomation_element_to_terminator(element))
-            }
-            Selector::RightOf(_)
-            | Selector::LeftOf(_)
-            | Selector::Above(_)
-            | Selector::Below(_)
-            | Selector::Near(_) => {
-                let mut elements = self.find_elements(selector, root, timeout, Some(50))?;
-                if elements.is_empty() {
-                    return Err(AutomationError::ElementNotFound(format!(
-                        "No element found for layout selector: {:?}",
-                        selector
-                    )));
-                }
-
-                // For layout selectors, it's often useful to get the *closest* one.
-                // Let's sort them by distance from the anchor.
-                let inner_selector = match selector {
-                    Selector::RightOf(s)
-                    | Selector::LeftOf(s)
-                    | Selector::Above(s)
-                    | Selector::Below(s)
-                    | Selector::Near(s) => s.as_ref(),
-                    _ => unreachable!(),
-                };
-
-                let anchor_element = self.find_element(inner_selector, root, timeout)?;
-                let anchor_bounds = anchor_element.bounds()?;
-                let anchor_center_x = anchor_bounds.0 + anchor_bounds.2 / 2.0;
-                let anchor_center_y = anchor_bounds.1 + anchor_bounds.3 / 2.0;
-
-                elements.sort_by(|a, b| {
-                    let dist_a = a
-                        .bounds()
-                        .map(|b_bounds| {
-                            let b_center_x = b_bounds.0 + b_bounds.2 / 2.0;
-                            let b_center_y = b_bounds.1 + b_bounds.3 / 2.0;
-                            ((b_center_x - anchor_center_x).powi(2)
-                                + (b_center_y - anchor_center_y).powi(2))
-                            .sqrt()
-                        })
-                        .unwrap_or(f64::MAX);
-
-                    let dist_b = b
-                        .bounds()
-                        .map(|b_bounds| {
-                            let b_center_x = b_bounds.0 + b_bounds.2 / 2.0;
-                            let b_center_y = b_bounds.1 + b_bounds.3 / 2.0;
-                            ((b_center_x - anchor_center_x).powi(2)
-                                + (b_center_y - anchor_center_y).powi(2))
-                            .sqrt()
-                        })
-                        .unwrap_or(f64::MAX);
-
-                    dist_a
-                        .partial_cmp(&dist_b)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-
-                Ok(elements.remove(0))
-            }
-            Selector::Has(_) => {
-                let mut elements = self.find_elements(selector, root, timeout, Some(50))?;
-                if let Some(el) = elements.into_iter().next() {
-                    Ok(el)
-                } else {
-                    Err(AutomationError::ElementNotFound(
-                        "No element found for 'has' selector".to_string(),
-                    ))
-                }
-            }
-            Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
-        }
+        let elements = self.find_elements(selector, root, timeout, Some(50))?;
+        elements.into_iter().next().ok_or_else(|| {
+            AutomationError::ElementNotFound(format!(
+                "No element found for selector: {:?} within root: {:?}",
+                selector,
+                root.map(|r| r.id())
+            ))
+        })
     }
 
     fn open_application(&self, app_name: &str) -> Result<UIElement, AutomationError> {

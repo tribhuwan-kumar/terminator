@@ -13,25 +13,23 @@ async fn main() -> Result<(), AutomationError> {
 
     let opened_app = engine.get_focused_element()?;
 
-    println!("Looking for the dropdown to the right of 'Results per page'...");
+    // Note: The specific output will vary depending on the active application.
+    println!("Looking for the last combobox...");
 
-    // Here, we use the `RightOf` selector.
-    // 1. It first finds the anchor element: a text element containing "Results per page".
-    // 2. Then, it searches for elements to the right of that anchor.
-    // 3. The `.first()` method gets the one closest to the anchor.
+    // Here, we use the `nth` selector in a chain.
+    // 1. It first finds all elements with the "combobox" role.
+    // 2. Then, the `nth=-1` selector picks the last element from that list.
+    // 3. The `.first()` method waits for that specific element to appear.
     let element = opened_app
-        .locator(Selector::RightOf(Box::new(Selector::Name(
-            "Results".to_string(),
-        ))))?
+        .locator("role:dialog >> role:edit >> nth=1")?
         .first(Some(Duration::from_millis(10000)))
         .await?;
 
-    println!("Found element: {:?}", element.attributes());
+    println!("Found last combobox: {:?}", element.attributes());
 
     // You can now interact with it, for example, click to open it.
     // element.click()?;
-
-    element.click()?;
+    element.set_value("hi")?;
 
     Ok(())
 }

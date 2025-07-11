@@ -2668,7 +2668,14 @@ impl DesktopWrapper {
                 Ok(args) => self.set_zoom(Parameters(args)).await,
                 Err(e) => Err(McpError::invalid_params(
                     "Invalid arguments for set_zoom",
-                    Some(json!({"error": e.to_string()})),
+                    Some(json!({ "error": e.to_string() })),
+                )),
+            },
+            "set_value" => match serde_json::from_value::<SetValueArgs>(arguments.clone()) {
+                Ok(args) => self.set_value(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for set_value",
+                    Some(json!({ "error": e.to_string() })),
                 )),
             },
             _ => Err(McpError::internal_error(

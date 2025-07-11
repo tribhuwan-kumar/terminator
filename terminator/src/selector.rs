@@ -37,6 +37,8 @@ pub enum Selector {
     Below(Box<Selector>),
     /// Select elements near an anchor element
     Near(Box<Selector>),
+    /// Select the n-th element from the matches
+    Nth(i32),
     /// Select elements that have at least one descendant matching the inner selector (Playwright-style :has())
     Has(Box<Selector>),
     /// Select by position (x,y) on screen
@@ -153,6 +155,19 @@ impl From<&str> for Selector {
             _ if s.to_lowercase().starts_with("has:") => {
                 let inner_selector_str = &s["has:".len()..];
                 Selector::Has(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("nth=") || s.to_lowercase().starts_with("nth:") => {
+                let index_str = if s.to_lowercase().starts_with("nth:") {
+                    &s["nth:".len()..]
+                } else {
+                    &s["nth=".len()..]
+                };
+
+                if let Ok(index) = index_str.parse::<i32>() {
+                    Selector::Nth(index)
+                } else {
+                    Selector::Invalid(format!("Invalid index for nth selector: '{index_str}'"))
+                }
             }
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),
