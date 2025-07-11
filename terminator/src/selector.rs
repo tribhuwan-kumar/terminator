@@ -27,6 +27,16 @@ pub enum Selector {
     Visible(bool),
     /// Select by localized role
     LocalizedRole(String),
+    /// Select elements to the right of an anchor element
+    RightOf(Box<Selector>),
+    /// Select elements to the left of an anchor element
+    LeftOf(Box<Selector>),
+    /// Select elements above an anchor element
+    Above(Box<Selector>),
+    /// Select elements below an anchor element
+    Below(Box<Selector>),
+    /// Select elements near an anchor element
+    Near(Box<Selector>),
     /// Select by position (x,y) on screen
     Position(i32, i32),
     /// Represents an invalid selector string, with a reason.
@@ -117,6 +127,26 @@ impl From<&str> for Selector {
                 }
                 // Fallback to name if format is wrong
                 Selector::Name(s.to_string())
+            }
+            _ if s.to_lowercase().starts_with("rightof:") => {
+                let inner_selector_str = &s["rightof:".len()..];
+                Selector::RightOf(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("leftof:") => {
+                let inner_selector_str = &s["leftof:".len()..];
+                Selector::LeftOf(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("above:") => {
+                let inner_selector_str = &s["above:".len()..];
+                Selector::Above(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("below:") => {
+                let inner_selector_str = &s["below:".len()..];
+                Selector::Below(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("near:") => {
+                let inner_selector_str = &s["near:".len()..];
+                Selector::Near(Box::new(Selector::from(inner_selector_str)))
             }
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),

@@ -972,6 +972,89 @@ impl AccessibilityEngine for WindowsEngine {
                     "`Position` selector not supported".to_string(),
                 ))
             }
+            Selector::RightOf(inner_selector)
+            | Selector::LeftOf(inner_selector)
+            | Selector::Above(inner_selector)
+            | Selector::Below(inner_selector)
+            | Selector::Near(inner_selector) => {
+                // 1. Find the anchor element. Must be a single element.
+                let anchor_element = self.find_element(inner_selector, root, timeout)?;
+                let anchor_bounds = anchor_element.bounds()?; // (x, y, width, height)
+
+                // 2. Get all candidate elements within the same root.
+                // We use Visible(true) as a broad selector to find all potentially relevant elements.
+                // A large depth is used to ensure we can find elements across the UI tree.
+                let all_elements = self.find_elements(
+                    &Selector::Visible(true),
+                    root,
+                    Some(Duration::from_millis(500)), // Use a short timeout for this broad query
+                    Some(100),
+                )?;
+
+                // 3. Filter candidates based on geometric relationship
+                let anchor_id = anchor_element.id();
+                let filtered_elements = all_elements
+                    .into_iter()
+                    .filter(|candidate| {
+                        // Don't include the anchor element itself in the results.
+                        if candidate.id() == anchor_id {
+                            return false;
+                        }
+
+                        if let Ok(candidate_bounds) = candidate.bounds() {
+                            let anchor_left = anchor_bounds.0;
+                            let anchor_top = anchor_bounds.1;
+                            let anchor_right = anchor_bounds.0 + anchor_bounds.2;
+                            let anchor_bottom = anchor_bounds.1 + anchor_bounds.3;
+
+                            let candidate_left = candidate_bounds.0;
+                            let candidate_top = candidate_bounds.1;
+                            let candidate_right = candidate_bounds.0 + candidate_bounds.2;
+                            let candidate_bottom = candidate_bounds.1 + candidate_bounds.3;
+
+                            // Check for vertical overlap for left/right selectors
+                            let vertical_overlap =
+                                candidate_top < anchor_bottom && candidate_bottom > anchor_top;
+                            // Check for horizontal overlap for above/below selectors
+                            let horizontal_overlap =
+                                candidate_left < anchor_right && candidate_right > anchor_left;
+
+                            match selector {
+                                Selector::RightOf(_) => {
+                                    candidate_left >= anchor_right && vertical_overlap
+                                }
+                                Selector::LeftOf(_) => {
+                                    candidate_right <= anchor_left && vertical_overlap
+                                }
+                                Selector::Above(_) => {
+                                    candidate_bottom <= anchor_top && horizontal_overlap
+                                }
+                                Selector::Below(_) => {
+                                    candidate_top >= anchor_bottom && horizontal_overlap
+                                }
+                                Selector::Near(_) => {
+                                    const NEAR_THRESHOLD: f64 = 50.0;
+                                    let anchor_center_x = anchor_bounds.0 + anchor_bounds.2 / 2.0;
+                                    let anchor_center_y = anchor_bounds.1 + anchor_bounds.3 / 2.0;
+                                    let candidate_center_x =
+                                        candidate_bounds.0 + candidate_bounds.2 / 2.0;
+                                    let candidate_center_y =
+                                        candidate_bounds.1 + candidate_bounds.3 / 2.0;
+
+                                    let dx = anchor_center_x - candidate_center_x;
+                                    let dy = anchor_center_y - candidate_center_y;
+                                    (dx * dx + dy * dy).sqrt() < NEAR_THRESHOLD
+                                }
+                                _ => false, // Should not happen
+                            }
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
+
+                Ok(filtered_elements)
+            }
             Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
         }
     }
@@ -1290,6 +1373,65 @@ impl AccessibilityEngine for WindowsEngine {
                     ))
                 })?;
                 Ok(convert_uiautomation_element_to_terminator(element))
+            }
+            Selector::RightOf(_)
+            | Selector::LeftOf(_)
+            | Selector::Above(_)
+            | Selector::Below(_)
+            | Selector::Near(_) => {
+                let mut elements = self.find_elements(selector, root, timeout, Some(50))?;
+                if elements.is_empty() {
+                    return Err(AutomationError::ElementNotFound(format!(
+                        "No element found for layout selector: {:?}",
+                        selector
+                    )));
+                }
+
+                // For layout selectors, it's often useful to get the *closest* one.
+                // Let's sort them by distance from the anchor.
+                let inner_selector = match selector {
+                    Selector::RightOf(s)
+                    | Selector::LeftOf(s)
+                    | Selector::Above(s)
+                    | Selector::Below(s)
+                    | Selector::Near(s) => s.as_ref(),
+                    _ => unreachable!(),
+                };
+
+                let anchor_element = self.find_element(inner_selector, root, timeout)?;
+                let anchor_bounds = anchor_element.bounds()?;
+                let anchor_center_x = anchor_bounds.0 + anchor_bounds.2 / 2.0;
+                let anchor_center_y = anchor_bounds.1 + anchor_bounds.3 / 2.0;
+
+                elements.sort_by(|a, b| {
+                    let dist_a = a
+                        .bounds()
+                        .map(|b_bounds| {
+                            let b_center_x = b_bounds.0 + b_bounds.2 / 2.0;
+                            let b_center_y = b_bounds.1 + b_bounds.3 / 2.0;
+                            ((b_center_x - anchor_center_x).powi(2)
+                                + (b_center_y - anchor_center_y).powi(2))
+                            .sqrt()
+                        })
+                        .unwrap_or(f64::MAX);
+
+                    let dist_b = b
+                        .bounds()
+                        .map(|b_bounds| {
+                            let b_center_x = b_bounds.0 + b_bounds.2 / 2.0;
+                            let b_center_y = b_bounds.1 + b_bounds.3 / 2.0;
+                            ((b_center_x - anchor_center_x).powi(2)
+                                + (b_center_y - anchor_center_y).powi(2))
+                            .sqrt()
+                        })
+                        .unwrap_or(f64::MAX);
+
+                    dist_a
+                        .partial_cmp(&dist_b)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                Ok(elements.remove(0))
             }
             Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
         }
