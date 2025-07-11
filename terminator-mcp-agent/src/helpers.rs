@@ -1,9 +1,10 @@
+use crate::expression_eval;
 use crate::utils::ToolCall;
 use regex::Regex;
 use rmcp::Error as McpError;
 use serde_json::{json, Value};
 use std::time::Duration;
-use terminator::{Desktop, Selector, UIElement};
+use terminator::{Desktop, Selector, UIElement}; // NEW: import expression evaluator
 
 /// Helper function to parse comma-separated alternative selectors into a Vec<String>
 pub fn parse_alternative_selectors(alternatives: Option<&str>) -> Vec<String> {
@@ -105,36 +106,49 @@ pub fn substitute_variables(args: &mut Value, variables: &Value) {
             }
         }
         Value::String(s) => {
-            // This regex finds all occurrences of {{variable.name}}
-            let re = Regex::new(r"\{\{([a-zA-Z0-9_.-]+)\}\}").unwrap();
+            // This regex finds all occurrences of {{ ... }} capturing anything until the next }}
+            let re = Regex::new(r"\{\{([^}]+)\}\}").unwrap(); // UPDATED PATTERN TO ALLOW EXPRESSIONS
 
-            // Handle full string replacement first, e.g., args is "{{my_var}}"
+            // Handle full string replacement first, e.g., args is "{{my_var}}" or an expression like {{contains(list, 'A')}}
             if let Some(caps) = re.captures(s) {
                 if caps.get(0).unwrap().as_str() == s {
-                    let var_name = caps.get(1).unwrap().as_str().trim();
-                    let pointer = format!("/{}", var_name.replace('.', "/"));
-                    if let Some(replacement_val) = variables.pointer(&pointer) {
-                        *args = replacement_val.clone();
+                    let expr = caps.get(1).unwrap().as_str().trim();
+
+                    // Try simple variable replacement first (identifier characters only)
+                    let is_simple_var = expr
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
+                    if is_simple_var {
+                        let pointer = format!("/{}", expr.replace('.', "/"));
+                        if let Some(replacement_val) = variables.pointer(&pointer) {
+                            *args = replacement_val.clone();
+                            return;
+                        }
                     }
-                    return; // Return after full replacement
+
+                    // Fallback: attempt to evaluate expression (returns bool)
+                    let eval_result = expression_eval::evaluate(expr, variables);
+                    *args = Value::Bool(eval_result);
+                    return; // Done after full replacement
                 }
             }
 
-            // Handle partial replacement, e.g., "Hello, {{user.name}}!"
+            // Handle partial replacement within a larger string
             let new_s = re
                 .replace_all(s, |caps: &regex::Captures| {
-                    let var_name = caps.get(1).unwrap().as_str().trim();
-                    let pointer = format!("/{}", var_name.replace('.', "/"));
-                    variables
-                        .pointer(&pointer)
-                        .map(|v| {
-                            if v.is_string() {
-                                v.as_str().unwrap().to_string()
-                            } else {
-                                v.to_string()
-                            }
-                        })
-                        .unwrap_or_else(|| caps.get(0).unwrap().as_str().to_string())
+                    let expr = caps.get(1).unwrap().as_str().trim();
+                    let pointer = format!("/{}", expr.replace('.', "/"));
+                    if let Some(val) = variables.pointer(&pointer) {
+                        if val.is_string() {
+                            val.as_str().unwrap().to_string()
+                        } else {
+                            val.to_string()
+                        }
+                    } else {
+                        // Attempt expression evaluation and convert bool to string
+                        let bool_val = expression_eval::evaluate(expr, variables);
+                        bool_val.to_string()
+                    }
                 })
                 .to_string();
 
@@ -332,4 +346,34 @@ pub fn should_capture_tree(tool_name: &str, index: usize, total_steps: usize) ->
     matches!(tool_name, "navigate_browser" | "open_application")
         || index % 5 == 0
         || index == total_steps - 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_substitute_simple_variable() {
+        let mut args = json!({"state": "{{desired_state}}"});
+        let vars = json!({"desired_state": true});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["state"], true);
+    }
+
+    #[test]
+    fn test_substitute_expression_true() {
+        let mut args = json!({"state": "{{contains(product_types, 'FEX')}}"});
+        let vars = json!({"product_types": ["FEX", "Term"]});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["state"], true);
+    }
+
+    #[test]
+    fn test_substitute_expression_false() {
+        let mut args = json!({"state": "{{startsWith(name, 'Jane')}}"});
+        let vars = json!({"name": "John Doe"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["state"], false);
+    }
 }
