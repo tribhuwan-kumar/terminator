@@ -340,6 +340,10 @@ pub struct SetToggledArgs {
 pub struct MaximizeWindowArgs {
     pub selector: String,
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     pub include_tree: Option<bool>,
     pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
@@ -349,6 +353,10 @@ pub struct MaximizeWindowArgs {
 pub struct MinimizeWindowArgs {
     pub selector: String,
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     pub include_tree: Option<bool>,
     pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
@@ -418,6 +426,10 @@ pub struct ActivateElementArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
@@ -541,6 +553,10 @@ pub enum SequenceItem {
 pub struct CloseElementArgs {
     pub selector: String,
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     pub timeout_ms: Option<u64>,
     pub include_tree: Option<bool>,
     pub retries: Option<u32>,
@@ -596,8 +612,8 @@ pub async fn find_element_with_fallbacks(
 
     let timeout_duration = get_timeout(timeout_ms).unwrap_or(Duration::from_millis(3000));
 
-    // FAST PATH: If no alternatives provided, just use primary selector directly
-    if alternative_selectors.is_none() {
+    // FAST PATH: If no alternatives or fallbacks are provided, just use the primary selector directly.
+    if alternative_selectors.is_none() && fallback_selectors.is_none() {
         let locator = desktop.locator(terminator::Selector::from(primary_selector));
         return match locator.first(Some(timeout_duration)).await {
             Ok(element) => Ok((element, primary_selector.to_string())),
