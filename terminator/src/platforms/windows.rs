@@ -1055,6 +1055,34 @@ impl AccessibilityEngine for WindowsEngine {
 
                 Ok(filtered_elements)
             }
+            Selector::Has(inner_selector) => {
+                // Step 1: collect all candidate elements under the current root (visibility filter for performance)
+                let search_depth = depth.unwrap_or(50);
+
+                let all_candidates = self.find_elements(
+                    &Selector::Visible(true),
+                    root,
+                    timeout,
+                    Some(search_depth),
+                )?;
+
+                let mut results = Vec::new();
+                for candidate in all_candidates {
+                    // For each candidate, search for at least one matching descendant
+                    let descendants = self.find_elements(
+                        inner_selector,
+                        Some(&candidate),
+                        Some(Duration::from_millis(500)),
+                        Some(search_depth),
+                    )?;
+
+                    if !descendants.is_empty() {
+                        results.push(candidate);
+                    }
+                }
+
+                Ok(results)
+            }
             Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
         }
     }
@@ -1432,6 +1460,16 @@ impl AccessibilityEngine for WindowsEngine {
                 });
 
                 Ok(elements.remove(0))
+            }
+            Selector::Has(_) => {
+                let mut elements = self.find_elements(selector, root, timeout, Some(50))?;
+                if let Some(el) = elements.into_iter().next() {
+                    Ok(el)
+                } else {
+                    Err(AutomationError::ElementNotFound(
+                        "No element found for 'has' selector".to_string(),
+                    ))
+                }
             }
             Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
         }
