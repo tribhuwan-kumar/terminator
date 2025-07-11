@@ -24,6 +24,17 @@ pub fn get_selectors_tried(primary: &str, alternatives: Option<&str>) -> Vec<Str
     all
 }
 
+/// Returns all selectors tried, including primary, alternatives, and fallback selectors.
+pub fn get_selectors_tried_all(
+    primary: &str,
+    alternatives: Option<&str>,
+    fallback: Option<&str>,
+) -> Vec<String> {
+    let mut all = get_selectors_tried(primary, alternatives);
+    all.extend(parse_alternative_selectors(fallback));
+    all
+}
+
 /// Builds a standardized JSON object with detailed information about a UIElement.
 /// This includes a suggested selector that prioritizes role|name over just the ID.
 pub fn build_element_info(element: &UIElement) -> Value {
@@ -61,9 +72,10 @@ pub fn build_element_info(element: &UIElement) -> Value {
 pub fn build_element_not_found_error(
     primary_selector: &str,
     alternatives: Option<&str>,
+    fallback: Option<&str>,
     original_error: anyhow::Error,
 ) -> McpError {
-    let selectors_tried = get_selectors_tried(primary_selector, alternatives);
+    let selectors_tried = get_selectors_tried_all(primary_selector, alternatives, fallback);
     let error_payload = json!({
         "error_type": "ElementNotFound",
         "message": format!("The specified element could not be found after trying all selectors. Original error: {}", original_error),
