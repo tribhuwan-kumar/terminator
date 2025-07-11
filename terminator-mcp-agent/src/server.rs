@@ -1982,6 +1982,8 @@ impl DesktopWrapper {
         let mut sequence_had_errors = false;
         let mut critical_error_occurred = false;
         let start_time = chrono::Utc::now();
+        let mut last_known_pid: Option<u32> = None;
+        let mut last_known_element_selector: Option<String> = None;
 
         for (item_index, item) in sequence_items.iter_mut().enumerate() {
             let (if_expr, retries) = {
@@ -2029,7 +2031,7 @@ impl DesktopWrapper {
                         let mut substituted_args = tool_call.arguments.clone();
                         substitute_variables(&mut substituted_args, &execution_context);
 
-                        let (result, error_occurred) = self
+                        let (result, error_occurred, pid) = self
                             .execute_single_tool(
                                 &tool_call.tool_name,
                                 &substituted_args,
@@ -2038,6 +2040,15 @@ impl DesktopWrapper {
                                 include_detailed,
                             )
                             .await;
+
+                        if let Some(p) = pid {
+                            last_known_pid = Some(p);
+                            if let Some(s) =
+                                substituted_args.get("selector").and_then(|v| v.as_str())
+                            {
+                                last_known_element_selector = Some(s.to_string());
+                            }
+                        }
 
                         final_result = result.clone();
                         if result["status"] == "success" {
@@ -2066,7 +2077,7 @@ impl DesktopWrapper {
                             let mut substituted_args = step_tool_call.arguments.clone();
                             substitute_variables(&mut substituted_args, &execution_context);
 
-                            let (result, error_occurred) = self
+                            let (result, error_occurred, pid) = self
                                 .execute_single_tool(
                                     &step_tool_call.tool_name,
                                     &substituted_args,
@@ -2075,6 +2086,15 @@ impl DesktopWrapper {
                                     include_detailed,
                                 )
                                 .await;
+
+                            if let Some(p) = pid {
+                                last_known_pid = Some(p);
+                                if let Some(s) =
+                                    substituted_args.get("selector").and_then(|v| v.as_str())
+                                {
+                                    last_known_element_selector = Some(s.to_string());
+                                }
+                            }
 
                             group_results.push(result.clone());
 
@@ -2156,6 +2176,69 @@ impl DesktopWrapper {
             "results": results,
         });
 
+        let mut maybe_base64_image: Option<String> = None;
+        if final_status != "success" {
+            let mut debug_info = json!({});
+            let mut tree_captured = false;
+
+            if let Some(pid) = last_known_pid {
+                if pid > 0 {
+                    if let Ok(tree) = self.desktop.get_window_tree(pid, None, None) {
+                        if let Ok(tree_val) = serde_json::to_value(tree) {
+                            debug_info["ui_tree"] = tree_val;
+                            debug_info["pid_used"] = json!(pid);
+                            debug_info["source"] = json!("last_known_pid");
+                            if let Some(selector) = last_known_element_selector {
+                                debug_info["last_known_selector"] = json!(selector);
+                            }
+                            tree_captured = true;
+                        }
+                    }
+                }
+            }
+
+            if !tree_captured {
+                // Fallback to focused window if we couldn't get a tree from a known PID
+                if let Ok(focused_element) = self.desktop.focused_element() {
+                    if let Ok(pid) = focused_element.process_id() {
+                        if pid > 0 {
+                            if let Ok(tree) = self.desktop.get_window_tree(pid, None, None) {
+                                if let Ok(tree_val) = serde_json::to_value(tree) {
+                                    debug_info["ui_tree"] = tree_val;
+                                    debug_info["pid_used"] = json!(pid);
+                                    debug_info["source"] = json!("focused_window_fallback");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Capture a screenshot on failure for visual context
+            if let Ok(monitor) = self.desktop.get_primary_monitor().await {
+                if let Ok(screenshot_result) = self.desktop.capture_monitor(&monitor).await {
+                    let mut png_data = Vec::new();
+                    let encoder = PngEncoder::new(Cursor::new(&mut png_data));
+                    if encoder
+                        .write_image(
+                            &screenshot_result.image_data,
+                            screenshot_result.width,
+                            screenshot_result.height,
+                            ExtendedColorType::Rgba8,
+                        )
+                        .is_ok()
+                    {
+                        let base64_image = general_purpose::STANDARD.encode(&png_data);
+                        maybe_base64_image = Some(base64_image);
+                    }
+                }
+            }
+
+            if let Some(obj) = summary.as_object_mut() {
+                obj.insert("debug_info_on_failure".to_string(), debug_info);
+            }
+        }
+
         if let Some(parser_def) = args.output_parser {
             match output_parser::run_output_parser(&parser_def, &summary) {
                 Ok(Some(parsed_data)) => {
@@ -2177,7 +2260,12 @@ impl DesktopWrapper {
             }
         }
 
-        Ok(CallToolResult::success(vec![Content::json(summary)?]))
+        let mut contents = vec![Content::json(summary)?];
+        if let Some(base64_image) = maybe_base64_image {
+            contents.push(Content::image(base64_image, "image/png".to_string()));
+        }
+
+        Ok(CallToolResult::success(contents))
     }
 
     async fn execute_single_tool(
@@ -2187,7 +2275,7 @@ impl DesktopWrapper {
         is_skippable: bool,
         index: usize,
         include_detailed: bool,
-    ) -> (serde_json::Value, bool) {
+    ) -> (serde_json::Value, bool, Option<u32>) {
         let tool_start_time = chrono::Utc::now();
         let tool_name_short = tool_name
             .strip_prefix("mcp_terminator-mcp-agent_")
@@ -2198,11 +2286,28 @@ impl DesktopWrapper {
 
         let tool_result = self.dispatch_tool(tool_name_short, arguments).await;
 
-        let (processed_result, error_occurred) = match tool_result {
+        let (processed_result, error_occurred, pid) = match tool_result {
             Ok(result) => {
+                let mut pid = None;
                 let mut extracted_content = Vec::new();
+
                 for content in &result.content {
                     if let Ok(json_content) = serde_json::to_value(content) {
+                        // Try to extract PID from the JSON content of the result
+                        if pid.is_none() {
+                            pid = json_content
+                                .get("element")
+                                .and_then(|e| e.get("pid"))
+                                .and_then(|p| p.as_u64())
+                                .map(|p| p as u32);
+                        }
+                        if pid.is_none() {
+                            pid = json_content
+                                .get("application")
+                                .and_then(|e| e.get("pid"))
+                                .and_then(|p| p.as_u64())
+                                .map(|p| p as u32);
+                        }
                         extracted_content.push(json_content);
                     } else {
                         extracted_content.push(
@@ -2210,6 +2315,7 @@ impl DesktopWrapper {
                         );
                     }
                 }
+
                 let content_summary = if include_detailed {
                     json!({ "type": "tool_result", "content_count": result.content.len(), "content": extracted_content })
                 } else {
@@ -2223,7 +2329,7 @@ impl DesktopWrapper {
                     "duration_ms": duration_ms,
                     "result": content_summary,
                 });
-                (result_json, false)
+                (result_json, false, pid)
             }
             Err(e) => {
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
@@ -2241,17 +2347,11 @@ impl DesktopWrapper {
                         tool_name, index, e
                     );
                 }
-                (error_result, !is_skippable)
+                (error_result, !is_skippable, None)
             }
         };
 
-        // This was moved from execute_single_tool to the main loop
-        // if let Some(delay_ms) = tool_call.delay_ms {
-        //     if delay_ms > 0 {
-        //         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-        //     }
-        // }
-        (processed_result, error_occurred)
+        (processed_result, error_occurred, pid)
     }
 
     async fn dispatch_tool(
