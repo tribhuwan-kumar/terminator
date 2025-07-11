@@ -768,7 +768,7 @@ impl DesktopWrapper {
         let ((_result, element), successful_selector) = match find_and_execute_with_retry(
             &self.desktop,
             &args.selector,
-            None, // MouseDrag doesn't have alternative selectors
+            args.alternative_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -776,7 +776,7 @@ impl DesktopWrapper {
         .await
         {
             Ok(((result, element), selector)) => Ok(((result, element), selector)),
-            Err(e) => Err(build_element_not_found_error(&args.selector, None, e)),
+            Err(e) => Err(build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)),
         }?;
 
         let element_info = build_element_info(&element);
@@ -786,7 +786,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": vec![args.selector],
+            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
             "start": (args.start_x, args.start_y),
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()

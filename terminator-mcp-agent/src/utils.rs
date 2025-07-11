@@ -80,6 +80,10 @@ pub struct LocatorArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -97,6 +101,10 @@ pub struct ClickElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
@@ -114,6 +122,10 @@ pub struct TypeIntoElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
     #[schemars(description = "Optional timeout in milliseconds for the action (default: 3000ms)")]
@@ -139,6 +151,10 @@ pub struct PressKeyArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
@@ -186,6 +202,10 @@ pub struct MouseDragArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -203,6 +223,10 @@ pub struct ValidateElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -220,6 +244,10 @@ pub struct HighlightElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "BGR color code (optional, default red)")]
     pub color: Option<u32>,
     #[schemars(description = "Duration in milliseconds (optional, default 1000ms)")]
@@ -241,6 +269,10 @@ pub struct WaitForElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Condition to wait for: 'visible', 'enabled', 'focused', 'exists'")]
     pub condition: String,
     #[schemars(description = "Optional timeout in milliseconds")]
@@ -278,6 +310,8 @@ pub struct SelectOptionArgs {
     pub option_name: String,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated.")]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -293,6 +327,8 @@ pub struct SetToggledArgs {
     pub state: bool,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated.")]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -326,6 +362,8 @@ pub struct SetRangeValueArgs {
     pub value: f64,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated.")]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -341,6 +379,8 @@ pub struct SetSelectedArgs {
     pub state: bool,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated.")]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -356,6 +396,10 @@ pub struct ScrollElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[serde(default)]
     #[schemars(description = "Direction to scroll: 'up', 'down', 'left', 'right'")]
     pub direction: String,
@@ -545,6 +589,7 @@ pub async fn find_element_with_fallbacks(
     desktop: &Desktop,
     primary_selector: &str,
     alternative_selectors: Option<&str>,
+    fallback_selectors: Option<&str>,
     timeout_ms: Option<u64>,
 ) -> Result<(terminator::UIElement, String), terminator::AutomationError> {
     use tokio::time::Duration;
@@ -564,6 +609,14 @@ pub async fn find_element_with_fallbacks(
 
     // Parse comma-separated alternative selectors
     let alternative_selectors_vec: Option<Vec<String>> = alternative_selectors.map(|alts| {
+        alts.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    });
+
+    // Parse comma-separated fallback selectors
+    let fallback_selectors_vec: Option<Vec<String>> = fallback_selectors.map(|alts| {
         alts.split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -654,7 +707,22 @@ pub async fn find_element_with_fallbacks(
         }
     }
 
-    // All selectors failed
+    // If we reach here, primary and alternative selectors failed. Try fallback selectors sequentially.
+    if let Some(fallbacks) = fallback_selectors_vec {
+        for fb_selector in fallbacks {
+            let locator = desktop.locator(terminator::Selector::from(fb_selector.as_str()));
+            match locator.first(Some(timeout_duration)).await {
+                Ok(element) => {
+                    return Ok((element, fb_selector));
+                }
+                Err(e) => {
+                    errors.push(format!("'{}': {}", fb_selector, e));
+                }
+            }
+        }
+    }
+
+    // All selectors (primary, alternatives, fallbacks) failed
     let combined_error = if errors.is_empty() {
         "No selectors provided".to_string()
     } else {
@@ -746,7 +814,73 @@ where
     let mut last_error: Option<anyhow::Error> = None;
 
     for attempt in 0..=retry_count {
-        match find_element_with_fallbacks(desktop, primary_selector, alternatives, timeout_ms).await
+        match find_element_with_fallbacks(desktop, primary_selector, alternatives, None, timeout_ms).await
+        {
+            Ok((element, successful_selector)) => match action(element.clone()).await {
+                Ok(result) => return Ok(((result, element), successful_selector)),
+                Err(e) => {
+                    last_error = Some(e.into());
+                    if attempt < retry_count {
+                        warn!(
+                            "Action failed on attempt {}/{}. Retrying... Error: {}",
+                            attempt + 1,
+                            retry_count + 1,
+                            last_error.as_ref().unwrap()
+                        );
+                        tokio::time::sleep(Duration::from_millis(250)).await; // Wait before next retry
+                    }
+                }
+            },
+            Err(e) => {
+                last_error = Some(e.into());
+                if attempt < retry_count {
+                    warn!(
+                        "Find element failed on attempt {}/{}. Retrying... Error: {}",
+                        attempt + 1,
+                        retry_count + 1,
+                        last_error.as_ref().unwrap()
+                    );
+                    // No need to sleep here, as find_element_with_fallbacks already has a timeout.
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow::anyhow!(
+            "Action failed after {} retries for selector '{}'",
+            retry_count + 1,
+            primary_selector
+        )
+    }))
+}
+
+/// New helper that exposes fallback selectors as an argument. Internal implementation is shared.
+pub async fn find_and_execute_with_retry_with_fallback<F, Fut, T>(
+    desktop: &Desktop,
+    primary_selector: &str,
+    alternatives: Option<&str>,
+    fallback_selectors: Option<&str>,
+    timeout_ms: Option<u64>,
+    retries: Option<u32>,
+    action: F,
+) -> Result<((T, UIElement), String), anyhow::Error>
+where
+    F: Fn(UIElement) -> Fut,
+    Fut: std::future::Future<Output = Result<T, AutomationError>>,
+{
+    let retry_count = retries.unwrap_or(0);
+    let mut last_error: Option<anyhow::Error> = None;
+
+    for attempt in 0..=retry_count {
+        match find_element_with_fallbacks(
+            desktop,
+            primary_selector,
+            alternatives,
+            fallback_selectors,
+            timeout_ms,
+        )
+        .await
         {
             Ok((element, successful_selector)) => match action(element.clone()).await {
                 Ok(result) => return Ok(((result, element), successful_selector)),
