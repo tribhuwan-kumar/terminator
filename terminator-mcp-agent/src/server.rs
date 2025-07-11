@@ -300,10 +300,11 @@ impl DesktopWrapper {
             }
         };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -314,6 +315,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -325,7 +327,7 @@ impl DesktopWrapper {
             "cleared_before_typing": args.clear_before_typing.unwrap_or(true),
             "element": build_element_info(&element),
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
@@ -399,10 +401,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((_click_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_click_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.click() },
@@ -413,6 +416,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -434,7 +438,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "consequence": consequence
         });
@@ -465,10 +469,11 @@ impl DesktopWrapper {
             async move { element.press_key(&key_to_press) }
         };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             None, // PressKey doesn't have alternative selectors yet
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -476,7 +481,12 @@ impl DesktopWrapper {
         .await
         {
             Ok(((result, element), selector)) => Ok(((result, element), selector)),
-            Err(e) => Err(build_element_not_found_error(&args.selector, None, e)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                None,
+                args.fallback_selectors.as_deref(),
+                e,
+            )),
         }?;
 
         let element_info = build_element_info(&element);
@@ -487,7 +497,7 @@ impl DesktopWrapper {
             "key_pressed": args.key,
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": vec![args.selector],
+            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         maybe_attach_tree(
@@ -582,10 +592,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             None, // ActivateElement doesn't have alternative selectors
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.activate_window() },
@@ -593,7 +604,12 @@ impl DesktopWrapper {
         .await
         {
             Ok(((result, element), selector)) => Ok(((result, element), selector)),
-            Err(e) => Err(build_element_not_found_error(&args.selector, None, e)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                None,
+                args.fallback_selectors.as_deref(),
+                e,
+            )),
         }?;
 
         let element_info = build_element_info(&element);
@@ -603,7 +619,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": vec![args.selector],
+            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Window activated successfully. The UI tree is attached to help you find specific elements to interact with next."
         });
@@ -765,10 +781,11 @@ impl DesktopWrapper {
             element.mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y)
         };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -776,7 +793,12 @@ impl DesktopWrapper {
         .await
         {
             Ok(((result, element), selector)) => Ok(((result, element), selector)),
-            Err(e) => Err(build_element_not_found_error(&args.selector, args.alternative_selectors.as_deref(), e)),
+            Err(e) => Err(build_element_not_found_error(
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
+                e,
+            )),
         }?;
 
         let element_info = build_element_info(&element);
@@ -786,7 +808,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "start": (args.start_x, args.start_y),
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()
@@ -813,10 +835,11 @@ impl DesktopWrapper {
         // For validation, the "action" is just succeeding.
         let action = |element: UIElement| async move { Ok(element) };
 
-        match find_and_execute_with_retry(
+        match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -834,7 +857,7 @@ impl DesktopWrapper {
                     "status": "success",
                     "element": element_info,
                     "selector_used": successful_selector,
-                    "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                    "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 });
                 maybe_attach_tree(
@@ -883,10 +906,11 @@ impl DesktopWrapper {
 
         let action = |element: UIElement| async move { element.highlight(color, duration) };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -897,6 +921,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -908,7 +933,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "color": args.color.unwrap_or(0x0000FF),
             "duration_ms": args.duration_ms.unwrap_or(1000),
             "timestamp": chrono::Utc::now().to_rfc3339()
@@ -1075,10 +1100,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.close() },
@@ -1089,6 +1115,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1100,7 +1127,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         }))?]))
     }
@@ -1119,10 +1146,11 @@ impl DesktopWrapper {
             async move { element.scroll(&direction, amount) }
         };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -1133,6 +1161,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1144,7 +1173,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "direction": args.direction,
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
@@ -1172,10 +1201,11 @@ impl DesktopWrapper {
             async move { element.select_option(&option_name) }
         };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -1186,6 +1216,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1197,7 +1228,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "option_selected": args.option_name,
         });
         maybe_attach_tree(
@@ -1219,10 +1250,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((options, element), successful_selector) = match find_and_execute_with_retry(
+        let ((options, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.list_options() },
@@ -1233,6 +1265,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1244,7 +1277,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "options": options,
             "count": options.len(),
         });
@@ -1269,10 +1302,11 @@ impl DesktopWrapper {
         let state = args.state;
         let action = move |element: UIElement| async move { element.set_toggled(state) };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_deref(),
+            None, // SetToggled doesn't have alternative selectors
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -1282,7 +1316,8 @@ impl DesktopWrapper {
             Ok(((result, element), selector)) => Ok(((result, element), selector)),
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
-                args.alternative_selectors.as_deref(),
+                None,
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1294,7 +1329,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
             "state_set_to": args.state,
         });
         maybe_attach_tree(
@@ -1318,10 +1353,11 @@ impl DesktopWrapper {
         let value = args.value;
         let action = move |element: UIElement| async move { element.set_range_value(value) };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_deref(),
+            None, // SetRangeValue doesn't have alternative selectors
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -1331,7 +1367,8 @@ impl DesktopWrapper {
             Ok(((result, element), selector)) => Ok(((result, element), selector)),
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
-                args.alternative_selectors.as_deref(),
+                None,
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1343,7 +1380,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
             "value_set_to": args.value,
         });
         maybe_attach_tree(
@@ -1367,10 +1404,11 @@ impl DesktopWrapper {
         let state = args.state;
         let action = move |element: UIElement| async move { element.set_selected(state) };
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
-            args.alternative_selectors.as_deref(),
+            None, // SetSelected doesn't have alternative selectors
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             action,
@@ -1380,7 +1418,8 @@ impl DesktopWrapper {
             Ok(((result, element), selector)) => Ok(((result, element), selector)),
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
-                args.alternative_selectors.as_deref(),
+                None,
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1392,7 +1431,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
             "state_set_to": args.state,
         });
         maybe_attach_tree(
@@ -1413,10 +1452,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((is_toggled, element), successful_selector) = match find_and_execute_with_retry(
+        let ((is_toggled, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.is_toggled() },
@@ -1427,6 +1467,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1438,7 +1479,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "is_toggled": is_toggled,
         });
         maybe_attach_tree(
@@ -1459,10 +1500,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((value, element), successful_selector) = match find_and_execute_with_retry(
+        let ((value, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.get_range_value() },
@@ -1473,6 +1515,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1484,7 +1527,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "value": value,
         });
         maybe_attach_tree(
@@ -1505,10 +1548,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((is_selected, element), successful_selector) = match find_and_execute_with_retry(
+        let ((is_selected, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.is_selected() },
@@ -1519,6 +1563,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1530,7 +1575,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "is_selected": is_selected,
         });
         maybe_attach_tree(
@@ -1549,10 +1594,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((screenshot_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((screenshot_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.capture() },
@@ -1563,6 +1609,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1593,7 +1640,7 @@ impl DesktopWrapper {
                 "status": "success",
                 "element": element_info,
                 "selector_used": successful_selector,
-                "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+                "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
                 "image_format": "png",
             }))?,
             Content::image(base64_image, "image/png".to_string()),
@@ -1609,10 +1656,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.invoke() },
@@ -1623,6 +1671,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -1634,7 +1683,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
@@ -2852,10 +2901,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.maximize_window() },
@@ -2866,6 +2916,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -2877,7 +2928,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
         maybe_attach_tree(
@@ -2897,10 +2948,11 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::find_and_execute_with_retry;
 
-        let ((_result, element), successful_selector) = match find_and_execute_with_retry(
+        let ((_result, element), successful_selector) = match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
             args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
             args.timeout_ms,
             args.retries,
             |element| async move { element.minimize_window() },
@@ -2911,6 +2963,7 @@ impl DesktopWrapper {
             Err(e) => Err(build_element_not_found_error(
                 &args.selector,
                 args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 e,
             )),
         }?;
@@ -2922,7 +2975,7 @@ impl DesktopWrapper {
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried(&args.selector, args.alternative_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
         maybe_attach_tree(
