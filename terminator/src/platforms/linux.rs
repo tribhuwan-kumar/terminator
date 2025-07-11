@@ -769,6 +769,15 @@ fn find_elements_inner<'a>(
             Selector::Invalid(reason) => {
                 return Err(AutomationError::InvalidArgument(reason.clone()));
             }
+            Selector::RightOf(_)
+            | Selector::LeftOf(_)
+            | Selector::Above(_)
+            | Selector::Below(_)
+            | Selector::Near(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Relative selectors (RightOf/LeftOf/Above/Below/Near) are not implemented for Linux".to_string(),
+                ));
+            }
         }
         // Only Role and Name selectors are supported below
         let root_binding = linux_engine.get_root_element();
