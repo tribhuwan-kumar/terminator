@@ -962,12 +962,6 @@ impl AccessibilityEngine for WindowsEngine {
                     })
                     .collect())
             }
-            Selector::Position(_x, _y) => {
-                // not implemented
-                Err(AutomationError::UnsupportedOperation(
-                    "`Position` selector not supported".to_string(),
-                ))
-            }
             Selector::RightOf(inner_selector)
             | Selector::LeftOf(inner_selector)
             | Selector::Above(inner_selector)

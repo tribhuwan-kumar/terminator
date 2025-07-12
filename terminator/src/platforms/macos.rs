@@ -2848,9 +2848,7 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
                 "LocalizedRole selector is not yet supported for macOS".to_string(),
             )),
-            Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
-                "Position selector not yet supported for macOS".to_string(),
-            )),
+
             Selector::Invalid(reason) => Err(AutomationError::InvalidArgument(reason.clone())),
             Selector::RightOf(_) | Selector::LeftOf(_) | Selector::Above(_) | Selector::Below(_) | Selector::Near(_) => Err(AutomationError::UnsupportedOperation(
                 "Relative selectors (RightOf/LeftOf/Above/Below/Near) are not yet supported for macOS".to_string(),
@@ -3143,9 +3141,7 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
                 "LocalizedRole selector is not yet supported for macOS".to_string(),
             )),
-            Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
-                "Position selector not yet supported for macOS".to_string(),
-            )),
+
             Selector::Invalid(reason) => Err(AutomationError::InvalidArgument(reason.clone())),
             Selector::RightOf(_) | Selector::LeftOf(_) | Selector::Above(_) | Selector::Below(_) | Selector::Near(_) => Err(AutomationError::UnsupportedOperation(
                 "Relative selectors (RightOf/LeftOf/Above/Below/Near) are not yet supported for macOS".to_string(),

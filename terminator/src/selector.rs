@@ -41,8 +41,6 @@ pub enum Selector {
     Nth(i32),
     /// Select elements that have at least one descendant matching the inner selector (Playwright-style :has())
     Has(Box<Selector>),
-    /// Select by position (x,y) on screen
-    Position(i32, i32),
     /// Represents an invalid selector string, with a reason.
     Invalid(String),
 }
@@ -122,16 +120,7 @@ impl From<&str> for Selector {
                 let value = s[8..].trim().to_lowercase();
                 Selector::Visible(value == "true")
             }
-            _ if s.to_lowercase().starts_with("pos:") => {
-                let parts: Vec<&str> = s[4..].split(',').map(|p| p.trim()).collect();
-                if parts.len() == 2 {
-                    if let (Ok(x), Ok(y)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
-                        return Selector::Position(x, y);
-                    }
-                }
-                // Fallback to name if format is wrong
-                Selector::Name(s.to_string())
-            }
+
             _ if s.to_lowercase().starts_with("rightof:") => {
                 let inner_selector_str = &s["rightof:".len()..];
                 Selector::RightOf(Box::new(Selector::from(inner_selector_str)))
