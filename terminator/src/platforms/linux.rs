@@ -778,6 +778,11 @@ fn find_elements_inner<'a>(
                     "Relative selectors (RightOf/LeftOf/Above/Below/Near) are not implemented for Linux".to_string(),
                 ));
             }
+            Selector::Nth(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Selector::Nth is not implemented for Linux".to_string(),
+                ));
+            }
             Selector::Has(_) => {
                 return Err(AutomationError::UnsupportedPlatform(
                     "Selector::Has is not implemented for Linux".to_string(),
