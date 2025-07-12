@@ -454,7 +454,7 @@ async fn run_latency_test(
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let sent_events = Vec::new();
+    let mut sent_events = Vec::new();
 
     // Test 1: Keyboard events
     println!("  ⌨️  Testing keyboard events...");
