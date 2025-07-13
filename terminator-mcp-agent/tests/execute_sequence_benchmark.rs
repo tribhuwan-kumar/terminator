@@ -23,7 +23,7 @@ fn get_agent_binary_path() -> PathBuf {
 ///
 /// NOTE:
 /// 1. This test requires a graphical environment with a browser installed as it navigates to a real website.
-/// 2. The target URL can be set via the `MCP_BENCH_TARGET_URL` environment variable. If not provided, it defaults to `https://example.com`.
+/// 2. The target URL can be set via the `MCP_BENCH_TARGET_URL` environment variable. If not provided, it defaults to Selenium's demo form `https://www.selenium.dev/selenium/web/web-form.html`.
 /// 3. The test is ignored by default – run with `cargo test -- --ignored` to execute the benchmark.
 #[tokio::test]
 #[ignore]
@@ -37,33 +37,53 @@ async fn benchmark_execute_sequence_real_website() -> Result<()> {
         return Ok(());
     }
 
-    let target_url =
-        env::var("MCP_BENCH_TARGET_URL").unwrap_or_else(|_| "https://example.com".to_string());
+    // Default to a stable, public demo form if no URL is provided
+    let target_url = env::var("MCP_BENCH_TARGET_URL").unwrap_or_else(|_| {
+        "https://www.selenium.dev/selenium/web/web-form.html".to_string()
+    });
 
     // Spawn the MCP agent in stdio transport mode
     let mut cmd = Command::new(&agent_path);
     cmd.args(["-t", "stdio"]);
     let service = ().serve(TokioChildProcess::new(cmd)?).await?;
 
-    // Build a minimal but realistic workflow: open the website and wait for <body>
+    // Build a realistic workflow that fills out the form and submits it.
+    // Field selectors correspond to the Selenium demo page.
     let steps = serde_json::json!([
         {
             "tool_name": "navigate_browser",
-            "arguments": { "url": target_url },
+            "arguments": { "url": target_url }
         },
         {
             "tool_name": "wait_for_element",
-            "arguments": {
-                "selector": "body",
-                "timeout_ms": 10000
-            }
+            "arguments": {"selector": "#my-text-id", "timeout_ms": 10000 }
+        },
+        {
+            "tool_name": "type_into_element",
+            "arguments": {"selector": "#my-text-id", "text_to_type": "Terminator Bot", "clear_before_typing": true }
+        },
+        {
+            "tool_name": "type_into_element",
+            "arguments": {"selector": "#my-password", "text_to_type": "Secret123", "clear_before_typing": true }
+        },
+        {
+            "tool_name": "click_element",
+            "arguments": {"selector": "#my-check-1"}
+        },
+        {
+            "tool_name": "click_element",
+            "arguments": {"selector": "#submit"}
+        },
+        {
+            "tool_name": "wait_for_element",
+            "arguments": {"selector": "#message", "timeout_ms": 10000 }
         }
     ]);
 
     let args = serde_json::json!({
         "steps": steps,
         "stop_on_error": true,
-        "include_detailed_results": false
+        "include_detailed_results": true
     });
 
     // Measure total wall-clock time around the call
@@ -76,27 +96,43 @@ async fn benchmark_execute_sequence_real_website() -> Result<()> {
         .await?;
     let elapsed = start.elapsed();
 
-    // Parse the response to extract the reported `total_duration_ms`
+    // Parse the response to extract timings and print per-tool metrics
     if let Some(content) = result.content.get(0) {
         let json_str = serde_json::to_string(content)?;
         let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
         if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
             let response: serde_json::Value = serde_json::from_str(text)?;
-            // Log both client-side and server-reported durations for comparison
+
+            // Overall duration comparison
             let reported_ms = response
                 .get("total_duration_ms")
                 .and_then(|v| v.as_i64())
                 .unwrap_or_default();
 
             println!(
-                "🏎️  execute_sequence completed in {:?} (client-side) – server reported {} ms",
-                elapsed, reported_ms
+                "� execute_sequence: wall-clock {:?} – server reported {} ms",
+                elapsed,
+                reported_ms
             );
 
-            // Basic sanity check: server-reported duration should not exceed client-side measurement
+            // Per-tool timings
+            if let Some(results) = response.get("results").and_then(|r| r.as_array()) {
+                println!("\n🔍 Per-tool timings:");
+                for step in results {
+                    let name = step.get("tool_name").and_then(|v| v.as_str()).unwrap_or("<unknown>");
+                    let duration = step.get("duration_ms").and_then(|v| v.as_i64()).unwrap_or(0);
+                    let status = step.get("status").and_then(|v| v.as_str()).unwrap_or("<n/a>");
+                    println!("  • {:<20} | {:>5} ms | {}", name, duration, status);
+                }
+            }
+
+            // Sanity: success expected
+            assert_eq!(response.get("status").and_then(|v| v.as_str()), Some("success"));
+
+            // Ensure reported duration is not longer than wall-clock
             assert!(
                 reported_ms as u128 <= elapsed.as_millis(),
-                "Server-reported duration ({reported_ms} ms) is larger than wall-clock measurement ({} ms)",
+                "Server-reported duration ({reported_ms} ms) > wall-clock ({} ms)",
                 elapsed.as_millis()
             );
         }
