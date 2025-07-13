@@ -4225,29 +4225,33 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
-        let current_state = self.is_toggled()?;
-        if current_state == state {
-            return Ok(()); // Already in the desired state
+        // First, try to use the TogglePattern, which is the primary pattern for toggleable controls.
+        if let Ok(toggle_pattern) = self.element.0.get_pattern::<patterns::UITogglePattern>() {
+            if let Ok(current_state_enum) = toggle_pattern.get_toggle_state() {
+                let current_state = current_state_enum == uiautomation::types::ToggleState::On;
+                debug!("Current state: {current_state}, desired state: {state}");
+                if current_state != state {
+                    // Only toggle if the state is different.
+                    return toggle_pattern
+                        .toggle()
+                        .map_err(|e| AutomationError::PlatformError(format!("Failed to toggle: {e}")));
+                } else {
+                    // Already in the desired state.
+                    return Ok(());
+                }
+            }
         }
 
-        let toggle_pattern = self
-            .element
-            .0
-            .get_pattern::<patterns::UITogglePattern>()
-            .map_err(|e| {
-                let error_str = e.to_string();
-                if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
-                    AutomationError::UnsupportedOperation(format!(
-                        "Element does not support TogglePattern. This is not a toggleable control (checkbox, switch, etc.). For checkboxes, try 'click_element'. For radio buttons, use 'set_selected'. Error: {error_str}"
-                    ))
-                } else {
-                    AutomationError::PlatformError(format!("Failed to get TogglePattern: {e}"))
-                }
-            })?;
+        // As a fallback, try to use SelectionItemPattern, as some controls report toggle state via selection.
+        debug!("Element does not support TogglePattern or failed to get state, falling back to SelectionItemPattern for set_toggled");
+        if self.element.0.get_pattern::<patterns::UISelectionItemPattern>().is_ok() {
+            return self.set_selected(state);
+        }
 
-        toggle_pattern
-            .toggle()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to toggle: {e}")))
+        Err(AutomationError::UnsupportedOperation(format!(
+            "Element '{}' supports neither TogglePattern nor SelectionItemPattern for setting toggle state. This element may not be a standard toggleable control.",
+            self.element.0.get_name().unwrap_or_default()
+        )))
     }
 
     fn get_range_value(&self) -> Result<f64, AutomationError> {

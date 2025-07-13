@@ -1,7 +1,5 @@
 ---
-description: When working with MCP
-globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 # MCP Debugging and Testing Guide
 
@@ -12,6 +10,7 @@ alwaysApply: false
 **Important**: Cursor IDE manages the MCP server lifecycle automatically:
 - No need to manually start/stop the server
 - Cursor automatically restarts the server 
+- It means you cannot rebuild the MCP yourself because it requires a manual human click on the toggle
 
 ### Debugging Server Issues
 If MCP tools aren't working:

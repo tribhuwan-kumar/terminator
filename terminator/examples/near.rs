@@ -18,11 +18,12 @@ async fn main() -> Result<(), AutomationError> {
     // Note: The specific output will vary depending on the active application.
     println!("Looking for the last combobox...");
 
+
     // Measure time to find the element
     let start = Instant::now();
     let element = opened_app
-        .locator("role:edit|name:Height")?
-        .first(Some(Duration::from_millis(10000)))
+        .locator("role:text|View Details")?
+        .wait(Some(Duration::from_millis(100000)))
         .await?;
     let elapsed = start.elapsed();
     println!(
@@ -34,7 +35,6 @@ async fn main() -> Result<(), AutomationError> {
 
     // You can now interact with it, for example, click to open it.
     // element.click()?;
-    element.set_value("hi")?;
 
     Ok(())
 }

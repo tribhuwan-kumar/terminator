@@ -743,13 +743,10 @@ mod tests {
             }
         });
         let vars = json!({
-            "url": "https://v2preview.online.bestplanpro.com/"
+            "url": "https://bob.com/"
         });
         substitute_variables(&mut args, &vars);
-        assert_eq!(
-            args["arguments"]["url"],
-            "https://v2preview.online.bestplanpro.com/"
-        );
+        assert_eq!(args["arguments"]["url"], "https://bob.com/");
     }
 
     #[test]
@@ -761,13 +758,10 @@ mod tests {
             }
         });
         let vars = json!({
-            "url": "https://v2preview.online.bestplanpro.com/"
+            "url": "https://bob.com/"
         });
         substitute_variables(&mut args, &vars);
-        assert_eq!(
-            args["arguments"]["url"],
-            "https://v2preview.online.bestplanpro.com/"
-        );
+        assert_eq!(args["arguments"]["url"], "https://bob.com/");
     }
 
     #[test]
@@ -779,15 +773,293 @@ mod tests {
 
         // This is how the server builds the execution context
         let inputs = json!({
-            "url": "https://v2preview.online.bestplanpro.com/"
+            "url": "https://bob.com/"
         });
         let execution_context_map = inputs.as_object().cloned().unwrap_or_default();
         let execution_context = serde_json::Value::Object(execution_context_map);
 
         substitute_variables(&mut tool_args, &execution_context);
+        assert_eq!(tool_args["url"], "https://bob.com/");
+    }
+
+    #[test]
+    fn test_negation_preserves_original_functionality() {
+        let vars = json!({
+            "product_types": ["FEX", "Term"],
+            "quote_type": "Face Amount",
+            "enabled": true
+        });
+
+        // Ensure original functionality still works
+        assert!(expression_eval::evaluate(
+            "contains(product_types, 'FEX')",
+            &vars
+        ));
+        assert!(!expression_eval::evaluate(
+            "contains(product_types, 'MedSup')",
+            &vars
+        ));
+        assert!(expression_eval::evaluate(
+            "quote_type == 'Face Amount'",
+            &vars
+        ));
+        assert!(!expression_eval::evaluate(
+            "quote_type == 'Monthly Amount'",
+            &vars
+        ));
+        assert!(expression_eval::evaluate("enabled == true", &vars));
+        assert!(!expression_eval::evaluate("enabled == false", &vars));
+
+        // And that negation works correctly
+        assert!(!expression_eval::evaluate(
+            "!contains(product_types, 'FEX')",
+            &vars
+        ));
+        assert!(expression_eval::evaluate(
+            "!contains(product_types, 'MedSup')",
+            &vars
+        ));
+        assert!(!expression_eval::evaluate(
+            "!quote_type == 'Face Amount'",
+            &vars
+        ));
+        assert!(expression_eval::evaluate(
+            "!quote_type == 'Monthly Amount'",
+            &vars
+        ));
+        assert!(!expression_eval::evaluate("!enabled == true", &vars));
+        assert!(expression_eval::evaluate("!enabled == false", &vars));
+    }
+
+    // Tests for negation operator in substitute_variables
+    #[test]
+    fn test_substitute_negation_expressions() {
+        let mut args = json!({"enabled": "{{!contains(product_types, 'FEX')}}"});
+        let vars = json!({"product_types": ["FEX", "Term"]});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], false); // FEX is in the array, so !contains is false
+
+        let mut args = json!({"enabled": "{{!contains(product_types, 'MedSup')}}"});
+        let vars = json!({"product_types": ["FEX", "Term"]});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true); // MedSup is not in the array, so !contains is true
+    }
+
+    #[test]
+    fn test_substitute_negation_binary_expressions() {
+        let mut args = json!({"skip_step": "{{!quote_type == 'Face Amount'}}"});
+        let vars = json!({"quote_type": "Face Amount"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["skip_step"], false); // Quote type is Face Amount, so !== is false
+
+        let mut args = json!({"skip_step": "{{!quote_type == 'Monthly Amount'}}"});
+        let vars = json!({"quote_type": "Face Amount"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["skip_step"], true); // Quote type is not Monthly Amount, so !== is true
+    }
+
+    #[test]
+    fn test_substitute_double_negation() {
+        let mut args = json!({"enabled": "{{!!contains(product_types, 'FEX')}}"});
+        let vars = json!({"product_types": ["FEX", "Term"]});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true); // !!true = true
+
+        let mut args = json!({"enabled": "{{!!contains(product_types, 'MedSup')}}"});
+        let vars = json!({"product_types": ["FEX", "Term"]});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], false); // !!false = false
+    }
+
+    #[test]
+    fn test_substitute_negation_with_whitespace() {
+        let mut args = json!({"enabled": "{{! contains(product_types, 'MedSup')}}"});
+        let vars = json!({"product_types": ["FEX", "Term"]});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true);
+
+        let mut args = json!({"enabled": "{{  !  contains(product_types, 'MedSup')  }}"});
+        let vars = json!({"product_types": ["FEX", "Term"]});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true);
+    }
+
+    #[test]
+    fn test_substitute_negation_in_workflow_context() {
+        let mut args = json!({
+            "steps": [
+                {
+                    "group_name": "Uncheck FEX if not needed",
+                    "if": "!contains(product_types, 'FEX')",
+                    "steps": [
+                        {
+                            "tool_name": "set_toggled",
+                            "arguments": {
+                                "selector": "{{selectors.fex_checkbox}}",
+                                "state": false
+                            }
+                        }
+                    ]
+                },
+                {
+                    "tool_name": "set_toggled",
+                    "arguments": {
+                        "selector": "{{selectors.medsup_checkbox}}",
+                        "state": "{{!contains(product_types, 'MedSup')}}"
+                    }
+                }
+            ]
+        });
+
+        let vars = json!({
+            "product_types": ["FEX", "Term"],
+            "selectors": {
+                "fex_checkbox": "role:CheckBox|name:FEX",
+                "medsup_checkbox": "role:CheckBox|name:MedSup"
+            }
+        });
+
+        substitute_variables(&mut args, &vars);
+
+        // The if condition should remain as text (not substituted)
+        assert_eq!(args["steps"][0]["if"], "!contains(product_types, 'FEX')");
+
+        // The selector should be substituted
         assert_eq!(
-            tool_args["url"],
-            "https://v2preview.online.bestplanpro.com/"
+            args["steps"][0]["steps"][0]["arguments"]["selector"],
+            "role:CheckBox|name:FEX"
         );
+
+        // The negation expression should be evaluated to true (MedSup not in product_types)
+        assert_eq!(args["steps"][1]["arguments"]["state"], true);
+        assert_eq!(
+            args["steps"][1]["arguments"]["selector"],
+            "role:CheckBox|name:MedSup"
+        );
+    }
+
+    #[test]
+    fn test_substitute_complex_negation_scenarios() {
+        let mut args = json!({
+            "conditional_steps": [
+                {
+                    "enabled": "{{!startsWith(user_name, 'Admin')}}"
+                },
+                {
+                    "enabled": "{{!endsWith(email, '@test.com')}}"
+                },
+                {
+                    "enabled": "{{!contains(roles, 'SuperUser')}}"
+                }
+            ]
+        });
+
+        let vars = json!({
+            "user_name": "John Doe",
+            "email": "john@example.com",
+            "roles": ["User", "Editor"]
+        });
+
+        substitute_variables(&mut args, &vars);
+
+        assert_eq!(args["conditional_steps"][0]["enabled"], true); // Doesn't start with Admin
+        assert_eq!(args["conditional_steps"][1]["enabled"], true); // Doesn't end with @test.com
+        assert_eq!(args["conditional_steps"][2]["enabled"], true); // Doesn't contain SuperUser
+    }
+
+    #[test]
+    fn test_substitute_negation_edge_cases() {
+        // Test with missing variables
+        let mut args = json!({"enabled": "{{!contains(missing_var, 'value')}}"});
+        let vars = json!({});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true); // Missing variable defaults to false, !false = true
+
+        // Test with empty arrays
+        let mut args = json!({"enabled": "{{!contains(empty_array, 'anything')}}"});
+        let vars = json!({"empty_array": []});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true); // Empty array doesn't contain anything, !false = true
+
+        // Test with null values
+        let mut args = json!({"enabled": "{{!null_value == 'test'}}"});
+        let vars = json!({"null_value": null});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true); // Null comparison fails, !false = true
+    }
+
+    #[test]
+    fn test_substitute_realistic_workflow_with_negation() {
+        // Test a realistic workflow scenario using negation
+        let mut args = json!({
+            "steps": [
+                {
+                    "group_name": "Uncheck unwanted product types",
+                    "steps": [
+                        {
+                            "tool_name": "set_toggled",
+                            "arguments": {
+                                "selector": "{{selectors.fex_checkbox}}",
+                                "state": "{{!contains(unwanted_products, 'FEX')}}"
+                            }
+                        },
+                        {
+                            "tool_name": "set_toggled",
+                            "arguments": {
+                                "selector": "{{selectors.medsup_checkbox}}",
+                                "state": "{{!contains(unwanted_products, 'MedSup')}}"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "group_name": "Skip premium users",
+                    "if": "!contains(user_roles, 'Premium')",
+                    "steps": [
+                        {
+                            "tool_name": "click_element",
+                            "arguments": {
+                                "selector": "{{selectors.basic_plan_button}}"
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let vars = json!({
+            "unwanted_products": ["MedSup", "Preneed"],
+            "user_roles": ["Basic", "User"],
+            "selectors": {
+                "fex_checkbox": "role:CheckBox|name:FEX",
+                "medsup_checkbox": "role:CheckBox|name:MedSup",
+                "basic_plan_button": "role:Button|name:Basic Plan"
+            }
+        });
+
+        substitute_variables(&mut args, &vars);
+
+        // FEX should be enabled (not in unwanted_products)
+        assert_eq!(args["steps"][0]["steps"][0]["arguments"]["state"], true);
+
+        // MedSup should be disabled (in unwanted_products)
+        assert_eq!(args["steps"][0]["steps"][1]["arguments"]["state"], false);
+
+        // Selectors should be substituted correctly
+        assert_eq!(
+            args["steps"][0]["steps"][0]["arguments"]["selector"],
+            "role:CheckBox|name:FEX"
+        );
+        assert_eq!(
+            args["steps"][0]["steps"][1]["arguments"]["selector"],
+            "role:CheckBox|name:MedSup"
+        );
+        assert_eq!(
+            args["steps"][1]["steps"][0]["arguments"]["selector"],
+            "role:Button|name:Basic Plan"
+        );
+
+        // The if condition should remain as text
+        assert_eq!(args["steps"][1]["if"], "!contains(user_roles, 'Premium')");
     }
 }

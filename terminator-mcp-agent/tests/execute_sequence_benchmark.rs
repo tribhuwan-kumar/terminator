@@ -1,3 +1,13 @@
+// 07/13/25 11:51 AM PST
+// 🔍 Per-tool timings:
+//   • navigate_browser     |  2441 ms | success
+//   • wait_for_element     |    41 ms | success
+//   • type_into_element    |  1771 ms | success
+//   • type_into_element    |  1239 ms | success
+//   • click_element        |  2298 ms | success
+//   • click_element        |  2317 ms | success
+//   • wait_for_element     |    64 ms | success
+
 use anyhow::Result;
 use rmcp::transport::TokioChildProcess;
 use rmcp::{model::CallToolRequestParam, ServiceExt};
@@ -31,16 +41,14 @@ async fn benchmark_execute_sequence_real_website() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
         eprintln!(
-            "Skipping benchmark: MCP agent binary not found at {:?}. Build it first with `cargo build --release --bin terminator-mcp-agent`.",
-            agent_path
+            "Skipping benchmark: MCP agent binary not found at {agent_path:?}. Build it first with `cargo build --release --bin terminator-mcp-agent`."
         );
         return Ok(());
     }
 
     // Default to a stable, public demo form if no URL is provided
-    let target_url = env::var("MCP_BENCH_TARGET_URL").unwrap_or_else(|_| {
-        "https://www.selenium.dev/selenium/web/web-form.html".to_string()
-    });
+    let target_url = env::var("MCP_BENCH_TARGET_URL")
+        .unwrap_or_else(|_| "https://www.selenium.dev/selenium/web/web-form.html".to_string());
 
     // Spawn the MCP agent in stdio transport mode
     let mut cmd = Command::new(&agent_path);
@@ -56,27 +64,27 @@ async fn benchmark_execute_sequence_real_website() -> Result<()> {
         },
         {
             "tool_name": "wait_for_element",
-            "arguments": {"selector": "#my-text-id", "timeout_ms": 10000 }
+            "arguments": {"selector": "role:Edit|name:Text input", "condition": "visible", "timeout_ms": 10000 }
         },
         {
             "tool_name": "type_into_element",
-            "arguments": {"selector": "#my-text-id", "text_to_type": "Terminator Bot", "clear_before_typing": true }
+            "arguments": {"selector": "role:Edit|name:Text input", "text_to_type": "Terminator Bot", "clear_before_typing": true, "verify_action": false }
         },
         {
             "tool_name": "type_into_element",
-            "arguments": {"selector": "#my-password", "text_to_type": "Secret123", "clear_before_typing": true }
+            "arguments": {"selector": "role:Edit|name:Password", "text_to_type": "Secret123", "clear_before_typing": true, "verify_action": false }
         },
         {
             "tool_name": "click_element",
-            "arguments": {"selector": "#my-check-1"}
+            "arguments": {"selector": "role:CheckBox|name:Default checkbox"}
         },
         {
             "tool_name": "click_element",
-            "arguments": {"selector": "#submit"}
+            "arguments": {"selector": "role:Button|name:Submit"}
         },
         {
             "tool_name": "wait_for_element",
-            "arguments": {"selector": "#message", "timeout_ms": 10000 }
+            "arguments": {"selector": "role:Button|name:Submit", "condition": "visible", "timeout_ms": 5000 }
         }
     ]);
 
@@ -91,13 +99,13 @@ async fn benchmark_execute_sequence_real_website() -> Result<()> {
     let result = service
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
-            arguments: Some(args),
+            arguments: Some(args.as_object().unwrap().clone()),
         })
         .await?;
     let elapsed = start.elapsed();
 
     // Parse the response to extract timings and print per-tool metrics
-    if let Some(content) = result.content.get(0) {
+    if let Some(content) = result.content.first() {
         let json_str = serde_json::to_string(content)?;
         let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
         if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
@@ -110,24 +118,34 @@ async fn benchmark_execute_sequence_real_website() -> Result<()> {
                 .unwrap_or_default();
 
             println!(
-                "� execute_sequence: wall-clock {:?} – server reported {} ms",
-                elapsed,
-                reported_ms
+                "� execute_sequence: wall-clock {elapsed:?} – server reported {reported_ms} ms"
             );
 
             // Per-tool timings
             if let Some(results) = response.get("results").and_then(|r| r.as_array()) {
                 println!("\n🔍 Per-tool timings:");
                 for step in results {
-                    let name = step.get("tool_name").and_then(|v| v.as_str()).unwrap_or("<unknown>");
-                    let duration = step.get("duration_ms").and_then(|v| v.as_i64()).unwrap_or(0);
-                    let status = step.get("status").and_then(|v| v.as_str()).unwrap_or("<n/a>");
-                    println!("  • {:<20} | {:>5} ms | {}", name, duration, status);
+                    let name = step
+                        .get("tool_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("<unknown>");
+                    let duration = step
+                        .get("duration_ms")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    let status = step
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("<n/a>");
+                    println!("  • {name:<20} | {duration:>5} ms | {status}");
                 }
             }
 
             // Sanity: success expected
-            assert_eq!(response.get("status").and_then(|v| v.as_str()), Some("success"));
+            assert_eq!(
+                response.get("status").and_then(|v| v.as_str()),
+                Some("success")
+            );
 
             // Ensure reported duration is not longer than wall-clock
             assert!(

@@ -843,60 +843,191 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<WaitForElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        info!(
+            "[wait_for_element] Called with selector: '{}', condition: '{}', timeout_ms: {:?}, include_tree: {:?}",
+            args.selector, args.condition, args.timeout_ms, args.include_tree
+        );
+
         let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
         let timeout = get_timeout(args.timeout_ms);
+        let condition_lower = args.condition.to_lowercase();
 
-        // Call the underlying wait function once and store its result.
-        let wait_result = locator.wait(timeout).await;
-
-        let (condition_met, maybe_element) = match wait_result {
-            Ok(element) => {
-                // Wait succeeded, now check the specific condition.
-                let condition_lower = args.condition.to_lowercase();
-                let met = match condition_lower.as_str() {
-                    "exists" => Ok(true),
-                    "visible" => element.is_visible(),
-                    "enabled" => element.is_enabled(),
-                    "focused" => element.is_focused(),
-                    _ => {
-                        return Err(McpError::invalid_params(
-                            "Invalid condition. Valid: exists, visible, enabled, focused",
-                            Some(json!({"provided_condition": args.condition})),
-                        ))
-                    }
-                }
-                .unwrap_or(false); // Default to false on property check error
-
-                (met, Some(element))
-            }
-            Err(_) => {
-                // If the element was not found, no condition can be met.
-                (false, None)
-            }
-        };
-
-        // Build the result payload.
-        let mut result_json = json!({
-            "action": "wait_for_element",
-            "status": "success",
-            "condition": args.condition,
-            "condition_met": condition_met,
-            "selector": args.selector,
-            "timeout_ms": args.timeout_ms.unwrap_or(5000),
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        });
-
-        // Conditionally attach the UI tree if requested and an element was found.
-        if let Some(element) = maybe_element {
-            maybe_attach_tree(
-                &self.desktop,
-                args.include_tree.unwrap_or(false),
-                element.process_id().ok(),
-                &mut result_json,
+        // For the "exists" condition, we can use the standard wait
+        if condition_lower == "exists" {
+            info!(
+                "[wait_for_element] Waiting for element to exist: selector='{}', timeout={:?}",
+                args.selector, timeout
             );
+            match locator.wait(timeout).await {
+                Ok(element) => {
+                    info!(
+                        "[wait_for_element] Element found for selector='{}' within timeout.",
+                        args.selector
+                    );
+                    let mut result_json = json!({
+                        "action": "wait_for_element",
+                        "status": "success",
+                        "condition": args.condition,
+                        "condition_met": true,
+                        "selector": args.selector,
+                        "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    });
+
+                    maybe_attach_tree(
+                        &self.desktop,
+                        args.include_tree.unwrap_or(false),
+                        element.process_id().ok(),
+                        &mut result_json,
+                    );
+
+                    return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
+                }
+                Err(e) => {
+                    let error_msg = format!("Element not found within timeout: {e}");
+                    info!(
+                        "[wait_for_element] Element NOT found for selector='{}' within timeout. Error: {}",
+                        args.selector, e
+                    );
+                    return Err(McpError::internal_error(
+                        error_msg,
+                        Some(json!({
+                            "selector": args.selector,
+                            "condition": args.condition,
+                            "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                            "error": e.to_string()
+                        })),
+                    ));
+                }
+            }
         }
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        // For other conditions (visible, enabled, focused), we need to poll
+        let start_time = std::time::Instant::now();
+        let timeout_duration = timeout.unwrap_or(std::time::Duration::from_millis(5000));
+        info!(
+            "[wait_for_element] Polling for condition '{}' on selector='{}' with timeout {:?}",
+            args.condition, args.selector, timeout_duration
+        );
+
+        loop {
+            // Check if we've exceeded the timeout
+            if start_time.elapsed() > timeout_duration {
+                let timeout_msg = format!(
+                    "Timeout waiting for element to be {} within {}ms",
+                    args.condition,
+                    timeout_duration.as_millis()
+                );
+                info!(
+                    "[wait_for_element] Timeout exceeded for selector='{}', condition='{}', waited {}ms",
+                    args.selector, args.condition, start_time.elapsed().as_millis()
+                );
+                return Err(McpError::internal_error(
+                    timeout_msg,
+                    Some(json!({
+                        "selector": args.selector,
+                        "condition": args.condition,
+                        "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                        "elapsed_ms": start_time.elapsed().as_millis()
+                    })),
+                ));
+            }
+
+            // Try to find the element with a short timeout
+            match locator
+                .wait(Some(std::time::Duration::from_millis(100)))
+                .await
+            {
+                Ok(element) => {
+                    info!(
+                        "[wait_for_element] Element found for selector='{}', checking condition '{}'",
+                        args.selector, args.condition
+                    );
+                    // Element exists, now check the specific condition
+                    let condition_met = match condition_lower.as_str() {
+                        "visible" => {
+                            let v = element.is_visible().unwrap_or(false);
+                            info!(
+                                "[wait_for_element] is_visible() for selector='{}': {}",
+                                args.selector, v
+                            );
+                            v
+                        }
+                        "enabled" => {
+                            let v = element.is_enabled().unwrap_or(false);
+                            info!(
+                                "[wait_for_element] is_enabled() for selector='{}': {}",
+                                args.selector, v
+                            );
+                            v
+                        }
+                        "focused" => {
+                            let v = element.is_focused().unwrap_or(false);
+                            info!(
+                                "[wait_for_element] is_focused() for selector='{}': {}",
+                                args.selector, v
+                            );
+                            v
+                        }
+                        _ => {
+                            info!(
+                                "[wait_for_element] Invalid condition provided: '{}'",
+                                args.condition
+                            );
+                            return Err(McpError::invalid_params(
+                                "Invalid condition. Valid: exists, visible, enabled, focused",
+                                Some(json!({"provided_condition": args.condition})),
+                            ));
+                        }
+                    };
+
+                    if condition_met {
+                        info!(
+                            "[wait_for_element] Condition '{}' met for selector='{}' after {}ms",
+                            args.condition,
+                            args.selector,
+                            start_time.elapsed().as_millis()
+                        );
+                        // Condition is met, return success
+                        let mut result_json = json!({
+                            "action": "wait_for_element",
+                            "status": "success",
+                            "condition": args.condition,
+                            "condition_met": true,
+                            "selector": args.selector,
+                            "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                            "elapsed_ms": start_time.elapsed().as_millis(),
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        });
+
+                        maybe_attach_tree(
+                            &self.desktop,
+                            args.include_tree.unwrap_or(false),
+                            element.process_id().ok(),
+                            &mut result_json,
+                        );
+
+                        return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
+                    } else {
+                        info!(
+                            "[wait_for_element] Condition '{}' NOT met for selector='{}', continuing to poll...",
+                            args.condition, args.selector
+                        );
+                    }
+                    // Condition not met yet, continue polling
+                }
+                Err(_) => {
+                    info!(
+                        "[wait_for_element] Element not found for selector='{}', will retry...",
+                        args.selector
+                    );
+                    // Element doesn't exist yet, continue polling
+                }
+            }
+
+            // Wait a bit before the next poll
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
     }
 
     #[tool(
@@ -1866,9 +1997,9 @@ impl DesktopWrapper {
                 SequenceItem::Group { tool_group }
             } else {
                 return Err(McpError::invalid_params(
-                    "Each step must have either tool_name (for single tools) or group_name (for groups)",
-                    Some(json!({"invalid_step": step})),
-                ));
+                "Each step must have either tool_name (for single tools) or group_name (for groups)",
+                Some(json!({"invalid_step": step})),
+            ));
             };
             sequence_items.push(item);
         }

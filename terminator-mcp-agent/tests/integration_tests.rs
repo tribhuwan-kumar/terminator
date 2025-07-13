@@ -5,6 +5,7 @@ use rmcp::handler::server::tool::Parameters;
 use serde_json::json;
 use std::collections::HashMap;
 use terminator_mcp_agent::utils::{DesktopWrapper, ExecuteSequenceArgs, SequenceStep};
+use tracing::Level;
 
 #[tokio::test]
 async fn test_execute_sequence_simple_and_error_handling() {
@@ -102,6 +103,11 @@ async fn test_sequence_with_conditional_execution() {
 
 #[tokio::test]
 async fn test_sequence_with_variable_substitution() {
+    // init logging at debug level
+    let _ = tracing_subscriber::fmt::Subscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .try_init();
+
     let server = DesktopWrapper::new().await.unwrap();
 
     // --- Test: Variable substitution ---
@@ -133,4 +139,64 @@ async fn test_sequence_with_variable_substitution() {
     let result = server.execute_sequence(Parameters(args)).await.unwrap();
     let result_json = get_result_json(result);
     assert_eq!(result_json["status"].as_str(), Some("success"));
+}
+#[tokio::test]
+async fn test_sequence_with_contains_expression() {
+    // init logging at debug level
+    let _ = tracing_subscriber::fmt::Subscriber::builder()
+        .with_max_level(Level::DEBUG)
+        .try_init();
+
+    let server = DesktopWrapper::new().await.unwrap();
+
+    let args = ExecuteSequenceArgs {
+        steps: vec![
+            // Test case where contains should be true
+            SequenceStep {
+                tool_name: Some("set_value".to_string()),
+                arguments: Some(json!({
+                    "selector": "#fake-selector-true",
+                    "state": "{{contains(product_types, 'FEX')}}"
+                })),
+                continue_on_error: Some(true),
+                ..Default::default()
+            },
+            // Test case where contains should be false
+            SequenceStep {
+                tool_name: Some("set_value".to_string()),
+                arguments: Some(json!({
+                    "selector": "#fake-selector-false",
+                    "state": "{{contains(product_types, 'MedSup')}}"
+                })),
+                continue_on_error: Some(true),
+                ..Default::default()
+            },
+        ],
+        inputs: Some(json!({
+            "product_types": ["FEX", "Term"],
+        })),
+        ..Default::default()
+    };
+
+    let result = server.execute_sequence(Parameters(args)).await.unwrap();
+    let result_json = get_result_json(result);
+
+    // The sequence should succeed. The `validate_element` tool will report a failure
+    // within its own payload because the element doesn't exist, but the sequence itself
+    // continues because of `continue_on_error: true`.
+    assert_eq!(result_json["status"], "completed_with_errors");
+
+    // Check the first step's result (should be true)
+    let step1_result = &result_json["results"][0];
+    assert_eq!(
+        step1_result["substituted_arguments"]["state"], true,
+        "Expected `contains(product_types, 'FEX')` to be true"
+    );
+
+    // Check the second step's result (should be false)
+    let step2_result = &result_json["results"][1];
+    assert_eq!(
+        step2_result["substituted_arguments"]["state"], false,
+        "Expected `contains(product_types, 'MedSup')` to be false"
+    );
 }

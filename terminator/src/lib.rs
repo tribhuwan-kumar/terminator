@@ -652,12 +652,18 @@ impl Desktop {
     /// * `percentage` - The zoom percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%)
     ///
     /// # Examples
-    /// ```
-    /// // Set zoom to 150%
-    /// desktop.set_zoom(150).await?;
+    /// ```no_run
+    /// use terminator::Desktop;
     ///
-    /// // Reset zoom to 100%
-    /// desktop.set_zoom(100).await?;
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     // Set zoom to 150%
+    ///     desktop.set_zoom(150).await.unwrap();
+    ///
+    ///     // Reset zoom to 100%
+    ///     desktop.set_zoom(100).await.unwrap();
+    /// }
     /// ```
     pub async fn set_zoom(&self, percentage: u32) -> Result<(), AutomationError> {
         self.engine.set_zoom(percentage)
