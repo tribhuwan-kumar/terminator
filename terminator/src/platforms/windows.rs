@@ -835,45 +835,70 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                let mut results = self.find_elements(&selectors[0], root, timeout, depth)?;
+                // Start with all elements matching the first selector in the chain.
+                let mut current_results = self.find_elements(&selectors[0], root, timeout, None)?;
 
-                for selector in selectors.iter().skip(1) {
-                    if results.is_empty() {
-                        break;
+                // Sequentially apply the rest of the selectors.
+                for (i, selector) in selectors.iter().skip(1).enumerate() {
+                    if current_results.is_empty() {
+                        // If at any point we have no results, the chain is broken.
+                        return Err(AutomationError::ElementNotFound(format!(
+                            "Selector chain broke at step {}: '{:?}' found no elements from the previous step's results.",
+                            i + 1,
+                            selector
+                        )));
                     }
 
                     if let Selector::Nth(index) = selector {
                         let mut i = *index;
-                        let len = results.len();
+                        let len = current_results.len();
 
                         if i < 0 {
-                            // Convert negative index to positive
+                            // Handle negative index
                             i += len as i32;
                         }
 
                         if i >= 0 && (i as usize) < len {
-                            // Take the element at the index
-                            let selected = results.remove(i as usize);
-                            results = vec![selected];
+                            // Filter down to the single element at the specified index.
+                            let selected = current_results.remove(i as usize);
+                            current_results = vec![selected];
                         } else {
-                            // Index is out of bounds, so no elements match
-                            results.clear();
+                            // Index out of bounds, no elements match.
+                            current_results.clear();
                         }
                     } else {
+                        // For other selectors, find all children that match from the current set of results.
                         let mut next_results = Vec::new();
-                        for element_root in &results {
-                            next_results.extend(self.find_elements(
+                        for element_root in &current_results {
+                            // Use a shorter timeout for sub-queries to avoid long delays on non-existent elements mid-chain.
+                            let sub_timeout = Some(Duration::from_millis(1000));
+                            match self.find_elements(
                                 selector,
                                 Some(element_root),
-                                timeout,
-                                depth,
-                            )?);
+                                sub_timeout,
+                                None, // Default depth for sub-queries
+                            ) {
+                                Ok(elements) => next_results.extend(elements),
+                                Err(AutomationError::ElementNotFound(_)) => {
+                                    // It's okay if one branch of the search finds nothing, continue with others.
+                                }
+                                Err(e) => return Err(e), // Propagate other critical errors.
+                            }
                         }
-                        results = next_results;
+                        current_results = next_results;
                     }
                 }
 
-                Ok(results)
+                // After the chain, we expect exactly one element for find_element.
+                if current_results.len() == 1 {
+                    Ok(vec![current_results.remove(0)])
+                } else {
+                    Err(AutomationError::ElementNotFound(format!(
+                        "Selector chain `{:?}` resolved to {} elements, but expected 1.",
+                        selectors,
+                        current_results.len(),
+                    )))
+                }
             }
             Selector::ClassName(classname) => {
                 debug!("searching elements by class name: {}", classname);
@@ -1299,20 +1324,70 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                // Recursively find the element by traversing the chain.
-                let mut current_element = root.cloned();
-                for selector in selectors {
-                    let found_element =
-                        self.find_element(selector, current_element.as_ref(), timeout)?;
-                    current_element = Some(found_element);
+                // Start with all elements matching the first selector in the chain.
+                let mut current_results = self.find_elements(&selectors[0], root, timeout, None)?;
+
+                // Sequentially apply the rest of the selectors.
+                for (i, selector) in selectors.iter().skip(1).enumerate() {
+                    if current_results.is_empty() {
+                        // If at any point we have no results, the chain is broken.
+                        return Err(AutomationError::ElementNotFound(format!(
+                            "Selector chain broke at step {}: '{:?}' found no elements from the previous step's results.",
+                            i + 1,
+                            selector
+                        )));
+                    }
+
+                    if let Selector::Nth(index) = selector {
+                        let mut i = *index;
+                        let len = current_results.len();
+
+                        if i < 0 {
+                            // Handle negative index
+                            i += len as i32;
+                        }
+
+                        if i >= 0 && (i as usize) < len {
+                            // Filter down to the single element at the specified index.
+                            let selected = current_results.remove(i as usize);
+                            current_results = vec![selected];
+                        } else {
+                            // Index out of bounds, no elements match.
+                            current_results.clear();
+                        }
+                    } else {
+                        // For other selectors, find all children that match from the current set of results.
+                        let mut next_results = Vec::new();
+                        for element_root in &current_results {
+                            // Use a shorter timeout for sub-queries to avoid long delays on non-existent elements mid-chain.
+                            let sub_timeout = Some(Duration::from_millis(1000));
+                            match self.find_elements(
+                                selector,
+                                Some(element_root),
+                                sub_timeout,
+                                None, // Default depth for sub-queries
+                            ) {
+                                Ok(elements) => next_results.extend(elements),
+                                Err(AutomationError::ElementNotFound(_)) => {
+                                    // It's okay if one branch of the search finds nothing, continue with others.
+                                }
+                                Err(e) => return Err(e), // Propagate other critical errors.
+                            }
+                        }
+                        current_results = next_results;
+                    }
                 }
 
-                // Return the final single element found after the full chain traversal.
-                current_element.ok_or_else(|| {
-                    AutomationError::ElementNotFound(
-                        "Element not found after traversing chain".to_string(),
-                    )
-                })
+                // After the chain, we expect exactly one element for find_element.
+                if current_results.len() == 1 {
+                    Ok(current_results.remove(0))
+                } else {
+                    Err(AutomationError::ElementNotFound(format!(
+                        "Selector chain `{:?}` resolved to {} elements, but expected 1.",
+                        selectors,
+                        current_results.len(),
+                    )))
+                }
             }
             Selector::ClassName(classname) => {
                 debug!("searching element by class name: {}", classname);
