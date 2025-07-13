@@ -4,14 +4,13 @@ use crate::output_parser;
 use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
-    get_timeout, ActivateElementArgs, ClickElementArgs, ClipboardArgs, CloseElementArgs, DelayArgs,
-    EmptyArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
-    GetClipboardArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs,
-    HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
-    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
-    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    SetValueArgs, SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs,
-    WaitForElementArgs, ZoomArgs,
+    get_timeout, ActivateElementArgs, ClickElementArgs, CloseElementArgs, DelayArgs,
+    ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs, GetFocusedWindowTreeArgs,
+    GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
+    MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
+    OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs,
+    SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
+    SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -631,115 +630,6 @@ impl DesktopWrapper {
         );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
-    }
-
-    #[tool(
-        description = "Captures a screenshot of the primary monitor and returns the recognized text content (OCR)."
-    )]
-    async fn capture_screen(
-        &self,
-        Parameters(_args): Parameters<EmptyArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let monitor = self.desktop.get_primary_monitor().await.map_err(|e| {
-            McpError::internal_error(
-                "Failed to get primary monitor",
-                Some(json!({"reason": e.to_string()})),
-            )
-        })?;
-
-        let screenshot = self.desktop.capture_monitor(&monitor).await.map_err(|e| {
-            McpError::internal_error(
-                "Failed to capture screen",
-                Some(json!({"reason": e.to_string()})),
-            )
-        })?;
-
-        let ocr_text = self
-            .desktop
-            .ocr_screenshot(&screenshot)
-            .await
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to perform OCR",
-                    Some(json!({"reason": e.to_string()})),
-                )
-            })?;
-
-        Ok(CallToolResult::success(vec![Content::json(&ocr_text)?]))
-    }
-
-    #[tool(description = "Sets text to the system clipboard using shell commands.")]
-    async fn set_clipboard(
-        &self,
-        Parameters(args): Parameters<ClipboardArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // todo use native clipbaord feature we implemented
-        let result = if cfg!(target_os = "windows") {
-            // Windows: echo "text" | clip
-            let command = format!("echo \"{}\" | clip", args.text.replace("\"", "\\\""));
-            self.desktop.run_command(Some(&command), None).await
-        } else if cfg!(target_os = "macos") {
-            // macOS: echo "text" | pbcopy
-            let command = format!("echo \"{}\" | pbcopy", args.text.replace("\"", "\\\""));
-            self.desktop.run_command(None, Some(&command)).await
-        } else {
-            // Linux: echo "text" | xclip -selection clipboard
-            let command = format!(
-                "echo \"{}\" | xclip -selection clipboard",
-                args.text.replace("\"", "\\\"")
-            );
-            self.desktop.run_command(None, Some(&command)).await
-        };
-
-        result.map_err(|e| {
-            McpError::internal_error(
-                "Failed to set clipboard",
-                Some(json!({"reason": e.to_string(), "text": args.text})),
-            )
-        })?;
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "action": "set_clipboard",
-            "status": "success",
-            "text": args.text,
-            "method": "shell_command",
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
-    }
-
-    #[tool(description = "Gets text from the system clipboard using shell commands.")]
-    async fn get_clipboard(
-        &self,
-        Parameters(_args): Parameters<GetClipboardArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let command_result = if cfg!(target_os = "windows") {
-            // Windows: powershell Get-Clipboard
-            self.desktop
-                .run_command(Some("powershell -command \"Get-Clipboard\""), None)
-                .await
-        } else if cfg!(target_os = "macos") {
-            // macOS: pbpaste
-            self.desktop.run_command(None, Some("pbpaste")).await
-        } else {
-            // Linux: xclip -selection clipboard -o
-            self.desktop
-                .run_command(None, Some("xclip -selection clipboard -o"))
-                .await
-        };
-
-        match command_result {
-            Ok(output) => Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "get_clipboard",
-                "status": "success",
-                "text": output.stdout.trim(),
-                "method": "shell_command",
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            }))?])),
-            Err(e) => Err(McpError::internal_error(
-                "Failed to get clipboard text",
-                Some(json!({"reason": e.to_string()})),
-            )),
-        }
     }
 
     #[tool(
@@ -1940,6 +1830,11 @@ impl DesktopWrapper {
         }
         let execution_context = serde_json::Value::Object(execution_context_map);
 
+        info!(
+            "Executing sequence with context: {}",
+            serde_json::to_string_pretty(&execution_context).unwrap_or_default()
+        );
+
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
         for step in &args.steps {
@@ -2532,22 +2427,6 @@ impl DesktopWrapper {
                     )),
                 }
             }
-            "set_clipboard" => match serde_json::from_value::<ClipboardArgs>(arguments.clone()) {
-                Ok(args) => self.set_clipboard(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for set_clipboard",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "get_clipboard" => {
-                match serde_json::from_value::<GetClipboardArgs>(arguments.clone()) {
-                    Ok(args) => self.get_clipboard(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for get_clipboard",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
             "delay" => match serde_json::from_value::<DelayArgs>(arguments.clone()) {
                 Ok(args) => self.delay(Parameters(args)).await,
                 Err(e) => Err(McpError::invalid_params(
@@ -2568,13 +2447,6 @@ impl DesktopWrapper {
                 Ok(args) => self.run_command(Parameters(args)).await,
                 Err(e) => Err(McpError::invalid_params(
                     "Invalid arguments for run_command",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "capture_screen" => match serde_json::from_value::<EmptyArgs>(arguments.clone()) {
-                Ok(args) => self.capture_screen(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for capture_screen",
                     Some(json!({"error": e.to_string()})),
                 )),
             },
@@ -3243,9 +3115,8 @@ impl ServerHandler for DesktopWrapper {
         ServerInfo {
             protocol_version: ProtocolVersion::LATEST,
             capabilities: ServerCapabilities::builder()
-                .enable_prompts()
-                .enable_resources()
                 .enable_tools()
+                .enable_logging()
                 .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(crate::prompt::get_server_instructions().to_string()),

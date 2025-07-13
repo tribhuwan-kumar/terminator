@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use terminator::{platforms, AutomationError, Selector};
+use terminator::{platforms, AutomationError};
 use tracing::Level;
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn main() -> Result<(), AutomationError> {
     // 2. Then, the `nth=-1` selector picks the last element from that list.
     // 3. The `.first()` method waits for that specific element to appear.
     let element = opened_app
-        .locator("role:dialog >> role:edit >> nth=1")?
+        .locator("role:combobox >> nth=-1")?
         .first(Some(Duration::from_millis(10000)))
         .await?;
 
@@ -29,7 +29,7 @@ async fn main() -> Result<(), AutomationError> {
 
     // You can now interact with it, for example, click to open it.
     // element.click()?;
-    element.set_value("hi")?;
+    element.select_option("5")?;
 
     Ok(())
 }

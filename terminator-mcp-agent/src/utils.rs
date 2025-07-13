@@ -179,12 +179,6 @@ pub struct RunCommandArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetClipboardArgs {
-    #[schemars(description = "Optional timeout in milliseconds")]
-    pub timeout_ms: Option<u64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MouseDragArgs {
     #[schemars(
         description = "A string selector to locate the element. Can be chained with ` >> `."
@@ -294,12 +288,6 @@ pub struct NavigateBrowserArgs {
 pub struct OpenApplicationArgs {
     #[schemars(description = "Name of the application to open")]
     pub app_name: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ClipboardArgs {
-    #[schemars(description = "Text to set to clipboard")]
-    pub text: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -767,7 +755,7 @@ pub async fn find_element_with_fallbacks(
                     return Ok((element, fb_selector));
                 }
                 Err(e) => {
-                    errors.push(format!("'{}': {}", fb_selector, e));
+                    errors.push(format!("'{fb_selector}': {e}"));
                 }
             }
         }

@@ -94,64 +94,129 @@ pub fn build_element_not_found_error(
 
 /// Substitutes `{{variable}}` placeholders in a JSON value.
 pub fn substitute_variables(args: &mut Value, variables: &Value) {
+    use tracing::debug;
+
     match args {
         Value::Object(map) => {
-            for (_, value) in map {
+            for (key, value) in map {
+                debug!("Processing object key: {}", key);
                 substitute_variables(value, variables);
             }
         }
         Value::Array(arr) => {
-            for value in arr {
+            for (i, value) in arr.iter_mut().enumerate() {
+                debug!("Processing array index: {}", i);
                 substitute_variables(value, variables);
             }
         }
         Value::String(s) => {
-            // This regex finds all occurrences of {{ ... }} capturing anything until the next }}
-            let re = Regex::new(r"\{\{([^}]+)\}\}").unwrap(); // UPDATED PATTERN TO ALLOW EXPRESSIONS
+            debug!("Processing string: '{}'", s);
+            // This regex finds all occurrences of {{...}} non-greedily.
+            let re = Regex::new(r"\{\{(.*?)\}\}").unwrap();
 
-            // Handle full string replacement first, e.g., args is "{{my_var}}" or an expression like {{contains(list, 'A')}}
+            // Handle full string replacement first, e.g., args is "{{my_var}}" or an expression.
             if let Some(caps) = re.captures(s) {
                 if caps.get(0).unwrap().as_str() == s {
-                    let expr = caps.get(1).unwrap().as_str().trim();
+                    let inner_str = caps.get(1).unwrap().as_str().trim();
+                    debug!(
+                        "Found full string placeholder: '{}' with inner: '{}'",
+                        s, inner_str
+                    );
 
-                    // Try simple variable replacement first (identifier characters only)
-                    let is_simple_var = expr
+                    // Check if it's a simple variable path.
+                    let is_simple_var = inner_str
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
+
                     if is_simple_var {
-                        let pointer = format!("/{}", expr.replace('.', "/"));
+                        let pointer = format!("/{}", inner_str.replace('.', "/"));
+                        debug!("Looking up simple variable with pointer: '{}'", pointer);
                         if let Some(replacement_val) = variables.pointer(&pointer) {
+                            debug!("Found replacement value: {}", replacement_val);
                             *args = replacement_val.clone();
-                            return;
+                        } else {
+                            debug!("Variable '{}' not found in context", inner_str);
                         }
+                        // If variable is not found, leave the placeholder as is.
+                        return;
                     }
 
-                    // Fallback: attempt to evaluate expression (returns bool)
-                    let eval_result = expression_eval::evaluate(expr, variables);
-                    *args = Value::Bool(eval_result);
-                    return; // Done after full replacement
+                    // Check if it looks like an expression we should evaluate.
+                    let is_expression = inner_str.contains('(')
+                        || inner_str.contains("==")
+                        || inner_str.contains("!=")
+                        || inner_str.contains("contains")
+                        || inner_str.contains("startsWith")
+                        || inner_str.contains("endsWith");
+
+                    if is_expression {
+                        debug!("Evaluating expression: '{}'", inner_str);
+                        let eval_result = expression_eval::evaluate(inner_str, variables);
+                        debug!("Expression result: {}", eval_result);
+                        *args = Value::Bool(eval_result);
+                    }
+                    // If it's not a simple variable and not a recognized expression, leave it as is.
+                    return;
                 }
             }
 
-            // Handle partial replacement within a larger string
+            // Handle partial replacement within a larger string.
+            let original_s = s.clone();
             let new_s = re
                 .replace_all(s, |caps: &regex::Captures| {
-                    let expr = caps.get(1).unwrap().as_str().trim();
-                    let pointer = format!("/{}", expr.replace('.', "/"));
-                    if let Some(val) = variables.pointer(&pointer) {
-                        if val.is_string() {
-                            val.as_str().unwrap().to_string()
+                    let inner_str = caps.get(1).unwrap().as_str().trim();
+                    debug!(
+                        "Found partial placeholder: '{}' with inner: '{}'",
+                        caps.get(0).unwrap().as_str(),
+                        inner_str
+                    );
+
+                    let is_simple_var = inner_str
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.');
+
+                    if is_simple_var {
+                        let pointer = format!("/{}", inner_str.replace('.', "/"));
+                        debug!("Looking up simple variable with pointer: '{}'", pointer);
+                        if let Some(val) = variables.pointer(&pointer) {
+                            if val.is_string() {
+                                debug!("Found string replacement: '{}'", val.as_str().unwrap());
+                                val.as_str().unwrap().to_string()
+                            } else {
+                                debug!("Found non-string replacement: '{}'", val);
+                                val.to_string()
+                            }
                         } else {
-                            val.to_string()
+                            debug!("Variable '{}' not found in context", inner_str);
+                            // Variable not found, keep original placeholder.
+                            caps.get(0).unwrap().as_str().to_string()
                         }
                     } else {
-                        // Attempt expression evaluation and convert bool to string
-                        let bool_val = expression_eval::evaluate(expr, variables);
-                        bool_val.to_string()
+                        // Not a simple variable, assume it's either an expression or text to be ignored.
+                        let is_expression = inner_str.contains('(')
+                            || inner_str.contains("==")
+                            || inner_str.contains("!=")
+                            || inner_str.contains("contains")
+                            || inner_str.contains("startsWith")
+                            || inner_str.contains("endsWith");
+
+                        if is_expression {
+                            debug!("Evaluating partial expression: '{}'", inner_str);
+                            let bool_val = expression_eval::evaluate(inner_str, variables);
+                            debug!("Expression result: {}", bool_val);
+                            bool_val.to_string()
+                        } else {
+                            debug!("Unknown placeholder type: '{}'", inner_str);
+                            // Not a known expression type, keep original placeholder.
+                            caps.get(0).unwrap().as_str().to_string()
+                        }
                     }
                 })
                 .to_string();
 
+            if original_s != new_s {
+                debug!("String substitution: '{}' -> '{}'", original_s, new_s);
+            }
             *s = new_s;
         }
         _ => {} // Other types are left as is
@@ -354,6 +419,54 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn test_substitute_simple_string_variable() {
+        let mut args = json!({"url": "{{url}}"});
+        let vars = json!({"url": "http://example.com"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["url"], "http://example.com");
+    }
+
+    #[test]
+    fn test_substitute_nested_variable() {
+        let mut args = json!({"selector": "{{selectors.my_button}}"});
+        let vars = json!({"selectors": {"my_button": "role:Button|name:Click Me"}});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["selector"], "role:Button|name:Click Me");
+    }
+
+    #[test]
+    fn test_substitute_variable_in_string() {
+        let mut args = json!({"selector": "role:RadioButton|name:{{gender}}"});
+        let vars = json!({"gender": "Male"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["selector"], "role:RadioButton|name:Male");
+    }
+
+    #[test]
+    fn test_substitute_non_existent_variable() {
+        let mut args = json!({"selector": "{{non_existent}}"});
+        let vars = json!({});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["selector"], "{{non_existent}}");
+    }
+
+    #[test]
+    fn test_substitute_variable_with_hyphen() {
+        let mut args = json!({"value": "{{a-b-c}}"});
+        let vars = json!({"a-b-c": "test-value"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["value"], "test-value");
+    }
+
+    #[test]
+    fn test_substitute_partial_with_number() {
+        let mut args = json!({"value": "timeout_{{timeout_ms}}"});
+        let vars = json!({"timeout_ms": 5000});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["value"], "timeout_5000");
+    }
+
+    #[test]
     fn test_substitute_simple_variable() {
         let mut args = json!({"state": "{{desired_state}}"});
         let vars = json!({"desired_state": true});
@@ -375,5 +488,306 @@ mod tests {
         let vars = json!({"name": "John Doe"});
         substitute_variables(&mut args, &vars);
         assert_eq!(args["state"], false);
+    }
+
+    #[test]
+    fn test_substitute_equality_expression() {
+        let mut args = json!({"enabled": "{{quote_type == 'Face Amount'}}"});
+        let vars = json!({"quote_type": "Face Amount"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], true);
+    }
+
+    #[test]
+    fn test_substitute_equality_expression_false() {
+        let mut args = json!({"enabled": "{{quote_type == 'Monthly'}}"});
+        let vars = json!({"quote_type": "Face Amount"});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(args["enabled"], false);
+    }
+
+    #[test]
+    fn test_substitute_in_complex_workflow() {
+        let mut args = json!({
+            "steps": [
+                {
+                    "tool_name": "navigate_browser",
+                    "arguments": {
+                        "url": "{{url}}"
+                    }
+                },
+                {
+                    "tool_name": "maximize_window",
+                    "arguments": {
+                        "selector": "{{selectors.browser_window}}"
+                    }
+                },
+                {
+                    "tool_name": "set_selected",
+                    "arguments": {
+                        "selector": "role:RadioButton|name:{{applicant_gender}}",
+                        "state": true
+                    }
+                },
+                {
+                    "tool_name": "set_toggled",
+                    "arguments": {
+                        "selector": "{{selectors.fex_checkbox_checked}}",
+                        "state": "{{contains(product_types, 'FEX')}}"
+                    },
+                    "continue_on_error": true
+                },
+                {
+                    "tool_name": "set_toggled",
+                    "arguments": {
+                        "selector": "{{selectors.medsup_checkbox_checked}}",
+                        "state": "{{contains(product_types, 'MedSup')}}"
+                    },
+                    "continue_on_error": true
+                },
+                {
+                    "group_name": "Enter Quote Value (Face Amount)",
+                    "if": "quote_type == 'Face Amount'",
+                    "skippable": false,
+                    "steps": [
+                        {
+                            "tool_name": "click_element",
+                            "arguments": {
+                                "selector": "{{selectors.face_value_toggle}}",
+                                "timeout_ms": 1000
+                            }
+                        }
+                    ]
+                },
+                {
+                    "tool_name": "unfindable_test",
+                    "arguments": {
+                        "selector": "{{selectors.not_real}}"
+                    }
+                }
+            ]
+        });
+
+        // Use anonymized data for the test
+        let vars = json!({
+            "url": "https://example-insurance-quote.com/",
+            "applicant_gender": "Female",
+            "product_types": [
+                "FEX",
+                "Term"
+            ],
+            "quote_type": "Face Amount",
+            "selectors": {
+                "browser_window": "role:Window|name:Insurance Quoting App",
+                "fex_checkbox_checked": "role:CheckBox|name:FEX",
+                "medsup_checkbox_checked": "role:CheckBox|name:MedSup",
+                "face_value_toggle": "role:Text|name:Face Value"
+            }
+        });
+
+        substitute_variables(&mut args, &vars);
+
+        // Step 0: navigate_browser
+        assert_eq!(
+            args["steps"][0]["arguments"]["url"],
+            "https://example-insurance-quote.com/"
+        );
+
+        // Step 1: maximize_window
+        assert_eq!(
+            args["steps"][1]["arguments"]["selector"],
+            "role:Window|name:Insurance Quoting App"
+        );
+
+        // Step 2: set_selected
+        assert_eq!(
+            args["steps"][2]["arguments"]["selector"],
+            "role:RadioButton|name:Female"
+        );
+
+        // Step 3: set_toggled for FEX (expression -> true)
+        assert_eq!(
+            args["steps"][3]["arguments"]["selector"],
+            "role:CheckBox|name:FEX"
+        );
+        assert_eq!(args["steps"][3]["arguments"]["state"], true);
+
+        // Step 4: set_toggled for MedSup (expression -> false)
+        assert_eq!(
+            args["steps"][4]["arguments"]["selector"],
+            "role:CheckBox|name:MedSup"
+        );
+        assert_eq!(args["steps"][4]["arguments"]["state"], false);
+
+        // Step 5: group arguments should be substituted
+        assert_eq!(
+            args["steps"][5]["steps"][0]["arguments"]["selector"],
+            "role:Text|name:Face Value"
+        );
+        // The 'if' condition itself is not a {{...}} placeholder, so it should not be changed.
+        assert_eq!(args["steps"][5]["if"], "quote_type == 'Face Amount'");
+
+        // Step 6: non-existent variable should be left as-is
+        assert_eq!(
+            args["steps"][6]["arguments"]["selector"],
+            "{{selectors.not_real}}"
+        );
+    }
+
+    #[test]
+    fn test_do_not_evaluate_free_text_as_expression() {
+        let mut args = json!({"text": "{{some text}}"});
+        let vars = json!({});
+        substitute_variables(&mut args, &vars);
+        assert_eq!(
+            args["text"], "{{some text}}",
+            "Should not evaluate placeholder as a boolean expression"
+        );
+    }
+
+    #[test]
+    fn test_substitute_in_full_user_workflow() {
+        let mut args = json!({
+            "steps": [
+                {
+                    "tool_name": "navigate_browser",
+                    "arguments": {
+                        "url": "{{url}}"
+                    }
+                },
+                {
+                    "tool_name": "set_value",
+                    "arguments": {
+                        "selector": "{{selectors.dob_field}}",
+                        "value": "{{applicant_dob}}"
+                    }
+                },
+                {
+                    "tool_name": "set_selected",
+                    "arguments": {
+                        "selector": "role:RadioButton|name:{{applicant_gender}}",
+                        "state": true
+                    }
+                },
+                {
+                    "if": "contains(product_types, 'FEX')",
+                    "tool_name": "set_toggled",
+                    "arguments": {
+                        "selector": "{{selectors.fex_checkbox_checked}}",
+                        "state": "{{contains(product_types, 'FEX')}}"
+                    }
+                },
+                {
+                    "group_name": "Enter Quote Value (Face Amount)",
+                    "if": "quote_type == 'Face Amount'",
+                    "steps": [
+                        {
+                            "tool_name": "click_element",
+                            "arguments": {
+                                "selector": "{{selectors.face_value_toggle}}"
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let vars = json!({
+            "url": "https://example.com",
+            "applicant_dob": "01/01/2000",
+            "applicant_gender": "Male",
+            "product_types": ["FEX"],
+            "quote_type": "Face Amount",
+            "selectors": {
+                "dob_field": "id:dob",
+                "fex_checkbox_checked": "id:fex",
+                "face_value_toggle": "id:face_value"
+            }
+        });
+
+        substitute_variables(&mut args, &vars);
+
+        // Check URL substitution
+        assert_eq!(args["steps"][0]["arguments"]["url"], "https://example.com");
+
+        // Check nested variable substitution
+        assert_eq!(args["steps"][1]["arguments"]["selector"], "id:dob");
+        assert_eq!(args["steps"][1]["arguments"]["value"], "01/01/2000");
+
+        // Check partial substitution
+        assert_eq!(
+            args["steps"][2]["arguments"]["selector"],
+            "role:RadioButton|name:Male"
+        );
+
+        // Check substitution inside a step that also has an `if` condition
+        // The `if` condition itself should NOT be substituted as it's not a {{}} placeholder
+        assert_eq!(args["steps"][3]["if"], "contains(product_types, 'FEX')");
+        assert_eq!(args["steps"][3]["arguments"]["selector"], "id:fex");
+        assert_eq!(args["steps"][3]["arguments"]["state"], true);
+
+        // Check substitution within a nested step
+        assert_eq!(args["steps"][4]["if"], "quote_type == 'Face Amount'");
+        assert_eq!(
+            args["steps"][4]["steps"][0]["arguments"]["selector"],
+            "id:face_value"
+        );
+    }
+
+    #[test]
+    fn test_substitute_workflow_navigate_browser() {
+        let mut args = json!({
+            "tool_name": "navigate_browser",
+            "arguments": {
+                "url": "{{url}}"
+            }
+        });
+        let vars = json!({
+            "url": "https://v2preview.online.bestplanpro.com/"
+        });
+        substitute_variables(&mut args, &vars);
+        assert_eq!(
+            args["arguments"]["url"],
+            "https://v2preview.online.bestplanpro.com/"
+        );
+    }
+
+    #[test]
+    fn test_substitute_with_inputs_wrapper() {
+        // Test the exact structure from the workflow
+        let mut args = json!({
+            "arguments": {
+                "url": "{{url}}"
+            }
+        });
+        let vars = json!({
+            "url": "https://v2preview.online.bestplanpro.com/"
+        });
+        substitute_variables(&mut args, &vars);
+        assert_eq!(
+            args["arguments"]["url"],
+            "https://v2preview.online.bestplanpro.com/"
+        );
+    }
+
+    #[test]
+    fn test_exact_execution_context_structure() {
+        // Test the exact structure that the server creates
+        let mut tool_args = json!({
+            "url": "{{url}}"
+        });
+
+        // This is how the server builds the execution context
+        let inputs = json!({
+            "url": "https://v2preview.online.bestplanpro.com/"
+        });
+        let execution_context_map = inputs.as_object().cloned().unwrap_or_default();
+        let execution_context = serde_json::Value::Object(execution_context_map);
+
+        substitute_variables(&mut tool_args, &execution_context);
+        assert_eq!(
+            tool_args["url"],
+            "https://v2preview.online.bestplanpro.com/"
+        );
     }
 }
