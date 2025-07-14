@@ -3259,7 +3259,10 @@ impl DesktopWrapper {
         use quick_js::{Context, JsValue};
         use serde_json::json;
 
-        let script_src = args.script.clone();
+        // Determine if we're executing a raw script or a workflow YAML
+        let raw_script_opt = args.script.clone();
+        let workflow_yaml_opt = args.workflow_yaml.clone();
+
         let self_clone = self.clone();
         let rt_handle_outer = tokio::runtime::Handle::current();
 
@@ -3302,34 +3305,53 @@ impl DesktopWrapper {
                 )
             })?;
 
-            // Run the script
-            let js_value = ctx.eval(&script_src).map_err(|e| {
+            // Inject Terminator helper library
+            ctx.eval(crate::terminator_js::TERMINATOR_JS).map_err(|e| {
                 McpError::internal_error(
-                    "JavaScript evaluation error",
+                    "Failed to load terminator.js helpers",
                     Some(json!({"error": e.to_string()})),
                 )
             })?;
 
-            // Helper to convert JsValue -> serde_json::Value
-            fn js_to_json(value: JsValue) -> serde_json::Value {
-                match value {
-                    JsValue::Null | JsValue::Undefined => serde_json::Value::Null,
-                    JsValue::Bool(b) => json!(b),
-                    JsValue::Int(i) => json!(i),
-                    JsValue::Float(f) => json!(f),
-                    JsValue::String(s) => json!(s),
-                    JsValue::Array(arr) => serde_json::Value::Array(arr.into_iter().map(js_to_json).collect()),
-                    JsValue::Object(obj) => {
-                        let map = obj
-                            .into_iter()
-                            .map(|(k, v)| (k, js_to_json(v)))
-                            .collect();
-                        serde_json::Value::Object(map)
+            let mut final_results = serde_json::Value::Null;
+
+            if let Some(workflow_yaml) = workflow_yaml_opt {
+                // Parse workflow YAML to structure
+                let wf: crate::utils::WorkflowScript = if workflow_yaml.trim_start().starts_with('{') {
+                    serde_json::from_str(&workflow_yaml).map_err(|e| McpError::invalid_params("Invalid workflow JSON", Some(json!({"error": e.to_string()}))))?
+                } else {
+                    serde_yaml::from_str(&workflow_yaml).map_err(|e| McpError::invalid_params("Invalid workflow YAML", Some(json!({"error": e.to_string()}))))?
+                };
+
+                let mut step_outputs = Vec::new();
+                for (idx, step) in wf.steps.iter().enumerate() {
+                    // Optionally expose step env as global ENV object
+                    if let Some(env_map) = &step.env {
+                        let env_json = serde_json::to_string(env_map).unwrap_or("{}".to_string());
+                        let assign = format!("const ENV = {} ;", env_json);
+                        ctx.eval(&assign).ok();
                     }
+
+                    let js_val = ctx.eval(&step.run).map_err(|e| {
+                        McpError::internal_error(
+                            "Workflow step JS evaluation error",
+                            Some(json!({"step_index": idx, "error": e.to_string()})),
+                        )
+                    })?;
+                    step_outputs.push(js_to_json(js_val));
                 }
+                final_results = json!({"workflow_steps": step_outputs});
+            } else if let Some(script_src) = raw_script_opt {
+                let js_value = ctx.eval(&script_src).map_err(|e| {
+                    McpError::internal_error(
+                        "JavaScript evaluation error",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+                final_results = js_to_json(js_value);
             }
 
-            Ok(js_to_json(js_value))
+            Ok(final_results)
         }).await??;
 
         Ok(CallToolResult::success(vec![Content::json(json!({
@@ -3351,6 +3373,22 @@ impl ServerHandler for DesktopWrapper {
                 .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(crate::prompt::get_server_instructions().to_string()),
+        }
+    }
+}
+
+// ... inside run_javascript spawn_blocking closure near top after ctx creation ...
+fn js_to_json(value: JsValue) -> serde_json::Value {
+    match value {
+        JsValue::Null | JsValue::Undefined => serde_json::Value::Null,
+        JsValue::Bool(b) => json!(b),
+        JsValue::Int(i) => json!(i),
+        JsValue::Float(f) => json!(f),
+        JsValue::String(s) => json!(s),
+        JsValue::Array(arr) => serde_json::Value::Array(arr.into_iter().map(js_to_json).collect()),
+        JsValue::Object(obj) => {
+            let map = obj.into_iter().map(|(k,v)| (k, js_to_json(v))).collect();
+            serde_json::Value::Object(map)
         }
     }
 }

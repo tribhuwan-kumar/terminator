@@ -597,9 +597,31 @@ pub struct SetZoomArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct WorkflowStep {
+    #[schemars(description = "Optional name for the step")]
+    pub name: Option<String>,
+    #[schemars(description = "JavaScript snippet to run for this step")]
+    pub run: String,
+    #[schemars(description = "Optional environment variables for the step")]
+    pub env: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct WorkflowScript {
+    #[schemars(description = "Optional workflow name")]
+    pub name: Option<String>,
+    #[schemars(description = "Environment variables available to all steps")]
+    pub env: Option<std::collections::HashMap<String, String>>,
+    #[schemars(description = "Array of sequential steps")]
+    pub steps: Vec<WorkflowStep>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RunJavascriptArgs {
     #[schemars(description = "JavaScript source code to execute inside the embedded engine.")]
-    pub script: String,
+    pub script: Option<String>,
+    #[schemars(description = "If provided, YAML/JSON describing a GitHub-Actions-like workflow to execute.")]
+    pub workflow_yaml: Option<String>,
     #[schemars(
         description = "Optional preferred runtime engine ('quickjs' | 'node' | 'bun' | 'deno'). Currently only 'quickjs' is supported and will be used as default."
     )]
