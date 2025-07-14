@@ -3256,77 +3256,142 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<RunJavascriptArgs>,
     ) -> Result<CallToolResult, McpError> {
-        use quick_js::{Context, JsValue};
         use serde_json::json;
 
-        // Determine if we're executing a raw script or a workflow YAML
-        let script_src = args.script.clone();
+        let engine = args.engine.clone().unwrap_or_else(|| "quickjs".to_string());
 
-        let self_clone = self.clone();
-        let rt_handle_outer = tokio::runtime::Handle::current();
+        if engine == "quickjs" {
+            // ---------------- QuickJS path (existing) ----------------
+            use quick_js::{Context, JsValue};
 
-        // Blocking JS execution to avoid stalling async reactor.
-        let execution_result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, McpError> {
-            // Create JS context
-            let ctx = Context::new().map_err(|e| {
-                McpError::internal_error(
-                    "Failed to initialise JavaScript runtime",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
+            let script_src = args.script.clone();
+            let self_clone = self.clone();
+            let rt_handle_outer = tokio::runtime::Handle::current();
 
-            // console.log shim
-            ctx.add_callback("log", |msg: String| {
-                println!("[JS] {}", msg);
-            })
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to register log callback",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
+            let execution_result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, McpError> {
+                // Create JS context
+                let ctx = Context::new().map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to initialise JavaScript runtime",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
 
-            // Helper to invoke other tools synchronously
-            let handle_clone = rt_handle_outer.clone();
-            ctx.add_callback("callTool", move |tool: String, args_json_str: String| -> String {
-                let args_val: serde_json::Value = serde_json::from_str(&args_json_str).unwrap_or(json!({}));
-                let res = handle_clone.block_on(async {
-                    self_clone.dispatch_tool(&tool, &args_val).await
-                });
-                match res {
-                    Ok(call_result) => serde_json::to_string(&call_result).unwrap_or_else(|_| "{}".to_string()),
-                    Err(e) => json!({"error": e.to_string()}).to_string(),
-                }
-            }).map_err(|e| {
-                McpError::internal_error(
-                    "Failed to register callTool callback",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
+                // console.log shim
+                ctx.add_callback("log", |msg: String| {
+                    println!("[JS] {}", msg);
+                })
+                .map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to register log callback",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
 
-            // Inject Terminator helper library
-            ctx.eval(crate::terminator_js::TERMINATOR_JS).map_err(|e| {
-                McpError::internal_error(
-                    "Failed to load terminator.js helpers",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
+                // Helper to invoke other tools synchronously
+                let handle_clone = rt_handle_outer.clone();
+                ctx.add_callback("callTool", move |tool: String, args_json_str: String| -> String {
+                    let args_val: serde_json::Value = serde_json::from_str(&args_json_str).unwrap_or(json!({}));
+                    let res = handle_clone.block_on(async {
+                        self_clone.dispatch_tool(&tool, &args_val).await
+                    });
+                    match res {
+                        Ok(call_result) => serde_json::to_string(&call_result).unwrap_or_else(|_| "{}".to_string()),
+                        Err(e) => json!({"error": e.to_string()}).to_string(),
+                    }
+                }).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to register callTool callback",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
 
-            let js_value = ctx.eval(&script_src).map_err(|e| {
-                McpError::internal_error(
-                    "JavaScript evaluation error",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
+                // Inject Terminator helper library
+                ctx.eval(crate::terminator_js::TERMINATOR_JS).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to load terminator.js helpers",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
 
-            Ok(js_to_json(js_value))
-        }).await??;
+                let js_value = ctx.eval(&script_src).map_err(|e| {
+                    McpError::internal_error(
+                        "JavaScript evaluation error",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+                Ok(js_to_json(js_value))
+            }).await??;
+
+            return Ok(CallToolResult::success(vec![Content::json(json!({
+                "action": "run_javascript",
+                "status": "success",
+                "engine": "quickjs",
+                "result": execution_result
+            }))?]));
+        }
+
+        // ---------------- External engine path ----------------
+        use std::path::PathBuf;
+        use tempfile::tempdir;
+        use tokio::process::Command;
+
+        // Prepare temp directory and files
+        let dir = tempdir().map_err(|e| McpError::internal_error("tempdir failed", Some(json!({"error": e.to_string()}))))?;
+        let user_script_path: PathBuf = dir.path().join("user_script.js");
+        std::fs::write(&user_script_path, &args.script).map_err(|e| McpError::internal_error("write script failed", Some(json!({"error": e.to_string()}))))?;
+
+        // Wrapper to inject native binding
+        let bindings_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("bindings").join("nodejs");
+        let wrapper_code = format!(
+            "const path=require('path');\ntry{{\n  global.terminator=require('{}');\n}}catch(e){{console.error('Failed to load terminator.js binding',e);process.exit(1);} }\nrequire(process.argv[2]);\n",
+            bindings_path.join("index.js").display()
+        );
+        let wrapper_path = dir.path().join("wrapper.js");
+        std::fs::write(&wrapper_path, wrapper_code).map_err(|e| McpError::internal_error("write wrapper failed", Some(json!({"error": e.to_string()}))))?;
+
+        // Build command
+        let mut cmd = match engine.as_str() {
+            "node" => {
+                let mut c = Command::new("node");
+                c.arg(&wrapper_path).arg(&user_script_path);
+                c
+            },
+            "bun" => {
+                let mut c = Command::new("bun");
+                c.arg(&wrapper_path).arg(&user_script_path);
+                c
+            },
+            "deno" => {
+                let mut c = Command::new("deno");
+                c.arg("run").arg("-A").arg(&wrapper_path).arg(&user_script_path);
+                c
+            },
+            _ => {
+                return Err(McpError::invalid_params("Unsupported engine", Some(json!({"engine": engine}))));
+            }
+        };
+
+        // Ensure the binding directory is discoverable by Node's module resolver
+        cmd.env("NODE_PATH", &bindings_path);
+
+        let output = cmd.output().await.map_err(|e| McpError::internal_error("Failed to execute engine", Some(json!({"error": e.to_string(), "engine": engine}))))?;
+
+        let exit_code = output.status.code().unwrap_or(-1);
+        let stdout_str = String::from_utf8_lossy(&output.stdout);
+        let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+        let result_json = json!({
             "action": "run_javascript",
-            "status": "success",
-            "result": execution_result
-        }))?]))
+            "status": if exit_code==0 {"success"} else {"error"},
+            "engine": engine,
+            "exit_code": exit_code,
+            "stdout": stdout_str,
+            "stderr": stderr_str,
+        });
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?] ))
     }
 }
 

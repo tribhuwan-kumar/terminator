@@ -4688,6 +4688,7 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
+ "tempfile",
  "terminator-rs",
  "terminator-workflow-recorder",
  "tokio",
