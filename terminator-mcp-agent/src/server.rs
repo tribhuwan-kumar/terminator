@@ -3260,8 +3260,7 @@ impl DesktopWrapper {
         use serde_json::json;
 
         // Determine if we're executing a raw script or a workflow YAML
-        let raw_script_opt = args.script.clone();
-        let workflow_yaml_opt = args.workflow_yaml.clone();
+        let script_src = args.script.clone();
 
         let self_clone = self.clone();
         let rt_handle_outer = tokio::runtime::Handle::current();
@@ -3313,45 +3312,14 @@ impl DesktopWrapper {
                 )
             })?;
 
-            let mut final_results = serde_json::Value::Null;
+            let js_value = ctx.eval(&script_src).map_err(|e| {
+                McpError::internal_error(
+                    "JavaScript evaluation error",
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
 
-            if let Some(workflow_yaml) = workflow_yaml_opt {
-                // Parse workflow YAML to structure
-                let wf: crate::utils::WorkflowScript = if workflow_yaml.trim_start().starts_with('{') {
-                    serde_json::from_str(&workflow_yaml).map_err(|e| McpError::invalid_params("Invalid workflow JSON", Some(json!({"error": e.to_string()}))))?
-                } else {
-                    serde_yaml::from_str(&workflow_yaml).map_err(|e| McpError::invalid_params("Invalid workflow YAML", Some(json!({"error": e.to_string()}))))?
-                };
-
-                let mut step_outputs = Vec::new();
-                for (idx, step) in wf.steps.iter().enumerate() {
-                    // Optionally expose step env as global ENV object
-                    if let Some(env_map) = &step.env {
-                        let env_json = serde_json::to_string(env_map).unwrap_or("{}".to_string());
-                        let assign = format!("const ENV = {} ;", env_json);
-                        ctx.eval(&assign).ok();
-                    }
-
-                    let js_val = ctx.eval(&step.run).map_err(|e| {
-                        McpError::internal_error(
-                            "Workflow step JS evaluation error",
-                            Some(json!({"step_index": idx, "error": e.to_string()})),
-                        )
-                    })?;
-                    step_outputs.push(js_to_json(js_val));
-                }
-                final_results = json!({"workflow_steps": step_outputs});
-            } else if let Some(script_src) = raw_script_opt {
-                let js_value = ctx.eval(&script_src).map_err(|e| {
-                    McpError::internal_error(
-                        "JavaScript evaluation error",
-                        Some(json!({"error": e.to_string()})),
-                    )
-                })?;
-                final_results = js_to_json(js_value);
-            }
-
-            Ok(final_results)
+            Ok(js_to_json(js_value))
         }).await??;
 
         Ok(CallToolResult::success(vec![Content::json(json!({
