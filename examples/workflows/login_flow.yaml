@@ -1,0 +1,18 @@
+name: Login Flow
+env:
+  URL: "https://example.com/login"
+steps:
+  - name: Navigate
+    run: |
+      typeText('name:Browser|AddressBar', ENV.URL);
+      pressKey('name:Browser|AddressBar', '{Enter}');
+      wait(3000);
+  - name: Fill credentials
+    env:
+      USER: "demo"
+      PASS: "password"
+    run: |
+      typeText('textbox|Username', ENV.USER);
+      typeText('textbox|Password', ENV.PASS);
+  - name: Submit
+    run: click('button|Login');

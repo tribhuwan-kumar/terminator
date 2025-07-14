@@ -1,0 +1,4 @@
+name: Simple Click Demo
+steps:
+  - name: Click OK
+    run: click('#ok');

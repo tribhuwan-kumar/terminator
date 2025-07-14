@@ -43,4 +43,23 @@ function clickAndWaitDisappear(selector, timeout_ms) {
   waitFor(selector, "exists", timeout_ms || 2000);
   return res;
 }
+
+function getEnv(name, defaultVal) {
+  if (typeof ENV !== 'undefined' && ENV[name] !== undefined) return ENV[name];
+  return defaultVal;
+}
+
+function runCommand(cmd) {
+  const isWindows = navigator?.userAgent?.includes('Windows') || false;
+  const args = isWindows ? { windows_command: cmd } : { unix_command: cmd };
+  return __toJson(callTool("run_command", JSON.stringify(args)));
+}
+
+function call(name, argsObj) {
+  return __toJson(callTool(name, JSON.stringify(argsObj || {})));
+}
+
+function wait(ms) { return delay(ms); }
+
+module.exports = { click, typeText, delay, wait, pressKey, waitFor, clickAndWaitDisappear, getEnv, runCommand, call };
 "#;
