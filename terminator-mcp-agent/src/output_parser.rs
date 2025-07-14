@@ -5,9 +5,6 @@ use serde_json::{json, Value};
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputParserDefinition {
-    /// A JSONPath string to locate the UI tree within the tool's output JSON.
-    /// e.g., "results[-1].result.content[?(@.ui_tree)].ui_tree"
-    pub ui_tree_json_path: String,
     /// Defines how to identify a single item's container within the UI tree.
     pub item_container_definition: ItemContainerDefinition,
     /// Defines which fields to extract from each identified container.
@@ -97,8 +94,7 @@ pub enum ConditionOperator {
 pub fn run_output_parser(parser_def_val: &Value, tool_output: &Value) -> Result<Option<Value>> {
     let parser_def: OutputParserDefinition = serde_json::from_value(parser_def_val.clone())?;
 
-    let parsed_tree =
-        find_and_parse_tree_from_json_result(tool_output, &parser_def.ui_tree_json_path)?;
+    let parsed_tree = find_last_ui_tree_in_results(tool_output)?;
 
     match parsed_tree {
         Some(tree) => {
@@ -106,33 +102,66 @@ pub fn run_output_parser(parser_def_val: &Value, tool_output: &Value) -> Result<
             find_items_in_node(&tree, &parser_def, &mut extracted_items);
             Ok(Some(json!(extracted_items)))
         }
-        None => Ok(None),
+        None => {
+            anyhow::bail!("No UI tree found in the tool output. Make sure to include get_focused_window_tree or get_window_tree in your workflow to capture the UI state.");
+        }
     }
 }
 
-/// Finds the UI tree in a given JSON result, parsing it from a string if necessary.
+/// Finds the last UI tree in the tool output results.
 ///
-/// This function is crucial because tool outputs often wrap their detailed JSON responses
-/// within a single string field (e.g., in a 'text' property). This function handles that
-/// by first selecting the node with JSONPath, checking if it's a string, and if so,
-/// parsing that string into a `serde_json::Value`.
-fn find_and_parse_tree_from_json_result(json_result: &Value, path: &str) -> Result<Option<Value>> {
-    let selected_nodes = jsonpath_lib::select(json_result, path)?;
-    if let Some(node) = selected_nodes.first() {
-        if let Some(s) = node.as_str() {
-            let parsed_json: Value = serde_json::from_str(s)?;
-
-            if let Value::Object(mut map) = parsed_json {
-                if let Some(ui_tree) = map.remove("ui_tree") {
-                    return Ok(Some(ui_tree));
-                }
-                return Ok(Some(Value::Object(map)));
-            }
-
-            return Ok(Some(parsed_json));
-        }
-        return Ok(Some((*node).clone()));
+/// This function searches through the tool output to find the most recent UI tree,
+/// which could be in various locations:
+/// 1. Direct ui_tree field in the root
+/// 2. In results array, looking for ui_tree fields
+/// 3. In results array, looking for parsed content that contains ui_tree
+/// 4. In results array, looking for text content that can be parsed as JSON containing ui_tree
+fn find_last_ui_tree_in_results(tool_output: &Value) -> Result<Option<Value>> {
+    // Strategy 1: Check if there's a direct ui_tree field
+    if let Some(ui_tree) = tool_output.get("ui_tree") {
+        return Ok(Some(ui_tree.clone()));
     }
+
+    // Strategy 2: Look through results array for UI trees
+    if let Some(results) = tool_output.get("results") {
+        if let Some(results_array) = results.as_array() {
+            // Iterate through results in reverse order to get the last one
+            for result in results_array.iter().rev() {
+                // Check for direct ui_tree field in result
+                if let Some(ui_tree) = result.get("ui_tree") {
+                    return Ok(Some(ui_tree.clone()));
+                }
+
+                // Check for ui_tree in result.result
+                if let Some(result_obj) = result.get("result") {
+                    if let Some(ui_tree) = result_obj.get("ui_tree") {
+                        return Ok(Some(ui_tree.clone()));
+                    }
+
+                    // Check for ui_tree in result.result.content[].text (parsed JSON)
+                    if let Some(content) = result_obj.get("content") {
+                        if let Some(content_array) = content.as_array() {
+                            for content_item in content_array.iter().rev() {
+                                if let Some(text) = content_item.get("text") {
+                                    if let Some(text_str) = text.as_str() {
+                                        // Try to parse the text as JSON
+                                        if let Ok(parsed_json) =
+                                            serde_json::from_str::<Value>(text_str)
+                                        {
+                                            if let Some(ui_tree) = parsed_json.get("ui_tree") {
+                                                return Ok(Some(ui_tree.clone()));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(None)
 }
 
@@ -358,7 +387,6 @@ mod tests {
 
     fn get_quote_parser_definition() -> OutputParserDefinition {
         serde_json::from_value(json!({
-            "uiTreeJsonPath": "$",
             "itemContainerDefinition": {
                 "nodeConditions": [{"property": "role", "op": "equals", "value": "Group"}],
                 "childConditions": {
@@ -424,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn test_run_parser_with_json_path() {
+    fn test_run_parser_with_nested_ui_tree() {
         let tool_output = json!({
             "results": [
                 {},
@@ -441,13 +469,6 @@ mod tests {
         });
 
         let parser_def_json = serde_json::to_value(get_quote_parser_definition()).unwrap();
-        // Modify the path for this specific test case
-        let mut parser_def_json_obj = parser_def_json.as_object().unwrap().clone();
-        parser_def_json_obj.insert(
-            "uiTreeJsonPath".to_string(),
-            json!("$.results[-1].result.content[0].ui_tree"),
-        );
-        let parser_def_json = Value::Object(parser_def_json_obj);
 
         let result = run_output_parser(&parser_def_json, &tool_output)
             .unwrap()

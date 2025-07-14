@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 use tracing::{warn, Level};
 use tracing_subscriber::EnvFilter;
 
+// Validation helpers for better type safety
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct EmptyArgs {}
 
@@ -511,10 +512,12 @@ pub struct ExecuteSequenceArgs {
     )]
     pub variables: Option<HashMap<String, VariableDefinition>>,
     #[schemars(
-        description = "A key-value map of the actual input values for the variables defined in the schema."
+        description = "A key-value map of the actual input values for the variables defined in the schema. **Must be an object**, not a string."
     )]
     pub inputs: Option<serde_json::Value>,
-    #[schemars(description = "A key-value map of static UI element selectors for the workflow.")]
+    #[schemars(
+        description = "A key-value map of static UI element selectors for the workflow. **Must be an object with string values**, not a string. Example: {\"button\": \"role:Button|name:Submit\", \"field\": \"role:Edit|name:Email\"}"
+    )]
     pub selectors: Option<serde_json::Value>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
@@ -523,7 +526,7 @@ pub struct ExecuteSequenceArgs {
     )]
     pub include_detailed_results: Option<bool>,
     #[schemars(
-        description = "An optional, JSON-defined parser to process the final tool output and extract structured data."
+        description = "An optional, structured parser to process the final tool output and extract structured data. **Must be an object** with required fields: uiTreeJsonPath, itemContainerDefinition, fieldsToExtract."
     )]
     pub output_parser: Option<serde_json::Value>,
 }
@@ -594,6 +597,108 @@ pub struct ZoomArgs {
 pub struct SetZoomArgs {
     /// The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)
     pub percentage: u32,
+}
+
+#[derive(Debug)]
+pub struct ValidationError {
+    pub field: String,
+    pub expected: String,
+    pub actual: String,
+}
+
+impl ValidationError {
+    pub fn new(field: &str, expected: &str, actual: &str) -> Self {
+        Self {
+            field: field.to_string(),
+            expected: expected.to_string(),
+            actual: actual.to_string(),
+        }
+    }
+}
+
+pub fn validate_inputs(inputs: &serde_json::Value) -> Result<(), ValidationError> {
+    if !inputs.is_object() {
+        return Err(ValidationError::new(
+            "inputs",
+            "object",
+            &format!("{:?}", inputs),
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_selectors(selectors: &serde_json::Value) -> Result<(), ValidationError> {
+    match selectors {
+        serde_json::Value::Object(obj) => {
+            // Check that all values are strings
+            for (key, value) in obj {
+                if !value.is_string() {
+                    return Err(ValidationError::new(
+                        &format!("selectors.{}", key),
+                        "string",
+                        &match value {
+                            serde_json::Value::Number(_) => "number",
+                            serde_json::Value::Bool(_) => "boolean",
+                            serde_json::Value::Array(_) => "array",
+                            serde_json::Value::Object(_) => "object",
+                            serde_json::Value::Null => "null",
+                            _ => "unknown",
+                        },
+                    ));
+                }
+            }
+            Ok(())
+        }
+        serde_json::Value::String(s) => {
+            // Try to parse as JSON object first
+            match serde_json::from_str::<serde_json::Value>(s) {
+                Ok(parsed) => validate_selectors(&parsed),
+                Err(_) => Err(ValidationError::new(
+                    "selectors",
+                    "object or valid JSON string",
+                    "invalid JSON string",
+                )),
+            }
+        }
+        _ => Err(ValidationError::new(
+            "selectors",
+            "object or JSON string",
+            &format!("{:?}", selectors),
+        )),
+    }
+}
+
+pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), ValidationError> {
+    let obj = parser
+        .as_object()
+        .ok_or_else(|| ValidationError::new("output_parser", "object", &format!("{:?}", parser)))?;
+
+    // Check required fields
+    if !obj.contains_key("uiTreeJsonPath") {
+        return Err(ValidationError::new(
+            "output_parser.uiTreeJsonPath",
+            "string",
+            "missing",
+        ));
+    }
+
+    if !obj.contains_key("itemContainerDefinition") {
+        return Err(ValidationError::new(
+            "output_parser.itemContainerDefinition",
+            "object",
+            "missing",
+        ));
+    }
+
+    if !obj.contains_key("fieldsToExtract") {
+        return Err(ValidationError::new(
+            "output_parser.fieldsToExtract",
+            "object",
+            "missing",
+        ));
+    }
+
+    Ok(())
 }
 
 pub fn init_logging() -> Result<()> {
@@ -971,4 +1076,23 @@ pub struct RecordWorkflowArgs {
     pub file_path: Option<String>,
     /// Sets the recording to a low-energy mode to reduce system load, which can help prevent lag on less powerful machines.
     pub low_energy_mode: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct WaitForOutputParserArgs {
+    /// The output parser configuration to run on each UI tree poll
+    #[schemars(
+        description = "The output parser configuration. **Must be an object** with required fields: uiTreeJsonPath, itemContainerDefinition, fieldsToExtract."
+    )]
+    pub output_parser: serde_json::Value,
+    /// Optional selector to scope the UI tree to a specific element. If not provided, uses focused window.
+    pub selector: Option<String>,
+    /// Maximum time to wait in milliseconds (default: 10000)
+    pub timeout_ms: Option<u64>,
+    /// Time between polls in milliseconds (default: 1000)
+    pub poll_interval_ms: Option<u64>,
+    /// Success criteria to validate extracted data
+    pub success_criteria: Option<serde_json::Value>,
+    /// Whether to include full UI tree in the response (default: false)
+    pub include_tree: Option<bool>,
 }
