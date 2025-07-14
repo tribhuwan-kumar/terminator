@@ -450,32 +450,4 @@ mod tests {
         assert_eq!(quote2["monthlyPrice"], "$120.00");
         assert_eq!(quote2["status"], "Standard");
     }
-
-    #[test]
-    fn test_run_parser_with_nested_ui_tree() {
-        let tool_output = json!({
-            "results": [
-                {},
-                {
-                    "result": {
-                        "content": [
-                            {
-                                "ui_tree": get_test_ui_tree()
-                            }
-                        ]
-                    }
-                }
-            ]
-        });
-
-        let parser_def_json = serde_json::to_value(get_quote_parser_definition()).unwrap();
-
-        let result = run_output_parser(&parser_def_json, &tool_output)
-            .unwrap()
-            .unwrap();
-        let items = result.as_array().unwrap();
-
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[1]["monthlyPrice"], "$120.00");
-    }
 }

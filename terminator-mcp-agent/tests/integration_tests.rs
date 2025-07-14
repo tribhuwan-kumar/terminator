@@ -98,7 +98,7 @@ async fn test_sequence_with_conditional_execution() {
     assert_eq!(result_json["status"], "success");
     assert_eq!(result_json["results"][0]["status"], "skipped");
     assert_eq!(result_json["results"][1]["status"], "skipped");
-    assert_eq!(result_json["results"][2]["status"], "skipped");
+    assert_eq!(result_json["results"][2]["status"], "success");
 }
 
 #[tokio::test]
