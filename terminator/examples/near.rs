@@ -18,7 +18,6 @@ async fn main() -> Result<(), AutomationError> {
     // Note: The specific output will vary depending on the active application.
     println!("Looking for the last combobox...");
 
-
     // Measure time to find the element
     let start = Instant::now();
     let element = opened_app

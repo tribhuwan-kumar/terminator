@@ -4232,9 +4232,9 @@ impl UIElementImpl for WindowsUIElement {
                 debug!("Current state: {current_state}, desired state: {state}");
                 if current_state != state {
                     // Only toggle if the state is different.
-                    return toggle_pattern
-                        .toggle()
-                        .map_err(|e| AutomationError::PlatformError(format!("Failed to toggle: {e}")));
+                    return toggle_pattern.toggle().map_err(|e| {
+                        AutomationError::PlatformError(format!("Failed to toggle: {e}"))
+                    });
                 } else {
                     // Already in the desired state.
                     return Ok(());
@@ -4244,7 +4244,12 @@ impl UIElementImpl for WindowsUIElement {
 
         // As a fallback, try to use SelectionItemPattern, as some controls report toggle state via selection.
         debug!("Element does not support TogglePattern or failed to get state, falling back to SelectionItemPattern for set_toggled");
-        if self.element.0.get_pattern::<patterns::UISelectionItemPattern>().is_ok() {
+        if self
+            .element
+            .0
+            .get_pattern::<patterns::UISelectionItemPattern>()
+            .is_ok()
+        {
             return self.set_selected(state);
         }
 
