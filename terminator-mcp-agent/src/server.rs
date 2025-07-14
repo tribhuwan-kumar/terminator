@@ -11,6 +11,7 @@ use crate::utils::{
     OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs,
     SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
     SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    RunJavascriptArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -2737,6 +2738,15 @@ impl DesktopWrapper {
                     Some(json!({ "error": e.to_string() })),
                 )),
             },
+            "run_javascript" => {
+                match serde_json::from_value::<RunJavascriptArgs>(arguments.clone()) {
+                    Ok(args) => self.run_javascript(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for run_javascript",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            },
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),
@@ -3237,6 +3247,96 @@ impl DesktopWrapper {
             &mut result_json,
         );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    #[tool(
+        description = "Executes arbitrary JavaScript inside an embedded QuickJS engine. The script receives a synchronous helper `callTool(name, argsJsonString)` that can invoke any other MCP tool and return its JSON result. The final value of the script is serialized to JSON and returned as the tool output.  NOTE: This is EXPERIMENTAL and currently uses a sandboxed QuickJS runtime; only standard JavaScript plus the provided helper is available."
+    )]
+    async fn run_javascript(
+        &self,
+        Parameters(args): Parameters<RunJavascriptArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        use quick_js::{Context, JsValue};
+        use serde_json::json;
+
+        let script_src = args.script.clone();
+        let self_clone = self.clone();
+        let rt_handle_outer = tokio::runtime::Handle::current();
+
+        // Blocking JS execution to avoid stalling async reactor.
+        let execution_result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, McpError> {
+            // Create JS context
+            let ctx = Context::new().map_err(|e| {
+                McpError::internal_error(
+                    "Failed to initialise JavaScript runtime",
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
+
+            // console.log shim
+            ctx.add_callback("log", |msg: String| {
+                println!("[JS] {}", msg);
+            })
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to register log callback",
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
+
+            // Helper to invoke other tools synchronously
+            let handle_clone = rt_handle_outer.clone();
+            ctx.add_callback("callTool", move |tool: String, args_json_str: String| -> String {
+                let args_val: serde_json::Value = serde_json::from_str(&args_json_str).unwrap_or(json!({}));
+                let res = handle_clone.block_on(async {
+                    self_clone.dispatch_tool(&tool, &args_val).await
+                });
+                match res {
+                    Ok(call_result) => serde_json::to_string(&call_result).unwrap_or_else(|_| "{}".to_string()),
+                    Err(e) => json!({"error": e.to_string()}).to_string(),
+                }
+            }).map_err(|e| {
+                McpError::internal_error(
+                    "Failed to register callTool callback",
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
+
+            // Run the script
+            let js_value = ctx.eval(&script_src).map_err(|e| {
+                McpError::internal_error(
+                    "JavaScript evaluation error",
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
+
+            // Helper to convert JsValue -> serde_json::Value
+            fn js_to_json(value: JsValue) -> serde_json::Value {
+                match value {
+                    JsValue::Null | JsValue::Undefined => serde_json::Value::Null,
+                    JsValue::Bool(b) => json!(b),
+                    JsValue::Int(i) => json!(i),
+                    JsValue::Float(f) => json!(f),
+                    JsValue::String(s) => json!(s),
+                    JsValue::Array(arr) => serde_json::Value::Array(arr.into_iter().map(js_to_json).collect()),
+                    JsValue::Object(obj) => {
+                        let map = obj
+                            .into_iter()
+                            .map(|(k, v)| (k, js_to_json(v)))
+                            .collect();
+                        serde_json::Value::Object(map)
+                    }
+                }
+            }
+
+            Ok(js_to_json(js_value))
+        }).await??;
+
+        Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "run_javascript",
+            "status": "success",
+            "result": execution_result
+        }))?]))
     }
 }
 

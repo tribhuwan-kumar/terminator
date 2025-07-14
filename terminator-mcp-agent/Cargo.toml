@@ -34,6 +34,7 @@ axum = "0.8"
 terminator-workflow-recorder = { path = "../terminator-workflow-recorder" }
 jsonpath_lib = "0.3.0"
 regex = { workspace = true }
+quick-js = "0.4"
 
 
 [dev-dependencies]
