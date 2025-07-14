@@ -3342,11 +3342,58 @@ impl DesktopWrapper {
         let user_script_path: PathBuf = dir.path().join("user_script.js");
         std::fs::write(&user_script_path, &args.script).map_err(|e| McpError::internal_error("write script failed", Some(json!({"error": e.to_string()}))))?;
 
-        // Wrapper to inject native binding
-        let bindings_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("bindings").join("nodejs");
+        // Resolve binding directory
+        let default_binding_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("bindings")
+            .join("nodejs");
+
+        // Allow env override when the binary is installed elsewhere
+        let binding_dir: PathBuf = std::env::var("TERMINATOR_BINDING_DIR")
+            .ok()
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .unwrap_or(default_binding_dir);
+
+        // Validation: ensure at least one native .node file exists for current platform
+        let binding_built = std::fs::read_dir(&binding_dir)
+            .map_err(|e| McpError::internal_error("Failed to read binding dir", Some(json!({"dir": binding_dir, "error": e.to_string()}))))?
+            .any(|entry| match entry { Ok(e)=> e.path().extension().map(|ext| ext=="node").unwrap_or(false), Err(_)=> false });
+
+        if !binding_built {
+            return Err(McpError::internal_error(
+                "Terminator native Node bindings not built for this platform. Run `npm run build` in bindings/nodejs first.",
+                Some(json!({"binding_dir": binding_dir}))));
+        }
+
+        // Wrapper to load binding with fallbacks
         let wrapper_code = format!(
-            "const path=require('path');\ntry{{\n  global.terminator=require('{}');\n}}catch(e){{console.error('Failed to load terminator.js binding',e);process.exit(1);} }\nrequire(process.argv[2]);\n",
-            bindings_path.join("index.js").display()
+            r#"const fs=require('fs');
+const path=require('path');
+
+function tryRequire(mod){try{return require(mod);}catch(e){return null;}}
+
+const candidates=[
+  process.env.TERMINATOR_BINDING_PATH,
+  path.join('{binding}', 'index.js'),
+  'terminator',
+  'terminator.js',
+].filter(Boolean);
+
+let loaded=null;
+for(const c of candidates){loaded=tryRequire(c);if(loaded)break;}
+
+if(!loaded){
+  console.error('Could not load terminator native binding. Tried:'+candidates.join(','));
+  process.exit(1);
+}
+
+global.terminator=loaded;
+
+// Execute user script
+require(process.argv[2]);
+"#,
+            binding=binding_dir.display()
         );
         let wrapper_path = dir.path().join("wrapper.js");
         std::fs::write(&wrapper_path, wrapper_code).map_err(|e| McpError::internal_error("write wrapper failed", Some(json!({"error": e.to_string()}))))?;
@@ -3374,7 +3421,7 @@ impl DesktopWrapper {
         };
 
         // Ensure the binding directory is discoverable by Node's module resolver
-        cmd.env("NODE_PATH", &bindings_path);
+        cmd.env("NODE_PATH", &binding_dir);
 
         let output = cmd.output().await.map_err(|e| McpError::internal_error("Failed to execute engine", Some(json!({"error": e.to_string(), "engine": engine}))))?;
 
