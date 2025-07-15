@@ -38,7 +38,12 @@ axum = "0.8"
 terminator-workflow-recorder = { path = "../terminator-workflow-recorder" }
 jsonpath_lib = "0.3.0"
 regex = { workspace = true }
+
+quick-js = "0.4"
+tempfile = "3"
+
 reqwest = { version = "0.12.5", features = ["json"] }
+
 
 
 [dev-dependencies]
@@ -49,3 +54,4 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d6
 tokio-test = "0.4"
 anyhow = "1.0"
 rand = "0.8"
+which = "4"

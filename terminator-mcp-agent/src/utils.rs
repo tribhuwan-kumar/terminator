@@ -705,6 +705,18 @@ pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), Validati
     Ok(())
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct RunJavascriptArgs {
+    #[schemars(description = "JavaScript source code to execute inside the embedded engine.")]
+    pub script: String,
+    #[schemars(
+        description = "Optional preferred runtime engine ('quickjs' | 'node' | 'bun' | 'deno'). Currently only 'quickjs' is supported and will be used as default."
+    )]
+    pub engine: Option<String>,
+    #[schemars(description = "Optional timeout in milliseconds before the script execution is aborted.")]
+    pub timeout_ms: Option<u64>,
+}
+
 pub fn init_logging() -> Result<()> {
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
