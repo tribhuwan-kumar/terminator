@@ -4658,7 +4658,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.7.9"
+version = "0.8.3"
 dependencies = [
  "anthropic-sdk",
  "anyhow",
@@ -4680,7 +4680,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.7.9"
+version = "0.8.3"
 dependencies = [
  "anyhow",
  "axum",
@@ -4709,7 +4709,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.7.9"
+version = "0.8.3"
 dependencies = [
  "napi",
  "napi-build",
@@ -4721,7 +4721,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.7.9"
+version = "0.8.3"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4735,7 +4735,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.7.9"
+version = "0.8.3"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4773,7 +4773,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.7.9"
+version = "0.8.3"
 dependencies = [
  "arboard",
  "async-stream",
@@ -5199,9 +5199,9 @@ dependencies = [
 
 [[package]]
 name = "uiautomation"
-version = "0.21.6"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5c6db49f456471eccacfe0143a3d628143abc348d4de2cf42fcc67e52dd3ad4"
+checksum = "e134330897228a84bf95737140c6004b5e8235788c7fa1c7d56ac5753db8c663"
 dependencies = [
  "chrono",
  "uiautomation_derive",

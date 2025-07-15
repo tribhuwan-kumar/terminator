@@ -11,7 +11,7 @@ use crate::utils::{
     OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs,
     SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
     SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
-    RunJavascriptArgs,
+    RunJavascriptArgs, 
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -34,6 +34,53 @@ use tracing::{info, warn};
 // New imports for image encoding
 use base64::{engine::general_purpose, Engine as _};
 use image::codecs::png::PngEncoder;
+
+// Helper function to validate extracted data against success criteria
+fn is_valid_extraction(extracted_data: &serde_json::Value, criteria: &serde_json::Value) -> bool {
+    // Default validation: check if we have any data
+    if extracted_data.is_null() {
+        return false;
+    }
+
+    // If criteria is provided, validate against it
+    if let Some(min_items) = criteria.get("min_items").and_then(|v| v.as_u64()) {
+        let item_count = extracted_data.as_array().map_or(0, |arr| arr.len());
+        if (item_count as u64) < min_items {
+            return false;
+        }
+    }
+
+    // Check for required fields
+    if let Some(required_fields) = criteria.get("required_fields").and_then(|v| v.as_array()) {
+        if let Some(data_array) = extracted_data.as_array() {
+            if data_array.is_empty() {
+                return false;
+            }
+
+            // Check if at least one item has all required fields
+            let has_required_fields = data_array.iter().any(|item| {
+                if let Some(item_obj) = item.as_object() {
+                    required_fields.iter().all(|field| {
+                        if let Some(field_name) = field.as_str() {
+                            item_obj.contains_key(field_name)
+                                && !item_obj.get(field_name).unwrap().is_null()
+                        } else {
+                            false
+                        }
+                    })
+                } else {
+                    false
+                }
+            });
+
+            if !has_required_fields {
+                return false;
+            }
+        }
+    }
+
+    true
+}
 
 #[tool_router]
 impl DesktopWrapper {
@@ -1032,6 +1079,135 @@ impl DesktopWrapper {
     }
 
     #[tool(
+        description = "Waits for output parser to successfully extract data from UI tree, polling until success or timeout. This is useful for waiting for dynamic content to load and be ready for data extraction."
+    )]
+    async fn wait_for_output_parser(
+        &self,
+        Parameters(args): Parameters<WaitForOutputParserArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let start_time = std::time::Instant::now();
+        let timeout_duration = Duration::from_millis(args.timeout_ms.unwrap_or(10000));
+        let poll_interval = Duration::from_millis(args.poll_interval_ms.unwrap_or(1000));
+
+        info!(
+            "[wait_for_output_parser] Starting with timeout: {:?}, poll_interval: {:?}",
+            timeout_duration, poll_interval
+        );
+
+        loop {
+            // Check timeout
+            if start_time.elapsed() > timeout_duration {
+                return Err(McpError::internal_error(
+                    "Timeout waiting for output parser to extract data",
+                    Some(json!({
+                        "timeout_ms": args.timeout_ms.unwrap_or(10000),
+                        "elapsed_ms": start_time.elapsed().as_millis(),
+                        "poll_interval_ms": args.poll_interval_ms.unwrap_or(1000)
+                    })),
+                ));
+            }
+
+            // Get current UI tree
+            let tree = if let Some(selector) = &args.selector {
+                // Get tree from specific element
+                info!(
+                    "[wait_for_output_parser] Getting UI tree from selector: '{}'",
+                    selector
+                );
+                let locator = self
+                    .desktop
+                    .locator(terminator::Selector::from(selector.as_str()));
+                match locator.wait(Some(Duration::from_millis(500))).await {
+                    Ok(element) => {
+                        let pid = element.process_id().unwrap_or(0);
+                        self.desktop.get_window_tree(pid, None, None).ok()
+                    }
+                    Err(_) => {
+                        info!(
+                            "[wait_for_output_parser] Failed to find element with selector: '{}'",
+                            selector
+                        );
+                        None
+                    }
+                }
+            } else {
+                // Get tree from focused window
+                info!("[wait_for_output_parser] Getting UI tree from focused window");
+                match self.desktop.focused_element() {
+                    Ok(element) => match element.process_id() {
+                        Ok(pid) => self.desktop.get_window_tree(pid, None, None).ok(),
+                        Err(_) => None,
+                    },
+                    Err(_) => None,
+                }
+            };
+
+            if let Some(tree) = tree {
+                // Try to run output parser
+                let tree_json = json!({ "ui_tree": tree });
+
+                match output_parser::run_output_parser(&args.output_parser, &tree_json) {
+                    Ok(Some(parsed_data)) => {
+                        // Check if we got the expected data
+                        let is_valid = if let Some(criteria) = &args.success_criteria {
+                            is_valid_extraction(&parsed_data, criteria)
+                        } else {
+                            // Default validation: check if we got any data at all
+                            !parsed_data.is_null()
+                                && parsed_data.as_array().is_none_or(|arr| !arr.is_empty())
+                        };
+
+                        if is_valid {
+                            info!(
+                                "[wait_for_output_parser] Successfully extracted data after {}ms",
+                                start_time.elapsed().as_millis()
+                            );
+
+                            let mut result_json = json!({
+                                "action": "wait_for_output_parser",
+                                "status": "success",
+                                "elapsed_ms": start_time.elapsed().as_millis(),
+                                "extracted_data": parsed_data,
+                                "data_item_count": parsed_data.as_array().map_or(0, |arr| arr.len()),
+                                "timestamp": chrono::Utc::now().to_rfc3339()
+                            });
+
+                            // Include tree if requested
+                            if args.include_tree.unwrap_or(false) {
+                                if let Some(obj) = result_json.as_object_mut() {
+                                    obj.insert("ui_tree".to_string(), json!(tree));
+                                }
+                            }
+
+                            return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
+                        } else {
+                            info!(
+                                "[wait_for_output_parser] Parser extracted data but validation failed, continuing to poll..."
+                            );
+                        }
+                    }
+                    Ok(None) => {
+                        info!(
+                            "[wait_for_output_parser] Parser found no data, continuing to poll..."
+                        );
+                    }
+                    Err(e) => {
+                        info!(
+                            "[wait_for_output_parser] Parser error: {}, continuing to poll...",
+                            e
+                        );
+                    }
+                }
+            } else {
+                info!("[wait_for_output_parser] Failed to get UI tree, continuing to poll...");
+            }
+
+            // Wait before next poll
+            tokio::time::sleep(poll_interval).await;
+        }
+    }
+
+    #[tool(
         description = "Opens a URL in the specified browser (uses SDK's built-in browser automation)."
     )]
     async fn navigate_browser(
@@ -1048,24 +1224,23 @@ impl DesktopWrapper {
 
         let element_info = build_element_info(&ui_element);
 
-        let tree = self
-            .desktop
-            .get_window_tree(
-                ui_element.process_id().unwrap_or(0),
-                ui_element.name().as_deref(),
-                None,
-            )
-            .unwrap_or_default();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "navigate_browser",
             "status": "success",
             "url": args.url,
             "browser": args.browser,
             "element": element_info,
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "ui_tree": tree
-        }))?]))
+        });
+
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(false),
+            ui_element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
@@ -1951,14 +2126,57 @@ impl DesktopWrapper {
 
         // Build the execution context. It's a combination of the 'inputs' and 'selectors' from the arguments.
         // The context is a simple, flat map of variables that will be used for substitution in tool arguments.
-        let mut execution_context_map = if let Some(inputs) = &args.inputs {
-            inputs.as_object().cloned().unwrap_or_default()
-        } else {
-            serde_json::Map::new()
-        };
+        let mut execution_context_map = serde_json::Map::new();
+
+        // First, populate with default values from variables schema
+        if let Some(variable_schema) = &args.variables {
+            for (key, def) in variable_schema {
+                if let Some(default_value) = &def.default {
+                    execution_context_map.insert(key.clone(), default_value.clone());
+                }
+            }
+        }
+
+        // Then override with user-provided inputs (inputs take precedence over defaults)
+        if let Some(inputs) = &args.inputs {
+            // Validate inputs is an object
+            if let Err(err) = crate::utils::validate_inputs(inputs) {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "Invalid inputs: {} expected {}, got {}",
+                        err.field, err.expected, err.actual
+                    ),
+                    None,
+                ));
+            }
+            if let Some(inputs_map) = inputs.as_object() {
+                for (key, value) in inputs_map {
+                    execution_context_map.insert(key.clone(), value.clone());
+                }
+            }
+        }
 
         if let Some(selectors) = args.selectors.clone() {
-            execution_context_map.insert("selectors".to_string(), selectors);
+            // Validate selectors
+            if let Err(err) = crate::utils::validate_selectors(&selectors) {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "Invalid selectors: {} expected {}, got {}",
+                        err.field, err.expected, err.actual
+                    ),
+                    None,
+                ));
+            }
+            // If selectors is a string, parse it as JSON first
+            let selectors_value = if let serde_json::Value::String(s) = &selectors {
+                match serde_json::from_str::<serde_json::Value>(s) {
+                    Ok(parsed) => parsed,
+                    Err(_) => selectors, // If parsing fails, treat it as a raw string
+                }
+            } else {
+                selectors
+            };
+            execution_context_map.insert("selectors".to_string(), selectors_value);
         }
         let execution_context = serde_json::Value::Object(execution_context_map);
 
@@ -2322,8 +2540,12 @@ impl DesktopWrapper {
             }
         }
 
-        if let Some(parser_def) = args.output_parser {
-            match output_parser::run_output_parser(&parser_def, &summary) {
+        if let Some(parser_def) = args.output_parser.as_ref() {
+            // Apply variable substitution to the output_parser field
+            let mut parser_json = parser_def.clone();
+            substitute_variables(&mut parser_json, &execution_context);
+
+            match output_parser::run_output_parser(&parser_json, &summary) {
                 Ok(Some(parsed_data)) => {
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parsed_output".to_string(), parsed_data);
@@ -2519,6 +2741,15 @@ impl DesktopWrapper {
                     Ok(args) => self.wait_for_element(Parameters(args)).await,
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for wait_for_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "wait_for_output_parser" => {
+                match serde_json::from_value::<WaitForOutputParserArgs>(arguments.clone()) {
+                    Ok(args) => self.wait_for_output_parser(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for wait_for_output_parser",
                         Some(json!({"error": e.to_string()})),
                     )),
                 }
@@ -3188,12 +3419,20 @@ impl DesktopWrapper {
         self.desktop.set_zoom(args.percentage).await.map_err(|e| {
             McpError::internal_error("Failed to set zoom", Some(json!({"reason": e.to_string()})))
         })?;
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "set_zoom",
             "status": "success",
             "percentage": args.percentage,
             "note": "Zoom level set to the specified percentage"
-        }))?]))
+        });
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(false),
+            None,
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(

@@ -186,7 +186,7 @@ mod tests {
         // Test !contains with arrays
         assert!(!evaluate("!contains(product_types, 'FEX')", &vars)); // FEX is in array, so !contains is false
         assert!(evaluate("!contains(product_types, 'MedSup')", &vars)); // MedSup not in array, so !contains is true
-        
+
         // Test !contains with strings
         assert!(!evaluate("!contains(description, 'Expense')", &vars)); // "Expense" is in string, so !contains is false
         assert!(evaluate("!contains(description, 'Medical')", &vars)); // "Medical" not in string, so !contains is true
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_negation_starts_with() {
         let vars = json!({ "name": "John Doe" });
-        
+
         assert!(!evaluate("!startsWith(name, 'John')", &vars)); // Starts with John, so !startsWith is false
         assert!(evaluate("!startsWith(name, 'Doe')", &vars)); // Doesn't start with Doe, so !startsWith is true
     }
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn test_negation_ends_with() {
         let vars = json!({ "name": "John Doe" });
-        
+
         assert!(!evaluate("!endsWith(name, 'Doe')", &vars)); // Ends with Doe, so !endsWith is false
         assert!(evaluate("!endsWith(name, 'John')", &vars)); // Doesn't end with John, so !endsWith is true
     }
@@ -219,15 +219,15 @@ mod tests {
         // Test negation of equality
         assert!(!evaluate("!use_max_budget == false", &vars)); // use_max_budget is false, so !(false == false) = !true = false
         assert!(evaluate("!use_max_budget == true", &vars)); // use_max_budget is false, so !(false == true) = !false = true
-        
+
         // Test negation of string equality
         assert!(!evaluate("!coverage_type == 'Graded'", &vars)); // coverage_type is Graded, so !(Graded == Graded) = !true = false
         assert!(evaluate("!coverage_type == 'Standard'", &vars)); // coverage_type is Graded, so !(Graded == Standard) = !false = true
-        
+
         // Test negation of inequality
         assert!(evaluate("!coverage_type != 'Graded'", &vars)); // coverage_type is Graded, so !(Graded != Graded) = !false = true
         assert!(!evaluate("!coverage_type != 'Standard'", &vars)); // coverage_type is Graded, so !(Graded != Standard) = !true = false
-        
+
         // Test negation of boolean values
         assert!(!evaluate("!enabled == true", &vars)); // enabled is true, so !(true == true) = !true = false
         assert!(evaluate("!enabled == false", &vars)); // enabled is true, so !(true == false) = !false = true
@@ -292,7 +292,7 @@ mod tests {
         assert!(evaluate("!contains(empty_string, 'anything')", &vars)); // !false = true
         assert!(evaluate("!startsWith(empty_string, 'test')", &vars)); // !false = true
         assert!(evaluate("!endsWith(empty_string, 'test')", &vars)); // !false = true
-        
+
         // Test with null values (should default to false, then be negated)
         assert!(evaluate("!null_value == 'test'", &vars)); // !false = true
     }
@@ -309,10 +309,10 @@ mod tests {
         // Test realistic workflow scenarios
         assert!(!evaluate("!contains(product_types, 'FEX')", &vars)); // FEX is selected, so we don't want to uncheck it
         assert!(evaluate("!contains(product_types, 'Preneed')", &vars)); // Preneed is not selected, so we might want to uncheck it
-        
+
         assert!(!evaluate("!quote_type == 'Face Amount'", &vars)); // Quote type is Face Amount, so condition is false
         assert!(evaluate("!quote_type == 'Monthly Amount'", &vars)); // Quote type is not Monthly Amount, so condition is true
-        
+
         assert!(evaluate("!startsWith(user_name, 'Jane')", &vars)); // User name doesn't start with Jane
         assert!(!evaluate("!endsWith(user_name, 'Smith')", &vars)); // User name does end with Smith
     }
@@ -332,7 +332,7 @@ mod tests {
         assert!(!evaluate("quote_type == 'Monthly Amount'", &vars));
         assert!(evaluate("enabled == true", &vars));
         assert!(!evaluate("enabled == false", &vars));
-        
+
         // And that negation works correctly
         assert!(!evaluate("!contains(product_types, 'FEX')", &vars));
         assert!(evaluate("!contains(product_types, 'MedSup')", &vars));
@@ -351,11 +351,11 @@ mod tests {
 
         // always() should always return true regardless of variables
         assert!(evaluate("always()", &vars));
-        
+
         // Test with empty variables
         let empty_vars = json!({});
         assert!(evaluate("always()", &empty_vars));
-        
+
         // Test with null variables
         let null_vars = json!(null);
         assert!(evaluate("always()", &null_vars));
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn test_always_function_with_whitespace() {
         let vars = json!({});
-        
+
         // Test various whitespace combinations
         assert!(evaluate("always()", &vars));
         assert!(evaluate("always( )", &vars));
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_always_function_with_arguments_should_fail() {
         let vars = json!({});
-        
+
         // always() should not accept arguments
         assert!(!evaluate("always(arg)", &vars));
         assert!(!evaluate("always('test')", &vars));
@@ -386,12 +386,12 @@ mod tests {
     #[test]
     fn test_negation_of_always() {
         let vars = json!({});
-        
+
         // !always() should always be false
         assert!(!evaluate("!always()", &vars));
         assert!(!evaluate("! always()", &vars));
         assert!(!evaluate("  !always()  ", &vars));
-        
+
         // Double negation should be true
         assert!(evaluate("!!always()", &vars));
     }
