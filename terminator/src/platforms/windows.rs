@@ -4237,11 +4237,7 @@ impl UIElementImpl for WindowsUIElement {
 
                 // VERY DIRTY HACK BECAUSE TOGGLE STATE DOES NOT WORK
                 // CHECK IF THERE IS [] IN THE NAME OF THE CONTROL
-                let current_state = if self.element.0.get_name().unwrap_or_default().contains("[") {
-                    !current_state
-                } else {
-                    current_state
-                };
+                let current_state = self.element.0.get_name().unwrap_or_default().contains("[");
 
                 if current_state != state {
                     // Only toggle if the state is different.
