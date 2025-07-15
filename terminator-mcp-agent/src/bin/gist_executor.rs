@@ -83,35 +83,10 @@ async fn main() -> Result<()> {
     };
 
     // Parse JSON content
-    info!("Parsing JSON content...");
-    
-    // First try to parse as raw ExecuteSequenceArgs
-    let workflow: ExecuteSequenceArgs = match serde_json::from_str(&json_content) {
-        Ok(workflow) => workflow,
-        Err(_) => {
-            // If that fails, try to parse as a tool call wrapper and extract arguments
-            info!("Direct parsing failed, trying to extract from tool call wrapper...");
-            let tool_call: serde_json::Value = serde_json::from_str(&json_content)
-                .context("Failed to parse JSON content")?;
-            
-            // Check if it's a tool call wrapper with execute_sequence
-            if let Some(tool_name) = tool_call.get("tool_name") {
-                if tool_name == "execute_sequence" {
-                    if let Some(arguments) = tool_call.get("arguments") {
-                        info!("Found execute_sequence tool call, extracting arguments...");
-                        serde_json::from_value(arguments.clone())
-                            .context("Failed to parse arguments as ExecuteSequenceArgs")?
-                    } else {
-                        return Err(anyhow::anyhow!("Tool call missing 'arguments' field"));
-                    }
-                } else {
-                    return Err(anyhow::anyhow!("Expected execute_sequence tool call, found: {}", tool_name));
-                }
-            } else {
-                return Err(anyhow::anyhow!("JSON does not contain 'steps' field or valid tool call format"));
-            }
-        }
-    };
+    info!("Parsing content (JSON/YAML)...");
+
+    let workflow: ExecuteSequenceArgs = parse_execute_sequence(&json_content)
+        .context("Failed to parse input content as a workflow")?;
 
     info!("Successfully parsed workflow with {} steps", workflow.steps.len());
 
@@ -261,4 +236,57 @@ fn validate_workflow(workflow: &ExecuteSequenceArgs) -> Result<()> {
 
     info!("Workflow validation passed");
     Ok(())
+} 
+
+/// Parse the input content (JSON or YAML) into an `ExecuteSequenceArgs` workflow.
+///
+/// The function attempts the following strategies in order:
+/// 1. Direct JSON deserialization into `ExecuteSequenceArgs`.
+/// 2. Direct YAML deserialization into `ExecuteSequenceArgs`.
+/// 3. JSON wrapper object containing `tool_name == "execute_sequence"` and `arguments`.
+/// 4. YAML wrapper object with the same structure as #3.
+fn parse_execute_sequence(content: &str) -> Result<ExecuteSequenceArgs> {
+    // 1) Try direct JSON -> ExecuteSequenceArgs
+    if let Ok(wf) = serde_json::from_str::<ExecuteSequenceArgs>(content) {
+        return Ok(wf);
+    }
+
+    // 2) Try direct YAML -> ExecuteSequenceArgs
+    if let Ok(wf) = serde_yaml::from_str::<ExecuteSequenceArgs>(content) {
+        return Ok(wf);
+    }
+
+    // 3) Try JSON wrapper
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+        if let Some(wf) = extract_from_wrapper(&val)? {
+            return Ok(wf);
+        }
+    }
+
+    // 4) Try YAML wrapper
+    if let Ok(val) = serde_yaml::from_str::<serde_json::Value>(content) {
+        if let Some(wf) = extract_from_wrapper(&val)? {
+            return Ok(wf);
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "Unable to parse content as JSON or YAML ExecuteSequenceArgs or wrapper"
+    ))
+}
+
+/// Attempt to extract `ExecuteSequenceArgs` from a wrapper object produced by tool calls.
+fn extract_from_wrapper(value: &serde_json::Value) -> Result<Option<ExecuteSequenceArgs>> {
+    if let Some(tool_name) = value.get("tool_name") {
+        if tool_name == "execute_sequence" {
+            if let Some(arguments) = value.get("arguments") {
+                let wf = serde_json::from_value::<ExecuteSequenceArgs>(arguments.clone())
+                    .context("Failed to deserialize 'arguments' as ExecuteSequenceArgs")?;
+                return Ok(Some(wf));
+            } else {
+                return Err(anyhow::anyhow!("Tool call missing 'arguments' field"));
+            }
+        }
+    }
+    Ok(None)
 } 
