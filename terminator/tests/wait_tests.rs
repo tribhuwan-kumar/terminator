@@ -1,5 +1,4 @@
-use std::{sync::Arc, thread, time::Duration};
-use terminator::{Desktop, Selector};
+use std::{sync::Arc, thread};
 
 fn start_test_server() -> (String, Arc<tiny_http::Server>) {
     let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
@@ -16,12 +15,16 @@ fn start_test_server() -> (String, Arc<tiny_http::Server>) {
         }
     });
 
-    (format!("http://127.0.0.1:{}", port), server_arc)
+    (format!("http://127.0.0.1:{port}"), server_arc)
 }
 
 #[tokio::test]
 #[cfg(target_os = "windows")]
 async fn test_wait_for_element_on_webpage() {
+    use std::time::Duration;
+
+    use terminator::{Desktop, Selector};
+
     let (server_url, _server) = start_test_server();
     let desktop = Desktop::new(false, false).unwrap();
 
@@ -67,7 +70,7 @@ async fn test_wait_for_element_on_webpage() {
         terminator::AutomationError::Timeout(_) => {
             // This is the expected outcome
         }
-        e => panic!("Expected a Timeout error, but got {:?}", e),
+        e => panic!("Expected a Timeout error, but got {e:?}"),
     }
 
     browser_window.close().unwrap();

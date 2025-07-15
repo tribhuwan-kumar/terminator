@@ -61,15 +61,12 @@ async fn test_get_browser_url() -> Result<(), AutomationError> {
     let browsers_to_test = [Browser::Chrome, Browser::Firefox, Browser::Edge];
 
     for browser_name in browsers_to_test {
-        println!("Testing URL retrieval in {:?}", browser_name);
+        println!("Testing URL retrieval in {browser_name:?}");
 
         let browser_app = match desktop.open_url(test_url, Some(browser_name.clone())) {
             Ok(app) => app,
             Err(e) => {
-                println!(
-                    "Could not open browser {:?}: {}. Skipping.",
-                    browser_name, e
-                );
+                println!("Could not open browser {browser_name:?}: {e}. Skipping.");
                 continue; // Skip browsers that can't be opened
             }
         };
@@ -78,13 +75,11 @@ async fn test_get_browser_url() -> Result<(), AutomationError> {
 
         let url = browser_app.url().unwrap_or_default();
 
-        println!("Retrieved URL from {:?}: {:?}", browser_name, url);
+        println!("Retrieved URL from {browser_name:?}: {url:?}");
 
         assert!(
             url.contains("google.com") || url.contains("www.google.com"),
-            "URL should be retrieved from {:?} and contain 'google.com', but was '{}'",
-            browser_name,
-            url
+            "URL should be retrieved from {browser_name:?} and contain 'google.com', but was '{url}'"
         );
 
         browser_app.close()?;

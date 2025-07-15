@@ -115,3 +115,143 @@ Now, when your MCP client runs `terminator-mcp-agent`, it will use your local bu
 - For VS Code/Insiders, ensure the CLI (`code` or `code-insiders`) is available in your PATH.
 - If you encounter issues, try running with elevated permissions.
 
+---
+
+## 📚 Full `execute_sequence` Reference & Sample Workflow
+
+> **Why another example?** The quick start above shows the concept, but many users asked for a fully-annotated workflow schema. The example below automates the Windows **Calculator** app—so it is 100% safe to share and does **not** reveal any private customer data. Feel free to copy-paste and adapt it to your own application.
+
+### 1. Anatomy of an `execute_sequence` Call
+
+```jsonc
+{
+  "tool_name": "execute_sequence",
+  "arguments": {
+    "variables": {            // 1️⃣ Re-usable inputs with type metadata
+      "app_path": {
+        "type": "string",
+        "label": "Calculator EXE Path",
+        "default": "calc.exe"
+      },
+      "first_number": {
+        "type": "string",
+        "label": "First Number",
+        "default": "42"
+      },
+      "second_number": {
+        "type": "string",
+        "label": "Second Number",
+        "default": "8"
+      }
+    },
+    "inputs": {               // 2️⃣ Concrete values for *this run*
+      "app_path": "calc.exe",
+      "first_number": "42",
+      "second_number": "8"
+    },
+    "selectors": {            // 3️⃣ Human-readable element shortcuts
+      "calc_window": "role:Window|name:Calculator",
+      "btn_clear": "role:Button|name:Clear",
+      "btn_plus": "role:Button|name:Plus",
+      "btn_equals": "role:Button|name:Equals"
+    },
+    "steps": [                // 4️⃣ Ordered actions & control flow
+      {
+        "tool_name": "open_application",
+        "arguments": { "path": "{{app_path}}" }
+      },
+      {
+        "tool_name": "click_element", // 4a. Make sure the UI is reset
+        "arguments": { "selector": "{{selectors.btn_clear}}" },
+        "continue_on_error": true
+      },
+      {
+        "group_name": "Enter First Number", // 4b. Groups improve logs
+        "steps": [
+          {
+            "tool_name": "type_into_element",
+            "arguments": {
+              "selector": "{{selectors.calc_window}}",
+              "text_to_type": "{{first_number}}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_name": "click_element",
+        "arguments": { "selector": "{{selectors.btn_plus}}" }
+      },
+      {
+        "group_name": "Enter Second Number",
+        "steps": [
+          {
+            "tool_name": "type_into_element",
+            "arguments": {
+              "selector": "{{selectors.calc_window}}",
+              "text_to_type": "{{second_number}}"
+            }
+          }
+        ]
+      },
+      {
+        "tool_name": "click_element",
+        "arguments": { "selector": "{{selectors.btn_equals}}" }
+      },
+      {
+        "tool_name": "wait_for_element",  // 4c. Capture final UI tree
+        "arguments": {
+          "selector": "{{selectors.calc_window}}",
+          "condition": "exists",
+          "include_tree": true,
+          "timeout_ms": 2000
+        }
+      }
+    ],
+    "output_parser": {        // 5️⃣ Turn the tree into clean JSON
+      "uiTreeJsonPath": "$.results[-1].result.ui_tree",
+      "fieldsToExtract": {
+        "displayValue": {
+          "fromChild": {
+            "conditions": [
+              { "property": "role", "op": "equals", "value": "Text" }
+            ],
+            "extractProperty": "name"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### 2. Key Concepts at a Glance
+
+1. **Variables vs. Inputs** – Declare once, override per-run. This is perfect for parameterizing CI pipelines or A/B test data.
+2. **Selectors** – Give every important UI element a *nickname*. It makes long workflows readable and easy to maintain.
+3. **Templating** – `{{ ... }}` lets you reference **any** key inside `variables`, `inputs`, or `selectors`. The engine uses Mustache-style rendering.
+4. **Groups & Control Flow** – Add `group_name`, `skippable`, `if`, or `continue_on_error` to any step for advanced branching.
+5. **Output Parsing** – Always end with a step that includes the UI tree, then use the declarative JSON DSL to mine the data you need.
+
+### 3. Running the Workflow
+
+1. Ensure the Terminator MCP agent is running (it will auto-start in supported editors).
+2. Send the JSON above as the body of an `execute_sequence` tool call from your LLM or test harness.
+3. Inspect the response: if parsing succeeds you’ll see something like
+
+```jsonc
+{
+  "parsed_output": {
+    "displayValue": "50"  // 42 + 8
+  }
+}
+```
+
+### 4. Tips for Production Workflows
+
+- **Never hard-code credentials** – use environment variables or your secret manager.
+- **Keep workflows short** – <100 steps is ideal. Break large tasks into multiple sequences.
+- **Capture errors** – `continue_on_error` is useful, but also log `result.status` codes to catch silent failures.
+- **Version control** – Store workflow JSON in a repo and use PR reviews just like regular code.
+
+> Need more help? Browse the examples under `examples/` in this repo or open a discussion on GitHub.
+

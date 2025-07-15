@@ -38,10 +38,10 @@ impl PerfMeasurement {
 
         println!("📊 {}", self.name);
         println!("   Samples: {}", self.durations.len());
-        println!("   Average: {:?}", avg);
-        println!("   Min:     {:?}", min);
-        println!("   Max:     {:?}", max);
-        println!("   Total:   {:?}", total);
+        println!("   Average: {avg:?}");
+        println!("   Min:     {min:?}");
+        println!("   Max:     {max:?}");
+        println!("   Total:   {total:?}");
     }
 }
 
@@ -68,7 +68,7 @@ where
                 perf.add_measurement(duration);
             }
             Err(e) => {
-                eprintln!("Error in {}: {:?}", name, e);
+                eprintln!("Error in {name}: {e:?}");
             }
         }
     }
@@ -98,7 +98,7 @@ fn test_real_app_performance() {
     let mut app_lookup_perfs = HashMap::new();
 
     for (app_name, _) in TEST_APPS {
-        let perf = measure_performance(&format!("Find {}", app_name), 3, || {
+        let perf = measure_performance(&format!("Find {app_name}"), 3, || {
             match desktop.application(app_name) {
                 Ok(_) => Ok(()),
                 Err(_) => {
@@ -111,7 +111,7 @@ fn test_real_app_performance() {
     }
 
     for (app_name, perf) in app_lookup_perfs {
-        println!("\n  Application: {}", app_name);
+        println!("\n  Application: {app_name}");
         perf.report();
     }
 }
@@ -200,7 +200,7 @@ fn test_ui_tree_performance() {
     for app in apps.iter().take(test_count) {
         let app_name = app.name().unwrap_or_else(|| "Unknown".to_string());
 
-        println!("\n📱 Testing UI tree for: {}", app_name);
+        println!("\n📱 Testing UI tree for: {app_name}");
 
         // Test getting immediate children
         let children_perf = measure_performance("Get immediate children", 5, || {
@@ -225,7 +225,7 @@ fn test_ui_tree_performance() {
                 }
             }
 
-            println!("   Total elements found: {}", total_elements);
+            println!("   Total elements found: {total_elements}");
             Ok(())
         });
         traverse_perf.report();
@@ -249,7 +249,7 @@ fn test_browser_automation_performance() {
         match desktop.application(chrome_name) {
             Ok(_) => {
                 let duration = start.elapsed();
-                println!("✅ Found Chrome as '{}' in {:?}", chrome_name, duration);
+                println!("✅ Found Chrome as '{chrome_name}' in {duration:?}");
                 found_chrome = true;
                 break;
             }
@@ -266,7 +266,7 @@ fn test_browser_automation_performance() {
             match desktop.application(edge_name) {
                 Ok(_) => {
                     let duration = start.elapsed();
-                    println!("✅ Found Edge as '{}' in {:?}", edge_name, duration);
+                    println!("✅ Found Edge as '{edge_name}' in {duration:?}");
                     break;
                 }
                 Err(_) => continue,

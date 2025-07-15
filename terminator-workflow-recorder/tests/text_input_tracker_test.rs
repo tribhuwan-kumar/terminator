@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 #[cfg(test)]
 mod text_input_tracker_tests {
     use terminator::element::{UIElement, UIElementAttributes, UIElementImpl};

@@ -15,7 +15,7 @@ async fn make_api_request(
 ) -> Result<reqwest::Response, reqwest::Error> {
     let client = reqwest::Client::new();
     client
-        .post(format!("{}{}", API_BASE_URL, endpoint))
+        .post(format!("{API_BASE_URL}{endpoint}"))
         .json(&payload)
         .send()
         .await
@@ -24,10 +24,7 @@ async fn make_api_request(
 // Helper function to make GET API calls
 async fn make_get_request(endpoint: &str) -> Result<reqwest::Response, reqwest::Error> {
     let client = reqwest::Client::new();
-    client
-        .get(format!("{}{}", API_BASE_URL, endpoint))
-        .send()
-        .await
+    client.get(format!("{API_BASE_URL}{endpoint}")).send().await
 }
 
 #[tokio::test]
@@ -130,7 +127,7 @@ async fn test_fill_edit_elements_http() {
                 element_id,
                 type_response.text().await
             );
-            panic!("Failed to type into element with ID: {}", element_id);
+            panic!("Failed to type into element with ID: {element_id}");
         }
         info!("Successfully typed text into element {}", element_id);
 
@@ -215,10 +212,7 @@ async fn test_fill_edit_elements_direct() {
             Ok(_) => info!("Successfully typed text into element {}", element_id),
             Err(e) => {
                 error!("Failed to type into element {}: {:?}", element_id, e);
-                panic!(
-                    "Failed to type into element with ID: {}: {:?}",
-                    element_id, e
-                );
+                panic!("Failed to type into element with ID: {element_id}: {e:?}");
             }
         }
 

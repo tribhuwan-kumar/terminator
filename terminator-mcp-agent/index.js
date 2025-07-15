@@ -123,7 +123,8 @@ if (argv.includes("--add-to-app")) {
 
   const child = spawn(binary, agentArgs, {
     stdio: ["pipe", "pipe", "pipe"],
-    shell: true,
+    shell: false,
+    detached: process.platform !== "win32",
   });
 
   process.stdin.pipe(child.stdin);

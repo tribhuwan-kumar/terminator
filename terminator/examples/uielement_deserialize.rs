@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Serialize to JSON
     let json = serde_json::to_string_pretty(&root_element)?;
     println!("\nSerialized JSON:");
-    println!("{}", json);
+    println!("{json}");
 
     // Deserialize back to UIElement
     // This will find the actual element in the current UI tree
@@ -44,16 +44,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\nTesting operations:");
             match deserialized.children() {
                 Ok(children) => println!("✅ Got {} children", children.len()),
-                Err(e) => println!("❌ Failed to get children: {}", e),
+                Err(e) => println!("❌ Failed to get children: {e}"),
             }
 
             match deserialized.bounds() {
-                Ok(bounds) => println!("✅ Bounds: {:?}", bounds),
-                Err(e) => println!("❌ Failed to get bounds: {}", e),
+                Ok(bounds) => println!("✅ Bounds: {bounds:?}"),
+                Err(e) => println!("❌ Failed to get bounds: {e}"),
             }
         }
         Err(e) => {
-            println!("❌ Deserialization failed: {}", e);
+            println!("❌ Deserialization failed: {e}");
             println!("This can happen if the UI tree has changed since serialization");
         }
     }
@@ -74,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match serde_json::from_str::<terminator::UIElement>(fake_json) {
         Ok(_) => println!("❌ Unexpectedly succeeded with fake element"),
-        Err(e) => println!("✅ Correctly failed with fake element: {}", e),
+        Err(e) => println!("✅ Correctly failed with fake element: {e}"),
     }
 
     println!("\n=== Key Points ===");

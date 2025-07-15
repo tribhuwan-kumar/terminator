@@ -704,11 +704,7 @@ fn find_elements_inner<'a>(
                     "Selector::NativeId is not implemented for Linux".to_string(),
                 ));
             }
-            Selector::Position(_, _) => {
-                return Err(AutomationError::UnsupportedPlatform(
-                    "Selector::Position is not implemented for Linux".to_string(),
-                ));
-            }
+
             Selector::Text(_) => {
                 return Err(AutomationError::UnsupportedPlatform(
                     "Selector::Text is not implemented for Linux".to_string(),
@@ -765,6 +761,28 @@ fn find_elements_inner<'a>(
             }
             Selector::Role { .. } | Selector::Name(_) => {
                 // Supported - continue to processing below
+            }
+            Selector::Invalid(reason) => {
+                return Err(AutomationError::InvalidArgument(reason.clone()));
+            }
+            Selector::RightOf(_)
+            | Selector::LeftOf(_)
+            | Selector::Above(_)
+            | Selector::Below(_)
+            | Selector::Near(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Relative selectors (RightOf/LeftOf/Above/Below/Near) are not implemented for Linux".to_string(),
+                ));
+            }
+            Selector::Nth(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Selector::Nth is not implemented for Linux".to_string(),
+                ));
+            }
+            Selector::Has(_) => {
+                return Err(AutomationError::UnsupportedPlatform(
+                    "Selector::Has is not implemented for Linux".to_string(),
+                ));
             }
         }
         // Only Role and Name selectors are supported below
@@ -1797,6 +1815,33 @@ impl AccessibilityEngine for LinuxEngine {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn press_key(&self, _key: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "press_key is not implemented for LinuxEngine yet".to_string(),
+        ))
+    }
+
+    fn zoom_in(&self, _level: u32) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "zoom_in is not implemented for LinuxEngine yet".to_string(),
+        ))
+    }
+
+    fn zoom_out(&self, _level: u32) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "zoom_out is not implemented for LinuxEngine yet".to_string(),
+        ))
+    }
+
+    fn set_zoom(&self, _percentage: u32) -> Result<(), AutomationError> {
+        // On Linux, zoom is typically controlled via Ctrl+Plus/Minus/0
+        // The implementation would be similar to Windows
+        // For now, returning unimplemented
+        Err(AutomationError::UnsupportedOperation(
+            "set_zoom is not implemented for LinuxEngine yet".to_string(),
+        ))
     }
 }
 

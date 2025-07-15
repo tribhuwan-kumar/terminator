@@ -6,7 +6,7 @@ use crate::{ClickResult, ScreenshotResult};
 
 use accessibility::AXUIElementAttributes;
 use accessibility::{AXAttribute, AXUIElement};
-use accessibility_sys::{error_string, AXError, AXValueType};
+use accessibility_sys::error_string;
 use anyhow::Result;
 use core_foundation::array::{
     CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex, __CFArray,
@@ -25,9 +25,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::{debug, info, instrument, warn, Level};
-use tracing_subscriber::field::debug;
 use uni_ocr::{OcrEngine, OcrProvider};
 
 use super::tree_search::ElementsCollectorWithWindows;
@@ -158,9 +157,6 @@ impl MacOSEngine {
         debug!("[macOS][wrap_element] ax_element: {:?}", ax_element);
 
         // Try to check element validity by first checking if "AXRole" is present in attribute names
-        let mut is_valid = false;
-        // println!("[macOS][wrap_element] ax_element: {:?}", ax_element);
-        // println!("[macOS][wrap_element] ax_element.0: {:?}", ax_element.0);
         match ax_element.0.attribute_names() {
             Ok(attr_names) => {
                 // ItemRef<CFString> does not have as_str(), so compare using .to_string()
@@ -168,24 +164,18 @@ impl MacOSEngine {
                 // println!("[macOS][wrap_element] attr_names: {:?}", attr_names);
                 if has_role {
                     // Try to get the role if the attribute exists
-                    match ax_element.0.role() {
-                        Ok(_) => {
-                            is_valid = true;
-                        }
-                        Err(e) => {
-                            if let accessibility::Error::Ax(code) = e {
-                                if code != -25204 {
-                                    // kAXErrorNoValue
-                                    let err_str = error_string(code);
-                                    debug!(
-                                        "Warning: Potentially invalid AXUIElement: {:?} (error: {})",
-                                        e, err_str
-                                    );
-                                }
-                            } else {
-                                debug!("Warning: Potentially invalid AXUIElement: {:?}", e);
+                    if let Err(e) = ax_element.0.role() {
+                        if let accessibility::Error::Ax(code) = e {
+                            if code != -25204 {
+                                // kAXErrorNoValue
+                                let err_str = error_string(code);
+                                debug!(
+                                    "Warning: Potentially invalid AXUIElement: {:?} (error: {})",
+                                    e, err_str
+                                );
                             }
-                            is_valid = false;
+                        } else {
+                            debug!("Warning: Potentially invalid AXUIElement: {:?}", e);
                         }
                     }
                 } else {
@@ -195,7 +185,6 @@ impl MacOSEngine {
                     );
                     // If it doesn't have AXRole, we still consider it valid for wrapping,
                     // but log for debugging.
-                    is_valid = false;
                 }
             }
             Err(e) => {
@@ -210,12 +199,7 @@ impl MacOSEngine {
                 );
                 // If we can't get attribute names, be conservative and allow wrapping,
                 // but log for debugging.
-                is_valid = false;
             }
-        }
-
-        if !is_valid {
-            debug!("Warning: Wrapping possibly invalid AXUIElement");
         }
 
         UIElement::new(Box::new(MacOSUIElement {
@@ -1876,7 +1860,7 @@ impl UIElementImpl for MacOSUIElement {
         None
     }
 
-    fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
+    fn select_option(&self, _option_name: &str) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "select_option is not implemented for macOS yet".to_string(),
         ))
@@ -1894,7 +1878,7 @@ impl UIElementImpl for MacOSUIElement {
         ))
     }
 
-    fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
+    fn set_toggled(&self, _state: bool) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "set_toggled is not implemented for macOS yet".to_string(),
         ))
@@ -1906,7 +1890,7 @@ impl UIElementImpl for MacOSUIElement {
         ))
     }
 
-    fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
+    fn set_range_value(&self, _value: f64) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "set_range_value is not implemented for macOS yet".to_string(),
         ))
@@ -1918,7 +1902,7 @@ impl UIElementImpl for MacOSUIElement {
         ))
     }
 
-    fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
+    fn set_selected(&self, _state: bool) -> Result<(), AutomationError> {
         Err(AutomationError::UnsupportedOperation(
             "set_selected is not implemented for macOS yet".to_string(),
         ))
@@ -2864,8 +2848,16 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
                 "LocalizedRole selector is not yet supported for macOS".to_string(),
             )),
-            Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
-                "Position selector not yet supported for macOS".to_string(),
+
+            Selector::Invalid(reason) => Err(AutomationError::InvalidArgument(reason.clone())),
+            Selector::RightOf(_) | Selector::LeftOf(_) | Selector::Above(_) | Selector::Below(_) | Selector::Near(_) => Err(AutomationError::UnsupportedOperation(
+                "Relative selectors (RightOf/LeftOf/Above/Below/Near) are not yet supported for macOS".to_string(),
+            )),
+            Selector::Nth(_) => Err(AutomationError::UnsupportedOperation(
+                "Nth selector not yet supported for macOS".to_string(),
+            )),
+            Selector::Has(_) => Err(AutomationError::UnsupportedOperation(
+                "Has selector not yet supported for macOS".to_string(),
             )),
         }
     }
@@ -3149,8 +3141,16 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::LocalizedRole(_) => Err(AutomationError::UnsupportedOperation(
                 "LocalizedRole selector is not yet supported for macOS".to_string(),
             )),
-            Selector::Position(_, _) => Err(AutomationError::UnsupportedOperation(
-                "Position selector not yet supported for macOS".to_string(),
+
+            Selector::Invalid(reason) => Err(AutomationError::InvalidArgument(reason.clone())),
+            Selector::RightOf(_) | Selector::LeftOf(_) | Selector::Above(_) | Selector::Below(_) | Selector::Near(_) => Err(AutomationError::UnsupportedOperation(
+                "Relative selectors (RightOf/LeftOf/Above/Below/Near) are not yet supported for macOS".to_string(),
+            )),
+            Selector::Nth(_) => Err(AutomationError::UnsupportedOperation(
+                "Nth selector not yet supported for macOS".to_string(),
+            )),
+            Selector::Has(_) => Err(AutomationError::UnsupportedOperation(
+                "Has selector not yet supported for macOS".to_string(),
             )),
         }
     }
@@ -4032,5 +4032,32 @@ impl AccessibilityEngine for MacOSEngine {
     /// Enable downcasting to concrete engine types
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn press_key(&self, _key: &str) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "press_key is not implemented for MacOSEngine yet".to_string(),
+        ))
+    }
+
+    fn zoom_in(&self, _level: u32) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "zoom_in is not implemented for MacOSEngine yet".to_string(),
+        ))
+    }
+
+    fn zoom_out(&self, _level: u32) -> Result<(), AutomationError> {
+        Err(AutomationError::UnsupportedOperation(
+            "zoom_out is not implemented for MacOSEngine yet".to_string(),
+        ))
+    }
+
+    fn set_zoom(&self, _percentage: u32) -> Result<(), AutomationError> {
+        // On macOS, zoom is typically controlled via Cmd+Plus/Minus/0
+        // However, the implementation would be similar to Windows
+        // For now, returning unimplemented
+        Err(AutomationError::UnsupportedOperation(
+            "set_zoom is not implemented for MacOSEngine yet".to_string(),
+        ))
     }
 }

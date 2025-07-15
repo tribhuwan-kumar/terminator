@@ -27,13 +27,27 @@ pub enum Selector {
     Visible(bool),
     /// Select by localized role
     LocalizedRole(String),
-    /// Select by position (x,y) on screen
-    Position(i32, i32),
+    /// Select elements to the right of an anchor element
+    RightOf(Box<Selector>),
+    /// Select elements to the left of an anchor element
+    LeftOf(Box<Selector>),
+    /// Select elements above an anchor element
+    Above(Box<Selector>),
+    /// Select elements below an anchor element
+    Below(Box<Selector>),
+    /// Select elements near an anchor element
+    Near(Box<Selector>),
+    /// Select the n-th element from the matches
+    Nth(i32),
+    /// Select elements that have at least one descendant matching the inner selector (Playwright-style :has())
+    Has(Box<Selector>),
+    /// Represents an invalid selector string, with a reason.
+    Invalid(String),
 }
 
 impl std::fmt::Display for Selector {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -106,15 +120,43 @@ impl From<&str> for Selector {
                 let value = s[8..].trim().to_lowercase();
                 Selector::Visible(value == "true")
             }
-            _ if s.to_lowercase().starts_with("pos:") => {
-                let parts: Vec<&str> = s[4..].split(',').map(|p| p.trim()).collect();
-                if parts.len() == 2 {
-                    if let (Ok(x), Ok(y)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
-                        return Selector::Position(x, y);
-                    }
+
+            _ if s.to_lowercase().starts_with("rightof:") => {
+                let inner_selector_str = &s["rightof:".len()..];
+                Selector::RightOf(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("leftof:") => {
+                let inner_selector_str = &s["leftof:".len()..];
+                Selector::LeftOf(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("above:") => {
+                let inner_selector_str = &s["above:".len()..];
+                Selector::Above(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("below:") => {
+                let inner_selector_str = &s["below:".len()..];
+                Selector::Below(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("near:") => {
+                let inner_selector_str = &s["near:".len()..];
+                Selector::Near(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("has:") => {
+                let inner_selector_str = &s["has:".len()..];
+                Selector::Has(Box::new(Selector::from(inner_selector_str)))
+            }
+            _ if s.to_lowercase().starts_with("nth=") || s.to_lowercase().starts_with("nth:") => {
+                let index_str = if s.to_lowercase().starts_with("nth:") {
+                    &s["nth:".len()..]
+                } else {
+                    &s["nth=".len()..]
+                };
+
+                if let Ok(index) = index_str.parse::<i32>() {
+                    Selector::Nth(index)
+                } else {
+                    Selector::Invalid(format!("Invalid index for nth selector: '{index_str}'"))
                 }
-                // Fallback to name if format is wrong
-                Selector::Name(s.to_string())
             }
             _ if s.starts_with("id:") => Selector::Id(s[3..].to_string()),
             _ if s.starts_with("text:") => Selector::Text(s[5..].to_string()),
@@ -128,7 +170,9 @@ impl From<&str> for Selector {
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
             _ if s.to_lowercase().starts_with("text:") => Selector::Text(s[5..].to_string()),
-            _ => Selector::Name(s.to_string()),
+            _ => Selector::Invalid(format!(
+                "Unknown selector format: \"{s}\". Use prefixes like 'role:', 'name:', 'id:', 'text:', 'nativeid:', 'classname:', or 'pos:' to specify the selector type."
+            )),
         }
     }
 }

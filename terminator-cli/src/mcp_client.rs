@@ -24,7 +24,7 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
 
     match transport {
         Transport::Http(url) => {
-            println!("Connecting to: {}", url);
+            println!("Connecting to: {url}");
             let transport = StreamableHttpClientTransport::from_uri(url.as_str());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
@@ -156,7 +156,7 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                         println!();
                     }
                     Err(e) => {
-                        println!("❌ Error: {}\n", e);
+                        println!("❌ Error: {e}\n");
                     }
                 }
             }
@@ -292,7 +292,7 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                         println!();
                     }
                     Err(e) => {
-                        println!("❌ Error: {}\n", e);
+                        println!("❌ Error: {e}\n");
                     }
                 }
             }
@@ -445,7 +445,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
     // Connect to MCP Server
     let service = match transport {
         Transport::Http(url) => {
-            println!("Connecting to MCP server: {}", url);
+            println!("Connecting to MCP server: {url}");
             let transport = StreamableHttpClientTransport::from_uri(url.as_str());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
@@ -564,7 +564,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                 .await;
 
             if let Err(error) = execute_result {
-                eprintln!("❌ Error: {}", error);
+                eprintln!("❌ Error: {error}");
                 break; // Break inner loop on error
             }
 
@@ -639,7 +639,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                         .to_string();
                     let tool_input = tool_call.get("input").cloned().unwrap_or(json!({}));
 
-                    println!("   - Calling `{}` with args: {}", tool_name, tool_input);
+                    println!("   - Calling `{tool_name}` with args: {tool_input}");
 
                     let result = service
                         .call_tool(CallToolRequestParam {
@@ -661,7 +661,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                                 text_results.join("\n")
                             }
                         }
-                        Err(e) => format!("Error: {}", e),
+                        Err(e) => format!("Error: {e}"),
                     };
 
                     let display_result = if result_content.len() > 100 {
@@ -669,7 +669,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                     } else {
                         result_content.clone()
                     };
-                    println!("   ✅ Result: {}", display_result);
+                    println!("   ✅ Result: {display_result}");
 
                     tool_results.push(json!({
                         "type": "tool_result",
@@ -688,7 +688,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                 // Continue the loop to get Claude's response about the tool results
             } else {
                 // If not JSON, just print the response
-                println!("{}", full_response);
+                println!("{full_response}");
                 break;
             }
         }

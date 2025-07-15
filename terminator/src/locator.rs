@@ -74,6 +74,11 @@ impl Locator {
     #[instrument(level = "debug", skip(self, timeout))]
     pub async fn wait(&self, timeout: Option<Duration>) -> Result<UIElement, AutomationError> {
         debug!("Waiting for element matching selector: {:?}", self.selector);
+
+        if let Selector::Invalid(reason) = &self.selector {
+            return Err(AutomationError::InvalidSelector(reason.clone()));
+        }
+
         let effective_timeout = timeout.unwrap_or(self.timeout);
 
         // Since the underlying engine's find_element is a blocking call that
@@ -81,20 +86,19 @@ impl Locator {
         // Instead, we run it in a blocking-safe thread to avoid stalling the async runtime.
         let engine = self.engine.clone();
         let selector = self.selector.clone();
-        let selector_string = self.selector_string();
         let root = self.root.clone();
 
         task::spawn_blocking(move || {
             engine.find_element(&selector, root.as_ref(), Some(effective_timeout))
         })
         .await
-        .map_err(|e| AutomationError::PlatformError(format!("Task join error: {}", e)))?
+        .map_err(|e| AutomationError::PlatformError(format!("Task join error: {e}")))?
         .map_err(|e| {
             // The engine returns ElementNotFound on timeout. We convert it to a more specific Timeout error here.
             if let AutomationError::ElementNotFound(inner_msg) = e {
                 AutomationError::Timeout(format!(
-                    "Timed out after {:?} waiting for element {:?}. Original error: {}",
-                    effective_timeout, selector_string, inner_msg
+                    "Timed out after {effective_timeout:?} waiting for element {}. Original error: {inner_msg}",
+                    self.selector_string()
                 ))
             } else {
                 e

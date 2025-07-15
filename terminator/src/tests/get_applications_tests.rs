@@ -9,18 +9,14 @@ async fn get_applications_test() -> Result<(), AutomationError> {
 
     let desktop = Desktop::new(false, false)?;
 
-    let applications_to_open = vec![
-        "notepad",
-        "calculator",
-        "paint",
-    ];
+    let applications_to_open = vec!["notepad", "calculator", "paint"];
 
     let mut opened_apps = Vec::new();
     for app_name in &applications_to_open {
         let opened_app = desktop.open_application(app_name)?;
         tracing::info!("Opened application: {:?}", app_name);
         opened_apps.push(opened_app);
-        std::thread::sleep(std::time::Duration::from_secs(5)); 
+        std::thread::sleep(std::time::Duration::from_secs(5));
     }
 
     let running_apps = desktop.applications()?;
@@ -34,8 +30,7 @@ async fn get_applications_test() -> Result<(), AutomationError> {
         });
         assert!(
             is_app_running,
-            "Application '{}' is not found in the running applications list",
-            app_name
+            "Application '{app_name}' is not found in the running applications list"
         );
     }
 
@@ -44,8 +39,7 @@ async fn get_applications_test() -> Result<(), AutomationError> {
             let output = std::process::Command::new("powershell")
                 .arg("-Command")
                 .arg(format!(
-                    "Get-WmiObject Win32_Process | Where-Object {{ $_.ProcessId -eq {} }} | ForEach-Object {{ taskkill.exe /F /PID $_.ProcessId }}",
-                    process_id
+                    "Get-WmiObject Win32_Process | Where-Object {{ $_.ProcessId -eq {process_id} }} | ForEach-Object {{ taskkill.exe /F /PID $_.ProcessId }}"
                 ))
                 .output()
                 .unwrap();
@@ -55,7 +49,11 @@ async fn get_applications_test() -> Result<(), AutomationError> {
                 tracing::info!("Closed application with PID {}: {}", process_id, stdout);
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                tracing::error!("Failed to close application with PID {}: {}", process_id, stderr);
+                tracing::error!(
+                    "Failed to close application with PID {}: {}",
+                    process_id,
+                    stderr
+                );
             }
         }
     }

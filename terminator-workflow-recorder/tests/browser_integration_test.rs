@@ -17,7 +17,7 @@ where
     match tokio::time::timeout(timeout, async {
         while let Some(event) = event_stream.next().await {
             if predicate(&event) {
-                println!("✅ {}: Found expected event.", description);
+                println!("✅ {description}: Found expected event.");
                 return Some(event);
             }
         }
@@ -26,8 +26,8 @@ where
     .await
     {
         Ok(Some(event)) => event,
-        Ok(None) => panic!("❌ {}: Stream ended before event was found.", description),
-        Err(_) => panic!("❌ {}: Timed out waiting for event.", description),
+        Ok(None) => panic!("❌ {description}: Stream ended before event was found."),
+        Err(_) => panic!("❌ {description}: Timed out waiting for event."),
     }
 }
 
@@ -88,7 +88,7 @@ async fn test_browser_navigation_shortcuts() {
     ];
 
     for (shortcut, description) in shortcuts {
-        println!("   Testing {}: {}", description, shortcut);
+        println!("   Testing {description}: {shortcut}");
         let _ = browser.press_key(shortcut);
         tokio::time::sleep(Duration::from_millis(2000)).await;
     }
@@ -166,8 +166,8 @@ async fn test_browser_navigation_shortcuts() {
     println!("📊 Browser Navigation Event Analysis:");
     println!("   - Button clicks: {}", button_click_events.len());
     println!("   - Browser tab navigation: {}", browser_nav_events.len());
-    println!("   - Keyboard events: {}", keyboard_events);
-    println!("   - Hotkey combinations: {}", hotkey_events);
+    println!("   - Keyboard events: {keyboard_events}");
+    println!("   - Hotkey combinations: {hotkey_events}");
 
     // Step 11: Verify browser navigation events
     println!("\n🔍 Verifying Browser Navigation Events:");
@@ -193,10 +193,10 @@ async fn test_browser_navigation_shortcuts() {
         );
 
         if let Some(ref to_url) = event.to_url {
-            println!("     - To URL: '{}'", to_url);
+            println!("     - To URL: '{to_url}'");
         }
         if let Some(ref to_title) = event.to_title {
-            println!("     - To Title: '{}'", to_title);
+            println!("     - To Title: '{to_title}'");
         }
         println!("     - Browser: '{}'", event.browser);
     }
@@ -206,8 +206,8 @@ async fn test_browser_navigation_shortcuts() {
     let _ = browser.close();
 
     println!("\n✅ Browser Navigation Shortcuts Test PASSED!");
-    println!("   - Keyboard events: {}", keyboard_events);
-    println!("   - Hotkey combinations: {}", hotkey_events);
+    println!("   - Keyboard events: {keyboard_events}");
+    println!("   - Hotkey combinations: {hotkey_events}");
     println!("   - Browser navigation: {}", browser_nav_events.len());
     println!("   - Button interactions: {}", button_click_events.len());
 }
@@ -327,27 +327,27 @@ async fn test_browser_form_interactions() {
     ];
 
     for (field_name, value) in form_data {
-        println!("   Filling '{}' with '{}'", field_name, value);
-        let locator_str = format!("name:{}", field_name);
+        println!("   Filling '{field_name}' with '{value}'");
+        let locator_str = format!("name:{field_name}");
         // Search for the input within the iframe
         let input = iframe
             .locator(locator_str.as_str())
             .unwrap()
             .first(Some(Duration::from_secs(5)))
             .await
-            .expect(&format!("Could not find input for {}", field_name));
+            .unwrap_or_else(|_| panic!("Could not find input for {field_name}"));
 
         input.click().unwrap();
         tokio::time::sleep(Duration::from_millis(200)).await;
         input
             .type_text(value, true)
-            .expect(&format!("Failed to type into {}", field_name));
+            .unwrap_or_else(|_| panic!("Failed to type into {field_name}"));
         tokio::time::sleep(Duration::from_millis(500)).await;
         input.press_key("{Tab}").unwrap(); // Trigger completion
 
         let text_event = expect_event(
             &mut event_stream,
-            &format!("Wait for '{}' text input completion", field_name),
+            &format!("Wait for '{field_name}' text input completion"),
             |e| {
                 if let WorkflowEvent::TextInputCompleted(evt) = e {
                     evt.field_name.as_deref().unwrap_or("").contains(field_name)
@@ -370,7 +370,7 @@ async fn test_browser_form_interactions() {
                 .unwrap_or("")
                 .contains(field_name));
         } else {
-            panic!("Expected TextInputCompletedEvent for {}", field_name);
+            panic!("Expected TextInputCompletedEvent for {field_name}");
         }
     }
 
@@ -521,13 +521,13 @@ async fn test_browser_mouse_interactions() {
     }
 
     println!("📊 Mouse Interaction Analysis:");
-    println!("   - Mouse events: {}", mouse_events);
+    println!("   - Mouse events: {mouse_events}");
     println!("   - Button clicks: {}", button_click_events.len());
     println!("   - Browser navigation: {}", browser_nav_events.len());
 
     // Verify we captured mouse interactions
     assert!(
-        mouse_events > 0 || button_click_events.len() > 0,
+        mouse_events > 0 || !button_click_events.is_empty(),
         "❌ No mouse interaction events captured!"
     );
 
@@ -535,7 +535,7 @@ async fn test_browser_mouse_interactions() {
     let _ = browser.close();
 
     println!("\n✅ Browser Mouse Interactions Test PASSED!");
-    println!("   - Mouse events: {}", mouse_events);
+    println!("   - Mouse events: {mouse_events}");
     println!("   - Button clicks: {}", button_click_events.len());
     println!("   - Browser navigation: {}", browser_nav_events.len());
 }

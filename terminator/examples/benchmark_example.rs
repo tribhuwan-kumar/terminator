@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Get attributes: {:?}", start.elapsed());
     println!("  - Role: {}", attributes.role);
     if let Some(name) = &attributes.name {
-        println!("  - Name: {}", name);
+        println!("  - Name: {name}");
     }
 
     // Benchmark element bounds
@@ -32,9 +32,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match root.bounds() {
         Ok(bounds) => {
             println!("Get bounds: {:?}", start.elapsed());
-            println!("  - Bounds: {:?}", bounds);
+            println!("  - Bounds: {bounds:?}");
         }
-        Err(e) => println!("Failed to get bounds: {}", e),
+        Err(e) => println!("Failed to get bounds: {e}"),
     }
 
     // Benchmark getting children
@@ -51,9 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 child_roles.push(child.role());
             }
             println!("Process 10 children: {:?}", start.elapsed());
-            println!("  - Roles found: {:?}", child_roles);
+            println!("  - Roles found: {child_roles:?}");
         }
-        Err(e) => println!("Failed to get children: {}", e),
+        Err(e) => println!("Failed to get children: {e}"),
     }
 
     // Benchmark tree traversal (breadth-first, limited)

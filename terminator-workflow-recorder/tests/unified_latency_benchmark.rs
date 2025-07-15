@@ -89,7 +89,7 @@ impl LatencyStats {
     }
 
     fn print_summary(&self, test_name: &str) {
-        println!("\n📊 {} - Latency Statistics:", test_name);
+        println!("\n📊 {test_name} - Latency Statistics:");
         println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         println!("  📈 Total Events Processed: {}", self.total_events);
         if self.missed_events > 0 {
@@ -389,8 +389,7 @@ async fn test_unified_input_latency() {
 
     if ui_overhead > 10.0 {
         println!(
-            "  ⚠️  UI element capture adds significant overhead ({:.1}ms average).",
-            ui_overhead
+            "  ⚠️  UI element capture adds significant overhead ({ui_overhead:.1}ms average)."
         );
         println!("     Consider disabling if not needed.");
     }
@@ -402,7 +401,7 @@ async fn run_latency_test(
     test_name: &str,
     config: WorkflowRecorderConfig,
 ) -> (LatencyStats, LatencyStats, LatencyStats) {
-    println!("\n🔄 Running test: {}", test_name);
+    println!("\n🔄 Running test: {test_name}");
 
     let mut recorder = WorkflowRecorder::new(test_name.to_string(), config);
     let mut event_stream = recorder.event_stream();
@@ -573,9 +572,9 @@ async fn run_latency_test(
     let click_stats = LatencyStats::calculate(&click_measurements);
     let move_stats = LatencyStats::calculate(&move_measurements);
 
-    keyboard_stats.print_summary(&format!("{} - Keyboard", test_name));
-    click_stats.print_summary(&format!("{} - Mouse Clicks", test_name));
-    move_stats.print_summary(&format!("{} - Mouse Movement", test_name));
+    keyboard_stats.print_summary(&format!("{test_name} - Keyboard"));
+    click_stats.print_summary(&format!("{test_name} - Mouse Clicks"));
+    move_stats.print_summary(&format!("{test_name} - Mouse Movement"));
 
     (keyboard_stats, click_stats, move_stats)
 }
@@ -656,7 +655,7 @@ async fn test_mouse_movement_verification() {
 
     println!("\n📊 Results:");
     println!("  Mouse movements sent: {}", positions.len());
-    println!("  Mouse movements recorded: {}", move_count);
+    println!("  Mouse movements recorded: {move_count}");
     println!(
         "  Capture rate: {:.1}%",
         (move_count as f64 / positions.len() as f64) * 100.0

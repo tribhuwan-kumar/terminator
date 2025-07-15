@@ -45,7 +45,7 @@ impl ExploredElementDetail {
             text: element.text(1).ok(),
             parent_id,
             children_ids: Vec::new(),
-            suggested_selector: format!("#{}", id),
+            suggested_selector: format!("#{id}"),
         })
     }
 }
@@ -382,7 +382,7 @@ pub trait UIElementImpl: Send + Sync + Debug {
 
         // 2. Enumerate available monitors using xcap (already a dependency)
         let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to enumerate monitors: {}", e))
+            AutomationError::PlatformError(format!("Failed to enumerate monitors: {e}"))
         })?;
 
         // 3. Find the first monitor whose geometry contains the element's
@@ -390,16 +390,16 @@ pub trait UIElementImpl: Send + Sync + Debug {
         for (idx, mon) in monitors.iter().enumerate() {
             // Guard every call because each accessor returns Result<_>
             let mon_x = mon.x().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor x: {e}"))
             })?;
             let mon_y = mon.y().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor y: {e}"))
             })?;
             let mon_w = mon.width().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor width: {e}"))
             })? as i32;
             let mon_h = mon.height().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor height: {e}"))
             })? as i32;
 
             // Simple contains check (include edges)
@@ -409,23 +409,21 @@ pub trait UIElementImpl: Send + Sync + Debug {
             if within_x && within_y {
                 // Build our internal Monitor struct from the xcap monitor
                 let name = mon.name().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get monitor name: {e}"))
                 })?;
                 let is_primary = mon.is_primary().map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to get monitor primary flag: {}",
-                        e
+                        "Failed to get monitor primary flag: {e}"
                     ))
                 })?;
                 let scale_factor = mon.scale_factor().map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to get monitor scale factor: {}",
-                        e
+                        "Failed to get monitor scale factor: {e}"
                     ))
                 })? as f64;
 
                 return Ok(crate::Monitor {
-                    id: format!("monitor_{}", idx),
+                    id: format!("monitor_{idx}"),
                     name,
                     is_primary,
                     width: mon_w as u32,
@@ -448,39 +446,38 @@ pub trait UIElementImpl: Send + Sync + Debug {
     /// Helper method to get primary monitor as fallback
     fn get_primary_monitor_fallback(&self) -> Result<crate::Monitor, AutomationError> {
         let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to enumerate monitors: {}", e))
+            AutomationError::PlatformError(format!("Failed to enumerate monitors: {e}"))
         })?;
 
         for (idx, monitor) in monitors.iter().enumerate() {
             let is_primary = monitor.is_primary().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to check primary status: {}", e))
+                AutomationError::PlatformError(format!("Failed to check primary status: {e}"))
             })?;
 
             if is_primary {
                 let name = monitor.name().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get monitor name: {e}"))
                 })?;
                 let width = monitor.width().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get monitor width: {e}"))
                 })?;
                 let height = monitor.height().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get monitor height: {e}"))
                 })?;
                 let x = monitor.x().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get monitor x: {e}"))
                 })?;
                 let y = monitor.y().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get monitor y: {e}"))
                 })?;
                 let scale_factor = monitor.scale_factor().map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to get monitor scale factor: {}",
-                        e
+                        "Failed to get monitor scale factor: {e}"
                     ))
                 })? as f64;
 
                 return Ok(crate::Monitor {
-                    id: format!("monitor_{}", idx),
+                    id: format!("monitor_{idx}"),
                     name,
                     is_primary,
                     width,
@@ -1050,7 +1047,7 @@ async fn find_element_in_tree(
 ) -> Option<crate::UIElement> {
     // Try to find by ID first
     if let Some(ref id) = serializable.id {
-        let id_selector = format!("#{}", id);
+        let id_selector = format!("#{id}");
         if let Ok(element) = desktop
             .locator(id_selector.as_str())
             .first(Some(std::time::Duration::from_secs(1)))
@@ -1063,7 +1060,7 @@ async fn find_element_in_tree(
     // Try to find by role and name
     let mut selector = format!("role:{}", serializable.role);
     if let Some(ref name) = serializable.name {
-        selector = format!("{}name:{}", selector, name);
+        selector = format!("{selector}name:{name}");
     }
 
     if let Ok(element) = desktop

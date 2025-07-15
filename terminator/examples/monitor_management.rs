@@ -60,7 +60,7 @@ async fn main() -> Result<(), AutomationError> {
     // Demonstrate getting monitor by name
     if !monitors.is_empty() {
         let first_monitor_name = &monitors[0].name;
-        println!("\n🔍 Getting monitor by name: '{}'", first_monitor_name);
+        println!("\n🔍 Getting monitor by name: '{first_monitor_name}'");
         let monitor_by_name = desktop.get_monitor_by_name(first_monitor_name).await?;
         println!(
             "  Found: {} ({}x{})",
@@ -68,7 +68,7 @@ async fn main() -> Result<(), AutomationError> {
         );
 
         // Capture specific monitor
-        println!("\n📸 Capturing specific monitor: '{}'", first_monitor_name);
+        println!("\n📸 Capturing specific monitor: '{first_monitor_name}'");
         let specific_screenshot = desktop.capture_monitor(&monitor_by_name).await?;
         println!(
             "  Captured {}x{} pixels ({} bytes)",
@@ -90,7 +90,7 @@ async fn main() -> Result<(), AutomationError> {
 
         // Check if center point is contained within the monitor
         let contains_center = first_monitor.contains_point(center_x, center_y);
-        println!("  Monitor contains its center point: {}", contains_center);
+        println!("  Monitor contains its center point: {contains_center}");
     }
 
     println!("\n✅ Monitor management example completed!");

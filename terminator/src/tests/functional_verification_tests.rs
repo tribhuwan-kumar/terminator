@@ -32,7 +32,7 @@ fn test_get_applications_functional() {
                 // Test that we can get the name without crashing
                 match app.name() {
                     Some(name) => {
-                        println!("    ✅ Name: '{}'", name);
+                        println!("    ✅ Name: '{name}'");
                         assert!(!name.is_empty(), "Application name should not be empty");
                     }
                     None => println!("    ⚠️  No name available"),
@@ -40,7 +40,7 @@ fn test_get_applications_functional() {
 
                 // Test that we can get the role without crashing
                 let role = app.role();
-                println!("    ✅ Role: '{}'", role);
+                println!("    ✅ Role: '{role}'");
                 assert!(!role.is_empty(), "Role should not be empty");
 
                 // Test that we can get attributes without crashing
@@ -50,15 +50,15 @@ fn test_get_applications_functional() {
                 // Test that we can get process ID without crashing
                 match app.process_id() {
                     Ok(pid) => {
-                        println!("    ✅ Process ID: {}", pid);
+                        println!("    ✅ Process ID: {pid}");
                         assert!(pid > 0, "Process ID should be positive");
                     }
-                    Err(e) => println!("    ⚠️  Could not get process ID: {}", e),
+                    Err(e) => println!("    ⚠️  Could not get process ID: {e}"),
                 }
             }
         }
         Err(e) => {
-            panic!("❌ Failed to get applications: {}", e);
+            panic!("❌ Failed to get applications: {e}");
         }
     }
 }
@@ -75,23 +75,23 @@ fn test_get_application_by_name_functional() {
     let mut found_app = false;
 
     for app_name in &test_apps {
-        println!("  Testing lookup for: '{}'", app_name);
+        println!("  Testing lookup for: '{app_name}'");
 
         match desktop.application(app_name) {
             Ok(app) => {
-                println!("    ✅ Found application: '{}'", app_name);
+                println!("    ✅ Found application: '{app_name}'");
                 found_app = true;
 
                 // Verify the application is functional
                 let role = app.role();
-                println!("    ✅ Role: '{}'", role);
+                println!("    ✅ Role: '{role}'");
 
                 match app.process_id() {
                     Ok(pid) => {
-                        println!("    ✅ Process ID: {}", pid);
+                        println!("    ✅ Process ID: {pid}");
                         assert!(pid > 0, "Process ID should be positive");
                     }
-                    Err(e) => println!("    ⚠️  Could not get process ID: {}", e),
+                    Err(e) => println!("    ⚠️  Could not get process ID: {e}"),
                 }
 
                 // Test attributes access
@@ -101,7 +101,7 @@ fn test_get_application_by_name_functional() {
                 break; // Found one working app, that's enough
             }
             Err(e) => {
-                println!("    ⚠️  Could not find '{}': {}", app_name, e);
+                println!("    ⚠️  Could not find '{app_name}': {e}");
             }
         }
     }
@@ -116,7 +116,7 @@ fn test_get_application_by_name_functional() {
     match desktop.application("nonexistent_app_12345") {
         Ok(_) => panic!("❌ Should not find non-existent application"),
         Err(e) => {
-            println!("    ✅ Correctly failed to find non-existent app: {}", e);
+            println!("    ✅ Correctly failed to find non-existent app: {e}");
         }
     }
 }
@@ -135,7 +135,7 @@ fn test_cached_attributes_functional() {
 
                 // Test multiple attribute accesses to verify caching works
                 for i in 1..=3 {
-                    println!("    Access #{}: Testing attributes...", i);
+                    println!("    Access #{i}: Testing attributes...");
 
                     let attrs = app.attributes();
                     println!("      ✅ Role: '{}'", attrs.role);
@@ -143,7 +143,7 @@ fn test_cached_attributes_functional() {
 
                     // Test that name is consistently accessible
                     if let Some(name) = &attrs.name {
-                        println!("      ✅ Name: '{}'", name);
+                        println!("      ✅ Name: '{name}'");
                         assert!(!name.is_empty(), "Name should not be empty if present");
                     } else {
                         println!("      ⚠️  No name in attributes");
@@ -159,10 +159,7 @@ fn test_cached_attributes_functional() {
                 // Test that direct role access still works
                 let direct_role = app.role();
                 let attrs_role = app.attributes().role;
-                println!(
-                    "    ✅ Direct role: '{}', Attrs role: '{}'",
-                    direct_role, attrs_role
-                );
+                println!("    ✅ Direct role: '{direct_role}', Attrs role: '{attrs_role}'");
 
                 // They should be the same
                 assert_eq!(
@@ -172,7 +169,7 @@ fn test_cached_attributes_functional() {
             }
         }
         Err(e) => {
-            panic!("❌ Failed to get applications for attribute testing: {}", e);
+            panic!("❌ Failed to get applications for attribute testing: {e}");
         }
     }
 }
@@ -188,28 +185,28 @@ fn test_pid_lookup_caching_functional() {
     let test_processes = ["explorer", "dwm", "winlogon"];
 
     for process_name in &test_processes {
-        println!("  Testing PID lookup for: '{}'", process_name);
+        println!("  Testing PID lookup for: '{process_name}'");
 
         // First lookup - should populate cache
         let start_time = std::time::Instant::now();
         match desktop.application(process_name) {
             Ok(app) => {
                 let first_duration = start_time.elapsed();
-                println!("    ✅ First lookup took: {:?}", first_duration);
+                println!("    ✅ First lookup took: {first_duration:?}");
 
                 if let Ok(pid1) = app.process_id() {
-                    println!("    ✅ Found PID: {}", pid1);
+                    println!("    ✅ Found PID: {pid1}");
 
                     // Second lookup - should use cache
                     let start_time2 = std::time::Instant::now();
                     match desktop.application(process_name) {
                         Ok(app2) => {
                             let second_duration = start_time2.elapsed();
-                            println!("    ✅ Second lookup took: {:?}", second_duration);
+                            println!("    ✅ Second lookup took: {second_duration:?}");
 
                             if let Ok(pid2) = app2.process_id() {
                                 // PIDs should be the same (unless process restarted)
-                                println!("    ✅ PIDs: {} vs {}", pid1, pid2);
+                                println!("    ✅ PIDs: {pid1} vs {pid2}");
 
                                 // Cache should make second lookup faster (usually)
                                 if second_duration < first_duration {
@@ -223,13 +220,13 @@ fn test_pid_lookup_caching_functional() {
                                 }
                             }
                         }
-                        Err(e) => println!("    ⚠️  Second lookup failed: {}", e),
+                        Err(e) => println!("    ⚠️  Second lookup failed: {e}"),
                     }
                 }
                 break; // Found one working process, that's enough
             }
             Err(e) => {
-                println!("    ⚠️  Could not find '{}': {}", process_name, e);
+                println!("    ⚠️  Could not find '{process_name}': {e}");
             }
         }
     }
@@ -247,7 +244,7 @@ fn test_application_children_access() {
             // Find an application with children (try a few)
             for app in apps.iter().take(5) {
                 let app_name = app.name().unwrap_or_else(|| "Unknown".to_string());
-                println!("  Testing children access for: '{}'", app_name);
+                println!("  Testing children access for: '{app_name}'");
 
                 match app.children() {
                     Ok(children) => {
@@ -261,19 +258,19 @@ fn test_application_children_access() {
 
                             // Test that we can get child's role without crashing
                             let child_role = child.role();
-                            println!("    ✅ First child direct role: '{}'", child_role);
+                            println!("    ✅ First child direct role: '{child_role}'");
 
                             break; // Found an app with children, that's enough
                         }
                     }
                     Err(e) => {
-                        println!("    ⚠️  Could not get children: {}", e);
+                        println!("    ⚠️  Could not get children: {e}");
                     }
                 }
             }
         }
         Err(e) => {
-            panic!("❌ Failed to get applications for children testing: {}", e);
+            panic!("❌ Failed to get applications for children testing: {e}");
         }
     }
 }
@@ -289,43 +286,43 @@ fn test_element_bounds_and_properties() {
         Ok(apps) => {
             if let Some(app) = apps.first() {
                 let app_name = app.name().unwrap_or_else(|| "Unknown".to_string());
-                println!("  Testing bounds for: '{}'", app_name);
+                println!("  Testing bounds for: '{app_name}'");
 
                 // Test bounds access
                 match app.bounds() {
                     Ok((x, y, width, height)) => {
-                        println!("    ✅ Bounds: ({}, {}, {}, {})", x, y, width, height);
+                        println!("    ✅ Bounds: ({x}, {y}, {width}, {height})");
                         assert!(width >= 0.0, "Width should be non-negative");
                         assert!(height >= 0.0, "Height should be non-negative");
                     }
                     Err(e) => {
-                        println!("    ⚠️  Could not get bounds: {}", e);
+                        println!("    ⚠️  Could not get bounds: {e}");
                     }
                 }
 
                 // Test enabled state
                 match app.is_enabled() {
                     Ok(enabled) => {
-                        println!("    ✅ Is enabled: {}", enabled);
+                        println!("    ✅ Is enabled: {enabled}");
                     }
                     Err(e) => {
-                        println!("    ⚠️  Could not check enabled state: {}", e);
+                        println!("    ⚠️  Could not check enabled state: {e}");
                     }
                 }
 
                 // Test visible state
                 match app.is_visible() {
                     Ok(visible) => {
-                        println!("    ✅ Is visible: {}", visible);
+                        println!("    ✅ Is visible: {visible}");
                     }
                     Err(e) => {
-                        println!("    ⚠️  Could not check visible state: {}", e);
+                        println!("    ⚠️  Could not check visible state: {e}");
                     }
                 }
             }
         }
         Err(e) => {
-            panic!("❌ Failed to get applications for bounds testing: {}", e);
+            panic!("❌ Failed to get applications for bounds testing: {e}");
         }
     }
 }
@@ -343,28 +340,28 @@ fn test_focused_element_access() {
 
             // Test that we can access focused element properties
             let role = focused.role();
-            println!("    ✅ Focused element role: '{}'", role);
+            println!("    ✅ Focused element role: '{role}'");
 
             let attrs = focused.attributes();
             println!("    ✅ Focused element attributes role: '{}'", attrs.role);
 
             if let Some(name) = attrs.name {
-                println!("    ✅ Focused element name: '{}'", name);
+                println!("    ✅ Focused element name: '{name}'");
             }
 
             // Test process ID access
             match focused.process_id() {
                 Ok(pid) => {
-                    println!("    ✅ Focused element PID: {}", pid);
+                    println!("    ✅ Focused element PID: {pid}");
                     assert!(pid > 0, "Process ID should be positive");
                 }
                 Err(e) => {
-                    println!("    ⚠️  Could not get focused element PID: {}", e);
+                    println!("    ⚠️  Could not get focused element PID: {e}");
                 }
             }
         }
         Err(e) => {
-            println!("    ⚠️  Could not get focused element: {}", e);
+            println!("    ⚠️  Could not get focused element: {e}");
         }
     }
 }
@@ -386,14 +383,14 @@ fn test_error_handling_robustness() {
     ];
 
     for invalid_name in &invalid_names {
-        println!("  Testing with invalid name: '{}'", invalid_name);
+        println!("  Testing with invalid name: '{invalid_name}'");
 
         match desktop.application(invalid_name) {
             Ok(_) => {
                 println!("    ⚠️  Unexpectedly found application for invalid name");
             }
             Err(e) => {
-                println!("    ✅ Correctly handled error: {}", e);
+                println!("    ✅ Correctly handled error: {e}");
                 // Should be a proper error, not a crash
             }
         }
@@ -406,10 +403,7 @@ fn test_error_handling_robustness() {
             println!("    ✅ Desktop still functional, found {} apps", apps.len());
         }
         Err(e) => {
-            panic!(
-                "    ❌ Desktop became non-functional after error cases: {}",
-                e
-            );
+            panic!("    ❌ Desktop became non-functional after error cases: {e}");
         }
     }
 }
@@ -477,7 +471,7 @@ fn test_window_activation() {
             apps
         }
         Err(e) => {
-            println!("  ❌ Failed to get applications: {}", e);
+            println!("  ❌ Failed to get applications: {e}");
             return;
         }
     };
@@ -489,8 +483,8 @@ fn test_window_activation() {
 
     // Test activation on multiple applications
     for (i, app) in apps.iter().take(3).enumerate() {
-        let app_name = app.name().unwrap_or_else(|| format!("App_{}", i));
-        println!("\n  🎯 Testing activation for application: '{}'", app_name);
+        let app_name = app.name().unwrap_or_else(|| format!("App_{i}"));
+        println!("\n  🎯 Testing activation for application: '{app_name}'");
 
         // Test 1: activate_window method
         println!("    📋 Testing activate_window() method...");
@@ -511,8 +505,7 @@ fn test_window_activation() {
                                 );
                             } else {
                                 println!(
-                                    "      ⚠️  Verification: Different app is focused (PID: {} vs {})",
-                                    focused_pid, app_pid
+                                    "      ⚠️  Verification: Different app is focused (PID: {focused_pid} vs {app_pid})"
                                 );
                             }
                         } else {
@@ -520,15 +513,12 @@ fn test_window_activation() {
                         }
                     }
                     Err(e) => {
-                        println!(
-                            "      ⚠️  Verification: Could not get focused element: {}",
-                            e
-                        );
+                        println!("      ⚠️  Verification: Could not get focused element: {e}");
                     }
                 }
             }
             Err(e) => {
-                println!("      ❌ activate_window() failed: {}", e);
+                println!("      ❌ activate_window() failed: {e}");
             }
         }
 
@@ -551,8 +541,7 @@ fn test_window_activation() {
                                 );
                             } else {
                                 println!(
-                                    "      ⚠️  Verification: Different app is focused (PID: {} vs {})",
-                                    focused_pid, app_pid
+                                    "      ⚠️  Verification: Different app is focused (PID: {focused_pid} vs {app_pid})"
                                 );
                             }
                         } else {
@@ -560,15 +549,12 @@ fn test_window_activation() {
                         }
                     }
                     Err(e) => {
-                        println!(
-                            "      ⚠️  Verification: Could not get focused element: {}",
-                            e
-                        );
+                        println!("      ⚠️  Verification: Could not get focused element: {e}");
                     }
                 }
             }
             Err(e) => {
-                println!("      ❌ focus() failed: {}", e);
+                println!("      ❌ focus() failed: {e}");
             }
         }
 
@@ -576,7 +562,7 @@ fn test_window_activation() {
         println!("    📋 Testing keyboard focusability...");
         match app.is_keyboard_focusable() {
             Ok(focusable) => {
-                println!("      ✅ is_keyboard_focusable(): {}", focusable);
+                println!("      ✅ is_keyboard_focusable(): {focusable}");
                 if !focusable {
                     println!(
                         "      ⚠️  Element is not keyboard focusable - this may explain activation issues"
@@ -584,7 +570,7 @@ fn test_window_activation() {
                 }
             }
             Err(e) => {
-                println!("      ❌ is_keyboard_focusable() failed: {}", e);
+                println!("      ❌ is_keyboard_focusable() failed: {e}");
             }
         }
 
@@ -610,8 +596,7 @@ fn test_window_activation() {
                                         );
                                     } else {
                                         println!(
-                                            "      ⚠️  Verification: Different app is focused (PID: {} vs {})",
-                                            focused_pid, window_pid
+                                            "      ⚠️  Verification: Different app is focused (PID: {focused_pid} vs {window_pid})"
                                         );
                                     }
                                 } else {
@@ -622,14 +607,13 @@ fn test_window_activation() {
                             }
                             Err(e) => {
                                 println!(
-                                    "      ⚠️  Verification: Could not get focused element: {}",
-                                    e
+                                    "      ⚠️  Verification: Could not get focused element: {e}"
                                 );
                             }
                         }
                     }
                     Err(e) => {
-                        println!("      ❌ Window activate_window() failed: {}", e);
+                        println!("      ❌ Window activate_window() failed: {e}");
                     }
                 }
             }
@@ -637,7 +621,7 @@ fn test_window_activation() {
                 println!("      ⚠️  No window found for application");
             }
             Err(e) => {
-                println!("      ❌ Failed to get window: {}", e);
+                println!("      ❌ Failed to get window: {e}");
             }
         }
 
@@ -657,7 +641,7 @@ fn test_window_activation() {
             // Method 1: Direct activation
             match notepad.activate_window() {
                 Ok(()) => println!("      ✅ Notepad activate_window() succeeded"),
-                Err(e) => println!("      ❌ Notepad activate_window() failed: {}", e),
+                Err(e) => println!("      ❌ Notepad activate_window() failed: {e}"),
             }
 
             sleep(Duration::from_millis(500));
@@ -665,7 +649,7 @@ fn test_window_activation() {
             // Method 2: Focus
             match notepad.focus() {
                 Ok(()) => println!("      ✅ Notepad focus() succeeded"),
-                Err(e) => println!("      ❌ Notepad focus() failed: {}", e),
+                Err(e) => println!("      ❌ Notepad focus() failed: {e}"),
             }
 
             sleep(Duration::from_millis(500));
@@ -673,7 +657,7 @@ fn test_window_activation() {
             // Method 3: Click to activate
             match notepad.click() {
                 Ok(_) => println!("      ✅ Notepad click() succeeded"),
-                Err(e) => println!("      ❌ Notepad click() failed: {}", e),
+                Err(e) => println!("      ❌ Notepad click() failed: {e}"),
             }
         }
         Err(_) => {

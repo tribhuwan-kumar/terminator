@@ -48,7 +48,7 @@ async fn main() -> Result<(), AutomationError> {
                 );
             }
             Err(e) => {
-                eprintln!("Failed to get info for application {}: {}", index, e);
+                eprintln!("Failed to get info for application {index}: {e}");
             }
         }
     }
@@ -106,7 +106,7 @@ fn get_app_info(
     #[cfg(target_os = "windows")]
     let process_name = {
         use terminator::platforms::windows::get_process_name_by_pid;
-        get_process_name_by_pid(pid as i32).unwrap_or_else(|_| format!("Unknown-{}", pid))
+        get_process_name_by_pid(pid as i32).unwrap_or_else(|_| format!("Unknown-{pid}"))
     };
 
     #[cfg(not(target_os = "windows"))]
@@ -116,7 +116,7 @@ fn get_app_info(
     let attributes = app.attributes();
     let window_title = attributes
         .name
-        .unwrap_or_else(|| format!("Unnamed-App-{}", index));
+        .unwrap_or_else(|| format!("Unnamed-App-{index}"));
 
     Ok((pid, process_name, window_title))
 }

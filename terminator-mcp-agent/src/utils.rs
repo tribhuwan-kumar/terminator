@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,6 +10,7 @@ use tokio::sync::Mutex;
 use tracing::{warn, Level};
 use tracing_subscriber::EnvFilter;
 
+// Validation helpers for better type safety
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct EmptyArgs {}
 
@@ -79,6 +81,10 @@ pub struct LocatorArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -96,6 +102,10 @@ pub struct ClickElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
@@ -113,6 +123,10 @@ pub struct TypeIntoElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
     #[schemars(description = "Optional timeout in milliseconds for the action (default: 3000ms)")]
@@ -138,6 +152,10 @@ pub struct PressKeyArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
@@ -162,12 +180,6 @@ pub struct RunCommandArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetClipboardArgs {
-    #[schemars(description = "Optional timeout in milliseconds")]
-    pub timeout_ms: Option<u64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct MouseDragArgs {
     #[schemars(
         description = "A string selector to locate the element. Can be chained with ` >> `."
@@ -185,6 +197,10 @@ pub struct MouseDragArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -202,6 +218,10 @@ pub struct ValidateElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
@@ -219,6 +239,10 @@ pub struct HighlightElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "BGR color code (optional, default red)")]
     pub color: Option<u32>,
     #[schemars(description = "Duration in milliseconds (optional, default 1000ms)")]
@@ -240,6 +264,10 @@ pub struct WaitForElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Condition to wait for: 'visible', 'enabled', 'focused', 'exists'")]
     pub condition: String,
     #[schemars(description = "Optional timeout in milliseconds")]
@@ -264,12 +292,6 @@ pub struct OpenApplicationArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ClipboardArgs {
-    #[schemars(description = "Text to set to clipboard")]
-    pub text: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SelectOptionArgs {
     #[schemars(description = "A string selector to locate the dropdown/combobox element.")]
     pub selector: String,
@@ -277,6 +299,10 @@ pub struct SelectOptionArgs {
     pub option_name: String,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -292,10 +318,40 @@ pub struct SetToggledArgs {
     pub state: bool,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, JsonSchema)]
+pub struct MaximizeWindowArgs {
+    pub selector: String,
+    pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
+    pub include_tree: Option<bool>,
+    pub timeout_ms: Option<u64>,
+    pub retries: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, JsonSchema)]
+pub struct MinimizeWindowArgs {
+    pub selector: String,
+    pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
+    pub include_tree: Option<bool>,
+    pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
 }
 
@@ -307,6 +363,29 @@ pub struct SetRangeValueArgs {
     pub value: f64,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
+    #[schemars(description = "Optional timeout in milliseconds.")]
+    pub timeout_ms: Option<u64>,
+    #[schemars(description = "Whether to include full UI tree in the response.")]
+    pub include_tree: Option<bool>,
+    pub retries: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct SetValueArgs {
+    #[schemars(description = "A string selector to locate the element whose value will be set.")]
+    pub selector: String,
+    #[schemars(description = "The text value to set.")]
+    pub value: String,
+    #[schemars(description = "Optional alternative selectors.")]
+    pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -322,6 +401,10 @@ pub struct SetSelectedArgs {
     pub state: bool,
     #[schemars(description = "Optional alternative selectors.")]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds.")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
@@ -337,6 +420,10 @@ pub struct ScrollElementArgs {
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[serde(default)]
     #[schemars(description = "Direction to scroll: 'up', 'down', 'left', 'right'")]
     pub direction: String,
@@ -355,6 +442,10 @@ pub struct ActivateElementArgs {
         description = "A string selector to locate the element. Can be chained with ` >> `."
     )]
     pub selector: String,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     #[schemars(description = "Optional timeout in milliseconds for the action")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
@@ -362,7 +453,7 @@ pub struct ActivateElementArgs {
     pub retries: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
 pub struct ToolCall {
     #[schemars(description = "The name of the tool to be executed.")]
     pub tool_name: String,
@@ -379,7 +470,7 @@ pub struct ToolCall {
 }
 
 // Simplified structure for Gemini compatibility
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone, Default)]
 pub struct SequenceStep {
     #[schemars(description = "The name of the tool to execute (for single tool steps)")]
     pub tool_name: Option<String>,
@@ -395,14 +486,39 @@ pub struct SequenceStep {
     pub steps: Option<Vec<ToolCall>>,
     #[schemars(description = "Whether the group is skippable on error (for grouped steps)")]
     pub skippable: Option<bool>,
+    #[serde(rename = "if", skip_serializing_if = "Option::is_none")]
+    #[schemars(
+        description = "An optional expression to determine if this step should run. e.g., \"policy.use_max_budget == true\" or \"contains(policy.product_types, 'FEX')\""
+    )]
+    pub r#if: Option<String>,
+    #[schemars(description = "Number of times to retry this step or group on failure.")]
+    pub retries: Option<u32>,
+    #[schemars(
+        description = "Optional unique identifier for this step (string). If provided, it can be a target for other steps' fallback_id."
+    )]
+    pub id: Option<String>,
+    #[schemars(
+        description = "Optional id of the step to jump to if this step ultimately fails after all retries. This enables robust fallback flows without relying on numeric indices."
+    )]
+    pub fallback_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Default, JsonSchema)]
 pub struct ExecuteSequenceArgs {
+    #[schemars(description = "The steps of the workflow to execute in order.")]
+    pub steps: Vec<SequenceStep>,
     #[schemars(
-        description = "Array of steps to execute. Each step can be either a single tool (with tool_name and arguments) or a group (with group_name and steps)."
+        description = "A key-value map defining the schema for dynamic variables (e.g., for UI generation)."
     )]
-    pub items: Vec<SequenceStep>,
+    pub variables: Option<HashMap<String, VariableDefinition>>,
+    #[schemars(
+        description = "A key-value map of the actual input values for the variables defined in the schema. **Must be an object**, not a string."
+    )]
+    pub inputs: Option<serde_json::Value>,
+    #[schemars(
+        description = "A key-value map of static UI element selectors for the workflow. **Must be an object with string values**, not a string. Example: {\"button\": \"role:Button|name:Submit\", \"field\": \"role:Edit|name:Email\"}"
+    )]
+    pub selectors: Option<serde_json::Value>,
     #[schemars(description = "Whether to stop the entire sequence on first error (default: true)")]
     pub stop_on_error: Option<bool>,
     #[schemars(
@@ -410,9 +526,38 @@ pub struct ExecuteSequenceArgs {
     )]
     pub include_detailed_results: Option<bool>,
     #[schemars(
-        description = "An optional, JSON-defined parser to process the final tool output and extract structured data."
+        description = "An optional, structured parser to process the final tool output and extract structured data. **Must be an object** with required fields: uiTreeJsonPath, itemContainerDefinition, fieldsToExtract."
     )]
     pub output_parser: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum VariableType {
+    String,
+    Number,
+    Boolean,
+    Enum,
+    Array,
+    Object,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+pub struct VariableDefinition {
+    #[schemars(description = "The data type of the variable.")]
+    pub r#type: VariableType,
+    #[schemars(description = "A user-friendly label for the variable, for UI generation.")]
+    pub label: String,
+    #[schemars(description = "A detailed description of what the variable is for.")]
+    pub description: Option<String>,
+    #[schemars(description = "The default value for the variable if not provided in the inputs.")]
+    pub default: Option<serde_json::Value>,
+    #[schemars(description = "For string types, a regex pattern for validation.")]
+    pub regex: Option<String>,
+    #[schemars(description = "For enum types, a list of allowed string values.")]
+    pub options: Option<Vec<String>>,
+    #[schemars(description = "Whether this variable is required. Defaults to true.")]
+    pub required: Option<bool>,
 }
 
 // Keep the old structures for internal use
@@ -434,9 +579,126 @@ pub enum SequenceItem {
 pub struct CloseElementArgs {
     pub selector: String,
     pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
     pub timeout_ms: Option<u64>,
     pub include_tree: Option<bool>,
     pub retries: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+pub struct ZoomArgs {
+    pub level: u32,
+}
+
+#[derive(Deserialize, JsonSchema, Debug, Clone)]
+pub struct SetZoomArgs {
+    /// The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)
+    pub percentage: u32,
+}
+
+#[derive(Debug)]
+pub struct ValidationError {
+    pub field: String,
+    pub expected: String,
+    pub actual: String,
+}
+
+impl ValidationError {
+    pub fn new(field: &str, expected: &str, actual: &str) -> Self {
+        Self {
+            field: field.to_string(),
+            expected: expected.to_string(),
+            actual: actual.to_string(),
+        }
+    }
+}
+
+pub fn validate_inputs(inputs: &serde_json::Value) -> Result<(), ValidationError> {
+    if !inputs.is_object() {
+        return Err(ValidationError::new(
+            "inputs",
+            "object",
+            &format!("{:?}", inputs),
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_selectors(selectors: &serde_json::Value) -> Result<(), ValidationError> {
+    match selectors {
+        serde_json::Value::Object(obj) => {
+            // Check that all values are strings
+            for (key, value) in obj {
+                if !value.is_string() {
+                    return Err(ValidationError::new(
+                        &format!("selectors.{}", key),
+                        "string",
+                        &match value {
+                            serde_json::Value::Number(_) => "number",
+                            serde_json::Value::Bool(_) => "boolean",
+                            serde_json::Value::Array(_) => "array",
+                            serde_json::Value::Object(_) => "object",
+                            serde_json::Value::Null => "null",
+                            _ => "unknown",
+                        },
+                    ));
+                }
+            }
+            Ok(())
+        }
+        serde_json::Value::String(s) => {
+            // Try to parse as JSON object first
+            match serde_json::from_str::<serde_json::Value>(s) {
+                Ok(parsed) => validate_selectors(&parsed),
+                Err(_) => Err(ValidationError::new(
+                    "selectors",
+                    "object or valid JSON string",
+                    "invalid JSON string",
+                )),
+            }
+        }
+        _ => Err(ValidationError::new(
+            "selectors",
+            "object or JSON string",
+            &format!("{:?}", selectors),
+        )),
+    }
+}
+
+pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), ValidationError> {
+    let obj = parser
+        .as_object()
+        .ok_or_else(|| ValidationError::new("output_parser", "object", &format!("{:?}", parser)))?;
+
+    // Check required fields
+    if !obj.contains_key("uiTreeJsonPath") {
+        return Err(ValidationError::new(
+            "output_parser.uiTreeJsonPath",
+            "string",
+            "missing",
+        ));
+    }
+
+    if !obj.contains_key("itemContainerDefinition") {
+        return Err(ValidationError::new(
+            "output_parser.itemContainerDefinition",
+            "object",
+            "missing",
+        ));
+    }
+
+    if !obj.contains_key("fieldsToExtract") {
+        return Err(ValidationError::new(
+            "output_parser.fieldsToExtract",
+            "object",
+            "missing",
+        ));
+    }
+
+    Ok(())
 }
 
 pub fn init_logging() -> Result<()> {
@@ -471,26 +733,34 @@ pub async fn find_element_with_fallbacks(
     desktop: &Desktop,
     primary_selector: &str,
     alternative_selectors: Option<&str>,
+    fallback_selectors: Option<&str>,
     timeout_ms: Option<u64>,
 ) -> Result<(terminator::UIElement, String), terminator::AutomationError> {
     use tokio::time::Duration;
 
     let timeout_duration = get_timeout(timeout_ms).unwrap_or(Duration::from_millis(3000));
 
-    // FAST PATH: If no alternatives provided, just use primary selector directly
-    if alternative_selectors.is_none() {
+    // FAST PATH: If no alternatives or fallbacks are provided, just use the primary selector directly.
+    if alternative_selectors.is_none() && fallback_selectors.is_none() {
         let locator = desktop.locator(terminator::Selector::from(primary_selector));
         return match locator.first(Some(timeout_duration)).await {
             Ok(element) => Ok((element, primary_selector.to_string())),
             Err(e) => Err(terminator::AutomationError::ElementNotFound(format!(
-                "Primary selector '{}' failed: {}",
-                primary_selector, e
+                "Primary selector '{primary_selector}' failed: {e}"
             ))),
         };
     }
 
     // Parse comma-separated alternative selectors
     let alternative_selectors_vec: Option<Vec<String>> = alternative_selectors.map(|alts| {
+        alts.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    });
+
+    // Parse comma-separated fallback selectors
+    let fallback_selectors_vec: Option<Vec<String>> = fallback_selectors.map(|alts| {
         alts.split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -571,17 +841,32 @@ pub async fn find_element_with_fallbacks(
                 }
             }
             Ok(Err((selector, error))) => {
-                errors.push(format!("'{}': {}", selector, error));
+                errors.push(format!("'{selector}': {error}"));
                 completed_tasks = remaining_tasks;
             }
             Err(join_error) => {
-                errors.push(format!("Task error: {}", join_error));
+                errors.push(format!("Task error: {join_error}"));
                 completed_tasks = remaining_tasks;
             }
         }
     }
 
-    // All selectors failed
+    // If we reach here, primary and alternative selectors failed. Try fallback selectors sequentially.
+    if let Some(fallbacks) = fallback_selectors_vec {
+        for fb_selector in fallbacks {
+            let locator = desktop.locator(terminator::Selector::from(fb_selector.as_str()));
+            match locator.first(Some(timeout_duration)).await {
+                Ok(element) => {
+                    return Ok((element, fb_selector));
+                }
+                Err(e) => {
+                    errors.push(format!("'{fb_selector}': {e}"));
+                }
+            }
+        }
+    }
+
+    // All selectors (primary, alternatives, fallbacks) failed
     let combined_error = if errors.is_empty() {
         "No selectors provided".to_string()
     } else {
@@ -653,7 +938,6 @@ pub struct ExportWorkflowSequenceArgs {
 /// * `timeout_ms` - The timeout for the initial element search.
 /// * `retries` - The number of times to retry the *entire find-and-act sequence*.
 /// * `action` - An async closure that takes the found `UIElement` and performs an action,
-///              returning a `Result`.
 ///
 /// # Returns
 /// A `Result` containing a tuple of the action's return value `T` and the `UIElement` on
@@ -674,7 +958,74 @@ where
     let mut last_error: Option<anyhow::Error> = None;
 
     for attempt in 0..=retry_count {
-        match find_element_with_fallbacks(desktop, primary_selector, alternatives, timeout_ms).await
+        match find_element_with_fallbacks(desktop, primary_selector, alternatives, None, timeout_ms)
+            .await
+        {
+            Ok((element, successful_selector)) => match action(element.clone()).await {
+                Ok(result) => return Ok(((result, element), successful_selector)),
+                Err(e) => {
+                    last_error = Some(e.into());
+                    if attempt < retry_count {
+                        warn!(
+                            "Action failed on attempt {}/{}. Retrying... Error: {}",
+                            attempt + 1,
+                            retry_count + 1,
+                            last_error.as_ref().unwrap()
+                        );
+                        tokio::time::sleep(Duration::from_millis(250)).await; // Wait before next retry
+                    }
+                }
+            },
+            Err(e) => {
+                last_error = Some(e.into());
+                if attempt < retry_count {
+                    warn!(
+                        "Find element failed on attempt {}/{}. Retrying... Error: {}",
+                        attempt + 1,
+                        retry_count + 1,
+                        last_error.as_ref().unwrap()
+                    );
+                    // No need to sleep here, as find_element_with_fallbacks already has a timeout.
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow::anyhow!(
+            "Action failed after {} retries for selector '{}'",
+            retry_count + 1,
+            primary_selector
+        )
+    }))
+}
+
+/// New helper that exposes fallback selectors as an argument. Internal implementation is shared.
+pub async fn find_and_execute_with_retry_with_fallback<F, Fut, T>(
+    desktop: &Desktop,
+    primary_selector: &str,
+    alternatives: Option<&str>,
+    fallback_selectors: Option<&str>,
+    timeout_ms: Option<u64>,
+    retries: Option<u32>,
+    action: F,
+) -> Result<((T, UIElement), String), anyhow::Error>
+where
+    F: Fn(UIElement) -> Fut,
+    Fut: std::future::Future<Output = Result<T, AutomationError>>,
+{
+    let retry_count = retries.unwrap_or(0);
+    let mut last_error: Option<anyhow::Error> = None;
+
+    for attempt in 0..=retry_count {
+        match find_element_with_fallbacks(
+            desktop,
+            primary_selector,
+            alternatives,
+            fallback_selectors,
+            timeout_ms,
+        )
+        .await
         {
             Ok((element, successful_selector)) => match action(element.clone()).await {
                 Ok(result) => return Ok(((result, element), successful_selector)),
@@ -725,4 +1076,23 @@ pub struct RecordWorkflowArgs {
     pub file_path: Option<String>,
     /// Sets the recording to a low-energy mode to reduce system load, which can help prevent lag on less powerful machines.
     pub low_energy_mode: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct WaitForOutputParserArgs {
+    /// The output parser configuration to run on each UI tree poll
+    #[schemars(
+        description = "The output parser configuration. **Must be an object** with required fields: uiTreeJsonPath, itemContainerDefinition, fieldsToExtract."
+    )]
+    pub output_parser: serde_json::Value,
+    /// Optional selector to scope the UI tree to a specific element. If not provided, uses focused window.
+    pub selector: Option<String>,
+    /// Maximum time to wait in milliseconds (default: 10000)
+    pub timeout_ms: Option<u64>,
+    /// Time between polls in milliseconds (default: 1000)
+    pub poll_interval_ms: Option<u64>,
+    /// Success criteria to validate extracted data
+    pub success_criteria: Option<serde_json::Value>,
+    /// Whether to include full UI tree in the response (default: false)
+    pub include_tree: Option<bool>,
 }

@@ -9,7 +9,6 @@ use image::{ImageBuffer, Rgba};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::panic;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -55,7 +54,7 @@ pub fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
     unsafe {
         // Create a snapshot of all processes
         let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to create process snapshot: {}", e))
+            AutomationError::PlatformError(format!("Failed to create process snapshot: {e}"))
         })?;
 
         if snapshot.is_invalid() {
@@ -106,8 +105,7 @@ pub fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
         }
 
         Err(AutomationError::PlatformError(format!(
-            "Process with PID {} not found",
-            pid
+            "Process with PID {pid} not found"
         )))
     }
 }
@@ -149,8 +147,7 @@ impl WindowsEngine {
             if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
                 // Only return error if it's not the "already initialized" case
                 return Err(AutomationError::PlatformError(format!(
-                    "Failed to initialize COM in multithreaded mode: {}",
-                    hr
+                    "Failed to initialize COM in multithreaded mode: {hr}"
                 )));
             }
             // If we get here, either initialization succeeded or it was already initialized
@@ -405,10 +402,7 @@ impl AccessibilityEngine for WindowsEngine {
             })
             .collect();
 
-        debug!(
-            "Found '{}' application windows",
-            filtered_elements.len()
-        );
+        debug!("Found '{}' application windows", filtered_elements.len());
 
         let arc_elements: Vec<UIElement> = filtered_elements
             .into_iter()
@@ -534,10 +528,7 @@ impl AccessibilityEngine for WindowsEngine {
             .timeout(3000);
 
         let ele = matcher.find_first().map_err(|e| {
-            AutomationError::PlatformError(format!(
-                "No window found for application '{}': {}",
-                name, e
-            ))
+            AutomationError::PlatformError(format!("No window found for application '{name}': {e}"))
         })?;
 
         debug!("Found window: {}", ele.get_name().unwrap_or_default());
@@ -579,8 +570,7 @@ impl AccessibilityEngine for WindowsEngine {
 
         let ele = matcher.find_first().map_err(|e| {
             AutomationError::ElementNotFound(format!(
-                "Application with PID {} not found within {}ms timeout: {}",
-                pid, timeout_ms, e
+                "Application with PID {pid} not found within {timeout_ms}ms timeout: {e}"
             ))
         })?;
 
@@ -643,8 +633,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 let elements = matcher_builder.find_all().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
-                        "Role: '{}' (mapped to {:?}), Name: {:?}, Err: {}",
-                        role, win_control_type, name, e
+                        "Role: '{role}' (mapped to {win_control_type:?}), Name: {name:?}, Err: {e}"
                     ))
                 })?;
 
@@ -674,11 +663,14 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Use the common function to generate ID
-                        match generate_element_id(e) {
+                        match generate_element_id(e)
+                            .map(|id| id.to_string().chars().take(6).collect::<String>())
+                        {
                             Ok(calculated_id) => {
-                                let matches = calculated_id.to_string() == target_id;
+                                let matches = calculated_id == target_id;
                                 if matches {
                                     debug!("Found matching element with ID: {}", calculated_id);
                                 }
@@ -695,7 +687,7 @@ impl AccessibilityEngine for WindowsEngine {
                 debug!("Starting element search with timeout: {}ms", timeout_ms);
                 let elements = matcher.find_all().map_err(|e| {
                     debug!("Element search failed: {}", e);
-                    AutomationError::ElementNotFound(format!("ID: '{}', Err: {}", id, e))
+                    AutomationError::ElementNotFound(format!("ID: '{id}', Err: {e}"))
                 })?;
 
                 debug!("Found {} elements matching ID: {}", elements.len(), id);
@@ -723,7 +715,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .timeout(timeout_ms as u64);
 
                 let elements = matcher.find_all().map_err(|e| {
-                    AutomationError::ElementNotFound(format!("Name: '{}', Err: {}", name, e))
+                    AutomationError::ElementNotFound(format!("Name: '{name}', Err: {e}"))
                 })?;
 
                 Ok(elements
@@ -758,7 +750,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 // Get the first matching element
                 let elements = matcher.find_all().map_err(|e| {
-                    AutomationError::ElementNotFound(format!("Text: '{}', Err: {}", text, e))
+                    AutomationError::ElementNotFound(format!("Text: '{text}', Err: {e}"))
                 })?;
 
                 Ok(elements
@@ -786,6 +778,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_automation_id() {
                             Ok(id) => {
@@ -810,8 +803,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let elements = matcher.find_all().map_err(|e| {
                     debug!("Elements search failed: {}", e);
                     AutomationError::ElementNotFound(format!(
-                        "AutomationId: '{}', Err: {}",
-                        automation_id, e
+                        "AutomationId: '{automation_id}', Err: {e}"
                     ))
                 })?;
 
@@ -843,49 +835,70 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                // Start with the initial root
-                let mut current_roots = if let Some(root) = root {
-                    vec![Some(root.clone())]
-                } else {
-                    vec![None]
-                };
+                // Start with all elements matching the first selector in the chain.
+                let mut current_results = self.find_elements(&selectors[0], root, timeout, None)?;
 
-                // Iterate through selectors, refining the list of matching elements
-                for (i, selector) in selectors.iter().enumerate() {
-                    let mut next_roots = Vec::new();
-                    let is_last_selector = i == selectors.len() - 1;
-
-                    for root_element in &current_roots {
-                        // Find elements matching the current selector within the current root
-                        let found_elements =
-                            self.find_elements(selector, root_element.as_ref(), timeout, depth)?;
-
-                        if is_last_selector {
-                            // If it's the last selector, collect all found elements
-                            next_roots.extend(found_elements.into_iter().map(Some));
-                        } else {
-                            // If not the last selector, and we found exactly one element,
-                            // use it as the root for the next iteration.
-                            if found_elements.len() == 1 {
-                                next_roots.push(Some(found_elements.into_iter().next().unwrap()));
-                            } else {
-                                // If 0 or >1 elements found before the last selector,
-                                // it means the path diverged or ended. No elements match the full chain.
-                                next_roots.clear();
-                                break;
-                            }
-                        }
+                // Sequentially apply the rest of the selectors.
+                for (i, selector) in selectors.iter().skip(1).enumerate() {
+                    if current_results.is_empty() {
+                        // If at any point we have no results, the chain is broken.
+                        return Err(AutomationError::ElementNotFound(format!(
+                            "Selector chain broke at step {}: '{:?}' found no elements from the previous step's results.",
+                            i + 1,
+                            selector
+                        )));
                     }
 
-                    current_roots = next_roots;
-                    if current_roots.is_empty() && !is_last_selector {
-                        // If no elements were found matching an intermediate selector, break early.
-                        break;
+                    if let Selector::Nth(index) = selector {
+                        let mut i = *index;
+                        let len = current_results.len();
+
+                        if i < 0 {
+                            // Handle negative index
+                            i += len as i32;
+                        }
+
+                        if i >= 0 && (i as usize) < len {
+                            // Filter down to the single element at the specified index.
+                            let selected = current_results.remove(i as usize);
+                            current_results = vec![selected];
+                        } else {
+                            // Index out of bounds, no elements match.
+                            current_results.clear();
+                        }
+                    } else {
+                        // For other selectors, find all children that match from the current set of results.
+                        let mut next_results = Vec::new();
+                        for element_root in &current_results {
+                            // Use a shorter timeout for sub-queries to avoid long delays on non-existent elements mid-chain.
+                            let sub_timeout = Some(Duration::from_millis(1000));
+                            match self.find_elements(
+                                selector,
+                                Some(element_root),
+                                sub_timeout,
+                                None, // Default depth for sub-queries
+                            ) {
+                                Ok(elements) => next_results.extend(elements),
+                                Err(AutomationError::ElementNotFound(_)) => {
+                                    // It's okay if one branch of the search finds nothing, continue with others.
+                                }
+                                Err(e) => return Err(e), // Propagate other critical errors.
+                            }
+                        }
+                        current_results = next_results;
                     }
                 }
 
-                // Convert Vec<Option<UIElement>> to Vec<UIElement> by filtering out None values
-                Ok(current_roots.into_iter().flatten().collect())
+                // After the chain, we expect exactly one element for find_element.
+                if current_results.len() == 1 {
+                    Ok(vec![current_results.remove(0)])
+                } else {
+                    Err(AutomationError::ElementNotFound(format!(
+                        "Selector chain `{:?}` resolved to {} elements, but expected 1.",
+                        selectors,
+                        current_results.len(),
+                    )))
+                }
             }
             Selector::ClassName(classname) => {
                 debug!("searching elements by class name: {}", classname);
@@ -900,10 +913,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .depth(depth.unwrap_or(50) as u32)
                     .timeout(timeout_ms as u64);
                 let elements = matcher.find_all().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "ClassName: '{}', Err: {}",
-                        classname, e
-                    ))
+                    AutomationError::ElementNotFound(format!("ClassName: '{classname}', Err: {e}"))
                 })?;
                 Ok(elements
                     .into_iter()
@@ -921,6 +931,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.is_offscreen() {
                             Ok(is_offscreen) => Ok(is_offscreen != visibility),
@@ -932,10 +943,7 @@ impl AccessibilityEngine for WindowsEngine {
                     }))
                     .timeout(timeout_ms as u64);
                 let elements = matcher.find_all().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Visible: '{}', Err: {}",
-                        visibility, e
-                    ))
+                    AutomationError::ElementNotFound(format!("Visible: '{visibility}', Err: {e}"))
                 })?;
                 Ok(elements
                     .into_iter()
@@ -954,6 +962,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(depth.unwrap_or(50) as u32)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_localized_control_type() {
                             Ok(lct) => Ok(lct == lr),
@@ -965,8 +974,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 let elements = matcher.find_all().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
-                        "LocalizedRole: '{}', Err: {}",
-                        localized_role, e
+                        "LocalizedRole: '{localized_role}', Err: {e}"
                     ))
                 })?;
 
@@ -979,12 +987,121 @@ impl AccessibilityEngine for WindowsEngine {
                     })
                     .collect())
             }
-            Selector::Position(_x, _y) => {
-                // not implemented
-                Err(AutomationError::UnsupportedOperation(
-                    "`Position` selector not supported".to_string(),
-                ))
+            Selector::RightOf(inner_selector)
+            | Selector::LeftOf(inner_selector)
+            | Selector::Above(inner_selector)
+            | Selector::Below(inner_selector)
+            | Selector::Near(inner_selector) => {
+                // 1. Find the anchor element. Must be a single element.
+                let anchor_element = self.find_element(inner_selector, root, timeout)?;
+                let anchor_bounds = anchor_element.bounds()?; // (x, y, width, height)
+
+                // 2. Get all candidate elements within the same root.
+                // We use Visible(true) as a broad selector to find all potentially relevant elements.
+                // A large depth is used to ensure we can find elements across the UI tree.
+                let all_elements = self.find_elements(
+                    &Selector::Visible(true),
+                    root,
+                    Some(Duration::from_millis(500)), // Use a short timeout for this broad query
+                    Some(100),
+                )?;
+
+                // 3. Filter candidates based on geometric relationship
+                let anchor_id = anchor_element.id();
+                let filtered_elements = all_elements
+                    .into_iter()
+                    .filter(|candidate| {
+                        // Don't include the anchor element itself in the results.
+                        if candidate.id() == anchor_id {
+                            return false;
+                        }
+
+                        if let Ok(candidate_bounds) = candidate.bounds() {
+                            let anchor_left = anchor_bounds.0;
+                            let anchor_top = anchor_bounds.1;
+                            let anchor_right = anchor_bounds.0 + anchor_bounds.2;
+                            let anchor_bottom = anchor_bounds.1 + anchor_bounds.3;
+
+                            let candidate_left = candidate_bounds.0;
+                            let candidate_top = candidate_bounds.1;
+                            let candidate_right = candidate_bounds.0 + candidate_bounds.2;
+                            let candidate_bottom = candidate_bounds.1 + candidate_bounds.3;
+
+                            // Check for vertical overlap for left/right selectors
+                            let vertical_overlap =
+                                candidate_top < anchor_bottom && candidate_bottom > anchor_top;
+                            // Check for horizontal overlap for above/below selectors
+                            let horizontal_overlap =
+                                candidate_left < anchor_right && candidate_right > anchor_left;
+
+                            match selector {
+                                Selector::RightOf(_) => {
+                                    candidate_left >= anchor_right && vertical_overlap
+                                }
+                                Selector::LeftOf(_) => {
+                                    candidate_right <= anchor_left && vertical_overlap
+                                }
+                                Selector::Above(_) => {
+                                    candidate_bottom <= anchor_top && horizontal_overlap
+                                }
+                                Selector::Below(_) => {
+                                    candidate_top >= anchor_bottom && horizontal_overlap
+                                }
+                                Selector::Near(_) => {
+                                    const NEAR_THRESHOLD: f64 = 50.0;
+                                    let anchor_center_x = anchor_bounds.0 + anchor_bounds.2 / 2.0;
+                                    let anchor_center_y = anchor_bounds.1 + anchor_bounds.3 / 2.0;
+                                    let candidate_center_x =
+                                        candidate_bounds.0 + candidate_bounds.2 / 2.0;
+                                    let candidate_center_y =
+                                        candidate_bounds.1 + candidate_bounds.3 / 2.0;
+
+                                    let dx = anchor_center_x - candidate_center_x;
+                                    let dy = anchor_center_y - candidate_center_y;
+                                    (dx * dx + dy * dy).sqrt() < NEAR_THRESHOLD
+                                }
+                                _ => false, // Should not happen
+                            }
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
+
+                Ok(filtered_elements)
             }
+            Selector::Has(inner_selector) => {
+                // Step 1: collect all candidate elements under the current root (visibility filter for performance)
+                let search_depth = depth.unwrap_or(50);
+
+                let all_candidates = self.find_elements(
+                    &Selector::Visible(true),
+                    root,
+                    timeout,
+                    Some(search_depth),
+                )?;
+
+                let mut results = Vec::new();
+                for candidate in all_candidates {
+                    // For each candidate, search for at least one matching descendant
+                    let descendants = self.find_elements(
+                        inner_selector,
+                        Some(&candidate),
+                        Some(Duration::from_millis(500)),
+                        Some(search_depth),
+                    )?;
+
+                    if !descendants.is_empty() {
+                        results.push(candidate);
+                    }
+                }
+
+                Ok(results)
+            }
+            Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
+            Selector::Nth(_) => Err(AutomationError::InvalidSelector(
+                "Nth selector must be used as part of a chain (e.g. 'list >> nth=0')".to_string(),
+            )),
         }
     }
 
@@ -1039,8 +1156,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 let element = matcher_builder.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
-                        "Role: '{}' (mapped to {:?}), Name: {:?}, Root: {:?}, Err: {}",
-                        role, win_control_type, name, root, e
+                        "Role: '{role}' (mapped to {win_control_type:?}), Name: {name:?}, Root: {root:?}, Err: {e}"
                     ))
                 })?;
 
@@ -1058,12 +1174,14 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
-                    .depth(500)
+                    .depth(50)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         // Use the common function to generate ID
-                        match generate_element_id(e) {
+                        match generate_element_id(e)
+                            .map(|id| id.to_string().chars().take(6).collect::<String>())
+                        {
                             Ok(calculated_id) => {
-                                let matches = calculated_id.to_string() == target_id;
+                                let matches = calculated_id == target_id;
                                 if matches {
                                     debug!("Found matching element with ID: {}", calculated_id);
                                 }
@@ -1080,7 +1198,7 @@ impl AccessibilityEngine for WindowsEngine {
                 debug!("Starting element search with timeout: {}ms", timeout_ms);
                 let element = matcher.find_first().map_err(|e| {
                     debug!("Element search failed: {}", e);
-                    AutomationError::ElementNotFound(format!("ID: '{}', Err: {}", id, e))
+                    AutomationError::ElementNotFound(format!("ID: '{id}', Err: {e}"))
                 })?;
 
                 debug!("Found element matching ID: {}", id);
@@ -1104,7 +1222,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .timeout(timeout_ms as u64);
 
                 let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!("Name: '{}', Err: {}", name, e))
+                    AutomationError::ElementNotFound(format!("Name: '{name}', Err: {e}"))
                 })?;
 
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
@@ -1136,8 +1254,7 @@ impl AccessibilityEngine for WindowsEngine {
                 // Get the first matching element
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
-                        "Text: '{}', Root: {:?}, Err: {}",
-                        text, root, e
+                        "Text: '{text}', Root: {root:?}, Err: {e}"
                     ))
                 })?;
 
@@ -1162,6 +1279,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(50) // Add depth limit
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_automation_id() {
                             Ok(id) => {
@@ -1184,8 +1302,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let element = matcher.find_first().map_err(|e| {
                     debug!("Element search failed: {}", e);
                     AutomationError::ElementNotFound(format!(
-                        "AutomationId: '{}', Err: {}",
-                        automation_id, e
+                        "AutomationId: '{automation_id}', Err: {e}"
                     ))
                 })?;
 
@@ -1207,20 +1324,70 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                // Recursively find the element by traversing the chain.
-                let mut current_element = root.cloned();
-                for selector in selectors {
-                    let found_element =
-                        self.find_element(selector, current_element.as_ref(), timeout)?;
-                    current_element = Some(found_element);
+                // Start with all elements matching the first selector in the chain.
+                let mut current_results = self.find_elements(&selectors[0], root, timeout, None)?;
+
+                // Sequentially apply the rest of the selectors.
+                for (i, selector) in selectors.iter().skip(1).enumerate() {
+                    if current_results.is_empty() {
+                        // If at any point we have no results, the chain is broken.
+                        return Err(AutomationError::ElementNotFound(format!(
+                            "Selector chain broke at step {}: '{:?}' found no elements from the previous step's results.",
+                            i + 1,
+                            selector
+                        )));
+                    }
+
+                    if let Selector::Nth(index) = selector {
+                        let mut i = *index;
+                        let len = current_results.len();
+
+                        if i < 0 {
+                            // Handle negative index
+                            i += len as i32;
+                        }
+
+                        if i >= 0 && (i as usize) < len {
+                            // Filter down to the single element at the specified index.
+                            let selected = current_results.remove(i as usize);
+                            current_results = vec![selected];
+                        } else {
+                            // Index out of bounds, no elements match.
+                            current_results.clear();
+                        }
+                    } else {
+                        // For other selectors, find all children that match from the current set of results.
+                        let mut next_results = Vec::new();
+                        for element_root in &current_results {
+                            // Use a shorter timeout for sub-queries to avoid long delays on non-existent elements mid-chain.
+                            let sub_timeout = Some(Duration::from_millis(1000));
+                            match self.find_elements(
+                                selector,
+                                Some(element_root),
+                                sub_timeout,
+                                None, // Default depth for sub-queries
+                            ) {
+                                Ok(elements) => next_results.extend(elements),
+                                Err(AutomationError::ElementNotFound(_)) => {
+                                    // It's okay if one branch of the search finds nothing, continue with others.
+                                }
+                                Err(e) => return Err(e), // Propagate other critical errors.
+                            }
+                        }
+                        current_results = next_results;
+                    }
                 }
 
-                // Return the final single element found after the full chain traversal.
-                current_element.ok_or_else(|| {
-                    AutomationError::ElementNotFound(
-                        "Element not found after traversing chain".to_string(),
-                    )
-                })
+                // After the chain, we expect exactly one element for find_element.
+                if current_results.len() == 1 {
+                    Ok(current_results.remove(0))
+                } else {
+                    Err(AutomationError::ElementNotFound(format!(
+                        "Selector chain `{:?}` resolved to {} elements, but expected 1.",
+                        selectors,
+                        current_results.len(),
+                    )))
+                }
             }
             Selector::ClassName(classname) => {
                 debug!("searching element by class name: {}", classname);
@@ -1235,10 +1402,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .depth(50)
                     .timeout(timeout_ms as u64);
                 let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "ClassName: '{}', Err: {}",
-                        classname, e
-                    ))
+                    AutomationError::ElementNotFound(format!("ClassName: '{classname}', Err: {e}"))
                 })?;
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
@@ -1252,6 +1416,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
+                    .depth(50)
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.is_offscreen() {
                             Ok(is_offscreen) => Ok(is_offscreen != visibility),
@@ -1263,10 +1428,7 @@ impl AccessibilityEngine for WindowsEngine {
                     }))
                     .timeout(timeout_ms as u64);
                 let element = matcher.find_first().map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "Visible: '{}', Err: {}",
-                        visibility, e
-                    ))
+                    AutomationError::ElementNotFound(format!("Visible: '{visibility}', Err: {e}"))
                 })?;
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(element)),
@@ -1290,8 +1452,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .timeout(timeout_ms as u64);
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!(
-                        "LocalizedRole: '{}', Err: {}",
-                        localized_role, e
+                        "LocalizedRole: '{localized_role}', Err: {e}"
                     ))
                 })?;
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
@@ -1299,17 +1460,72 @@ impl AccessibilityEngine for WindowsEngine {
                     element: arc_ele,
                 })))
             }
-            Selector::Position(x, y) => {
-                debug!("searching element at position: ({}, {})", x, y);
-                let point = uiautomation::types::Point::new(*x, *y);
-                let element = self.automation.0.element_from_point(point).map_err(|e| {
-                    AutomationError::ElementNotFound(format!(
-                        "No element found at position ({}, {}): {}",
-                        x, y, e
-                    ))
-                })?;
-                Ok(convert_uiautomation_element_to_terminator(element))
+            Selector::Nth(_) => Err(AutomationError::InvalidSelector(
+                "Nth selector must be used as part of a chain (e.g. 'list >> nth=0')".to_string(),
+            )),
+            Selector::Has(_) => Err(AutomationError::InvalidSelector(
+                "Has selector must be used as part of a chain (e.g. 'list >> has:button')"
+                    .to_string(),
+            )),
+            Selector::RightOf(_)
+            | Selector::LeftOf(_)
+            | Selector::Above(_)
+            | Selector::Below(_)
+            | Selector::Near(_) => {
+                let mut elements = self.find_elements(selector, root, timeout, Some(50))?;
+                if elements.is_empty() {
+                    return Err(AutomationError::ElementNotFound(format!(
+                        "No element found for layout selector: {selector:?}"
+                    )));
+                }
+
+                // For layout selectors, it's often useful to get the *closest* one.
+                // Let's sort them by distance from the anchor.
+                let inner_selector = match selector {
+                    Selector::RightOf(s)
+                    | Selector::LeftOf(s)
+                    | Selector::Above(s)
+                    | Selector::Below(s)
+                    | Selector::Near(s) => s.as_ref(),
+                    _ => unreachable!(),
+                };
+
+                let anchor_element = self.find_element(inner_selector, root, timeout)?;
+                let anchor_bounds = anchor_element.bounds()?;
+                let anchor_center_x = anchor_bounds.0 + anchor_bounds.2 / 2.0;
+                let anchor_center_y = anchor_bounds.1 + anchor_bounds.3 / 2.0;
+
+                elements.sort_by(|a, b| {
+                    let dist_a = a
+                        .bounds()
+                        .map(|b_bounds| {
+                            let b_center_x = b_bounds.0 + b_bounds.2 / 2.0;
+                            let b_center_y = b_bounds.1 + b_bounds.3 / 2.0;
+                            ((b_center_x - anchor_center_x).powi(2)
+                                + (b_center_y - anchor_center_y).powi(2))
+                            .sqrt()
+                        })
+                        .unwrap_or(f64::MAX);
+
+                    let dist_b = b
+                        .bounds()
+                        .map(|b_bounds| {
+                            let b_center_x = b_bounds.0 + b_bounds.2 / 2.0;
+                            let b_center_y = b_bounds.1 + b_bounds.3 / 2.0;
+                            ((b_center_x - anchor_center_x).powi(2)
+                                + (b_center_y - anchor_center_y).powi(2))
+                            .sqrt()
+                        })
+                        .unwrap_or(f64::MAX);
+
+                    dist_a
+                        .partial_cmp(&dist_b)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                Ok(elements.remove(0))
             }
+            Selector::Invalid(reason) => Err(AutomationError::InvalidSelector(reason.clone())),
         }
     }
 
@@ -1434,13 +1650,12 @@ impl AccessibilityEngine for WindowsEngine {
             // We need to get the current application. Since `get_current_application` is async,
             // we will replicate its logic here in a sync way.
             let focused_element_raw = self.automation.0.get_focused_element().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get focused element: {}", e))
+                AutomationError::PlatformError(format!("Failed to get focused element: {e}"))
             })?;
 
             let pid = focused_element_raw.get_process_id().map_err(|e| {
                 AutomationError::PlatformError(format!(
-                    "Failed to get PID for focused element: {}",
-                    e
+                    "Failed to get PID for focused element: {e}"
                 ))
             })?;
 
@@ -1531,8 +1746,7 @@ impl AccessibilityEngine for WindowsEngine {
                 file_path, stderr
             );
             return Err(AutomationError::PlatformError(format!(
-                "Failed to open file '{}' using Invoke-Item. Error: {}",
-                file_path, stderr
+                "Failed to open file '{file_path}' using Invoke-Item. Error: {stderr}"
             )));
         }
         Ok(())
@@ -1568,9 +1782,8 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     async fn capture_screen(&self) -> Result<ScreenshotResult, AutomationError> {
-        let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
-        })?;
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {e}")))?;
         let mut primary_monitor: Option<xcap::Monitor> = None;
         for monitor in monitors {
             match monitor.is_primary() {
@@ -1581,8 +1794,7 @@ impl AccessibilityEngine for WindowsEngine {
                 Ok(false) => continue,
                 Err(e) => {
                     return Err(AutomationError::PlatformError(format!(
-                        "Error checking monitor primary status: {}",
-                        e
+                        "Error checking monitor primary status: {e}"
                     )));
                 }
             }
@@ -1592,7 +1804,7 @@ impl AccessibilityEngine for WindowsEngine {
         })?;
 
         let image = primary_monitor.capture_image().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to capture screen: {}", e))
+            AutomationError::PlatformError(format!("Failed to capture screen: {e}"))
         })?;
 
         Ok(ScreenshotResult {
@@ -1606,7 +1818,7 @@ impl AccessibilityEngine for WindowsEngine {
     async fn get_active_monitor_name(&self) -> Result<String, AutomationError> {
         // Get all windows
         let windows = xcap::Window::all()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get windows: {}", e)))?;
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get windows: {e}")))?;
 
         // Find the focused window
         let focused_window = windows
@@ -1618,11 +1830,11 @@ impl AccessibilityEngine for WindowsEngine {
 
         // Get the monitor name for the focused window
         let monitor = focused_window.current_monitor().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get current monitor: {}", e))
+            AutomationError::PlatformError(format!("Failed to get current monitor: {e}"))
         })?;
 
         let monitor_name = monitor.name().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor name: {e}"))
         })?;
 
         Ok(monitor_name)
@@ -1632,9 +1844,8 @@ impl AccessibilityEngine for WindowsEngine {
         &self,
         name: &str,
     ) -> Result<ScreenshotResult, AutomationError> {
-        let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
-        })?;
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {e}")))?;
         let mut target_monitor: Option<xcap::Monitor> = None;
         for monitor in monitors {
             match monitor.name() {
@@ -1645,18 +1856,17 @@ impl AccessibilityEngine for WindowsEngine {
                 Ok(_) => continue,
                 Err(e) => {
                     return Err(AutomationError::PlatformError(format!(
-                        "Error getting monitor name: {}",
-                        e
+                        "Error getting monitor name: {e}"
                     )));
                 }
             }
         }
         let target_monitor = target_monitor.ok_or_else(|| {
-            AutomationError::ElementNotFound(format!("Monitor '{}' not found", name))
+            AutomationError::ElementNotFound(format!("Monitor '{name}' not found"))
         })?;
 
         let image = target_monitor.capture_image().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to capture monitor '{}': {}", name, e))
+            AutomationError::PlatformError(format!("Failed to capture monitor '{name}': {e}"))
         })?;
 
         Ok(ScreenshotResult {
@@ -1670,42 +1880,41 @@ impl AccessibilityEngine for WindowsEngine {
     // ============== NEW MONITOR ABSTRACTIONS ==============
 
     async fn list_monitors(&self) -> Result<Vec<crate::Monitor>, AutomationError> {
-        let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
-        })?;
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {e}")))?;
 
         let mut result = Vec::new();
         for (index, monitor) in monitors.iter().enumerate() {
             let name = monitor.name().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor name: {e}"))
             })?;
 
             let is_primary = monitor.is_primary().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to check primary status: {}", e))
+                AutomationError::PlatformError(format!("Failed to check primary status: {e}"))
             })?;
 
             let width = monitor.width().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor width: {e}"))
             })?;
 
             let height = monitor.height().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor height: {e}"))
             })?;
 
             let x = monitor.x().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor x position: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor x position: {e}"))
             })?;
 
             let y = monitor.y().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor y position: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor y position: {e}"))
             })?;
 
             let scale_factor = monitor.scale_factor().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor scale factor: {e}"))
             })? as f64;
 
             result.push(crate::Monitor {
-                id: format!("monitor_{}", index),
+                id: format!("monitor_{index}"),
                 name,
                 is_primary,
                 width,
@@ -1730,7 +1939,7 @@ impl AccessibilityEngine for WindowsEngine {
     async fn get_active_monitor(&self) -> Result<crate::Monitor, AutomationError> {
         // Get all windows
         let windows = xcap::Window::all()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to get windows: {}", e)))?;
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get windows: {e}")))?;
 
         // Find the focused window
         let focused_window = windows
@@ -1742,22 +1951,21 @@ impl AccessibilityEngine for WindowsEngine {
 
         // Get the monitor for the focused window
         let xcap_monitor = focused_window.current_monitor().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get current monitor: {}", e))
+            AutomationError::PlatformError(format!("Failed to get current monitor: {e}"))
         })?;
 
         // Convert to our Monitor struct
         let name = xcap_monitor.name().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor name: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor name: {e}"))
         })?;
 
         let is_primary = xcap_monitor.is_primary().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to check primary status: {}", e))
+            AutomationError::PlatformError(format!("Failed to check primary status: {e}"))
         })?;
 
         // Find the monitor index for ID generation
-        let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
-        })?;
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {e}")))?;
 
         let monitor_index = monitors
             .iter()
@@ -1765,27 +1973,27 @@ impl AccessibilityEngine for WindowsEngine {
             .unwrap_or(0);
 
         let width = xcap_monitor.width().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor width: {e}"))
         })?;
 
         let height = xcap_monitor.height().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor height: {e}"))
         })?;
 
         let x = xcap_monitor.x().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor x position: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor x position: {e}"))
         })?;
 
         let y = xcap_monitor.y().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor y position: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor y position: {e}"))
         })?;
 
         let scale_factor = xcap_monitor.scale_factor().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor scale factor: {e}"))
         })? as f64;
 
         Ok(crate::Monitor {
-            id: format!("monitor_{}", monitor_index),
+            id: format!("monitor_{monitor_index}"),
             name,
             is_primary,
             width,
@@ -1799,7 +2007,7 @@ impl AccessibilityEngine for WindowsEngine {
     async fn get_monitor_by_id(&self, id: &str) -> Result<crate::Monitor, AutomationError> {
         let monitors = self.list_monitors().await?;
         monitors.into_iter().find(|m| m.id == id).ok_or_else(|| {
-            AutomationError::ElementNotFound(format!("Monitor with ID '{}' not found", id))
+            AutomationError::ElementNotFound(format!("Monitor with ID '{id}' not found"))
         })
     }
 
@@ -1808,9 +2016,7 @@ impl AccessibilityEngine for WindowsEngine {
         monitors
             .into_iter()
             .find(|m| m.name == name)
-            .ok_or_else(|| {
-                AutomationError::ElementNotFound(format!("Monitor '{}' not found", name))
-            })
+            .ok_or_else(|| AutomationError::ElementNotFound(format!("Monitor '{name}' not found")))
     }
 
     async fn capture_monitor_by_id(
@@ -1820,9 +2026,8 @@ impl AccessibilityEngine for WindowsEngine {
         let monitor = self.get_monitor_by_id(id).await?;
 
         // Find the xcap monitor by name
-        let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
-        })?;
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {e}")))?;
 
         let xcap_monitor = monitors
             .into_iter()
@@ -1851,20 +2056,20 @@ impl AccessibilityEngine for WindowsEngine {
     async fn ocr_image_path(&self, image_path: &str) -> Result<String, AutomationError> {
         // Create a Tokio runtime to run the async OCR operation
         let rt = Runtime::new().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to create Tokio runtime: {}", e))
+            AutomationError::PlatformError(format!("Failed to create Tokio runtime: {e}"))
         })?;
 
         // Run the async code block on the runtime
         rt.block_on(async {
             let engine = OcrEngine::new(OcrProvider::Auto).map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e))
+                AutomationError::PlatformError(format!("Failed to create OCR engine: {e}"))
             })?;
 
             let (text, _language, _confidence) = engine // Destructure the tuple
                 .recognize_file(image_path)
                 .await
                 .map_err(|e| {
-                    AutomationError::PlatformError(format!("OCR recognition failed: {}", e))
+                    AutomationError::PlatformError(format!("OCR recognition failed: {e}"))
                 })?;
 
             Ok(text) // Return only the text
@@ -1892,15 +2097,13 @@ impl AccessibilityEngine for WindowsEngine {
 
         // Directly await the OCR operation within the existing async context
         let engine = OcrEngine::new(OcrProvider::Auto).map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to create OCR engine: {}", e))
+            AutomationError::PlatformError(format!("Failed to create OCR engine: {e}"))
         })?;
 
         let (text, _language, _confidence) = engine
             .recognize_image(&dynamic_image) // Use recognize_image
             .await // << Directly await here
-            .map_err(|e| {
-                AutomationError::PlatformError(format!("OCR recognition failed: {}", e))
-            })?;
+            .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {e}")))?;
 
         Ok(text)
     }
@@ -1915,7 +2118,7 @@ impl AccessibilityEngine for WindowsEngine {
             .0
             .get_root_element() // Cache root element lookup
             .map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+                AutomationError::PlatformError(format!("Failed to get root element: {e}"))
             })?;
 
         // Find top-level windows
@@ -1932,13 +2135,13 @@ impl AccessibilityEngine for WindowsEngine {
             .timeout(5000);
 
         let window = window_matcher.find_first().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to find top-level windows: {}", e))
+            AutomationError::PlatformError(format!("Failed to find top-level windows: {e}"))
         })?;
 
         // TODO: focus part does not work (at least in browser firefox)
         // If find_first succeeds, 'window' is the UIElement. Now try to focus it.
         window.set_focus().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to set focus on window/tab: {}", e))
+            AutomationError::PlatformError(format!("Failed to set focus on window/tab: {e}"))
         })?; // Map focus error
 
         Ok(()) // If focus succeeds, return Ok
@@ -1947,13 +2150,12 @@ impl AccessibilityEngine for WindowsEngine {
     async fn get_current_browser_window(&self) -> Result<UIElement, AutomationError> {
         info!("Attempting to get the current focused browser window.");
         let focused_element_raw = self.automation.0.get_focused_element().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get focused element: {}", e))
+            AutomationError::PlatformError(format!("Failed to get focused element: {e}"))
         })?;
 
         let pid = focused_element_raw.get_process_id().map_err(|e| {
             AutomationError::PlatformError(format!(
-                "Failed to get process ID for focused element: {}",
-                e
+                "Failed to get process ID for focused element: {e}"
             ))
         })?;
 
@@ -2049,8 +2251,7 @@ impl AccessibilityEngine for WindowsEngine {
         // Use set_focus, which typically brings the window forward on Windows
         win_element_impl.element.0.set_focus().map_err(|e| {
             AutomationError::PlatformError(format!(
-                "Failed to set focus on application window '{}': {}",
-                app_name, e
+                "Failed to set focus on application window '{app_name}': {e}"
             ))
         })
     }
@@ -2058,7 +2259,7 @@ impl AccessibilityEngine for WindowsEngine {
     async fn get_current_window(&self) -> Result<UIElement, AutomationError> {
         info!("Attempting to get the current focused window.");
         let focused_element_raw = self.automation.0.get_focused_element().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get focused element: {}", e))
+            AutomationError::PlatformError(format!("Failed to get focused element: {e}"))
         })?;
 
         let mut current_element_arc = Arc::new(focused_element_raw);
@@ -2076,8 +2277,7 @@ impl AccessibilityEngine for WindowsEngine {
                 }
                 Err(e) => {
                     return Err(AutomationError::PlatformError(format!(
-                        "Failed to get control type during window search: {}",
-                        e
+                        "Failed to get control type during window search: {e}"
                     )));
                 }
             }
@@ -2087,14 +2287,12 @@ impl AccessibilityEngine for WindowsEngine {
                     // Check if parent is same as current (e.g. desktop root's parent is itself)
                     let current_runtime_id = current_element_arc.get_runtime_id().map_err(|e| {
                         AutomationError::PlatformError(format!(
-                            "Failed to get runtime_id for current element: {}",
-                            e
+                            "Failed to get runtime_id for current element: {e}"
                         ))
                     })?;
                     let parent_runtime_id = parent_uia_element.get_runtime_id().map_err(|e| {
                         AutomationError::PlatformError(format!(
-                            "Failed to get runtime_id for parent element: {}",
-                            e
+                            "Failed to get runtime_id for parent element: {e}"
                         ))
                     })?;
 
@@ -2123,11 +2321,11 @@ impl AccessibilityEngine for WindowsEngine {
     async fn get_current_application(&self) -> Result<UIElement, AutomationError> {
         info!("Attempting to get the current focused application.");
         let focused_element_raw = self.automation.0.get_focused_element().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get focused element: {}", e))
+            AutomationError::PlatformError(format!("Failed to get focused element: {e}"))
         })?;
 
         let pid = focused_element_raw.get_process_id().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get PID for focused element: {}", e))
+            AutomationError::PlatformError(format!("Failed to get PID for focused element: {e}"))
         })?;
 
         self.get_application_by_pid(pid as i32, Some(DEFAULT_FIND_TIMEOUT))
@@ -2145,7 +2343,7 @@ impl AccessibilityEngine for WindowsEngine {
         );
         let root_ele_os = self.automation.0.get_root_element().map_err(|e| {
             error!("Failed to get root element: {}", e);
-            AutomationError::PlatformError(format!("Failed to get root element: {}", e))
+            AutomationError::PlatformError(format!("Failed to get root element: {e}"))
         })?;
 
         // Find all windows for the given process ID
@@ -2168,7 +2366,7 @@ impl AccessibilityEngine for WindowsEngine {
 
         let windows = window_matcher.find_all().map_err(|e| {
             error!("Failed to find windows: {}", e);
-            AutomationError::ElementNotFound(format!("Failed to find windows: {}", e))
+            AutomationError::ElementNotFound(format!("Failed to find windows: {e}"))
         })?;
 
         info!(
@@ -2185,7 +2383,7 @@ impl AccessibilityEngine for WindowsEngine {
             match window.get_process_id() {
                 Ok(window_pid) => {
                     let window_name = window.get_name().unwrap_or_else(|_| "Unknown".to_string());
-                    window_debug_info.push(format!("PID: {}, Name: {}", window_pid, window_name));
+                    window_debug_info.push(format!("PID: {window_pid}, Name: {window_name}"));
 
                     if window_pid == pid {
                         pid_matching_windows.push((window, window_name));
@@ -2201,8 +2399,7 @@ impl AccessibilityEngine for WindowsEngine {
             error!("No windows found for PID: {}", pid);
             debug!("Available windows: {:?}", window_debug_info);
             return Err(AutomationError::ElementNotFound(format!(
-                "No windows found for process ID {}. Available windows: {:?}",
-                pid, window_debug_info
+                "No windows found for process ID {pid}. Available windows: {window_debug_info:?}"
             )));
         }
 
@@ -2295,6 +2492,57 @@ impl AccessibilityEngine for WindowsEngine {
         );
 
         Ok(result)
+    }
+
+    fn press_key(&self, key: &str) -> Result<(), AutomationError> {
+        let focused_element = self.get_focused_element()?;
+        focused_element.press_key(key)
+    }
+
+    fn zoom_in(&self, level: u32) -> Result<(), AutomationError> {
+        for _ in 0..level {
+            self.press_key("{Ctrl}=")?;
+        }
+        Ok(())
+    }
+
+    fn zoom_out(&self, level: u32) -> Result<(), AutomationError> {
+        for _ in 0..level {
+            self.press_key("{Ctrl}-")?;
+        }
+        Ok(())
+    }
+
+    fn set_zoom(&self, percentage: u32) -> Result<(), AutomationError> {
+        // Fallback approach using keyboard shortcuts. This works for most browsers and many applications.
+        // NOTE: This method is imprecise because browser zoom levels are not always linear (e.g., 90%, 100%, 110%, 125%).
+        // It avoids using Ctrl+0 to reset zoom, as that can trigger unwanted website-specific shortcuts.
+        // Instead, it zooms out fully to a known minimum state and then zooms in to the target level.
+
+        const ZOOM_STEP: u32 = 10; // Assumed average step for zoom changes.
+        const MIN_ZOOM: u32 = 25; // Assumed minimum zoom level for most browsers.
+        const MAX_ZOOM_OUT_STEPS: u32 = 50; // A high number of steps to ensure we reach the minimum zoom.
+
+        // Zoom out completely to reach a known state (minimum zoom).
+        self.zoom_out(MAX_ZOOM_OUT_STEPS)?;
+
+        // A small delay to allow the UI to process the zoom changes.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        if percentage <= MIN_ZOOM {
+            // The target is at or below the assumed minimum, so we're done.
+            return Ok(());
+        }
+
+        // From the minimum zoom, calculate how many steps to zoom in.
+        // We add half of ZOOM_STEP for rounding.
+        let steps_to_zoom_in = (percentage.saturating_sub(MIN_ZOOM) + ZOOM_STEP / 2) / ZOOM_STEP;
+
+        if steps_to_zoom_in > 0 {
+            self.zoom_in(steps_to_zoom_in)?;
+        }
+
+        Ok(())
     }
 
     /// Enable downcasting to concrete engine types
@@ -2402,14 +2650,14 @@ fn get_element_children_with_timeout(
 
 // thread-safety
 #[derive(Clone)]
-pub struct ThreadSafeWinUIElement(Arc<uiautomation::UIElement>);
+pub(crate) struct ThreadSafeWinUIElement(pub(crate) Arc<uiautomation::UIElement>);
 
 // send and sync for wrapper
 unsafe impl Send for ThreadSafeWinUIElement {}
 unsafe impl Sync for ThreadSafeWinUIElement {}
 
 pub struct WindowsUIElement {
-    element: ThreadSafeWinUIElement,
+    pub(crate) element: ThreadSafeWinUIElement,
 }
 
 impl Debug for WindowsUIElement {
@@ -2425,7 +2673,7 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn id(&self) -> Option<String> {
-        Some(self.object_id().to_string())
+        Some(self.object_id().to_string().chars().take(6).collect())
     }
 
     fn role(&self) -> String {
@@ -2525,8 +2773,7 @@ impl UIElementImpl for WindowsUIElement {
                 let temp_automation = create_ui_automation_with_com_init()?;
                 let true_condition = temp_automation.create_true_condition().map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to create true condition for child fallback: {}",
-                        e
+                        "Failed to create true condition for child fallback: {e}"
                     ))
                 })?;
                 self.element
@@ -2534,8 +2781,7 @@ impl UIElementImpl for WindowsUIElement {
                     .find_all(uiautomation::types::TreeScope::Children, &true_condition)
                     .map_err(|find_err| {
                         AutomationError::PlatformError(format!(
-                            "Failed to get children (cached and non-cached): {}",
-                            find_err
+                            "Failed to get children (cached and non-cached): {find_err}"
                         ))
                     })? // Propagate error
             }
@@ -2619,7 +2865,7 @@ impl UIElementImpl for WindowsUIElement {
         if click_result.is_err() {
             debug!("clickable point unavailable, falling back to bounding rectangle");
             if let Ok(rect) = self.element.0.get_bounding_rectangle() {
-                println!("bounding rectangle: {:?}", rect);
+                println!("bounding rectangle: {rect:?}");
                 // Calculate center point of the element
                 let center_x = rect.get_left() + rect.get_width() / 2;
                 let center_y = rect.get_top() + rect.get_height() / 2;
@@ -2704,11 +2950,10 @@ impl UIElementImpl for WindowsUIElement {
                 let error_str = e.to_string();
                 if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
                     AutomationError::UnsupportedOperation(format!(
-                        "Element does not support InvokePattern. This typically happens with custom controls, groups, or non-standard buttons. Try using 'click_element' instead. Error: {}",
-                        error_str
+                        "Element does not support InvokePattern. This typically happens with custom controls, groups, or non-standard buttons. Try using 'click_element' instead. Error: {error_str}"
                     ))
                 } else {
-                    AutomationError::PlatformError(format!("Failed to get InvokePattern: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get InvokePattern: {e}"))
                 }
             })?;
         invoke_pat
@@ -2807,8 +3052,7 @@ impl UIElementImpl for WindowsUIElement {
                 .set_window_visual_state(uiautomation::types::WindowVisualState::Maximized)
                 .map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to maximize window using WindowPattern: {}",
-                        e
+                        "Failed to maximize window using WindowPattern: {e}"
                     ))
                 })?;
             debug!("Window maximized successfully using WindowPattern");
@@ -2858,31 +3102,14 @@ impl UIElementImpl for WindowsUIElement {
         );
 
         if use_clipboard {
-            let element_clone = self.element.0.clone();
-            let text_clone = text.to_string();
-
-            // Using catch_unwind to handle potential panics in the uiautomation library.
-            let result = panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-                element_clone.send_text_by_clipboard(&text_clone)
-            }));
-
-            match result {
-                Ok(Ok(())) => Ok(()), // Success
-                Ok(Err(e)) => {
-                    // The library returned an error, which we can handle.
-                    warn!(
-                        "Clipboard typing failed with an error: {:?}. Falling back to key-by-key input.",
+            // Try clipboard typing first
+            match self.element.0.send_text_by_clipboard(text) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    // Clipboard method failed, fall back to key-by-key typing
+                    debug!(
+                        "Clipboard typing returned error: {:?}. Using key-by-key input instead.",
                         e
-                    );
-                    self.element
-                        .0
-                        .send_text(text, 10)
-                        .map_err(|e| AutomationError::PlatformError(e.to_string()))
-                }
-                Err(_) => {
-                    // A panic was caught.
-                    warn!(
-                        "Clipboard typing panicked. This is likely a bug in the underlying UI automation library. Falling back to key-by-key input."
                     );
                     self.element
                         .0
@@ -2901,14 +3128,14 @@ impl UIElementImpl for WindowsUIElement {
 
     fn press_key(&self, key: &str) -> Result<(), AutomationError> {
         let control_type = self.element.0.get_control_type().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get control type: {:?}", e))
+            AutomationError::PlatformError(format!("Failed to get control type: {e:?}"))
         })?;
         // check if element accepts input, similar :D
         debug!("pressing key with control_type: {:#?}", control_type);
         self.element
             .0
             .send_keys(key, 10)
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to press key: {:?}", e)))
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to press key: {e:?}")))
     }
 
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError> {
@@ -3002,11 +3229,10 @@ impl UIElementImpl for WindowsUIElement {
                 let error_str = e.to_string();
                 if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
                     AutomationError::UnsupportedOperation(format!(
-                        "Element does not support ValuePattern. This control cannot have its value set directly. Try using 'type_into_element' for text input, or 'select_option' for dropdowns. Error: {}",
-                        error_str
+                        "Element does not support ValuePattern. This control cannot have its value set directly. Try using 'type_into_element' for text input, or 'select_option' for dropdowns. Error: {error_str}"
                     ))
                 } else {
-                    AutomationError::PlatformError(format!("Failed to get ValuePattern: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get ValuePattern: {e}"))
                 }
             })?;
 
@@ -3032,7 +3258,7 @@ impl UIElementImpl for WindowsUIElement {
 
     fn is_focused(&self) -> Result<bool, AutomationError> {
         self.element.0.has_keyboard_focus().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get keyboard focus state: {}", e))
+            AutomationError::PlatformError(format!("Failed to get keyboard focus state: {e}"))
         })
     }
 
@@ -3053,11 +3279,10 @@ impl UIElementImpl for WindowsUIElement {
                         let error_str = e.to_string();
                         if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
                             AutomationError::UnsupportedOperation(format!(
-                                "Element does not support TogglePattern. This is not a toggleable control (checkbox, switch, etc.). Try using 'click' instead. Error: {}",
-                                error_str
+                                "Element does not support TogglePattern. This is not a toggleable control (checkbox, switch, etc.). Try using 'click' instead. Error: {error_str}"
                             ))
                         } else {
-                            AutomationError::PlatformError(format!("Failed to get TogglePattern: {}", e))
+                            AutomationError::PlatformError(format!("Failed to get TogglePattern: {e}"))
                         }
                     })?;
                 toggle_pattern
@@ -3073,11 +3298,10 @@ impl UIElementImpl for WindowsUIElement {
                         let error_str = e.to_string();
                         if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
                             AutomationError::UnsupportedOperation(format!(
-                                "Element does not support ExpandCollapsePattern. This is not an expandable control (tree item, dropdown, etc.). Try using 'click' to interact with it. Error: {}",
-                                error_str
+                                "Element does not support ExpandCollapsePattern. This is not an expandable control (tree item, dropdown, etc.). Try using 'click' to interact with it. Error: {error_str}"
                             ))
                         } else {
-                            AutomationError::PlatformError(format!("Failed to get ExpandCollapsePattern: {}", e))
+                            AutomationError::PlatformError(format!("Failed to get ExpandCollapsePattern: {e}"))
                         }
                     })?;
                 expand_collapse_pattern
@@ -3085,8 +3309,7 @@ impl UIElementImpl for WindowsUIElement {
                     .map_err(|e| AutomationError::PlatformError(e.to_string()))
             }
             _ => Err(AutomationError::UnsupportedOperation(format!(
-                "action '{}' not supported",
-                action
+                "action '{action}' not supported"
             ))),
         }
     }
@@ -3196,8 +3419,7 @@ impl UIElementImpl for WindowsUIElement {
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         variant.try_into().map_err(|e| {
             AutomationError::PlatformError(format!(
-                "Failed to convert IsKeyboardFocusable to bool: {:?}",
-                e
+                "Failed to convert IsKeyboardFocusable to bool: {e:?}"
             ))
         })
     }
@@ -3325,13 +3547,13 @@ impl UIElementImpl for WindowsUIElement {
     fn application(&self) -> Result<Option<UIElement>, AutomationError> {
         // Get the process ID of the current element
         let pid = self.element.0.get_process_id().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get process ID for element: {}", e))
+            AutomationError::PlatformError(format!("Failed to get process ID for element: {e}"))
         })?;
 
         // Create a WindowsEngine instance to use its methods.
         // This follows the pattern in `create_locator` but might be inefficient if called frequently.
         let engine = WindowsEngine::new(false, false).map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to create WindowsEngine: {}", e))
+            AutomationError::PlatformError(format!("Failed to create WindowsEngine: {e}"))
         })?;
 
         // Get the application element by PID
@@ -3365,8 +3587,7 @@ impl UIElementImpl for WindowsUIElement {
                 }
                 Err(e) => {
                     return Err(AutomationError::PlatformError(format!(
-                        "Failed to get control type for element during window search (iteration {}): {}",
-                        i, e
+                        "Failed to get control type for element during window search (iteration {i}): {e}"
                     )));
                 }
             }
@@ -3378,14 +3599,12 @@ impl UIElementImpl for WindowsUIElement {
                     // This requires getting runtime IDs, which can also fail.
                     let current_runtime_id = current_element_arc.get_runtime_id().map_err(|e| {
                         AutomationError::PlatformError(format!(
-                            "Failed to get runtime_id for current element: {}",
-                            e
+                            "Failed to get runtime_id for current element: {e}"
                         ))
                     })?;
                     let parent_runtime_id = parent_uia_element.get_runtime_id().map_err(|e| {
                         AutomationError::PlatformError(format!(
-                            "Failed to get runtime_id for parent element: {}",
-                            e
+                            "Failed to get runtime_id for parent element: {e}"
                         ))
                     })?;
 
@@ -3423,7 +3642,7 @@ impl UIElementImpl for WindowsUIElement {
 
         // Get the element's bounding rectangle
         let rect = self.element.0.get_bounding_rectangle().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get element bounds: {}", e))
+            AutomationError::PlatformError(format!("Failed to get element bounds: {e}"))
         })?;
 
         // Helper function to get scale factor from cursor position
@@ -3520,14 +3739,14 @@ impl UIElementImpl for WindowsUIElement {
     }
     fn process_id(&self) -> Result<u32, AutomationError> {
         self.element.0.get_process_id().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get process ID for element: {}", e))
+            AutomationError::PlatformError(format!("Failed to get process ID for element: {e}"))
         })
     }
 
     fn close(&self) -> Result<(), AutomationError> {
         // Check the control type to determine if this element is closable
         let control_type = self.element.0.get_control_type().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get control type: {}", e))
+            AutomationError::PlatformError(format!("Failed to get control type: {e}"))
         })?;
 
         match control_type {
@@ -3555,14 +3774,12 @@ impl UIElementImpl for WindowsUIElement {
                                     .send_keys("%{F4}", 10) // Alt+F4
                                     .map_err(|e2| {
                                         AutomationError::PlatformError(format!(
-                                            "Failed to close window: WindowPattern not supported and Alt+F4 failed: {}",
-                                            e2
+                                            "Failed to close window: WindowPattern not supported and Alt+F4 failed: {e2}"
                                         ))
                                     });
                             } else {
                                 return Err(AutomationError::PlatformError(format!(
-                                    "Failed to close window: {}",
-                                    e
+                                    "Failed to close window: {e}"
                                 )));
                             }
                         }
@@ -3576,7 +3793,7 @@ impl UIElementImpl for WindowsUIElement {
                     .0
                     .send_keys("%{F4}", 10) // Alt+F4
                     .map_err(|e| {
-                        AutomationError::PlatformError(format!("Failed to send Alt+F4: {}", e))
+                        AutomationError::PlatformError(format!("Failed to send Alt+F4: {e}"))
                     })
             }
             ControlType::Button => {
@@ -3593,8 +3810,7 @@ impl UIElementImpl for WindowsUIElement {
                     // Regular button - not a close action
                     debug!("Button '{}' is not a close button", name);
                     Err(AutomationError::UnsupportedOperation(format!(
-                        "Button '{}' is not a close button. Only windows, dialogs, and close buttons can be closed.",
-                        name
+                        "Button '{name}' is not a close button. Only windows, dialogs, and close buttons can be closed."
                     )))
                 }
             }
@@ -3602,8 +3818,7 @@ impl UIElementImpl for WindowsUIElement {
                 // For other control types (text, edit, etc.), closing is not supported
                 debug!("Element type {:?} is not closable", control_type);
                 Err(AutomationError::UnsupportedOperation(format!(
-                    "Element of type '{}' cannot be closed. Only windows, dialogs, and close buttons support the close operation.",
-                    control_type
+                    "Element of type '{control_type}' cannot be closed. Only windows, dialogs, and close buttons support the close operation."
                 )))
             }
         }
@@ -3612,27 +3827,26 @@ impl UIElementImpl for WindowsUIElement {
     fn capture(&self) -> Result<ScreenshotResult, AutomationError> {
         // Get the raw UIAutomation bounds
         let rect = self.element.0.get_bounding_rectangle().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get bounding rectangle: {}", e))
+            AutomationError::PlatformError(format!("Failed to get bounding rectangle: {e}"))
         })?;
 
         // Get all monitors that intersect with the element
         let mut intersected_monitors = Vec::new();
-        let monitors = xcap::Monitor::all().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitors: {}", e))
-        })?;
+        let monitors = xcap::Monitor::all()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitors: {e}")))?;
 
         for monitor in monitors {
             let monitor_x = monitor.x().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor x: {e}"))
             })?;
             let monitor_y = monitor.y().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor y: {e}"))
             })?;
             let monitor_width = monitor.width().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor width: {e}"))
             })? as i32;
             let monitor_height = monitor.height().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+                AutomationError::PlatformError(format!("Failed to get monitor height: {e}"))
             })? as i32;
 
             // Check if element intersects with this monitor
@@ -3654,21 +3868,23 @@ impl UIElementImpl for WindowsUIElement {
         // If element spans multiple monitors, capture from the primary monitor
         let monitor = &intersected_monitors[0];
         let scale_factor = monitor.scale_factor().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get scale factor: {}", e))
+            AutomationError::PlatformError(format!("Failed to get scale factor: {e}"))
         })?;
 
         // Get monitor bounds
-        let monitor_x = monitor.x().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor x: {}", e))
-        })? as u32;
-        let monitor_y = monitor.y().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor y: {}", e))
-        })? as u32;
+        let monitor_x = monitor
+            .x()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitor x: {e}")))?
+            as u32;
+        let monitor_y = monitor
+            .y()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get monitor y: {e}")))?
+            as u32;
         let monitor_width = monitor.width().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor width: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor width: {e}"))
         })?;
         let monitor_height = monitor.height().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get monitor height: {}", e))
+            AutomationError::PlatformError(format!("Failed to get monitor height: {e}"))
         })?;
 
         // Calculate scaled coordinates
@@ -3689,7 +3905,7 @@ impl UIElementImpl for WindowsUIElement {
         let capture = monitor
             .capture_region(rel_x, rel_y, rel_width, rel_height)
             .map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to capture region: {}", e))
+                AutomationError::PlatformError(format!("Failed to capture region: {e}"))
             })?;
 
         Ok(ScreenshotResult {
@@ -3707,8 +3923,7 @@ impl UIElementImpl for WindowsUIElement {
         // Get the window handle
         let hwnd = self.element.0.get_native_window_handle().map_err(|e| {
             AutomationError::PlatformError(format!(
-                "Failed to get native window handle of element: {}",
-                e
+                "Failed to get native window handle of element: {e}"
             ))
         })?;
 
@@ -3850,7 +4065,7 @@ impl UIElementImpl for WindowsUIElement {
             .get_pattern::<patterns::UIExpandCollapsePattern>()
         {
             expand_collapse_pattern.expand().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to expand element: {}", e))
+                AutomationError::PlatformError(format!("Failed to expand element: {e}"))
             })?;
         }
 
@@ -3875,8 +4090,7 @@ impl UIElementImpl for WindowsUIElement {
             )
             .map_err(|e| {
                 AutomationError::ElementNotFound(format!(
-                    "Option '{}' not found in dropdown. Make sure the dropdown is expanded and the option name is exact. Error: {}",
-                    option_name, e
+                    "Option '{option_name}' not found in dropdown. Make sure the dropdown is expanded and the option name is exact. Error: {e}"
                 ))
             })?;
 
@@ -3885,7 +4099,7 @@ impl UIElementImpl for WindowsUIElement {
             option_element.get_pattern::<patterns::UISelectionItemPattern>()
         {
             selection_item_pattern.select().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to select option: {}", e))
+                AutomationError::PlatformError(format!("Failed to select option: {e}"))
             })?;
         } else {
             // Fallback to click if selection pattern is not available
@@ -3895,8 +4109,7 @@ impl UIElementImpl for WindowsUIElement {
             );
             option_element.click().map_err(|e| {
                 AutomationError::PlatformError(format!(
-                    "Failed to click option '{}': {}",
-                    option_name, e
+                    "Failed to click option '{option_name}': {e}"
                 ))
             })?;
         }
@@ -3943,8 +4156,7 @@ impl UIElementImpl for WindowsUIElement {
             if state != uiautomation::types::ExpandCollapseState::Expanded {
                 expand_collapse_pattern.expand().map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to expand element to list options: {}",
-                        e
+                        "Failed to expand element to list options: {e}"
                     ))
                 })?;
                 std::thread::sleep(std::time::Duration::from_millis(200)); // Wait for animation
@@ -3976,7 +4188,7 @@ impl UIElementImpl for WindowsUIElement {
 
         if let Ok(pattern) = toggle_pattern {
             let state = pattern.get_toggle_state().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get toggle state: {}", e))
+                AutomationError::PlatformError(format!("Failed to get toggle state: {e}"))
             })?;
             return Ok(state == uiautomation::types::ToggleState::On);
         }
@@ -4013,30 +4225,38 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
-        let current_state = self.is_toggled()?;
-        if current_state == state {
-            return Ok(()); // Already in the desired state
+        // First, try to use the TogglePattern, which is the primary pattern for toggleable controls.
+        if let Ok(toggle_pattern) = self.element.0.get_pattern::<patterns::UITogglePattern>() {
+            if let Ok(current_state_enum) = toggle_pattern.get_toggle_state() {
+                let current_state = current_state_enum == uiautomation::types::ToggleState::On;
+                debug!("Current state: {current_state}, desired state: {state}");
+                if current_state != state {
+                    // Only toggle if the state is different.
+                    return toggle_pattern.toggle().map_err(|e| {
+                        AutomationError::PlatformError(format!("Failed to toggle: {e}"))
+                    });
+                } else {
+                    // Already in the desired state.
+                    return Ok(());
+                }
+            }
         }
 
-        let toggle_pattern = self
+        // As a fallback, try to use SelectionItemPattern, as some controls report toggle state via selection.
+        debug!("Element does not support TogglePattern or failed to get state, falling back to SelectionItemPattern for set_toggled");
+        if self
             .element
             .0
-            .get_pattern::<patterns::UITogglePattern>()
-            .map_err(|e| {
-                let error_str = e.to_string();
-                if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
-                    AutomationError::UnsupportedOperation(format!(
-                        "Element does not support TogglePattern. This is not a toggleable control (checkbox, switch, etc.). For checkboxes, try 'click_element'. For radio buttons, use 'set_selected'. Error: {}",
-                        error_str
-                    ))
-                } else {
-                    AutomationError::PlatformError(format!("Failed to get TogglePattern: {}", e))
-                }
-            })?;
+            .get_pattern::<patterns::UISelectionItemPattern>()
+            .is_ok()
+        {
+            return self.set_selected(state);
+        }
 
-        toggle_pattern
-            .toggle()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to toggle: {}", e)))
+        Err(AutomationError::UnsupportedOperation(format!(
+            "Element '{}' supports neither TogglePattern nor SelectionItemPattern for setting toggle state. This element may not be a standard toggleable control.",
+            self.element.0.get_name().unwrap_or_default()
+        )))
     }
 
     fn get_range_value(&self) -> Result<f64, AutomationError> {
@@ -4048,16 +4268,15 @@ impl UIElementImpl for WindowsUIElement {
                 let error_str = e.to_string();
                 if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
                     AutomationError::UnsupportedOperation(format!(
-                        "Element does not support RangeValuePattern. This is not a range control (slider, progress bar, etc.). Error: {}",
-                        error_str
+                        "Element does not support RangeValuePattern. This is not a range control (slider, progress bar, etc.). Error: {error_str}"
                     ))
                 } else {
-                    AutomationError::PlatformError(format!("Failed to get RangeValuePattern: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get RangeValuePattern: {e}"))
                 }
             })?;
-        range_pattern.get_value().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get range value: {}", e))
-        })
+        range_pattern
+            .get_value()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get range value: {e}")))
     }
 
     fn set_range_value(&self, value: f64) -> Result<(), AutomationError> {
@@ -4071,11 +4290,10 @@ impl UIElementImpl for WindowsUIElement {
                 let error_str = e.to_string();
                 if error_str.contains("not support") || error_str.contains("UIA_E_ELEMENTNOTAVAILABLE") {
                     AutomationError::UnsupportedOperation(format!(
-                        "Element does not support RangeValuePattern. This is not a range control (slider, progress bar, etc.). Try using keyboard arrows or mouse drag for custom sliders. Error: {}",
-                        error_str
+                        "Element does not support RangeValuePattern. This is not a range control (slider, progress bar, etc.). Try using keyboard arrows or mouse drag for custom sliders. Error: {error_str}"
                     ))
                 } else {
-                    AutomationError::PlatformError(format!("Failed to get RangeValuePattern: {}", e))
+                    AutomationError::PlatformError(format!("Failed to get RangeValuePattern: {e}"))
                 }
             })?;
 
@@ -4099,12 +4317,12 @@ impl UIElementImpl for WindowsUIElement {
         // Fallback to keyboard simulation.
         debug!("Direct set_value for RangeValuePattern failed or was inaccurate, falling back to keyboard simulation.");
 
-        let min_value = range_pattern.get_minimum().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get min value: {}", e))
-        })?;
-        let max_value = range_pattern.get_maximum().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get max value: {}", e))
-        })?;
+        let min_value = range_pattern
+            .get_minimum()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get min value: {e}")))?;
+        let max_value = range_pattern
+            .get_maximum()
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to get max value: {e}")))?;
 
         let mut small_change = range_pattern.get_small_change().unwrap_or(0.0);
 
@@ -4239,15 +4457,14 @@ impl UIElementImpl for WindowsUIElement {
             if state && !is_currently_selected {
                 // If we need to select it, and it's not selected yet.
                 return selection_item_pattern.select().map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to select item: {}", e))
+                    AutomationError::PlatformError(format!("Failed to select item: {e}"))
                 });
             } else if !state && is_currently_selected {
                 // If we need to deselect it, and it's currently selected.
                 // This is for multi-select controls; for single-select this may fail.
                 return selection_item_pattern.remove_from_selection().map_err(|e| {
                     AutomationError::PlatformError(format!(
-                        "Failed to remove item from selection. This might be a single-select control that doesn't support deselection: {}",
-                        e
+                        "Failed to remove item from selection. This might be a single-select control that doesn't support deselection: {e}"
                     ))
                 });
             }
@@ -4289,8 +4506,7 @@ impl ScrollFallback for WindowsUIElement {
         );
         self.focus().map_err(|e| {
             AutomationError::PlatformError(format!(
-                "Failed to focus element for scroll fallback: {:?}",
-                e
+                "Failed to focus element for scroll fallback: {e:?}"
             ))
         })?;
 
@@ -4343,14 +4559,13 @@ pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), A
     if !output.status.success() {
         let error_msg = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(AutomationError::PlatformError(format!(
-            "Failed to get UWP apps list: {}",
-            error_msg
+            "Failed to get UWP apps list: {error_msg}"
         )));
     }
 
     let output_str = String::from_utf8_lossy(&output.stdout);
     let apps: Vec<Value> = serde_json::from_str(&output_str)
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to parse apps list: {}", e)))?;
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to parse apps list: {e}")))?;
 
     // two parts
     let search_terms: Vec<String> = app_name
@@ -4389,8 +4604,7 @@ pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), A
             Ok((app_id.to_string(), display_name.to_string()))
         }
         None => Err(AutomationError::PlatformError(format!(
-            "No app found matching '{}' in Get-StartApps list",
-            app_name
+            "No app found matching '{app_name}' in Get-StartApps list"
         ))),
     }
 }
@@ -4514,8 +4728,7 @@ fn launch_app(
         if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
             // Only return error if it's not the "already initialized" case
             return Err(AutomationError::PlatformError(format!(
-                "Failed to initialize COM: {}",
-                hr
+                "Failed to initialize COM: {hr}"
             )));
         }
         // If we get here, either initialization succeeded or it was already initialized
@@ -4527,8 +4740,7 @@ fn launch_app(
         let manager: IApplicationActivationManager =
             CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_ALL).map_err(|e| {
                 AutomationError::PlatformError(format!(
-                    "Failed to create ApplicationActivationManager: {}",
-                    e
+                    "Failed to create ApplicationActivationManager: {e}"
                 ))
             })?;
 
@@ -4542,7 +4754,7 @@ fn launch_app(
         ) {
             Ok(pid) => pid,
             Err(_) => {
-                let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{}", app_id)
+                let shell_app_id: Vec<u16> = format!("shell:AppsFolder\\{app_id}")
                     .encode_utf16()
                     .chain(Some(0))
                     .collect();
@@ -4568,8 +4780,7 @@ fn launch_app(
                 ShellExecuteExW(&mut sei).map_err(|e| {
                     AutomationError::PlatformError(format!(
                         "ShellExecuteExW failed: 
-                        '{}' to launch app '{}':",
-                        e, display_name
+                        '{e}' to launch app '{display_name}':"
                     ))
                 })?;
 
@@ -4767,57 +4978,80 @@ fn get_pid_by_name(name: &str) -> Option<i32> {
 }
 
 // Add this function before the WindowsUIElement implementation
-fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, AutomationError> {
-    // Get stable properties that are less likely to change
-    // Try cached versions first, fallback to live versions
-    let control_type = element
-        .get_cached_control_type()
-        .or_else(|_| element.get_control_type())
-        .map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get control type: {}", e))
-        })?;
-    let name = element
-        .get_cached_name()
-        .or_else(|_| element.get_name())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get name: {}", e)))?;
+pub(crate) fn generate_element_id(
+    element: &uiautomation::UIElement,
+) -> Result<usize, AutomationError> {
+    // Attempt to get stable properties first
     let automation_id = element
-        .get_cached_automation_id()
-        .or_else(|_| element.get_automation_id())
-        .map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to get automation ID: {}", e))
-        })?;
+        .get_automation_id()
+        .map(|s| if s.is_empty() { None } else { Some(s) })
+        .unwrap_or(None);
+    let role = element
+        .get_control_type()
+        .map(|s| {
+            if s == ControlType::Custom {
+                None
+            } else {
+                Some(s)
+            }
+        })
+        .unwrap_or(None);
+    let name = element
+        .get_name()
+        .map(|s| if s.is_empty() { None } else { Some(s) })
+        .unwrap_or(None);
     let class_name = element
-        .get_cached_classname()
-        .or_else(|_| element.get_classname())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get classname: {}", e)))?;
-    let help_text = element
-        .get_cached_help_text()
-        .or_else(|_| element.get_help_text())
-        .map_err(|e| AutomationError::PlatformError(format!("Failed to get help text: {}", e)))?;
+        .get_classname()
+        .map(|s| if s.is_empty() { None } else { Some(s) })
+        .unwrap_or(None);
 
-    // Create a stable string representation
-    let id_string = format!(
-        "{}:{}:{}:{}:{}",
-        control_type, name, automation_id, class_name, help_text
-    );
+    let mut to_hash = String::new();
+    if let Some(id) = automation_id {
+        to_hash.push_str(&id);
+    }
+    if let Some(role) = role {
+        to_hash.push_str(&role.to_string());
+    }
+    if let Some(n) = name {
+        to_hash.push_str(&n);
+    }
+    if let Some(cn) = class_name {
+        to_hash.push_str(&cn);
+    }
 
-    // Generate a hash from the stable string
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    id_string.hash(&mut hasher);
-    let hash = hasher.finish() as usize;
+    // If still no stable properties, use bounds as a fallback for more stability
+    if to_hash.is_empty() {
+        if let Ok(rect) = element.get_bounding_rectangle() {
+            to_hash.push_str(&format!(
+                "{}:{}:{}:{}",
+                rect.get_left(),
+                rect.get_top(),
+                rect.get_width(),
+                rect.get_height()
+            ));
+        }
+    }
 
-    Ok(hash)
+    // As a last resort for elements with no stable identifiers, use the object's memory address.
+    // This is NOT stable across sessions, but provides a unique ID within a single session.
+    if to_hash.is_empty() {
+        let element_arc = Arc::new(element.clone());
+        let ptr = Arc::as_ptr(&element_arc);
+        return Ok(ptr as usize);
+    }
+
+    let hash = blake3::hash(to_hash.as_bytes());
+    Ok(hash.as_bytes()[0..8]
+        .try_into()
+        .map(u64::from_le_bytes)
+        .unwrap() as usize)
 }
 
 // Add this function after the generate_element_id function and before the tests module
 /// Converts a raw uiautomation::UIElement to a terminator UIElement
 pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIElement) -> UIElement {
-    let arc_element = ThreadSafeWinUIElement(Arc::new(element));
-    UIElement::new(Box::new(WindowsUIElement {
-        element: arc_element,
-    }))
+    let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
+    UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
 }
 
 // Helper function to create UIAutomation instance with proper COM initialization
@@ -4827,8 +5061,7 @@ fn create_ui_automation_with_com_init() -> Result<UIAutomation, AutomationError>
         if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
             // Only return error if it's not the "already initialized" case
             return Err(AutomationError::PlatformError(format!(
-                "Failed to initialize COM: {}",
-                hr
+                "Failed to initialize COM: {hr}"
             )));
         }
     }
@@ -5013,8 +5246,7 @@ fn launch_legacy_app(engine: &WindowsEngine, app_name: &str) -> Result<UIElement
 
         if result.is_err() {
             return Err(AutomationError::PlatformError(format!(
-                "Failed to launch application '{}'",
-                app_name
+                "Failed to launch application '{app_name}'"
             )));
         }
 
@@ -5030,14 +5262,13 @@ fn launch_legacy_app(engine: &WindowsEngine, app_name: &str) -> Result<UIElement
         // Extract process name from process_info (unused variable)
         let process_name = get_process_name_by_pid(pid).unwrap_or_else(|_| app_name.to_string());
 
-        match get_application_pid(engine, pid as i32, app_name) {
+        match get_application_pid(engine, pid, app_name) {
             Ok(app) => Ok(app),
             Err(_) => {
                 let new_pid = get_pid_by_name(&process_name);
                 if new_pid.is_none() {
                     return Err(AutomationError::PlatformError(format!(
-                        "Failed to get PID for launched process: {}",
-                        process_name
+                        "Failed to get PID for launched process: {process_name}"
                     )));
                 }
                 // Try again with the extracted PID

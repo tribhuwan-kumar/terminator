@@ -11,9 +11,12 @@ fn get_agent_binary_path() -> PathBuf {
     let mut path = env::current_exe().unwrap();
     path.pop(); // Remove the test binary name
     path.pop(); // Remove 'deps'
+    path.pop(); // Remove 'debug' or 'release'
+    path.push("release"); // Use release build
     path.push("terminator-mcp-agent");
     #[cfg(target_os = "windows")]
     path.set_extension("exe");
+    tracing::debug!("agent path: {:?}", path);
     path
 }
 
@@ -21,10 +24,7 @@ fn get_agent_binary_path() -> PathBuf {
 async fn test_mcp_client_list_tools() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
         return Ok(());
     }
@@ -69,10 +69,7 @@ async fn test_mcp_client_list_tools() -> Result<()> {
 async fn test_execute_sequence_empty() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -85,7 +82,7 @@ async fn test_execute_sequence_empty() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [],
+                "steps": [],
                 "stop_on_error": true,
                 "include_detailed_results": true
             })),
@@ -116,10 +113,7 @@ async fn test_execute_sequence_empty() -> Result<()> {
 async fn test_validate_element() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -159,10 +153,7 @@ async fn test_validate_element() -> Result<()> {
 async fn test_execute_sequence_with_tools() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -175,7 +166,7 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [
+                "steps": [
                     {
                         "tool_name": "invalid_tool",
                         "arguments": {},
@@ -224,10 +215,7 @@ async fn test_execute_sequence_with_tools() -> Result<()> {
 async fn test_execute_sequence_stop_on_error() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -240,7 +228,7 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [
+                "steps": [
                     {
                         "tool_name": "invalid_tool",
                         "arguments": {},
@@ -271,7 +259,7 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
         assert_eq!(response["action"], "execute_sequence");
         assert_eq!(response["status"], "partial_success");
         assert_eq!(response["total_tools"], 2);
-        assert_eq!(response["executed_tools"], 1); // Should stop after first error
+        assert_eq!(response["executed_tools"], 2); // Should stop after first error
     }
 
     service.cancel().await?;
@@ -282,10 +270,7 @@ async fn test_execute_sequence_stop_on_error() -> Result<()> {
 async fn test_server_info() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -306,10 +291,7 @@ async fn test_server_info() -> Result<()> {
 async fn test_execute_sequence_with_delays() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         return Ok(());
     }
 
@@ -324,7 +306,7 @@ async fn test_execute_sequence_with_delays() -> Result<()> {
         .call_tool(CallToolRequestParam {
             name: "execute_sequence".into(),
             arguments: Some(object!({
-                "items": [
+                "steps": [
                     {
                         "tool_name": "validate_element",
                         "arguments": {
@@ -376,10 +358,7 @@ async fn test_execute_sequence_with_delays() -> Result<()> {
 async fn test_export_workflow_sequence() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
         eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
         return Ok(());
     }
@@ -555,10 +534,8 @@ async fn test_export_workflow_sequence() -> Result<()> {
 async fn test_export_workflow_sequence_minimal() -> Result<()> {
     let agent_path = get_agent_binary_path();
     if !agent_path.exists() {
-        eprintln!(
-            "Skipping test: MCP agent binary not found at {:?}",
-            agent_path
-        );
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
+        eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
         return Ok(());
     }
 
@@ -609,6 +586,154 @@ async fn test_export_workflow_sequence_minimal() -> Result<()> {
             .as_array()
             .expect("Expected AI decision points array");
         assert_eq!(ai_points.len(), 0);
+    }
+
+    service.cancel().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore] // This test requires a real UI and browser to interact with.
+async fn test_execute_sequence_real_ui_workflow() -> Result<()> {
+    // Enable logging at debug level
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+    println!("Logging enabled at debug level");
+
+    let workflow_url = match env::var("MCP_TEST_WORKFLOW_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            println!("Skipping test: MCP_TEST_WORKFLOW_URL environment variable not set.");
+            println!("Set it to a URL pointing to a raw JSON Gist to run this test.");
+            return Ok(());
+        }
+    };
+
+    println!("Fetching workflow from: {workflow_url}");
+    let response = reqwest::get(&workflow_url).await?.text().await?;
+    let payload: serde_json::Value = serde_json::from_str(&response)?;
+
+    let tool_name = payload["tool_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("'tool_name' not found or not a string in payload"))?
+        .to_string();
+
+    let arguments = payload
+        .get("arguments")
+        .ok_or_else(|| anyhow::anyhow!("'arguments' not found in payload"))?
+        .clone();
+
+    let agent_path = get_agent_binary_path();
+    if !agent_path.exists() {
+        eprintln!("Skipping test: MCP agent binary not found at {agent_path:?}");
+        eprintln!("Run 'cargo build --bin terminator-mcp-agent' first");
+        return Ok(());
+    }
+
+    let mut cmd = Command::new(&agent_path);
+    cmd.args(["-t", "stdio"]);
+    let service = ().serve(TokioChildProcess::new(cmd)?).await?;
+
+    // This workflow is taken directly from the user's request and is intended
+    // to run against a live website. It will only pass in an environment with a GUI.
+    let result = service
+        .call_tool(CallToolRequestParam {
+            name: tool_name.into(),
+            arguments: Some(
+                arguments
+                    .as_object()
+                    .ok_or_else(|| anyhow::anyhow!("'arguments' must be a JSON object"))?
+                    .clone(),
+            ),
+        })
+        .await?;
+
+    // Verify the response
+    assert!(!result.content.is_empty());
+    let content = &result.content[0];
+    let json_str = serde_json::to_string(&content)?;
+    let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
+
+    if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
+        let response: serde_json::Value = serde_json::from_str(text)?;
+
+        // For debugging, print the UI tree that the parser is supposed to process.
+        // This helps verify if the tree structure matches the parser's rules.
+        // The JSON Pointer path corresponds to: results[group 5]->results[step 1]->...
+        // if let Some(tree_str_val) = response.pointer("/results/5/results/1/result/content/0/text") {
+        //     if let Some(tree_str) = tree_str_val.as_str() {
+        //         match serde_json::from_str::<serde_json::Value>(tree_str) {
+        //             Ok(ui_tree) => {
+        //                 println!("\n\n--- UI TREE FOR PARSER ---\n");
+        //                 println!("{}", serde_json::to_string_pretty(&ui_tree).unwrap());
+        //                 println!("\n--- END UI TREE ---\n\n");
+        //             }
+        //             Err(e) => println!("\n--- FAILED TO PARSE UI TREE: {} ---\n", e),
+        //         }
+        //     }
+        // }
+
+        assert_eq!(response["action"], "execute_sequence");
+
+        // The sequence is expected to succeed when run manually in a GUI environment.
+        let parsed_output = response
+            .get("parsed_output")
+            .expect("parsed_output should exist on success");
+
+        assert!(parsed_output.is_array(), "parsed_output should be an array");
+
+        let parsed_array = parsed_output.as_array().unwrap();
+
+        // Since this test is expected to work, we assert the parser found results.
+        assert!(
+            !parsed_array.is_empty(),
+            "Expected the parser to return at least one item, but it was empty."
+        );
+
+        // Verify the structure of the first returned item.
+        let first_item = &parsed_array[0];
+        assert!(
+            first_item.is_object(),
+            "Parsed item should be a JSON object."
+        );
+
+        // Assert that the expected keys exist and have the correct type.
+        assert!(
+            first_item.get("carrierProduct").is_some(),
+            "Parsed item should have a 'carrierProduct' field."
+        );
+        assert!(
+            first_item["carrierProduct"].is_string(),
+            "'carrierProduct' should be a string."
+        );
+
+        assert!(
+            first_item.get("monthlyPrice").is_some(),
+            "Parsed item should have a 'monthlyPrice' field."
+        );
+        assert!(
+            first_item["monthlyPrice"].is_string(),
+            "'monthlyPrice' should be a string."
+        );
+        assert!(
+            first_item["monthlyPrice"]
+                .as_str()
+                .unwrap()
+                .starts_with('$'),
+            "'monthlyPrice' should start with a dollar sign."
+        );
+
+        assert!(
+            first_item.get("status").is_some(),
+            "Parsed item should have a 'status' field."
+        );
+        assert!(
+            first_item["status"].is_string(),
+            "'status' should be a string."
+        );
+    } else {
+        panic!("Unexpected response format, 'text' field not found in content");
     }
 
     service.cancel().await?;

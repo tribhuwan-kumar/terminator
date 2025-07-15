@@ -27,7 +27,7 @@ async fn test_browser_tree_serialization() -> Result<(), Box<dyn std::error::Err
 
     // Re-acquire the window to prevent stale element issues after await
     let window = desktop
-        .locator(format!("name:{}", window_name).as_str())
+        .locator(format!("name:{window_name}").as_str())
         .first(Some(Duration::from_secs(5)))
         .await?;
 
@@ -37,10 +37,7 @@ async fn test_browser_tree_serialization() -> Result<(), Box<dyn std::error::Err
     let tree: SerializableUIElement = window.to_serializable_tree(max_depth);
     let json_output = serde_json::to_string_pretty(&tree)?;
     info!("Successfully serialized UI tree to JSON.");
-    println!(
-        "--- Serialized UI Tree (JSON) ---\n{}\n---------------------------------",
-        json_output
-    );
+    println!("--- Serialized UI Tree (JSON) ---\n{json_output}\n---------------------------------");
 
     // Step 4: Validate the JSON output for correctness and cleanliness.
     info!("Validating JSON output...");
@@ -63,25 +60,21 @@ async fn test_browser_tree_serialization() -> Result<(), Box<dyn std::error::Err
     let window_title = root_value["window_title"].as_str().unwrap_or_default();
     assert!(
         window_title.contains("GLO CONTENT"),
-        "Window title is incorrect: {}",
-        window_title
+        "Window title is incorrect: {window_title}"
     );
 
     // **Crucial Test**: Verify that the JSON does NOT contain empty strings for optional fields.
     assert!(
         !json_output.contains(r#""name": """#),
-        "JSON should not contain empty name fields: {}",
-        json_output
+        "JSON should not contain empty name fields: {json_output}"
     );
     assert!(
         !json_output.contains(r#""value": """#),
-        "JSON should not contain empty value fields: {}",
-        json_output
+        "JSON should not contain empty value fields: {json_output}"
     );
     assert!(
         !json_output.contains(r#""description": """#),
-        "JSON should not contain empty description fields: {}",
-        json_output
+        "JSON should not contain empty description fields: {json_output}"
     );
 
     info!("Validation successful!");

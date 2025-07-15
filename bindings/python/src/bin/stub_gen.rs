@@ -93,8 +93,8 @@ fn fix_async_functions(file_path: &Path) -> Result<()> {
                             current_return, new_return_type
                         );
                         new_line = new_line.replace(
-                            &format!("-> {}", current_return),
-                            &format!("-> {}", new_return_type),
+                            &format!("-> {current_return}"),
+                            &format!("-> {new_return_type}"),
                         );
                     } else {
                         let new_return_type = if return_type == "None" {
@@ -105,7 +105,7 @@ fn fix_async_functions(file_path: &Path) -> Result<()> {
 
                         debug!("Adding return type: {}", new_return_type);
                         new_line = new_line.trim_end_matches(':').to_string()
-                            + &format!(" -> {}:", new_return_type);
+                            + &format!(" -> {new_return_type}:");
                     }
                 }
 
