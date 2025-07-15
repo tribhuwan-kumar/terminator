@@ -4184,44 +4184,48 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_toggled(&self) -> Result<bool, AutomationError> {
-        let toggle_pattern = self.element.0.get_pattern::<patterns::UITogglePattern>();
+        // let toggle_pattern = self.element.0.get_pattern::<patterns::UITogglePattern>();
 
-        if let Ok(pattern) = toggle_pattern {
-            let state = pattern.get_toggle_state().map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to get toggle state: {e}"))
-            })?;
-            return Ok(state == uiautomation::types::ToggleState::On);
-        }
+        // if let Ok(pattern) = toggle_pattern {
+        // let state = pattern.get_toggle_state().map_err(|e| {
+        //     AutomationError::PlatformError(format!("Failed to get toggle state: {e}"))
+        // })?;
+        // return Ok(state == uiautomation::types::ToggleState::On);
+
+        let current_state = self.element.0.get_name().unwrap_or_default().contains("[");
+
+        Ok(current_state)
+        // }
 
         // Fallback: Check SelectionItemPattern as some controls might use it
-        if let Ok(selection_pattern) = self
-            .element
-            .0
-            .get_pattern::<patterns::UISelectionItemPattern>()
-        {
-            if let Ok(is_selected) = selection_pattern.is_selected() {
-                return Ok(is_selected);
-            }
-        }
+        // if let Ok(selection_pattern) = self
+        //     .element
+        //     .0
+        //     .get_pattern::<patterns::UISelectionItemPattern>()
+        // {
+        //     if let Ok(is_selected) = selection_pattern.is_selected() {
+        //         return Ok(is_selected);
+        //     }
+        // }
 
         // Fallback: Check name for keywords if no pattern is definitive
-        if let Ok(name) = self.element.0.get_name() {
-            let name_lower = name.to_lowercase();
-            if name_lower.contains("checked")
-                || name_lower.contains("selected")
-                || name_lower.contains("toggled")
-            {
-                return Ok(true);
-            }
-            if name_lower.contains("unchecked") || name_lower.contains("not selected") {
-                return Ok(false);
-            }
-        }
+        // if let Ok(name) = self.element.0.get_name() {
+        //     let name_lower = name.to_lowercase();
+        //     if name_lower.contains("checked")
+        //         || name_lower.contains("selected")
+        //         || name_lower.contains("toggled")
+        //     {
+        //         return Ok(true);
+        //     }
+        //     if name_lower.contains("unchecked") || name_lower.contains("not selected") {
+        //         return Ok(false);
+        //     }
+        // }
 
-        Err(AutomationError::UnsupportedOperation(format!(
-            "Element '{}' does not support TogglePattern or provide state information. This element is not a toggleable control. Use 'is_selected' for selection states.",
-            self.element.0.get_name().unwrap_or_default()
-        )))
+        // Err(AutomationError::UnsupportedOperation(format!(
+        //     "Element '{}' does not support TogglePattern or provide state information. This element is not a toggleable control. Use 'is_selected' for selection states.",
+        //     self.element.0.get_name().unwrap_or_default()
+        // )))
     }
 
     fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
@@ -4229,7 +4233,12 @@ impl UIElementImpl for WindowsUIElement {
         if let Ok(toggle_pattern) = self.element.0.get_pattern::<patterns::UITogglePattern>() {
             if let Ok(current_state_enum) = toggle_pattern.get_toggle_state() {
                 let current_state = current_state_enum == uiautomation::types::ToggleState::On;
-                debug!("Current state: {current_state}, desired state: {state}");
+                debug!("Current state: {current_state}, desired state: {state}, enum: {current_state_enum}");
+
+                // VERY DIRTY HACK BECAUSE TOGGLE STATE DOES NOT WORK
+                // CHECK IF THERE IS [] IN THE NAME OF THE CONTROL
+                let current_state = self.element.0.get_name().unwrap_or_default().contains("[");
+
                 if current_state != state {
                     // Only toggle if the state is different.
                     return toggle_pattern.toggle().map_err(|e| {

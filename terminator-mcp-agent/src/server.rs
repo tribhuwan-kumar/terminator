@@ -10,8 +10,8 @@ use crate::utils::{
     MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
     OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs,
     SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
-    SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
-    WaitForOutputParserArgs, ZoomArgs,
+    SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    RunJavascriptArgs, 
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -1224,24 +1224,23 @@ impl DesktopWrapper {
 
         let element_info = build_element_info(&ui_element);
 
-        let tree = self
-            .desktop
-            .get_window_tree(
-                ui_element.process_id().unwrap_or(0),
-                ui_element.name().as_deref(),
-                None,
-            )
-            .unwrap_or_default();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "navigate_browser",
             "status": "success",
             "url": args.url,
             "browser": args.browser,
             "element": element_info,
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "ui_tree": tree
-        }))?]))
+        });
+
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(false),
+            ui_element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
@@ -2970,6 +2969,15 @@ impl DesktopWrapper {
                     Some(json!({ "error": e.to_string() })),
                 )),
             },
+            "run_javascript" => {
+                match serde_json::from_value::<RunJavascriptArgs>(arguments.clone()) {
+                    Ok(args) => self.run_javascript(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for run_javascript",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            },
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),
@@ -3411,12 +3419,20 @@ impl DesktopWrapper {
         self.desktop.set_zoom(args.percentage).await.map_err(|e| {
             McpError::internal_error("Failed to set zoom", Some(json!({"reason": e.to_string()})))
         })?;
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "set_zoom",
             "status": "success",
             "percentage": args.percentage,
             "note": "Zoom level set to the specified percentage"
-        }))?]))
+        });
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(false),
+            None,
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(
@@ -3471,6 +3487,198 @@ impl DesktopWrapper {
         );
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
+
+    #[tool(
+        description = "Executes arbitrary JavaScript inside an embedded QuickJS engine. The script receives a synchronous helper `callTool(name, argsJsonString)` that can invoke any other MCP tool and return its JSON result. The final value of the script is serialized to JSON and returned as the tool output.  NOTE: This is EXPERIMENTAL and currently uses a sandboxed QuickJS runtime; only standard JavaScript plus the provided helper is available."
+    )]
+    async fn run_javascript(
+        &self,
+        Parameters(args): Parameters<RunJavascriptArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        use serde_json::json;
+
+        let engine = args.engine.clone().unwrap_or_else(|| "quickjs".to_string());
+
+        if engine == "quickjs" {
+            // ---------------- QuickJS path (existing) ----------------
+            use quick_js::{Context, JsValue};
+
+            let script_src = args.script.clone();
+            let self_clone = self.clone();
+            let rt_handle_outer = tokio::runtime::Handle::current();
+
+            let execution_result = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, McpError> {
+                // Create JS context
+                let ctx = Context::new().map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to initialise JavaScript runtime",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+
+                // console.log shim
+                ctx.add_callback("log", |msg: String| {
+                    println!("[JS] {}", msg);
+                })
+                .map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to register log callback",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+
+                // Helper to invoke other tools synchronously
+                let handle_clone = rt_handle_outer.clone();
+                ctx.add_callback("callTool", move |tool: String, args_json_str: String| -> String {
+                    let args_val: serde_json::Value = serde_json::from_str(&args_json_str).unwrap_or(json!({}));
+                    let res = handle_clone.block_on(async {
+                        self_clone.dispatch_tool(&tool, &args_val).await
+                    });
+                    match res {
+                        Ok(call_result) => serde_json::to_string(&call_result).unwrap_or_else(|_| "{}".to_string()),
+                        Err(e) => json!({"error": e.to_string()}).to_string(),
+                    }
+                }).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to register callTool callback",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+
+                // Inject Terminator helper library
+                ctx.eval(crate::terminator_js::TERMINATOR_JS).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to load terminator.js helpers",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+
+                let js_value = ctx.eval(&script_src).map_err(|e| {
+                    McpError::internal_error(
+                        "JavaScript evaluation error",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+
+                Ok(js_to_json(js_value))
+            }).await??;
+
+            return Ok(CallToolResult::success(vec![Content::json(json!({
+                "action": "run_javascript",
+                "status": "success",
+                "engine": "quickjs",
+                "result": execution_result
+            }))?]));
+        }
+
+        // ---------------- External engine path ----------------
+        use std::path::PathBuf;
+        use tempfile::tempdir;
+        use tokio::process::Command;
+
+        // Prepare temp directory and files
+        let dir = tempdir().map_err(|e| McpError::internal_error("tempdir failed", Some(json!({"error": e.to_string()}))))?;
+        let user_script_path: PathBuf = dir.path().join("user_script.js");
+        std::fs::write(&user_script_path, &args.script).map_err(|e| McpError::internal_error("write script failed", Some(json!({"error": e.to_string()}))))?;
+
+        // Resolve binding directory
+        let default_binding_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("bindings")
+            .join("nodejs");
+
+        // Allow env override when the binary is installed elsewhere
+        let binding_dir: PathBuf = std::env::var("TERMINATOR_BINDING_DIR")
+            .ok()
+            .map(PathBuf::from)
+            .filter(|p| p.exists())
+            .unwrap_or(default_binding_dir);
+
+        // Validation: ensure at least one native .node file exists for current platform
+        let binding_built = std::fs::read_dir(&binding_dir)
+            .map_err(|e| McpError::internal_error("Failed to read binding dir", Some(json!({"dir": binding_dir, "error": e.to_string()}))))?
+            .any(|entry| match entry { Ok(e)=> e.path().extension().map(|ext| ext=="node").unwrap_or(false), Err(_)=> false });
+
+        if !binding_built {
+            return Err(McpError::internal_error(
+                "Terminator native Node bindings not built for this platform. Run `npm run build` in bindings/nodejs first.",
+                Some(json!({"binding_dir": binding_dir}))));
+        }
+
+        // Wrapper to load binding with fallbacks
+        let wrapper_code = format!(
+            r#"const fs=require('fs');
+const path=require('path');
+
+function tryRequire(mod){try{return require(mod);}catch(e){return null;}}
+
+const candidates=[
+  process.env.TERMINATOR_BINDING_PATH,
+  path.join('{binding}', 'index.js'),
+  'terminator',
+  'terminator.js',
+].filter(Boolean);
+
+let loaded=null;
+for(const c of candidates){loaded=tryRequire(c);if(loaded)break;}
+
+if(!loaded){
+  console.error('Could not load terminator native binding. Tried:'+candidates.join(','));
+  process.exit(1);
+}
+
+global.terminator=loaded;
+
+// Execute user script
+require(process.argv[2]);
+"#,
+            binding=binding_dir.display()
+        );
+        let wrapper_path = dir.path().join("wrapper.js");
+        std::fs::write(&wrapper_path, wrapper_code).map_err(|e| McpError::internal_error("write wrapper failed", Some(json!({"error": e.to_string()}))))?;
+
+        // Build command
+        let mut cmd = match engine.as_str() {
+            "node" => {
+                let mut c = Command::new("node");
+                c.arg(&wrapper_path).arg(&user_script_path);
+                c
+            },
+            "bun" => {
+                let mut c = Command::new("bun");
+                c.arg(&wrapper_path).arg(&user_script_path);
+                c
+            },
+            "deno" => {
+                let mut c = Command::new("deno");
+                c.arg("run").arg("-A").arg(&wrapper_path).arg(&user_script_path);
+                c
+            },
+            _ => {
+                return Err(McpError::invalid_params("Unsupported engine", Some(json!({"engine": engine}))));
+            }
+        };
+
+        // Ensure the binding directory is discoverable by Node's module resolver
+        cmd.env("NODE_PATH", &binding_dir);
+
+        let output = cmd.output().await.map_err(|e| McpError::internal_error("Failed to execute engine", Some(json!({"error": e.to_string(), "engine": engine}))))?;
+
+        let exit_code = output.status.code().unwrap_or(-1);
+        let stdout_str = String::from_utf8_lossy(&output.stdout);
+        let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+        let result_json = json!({
+            "action": "run_javascript",
+            "status": if exit_code==0 {"success"} else {"error"},
+            "engine": engine,
+            "exit_code": exit_code,
+            "stdout": stdout_str,
+            "stderr": stderr_str,
+        });
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?] ))
+    }
 }
 
 #[tool_handler]
@@ -3484,6 +3692,22 @@ impl ServerHandler for DesktopWrapper {
                 .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(crate::prompt::get_server_instructions().to_string()),
+        }
+    }
+}
+
+// ... inside run_javascript spawn_blocking closure near top after ctx creation ...
+fn js_to_json(value: JsValue) -> serde_json::Value {
+    match value {
+        JsValue::Null | JsValue::Undefined => serde_json::Value::Null,
+        JsValue::Bool(b) => json!(b),
+        JsValue::Int(i) => json!(i),
+        JsValue::Float(f) => json!(f),
+        JsValue::String(s) => json!(s),
+        JsValue::Array(arr) => serde_json::Value::Array(arr.into_iter().map(js_to_json).collect()),
+        JsValue::Object(obj) => {
+            let map = obj.into_iter().map(|(k,v)| (k, js_to_json(v))).collect();
+            serde_json::Value::Object(map)
         }
     }
 }
