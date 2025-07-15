@@ -94,3 +94,43 @@ Always use terminator-mcp-agent during the development process to inspect differ
 - **Python**: PyO3, snake_case, type stubs, docstrings
 - **Node.js**: napi-rs, camelCase, TypeScript defs, JSDoc
 
+## String Formatting (`format!`) Best Practices
+
+Follow these rules to keep your string formatting efficient, readable, and free of Clippy warnings:
+
+- 🔹 **Prefer cheap alternatives**
+  - Simple conversion of a single value: `value.to_string()` or `String::from(value)` is clearer and avoids the overhead of the formatting machinery.
+  - Static strings: use `"literal".to_owned()` or `String::from("literal")` instead of `format!("literal")`.
+
+- 🔹 **Capture identifiers directly (Rust ≥ 1.58)**
+  ```rust
+  // ✅ Good – implicit capture
+  format!("{count} files processed in {elapsed:?}");
+
+  // ❌ Avoid – explicit positional args are noisier
+  format!("{} files processed in {:?}", count, elapsed);
+  ```
+
+- 🔹 **Avoid `format!` in tight loops**
+  - Re-use a `String` buffer with `write!` / `push_str` when building large strings incrementally.
+  - Consider `String::with_capacity(..)` to pre-allocate when the final length is known.
+
+- 🔹 **Watch for common Clippy lints**
+  | Lint | Remedy |
+  |------|--------|
+  | `clippy::useless_format` | Replace `format!("{}", x)` with `x.to_string()` |
+  | `clippy::format_push_string` | Use `push_str` instead of `s.push(format!(..))` |
+  | `clippy::uninlined_format_args` | Enable the `format_args_capture` edition feature or inline the arguments |
+  | `clippy::format_collect` | Use `Iterator::collect::<String>()` or a buffer |
+
+- 🔹 **No nested `format!` calls**
+  ```rust
+  // ✅ Good
+  let msg = format!("User {user} logged in");
+
+  // ❌ Bad – allocates twice
+  let msg = format!("{}", format!("User {} logged in", user));
+  ```
+
+Adhering to these guidelines ensures `cargo clippy -- -D warnings` remains green and keeps runtime allocations to a minimum.
+
