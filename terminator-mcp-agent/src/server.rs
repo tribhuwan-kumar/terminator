@@ -1224,24 +1224,23 @@ impl DesktopWrapper {
 
         let element_info = build_element_info(&ui_element);
 
-        let tree = self
-            .desktop
-            .get_window_tree(
-                ui_element.process_id().unwrap_or(0),
-                ui_element.name().as_deref(),
-                None,
-            )
-            .unwrap_or_default();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "navigate_browser",
             "status": "success",
             "url": args.url,
             "browser": args.browser,
             "element": element_info,
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "ui_tree": tree
-        }))?]))
+        });
+
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(false),
+            ui_element.process_id().ok(),
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
@@ -3411,12 +3410,20 @@ impl DesktopWrapper {
         self.desktop.set_zoom(args.percentage).await.map_err(|e| {
             McpError::internal_error("Failed to set zoom", Some(json!({"reason": e.to_string()})))
         })?;
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        let mut result_json = json!({
             "action": "set_zoom",
             "status": "success",
             "percentage": args.percentage,
             "note": "Zoom level set to the specified percentage"
-        }))?]))
+        });
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(false),
+            None,
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(

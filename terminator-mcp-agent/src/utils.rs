@@ -283,6 +283,8 @@ pub struct NavigateBrowserArgs {
     pub url: String,
     #[schemars(description = "Optional browser name")]
     pub browser: Option<String>,
+    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -595,8 +597,10 @@ pub struct ZoomArgs {
 
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 pub struct SetZoomArgs {
-    /// The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)
+    #[schemars(description = "The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)")]
     pub percentage: u32,
+    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
+    pub include_tree: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -621,7 +625,7 @@ pub fn validate_inputs(inputs: &serde_json::Value) -> Result<(), ValidationError
         return Err(ValidationError::new(
             "inputs",
             "object",
-            &format!("{:?}", inputs),
+            &format!("{inputs:?}"),
         ));
     }
     Ok(())
@@ -634,9 +638,9 @@ pub fn validate_selectors(selectors: &serde_json::Value) -> Result<(), Validatio
             for (key, value) in obj {
                 if !value.is_string() {
                     return Err(ValidationError::new(
-                        &format!("selectors.{}", key),
+                        &format!("selectors.{key}"),
                         "string",
-                        &match value {
+                        match value {
                             serde_json::Value::Number(_) => "number",
                             serde_json::Value::Bool(_) => "boolean",
                             serde_json::Value::Array(_) => "array",
@@ -663,7 +667,7 @@ pub fn validate_selectors(selectors: &serde_json::Value) -> Result<(), Validatio
         _ => Err(ValidationError::new(
             "selectors",
             "object or JSON string",
-            &format!("{:?}", selectors),
+            &format!("{selectors:?}"),
         )),
     }
 }
@@ -671,7 +675,7 @@ pub fn validate_selectors(selectors: &serde_json::Value) -> Result<(), Validatio
 pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), ValidationError> {
     let obj = parser
         .as_object()
-        .ok_or_else(|| ValidationError::new("output_parser", "object", &format!("{:?}", parser)))?;
+        .ok_or_else(|| ValidationError::new("output_parser", "object", &format!("{parser:?}")))?;
 
     // Check required fields
     if !obj.contains_key("uiTreeJsonPath") {
