@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use rmcp::handler::server::tool::Parameters;
+use std::path::Path;
 use terminator_mcp_agent::server::DesktopWrapper;
 use terminator_mcp_agent::utils::{init_logging, ExecuteSequenceArgs};
 use tracing::{error, info};
@@ -9,11 +10,21 @@ use tracing::{error, info};
 #[command(
     author,
     version,
-    about = "Execute Terminator MCP workflow sequences from GitHub gists or local JSON files"
+    about = "Execute Terminator MCP workflow sequences from GitHub gists or local files",
+    long_about = "Execute Terminator MCP workflow sequences from various sources:
+  • GitHub gist URLs (https://gist.github.com/...)
+  • Raw gist URLs (https://gist.githubusercontent.com/...)  
+  • Local JSON/YAML files (relative or absolute paths)
+
+Examples:
+  gist_executor workflow.json
+  gist_executor ./workflows/my_workflow.yaml
+  gist_executor /path/to/workflow.json
+  gist_executor https://gist.github.com/user/abc123"
 )]
 struct Args {
-    /// Input source - can be a GitHub gist URL, raw gist URL, or local file path
-    #[arg(help = "GitHub gist URL, raw gist URL, or path to local JSON file")]
+    /// Input source - can be a GitHub gist URL, raw gist URL, or local file path (JSON/YAML)
+    #[arg(help = "GitHub gist URL, raw gist URL, or path to local JSON/YAML file")]
     input: String,
 
     /// Input type
@@ -45,7 +56,7 @@ enum InputType {
     Gist,
     /// Raw gist URL (https://gist.githubusercontent.com/...)
     Raw,
-    /// Local JSON file path
+    /// Local JSON/YAML file path
     File,
 }
 
@@ -53,12 +64,11 @@ enum InputType {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    init_logging()?;
-
     if args.verbose {
         std::env::set_var("RUST_LOG", "debug");
-        tracing_subscriber::fmt::init();
     }
+
+    init_logging()?;
 
     info!("Starting Terminator MCP Gist Executor");
     info!("Input: {}", args.input);
@@ -88,7 +98,10 @@ async fn main() -> Result<()> {
     let workflow: ExecuteSequenceArgs = parse_execute_sequence(&json_content)
         .context("Failed to parse input content as a workflow")?;
 
-    info!("Successfully parsed workflow with {} steps", workflow.steps.len());
+    info!(
+        "Successfully parsed workflow with {} steps",
+        workflow.steps.len()
+    );
 
     if args.dry_run {
         info!("Dry run mode - validating workflow structure");
@@ -96,9 +109,21 @@ async fn main() -> Result<()> {
         println!("✅ Workflow validation successful!");
         println!("📊 Workflow Summary:");
         println!("   • Steps: {}", workflow.steps.len());
-        println!("   • Variables: {}", workflow.variables.as_ref().map_or(0, |v| v.len()));
-        println!("   • Selectors: {}", workflow.selectors.as_ref().map_or(0, |v| v.as_object().map_or(0, |o| o.len())));
-        println!("   • Stop on error: {}", workflow.stop_on_error.unwrap_or(true));
+        println!(
+            "   • Variables: {}",
+            workflow.variables.as_ref().map_or(0, |v| v.len())
+        );
+        println!(
+            "   • Selectors: {}",
+            workflow
+                .selectors
+                .as_ref()
+                .map_or(0, |v| v.as_object().map_or(0, |o| o.len()))
+        );
+        println!(
+            "   • Stop on error: {}",
+            workflow.stop_on_error.unwrap_or(true)
+        );
         return Ok(());
     }
 
@@ -117,11 +142,14 @@ async fn main() -> Result<()> {
 
     // Execute the workflow
     info!("Executing workflow sequence...");
-    match desktop_wrapper.execute_sequence(Parameters(modified_workflow)).await {
+    match desktop_wrapper
+        .execute_sequence(Parameters(modified_workflow))
+        .await
+    {
         Ok(result) => {
             info!("Workflow execution completed successfully");
             println!("✅ Execution completed!");
-            
+
             // Extract and display results
             if args.verbose {
                 println!("📋 Detailed Results:");
@@ -150,6 +178,7 @@ fn determine_input_type(input: &str, specified_type: InputType) -> InputType {
             } else if input.starts_with("http://") || input.starts_with("https://") {
                 InputType::Raw
             } else {
+                // Default to file for any local path (relative or absolute)
                 InputType::File
             }
         }
@@ -160,13 +189,16 @@ fn determine_input_type(input: &str, specified_type: InputType) -> InputType {
 fn convert_gist_to_raw_url(gist_url: &str) -> Result<String> {
     // Convert GitHub gist URL to raw URL
     // Example: https://gist.github.com/username/gist_id -> https://gist.githubusercontent.com/username/gist_id/raw
-    
+
     if !gist_url.starts_with("https://gist.github.com/") {
         return Err(anyhow::anyhow!("Invalid GitHub gist URL format"));
     }
-    
-    let raw_url = gist_url.replace("https://gist.github.com/", "https://gist.githubusercontent.com/");
-    
+
+    let raw_url = gist_url.replace(
+        "https://gist.github.com/",
+        "https://gist.githubusercontent.com/",
+    );
+
     // If URL doesn't end with /raw, add it
     if raw_url.ends_with("/raw") {
         Ok(raw_url)
@@ -176,9 +208,36 @@ fn convert_gist_to_raw_url(gist_url: &str) -> Result<String> {
 }
 
 async fn read_local_file(file_path: &str) -> Result<String> {
-    tokio::fs::read_to_string(file_path)
+    // Validate file path and provide better error messages
+    let path = Path::new(file_path);
+
+    if !path.exists() {
+        return Err(anyhow::anyhow!(
+            "File does not exist: {} (resolved to: {})",
+            file_path,
+            path.canonicalize()
+                .unwrap_or_else(|_| path.to_path_buf())
+                .display()
+        ));
+    }
+
+    if !path.is_file() {
+        return Err(anyhow::anyhow!("Path is not a file: {}", path.display()));
+    }
+
+    // Check file extension for better error reporting
+    if let Some(extension) = path.extension() {
+        let ext = extension.to_string_lossy().to_lowercase();
+        if !["json", "yaml", "yml"].contains(&ext.as_str()) {
+            println!("⚠️  Warning: File extension '{}' is not .json, .yaml, or .yml. Attempting to parse anyway...", ext);
+        }
+    }
+
+    info!("Reading local file: {} ({})", file_path, path.display());
+
+    tokio::fs::read_to_string(path)
         .await
-        .with_context(|| format!("Failed to read file: {}", file_path))
+        .with_context(|| format!("Failed to read file: {} ({})", file_path, path.display()))
 }
 
 async fn fetch_remote_content(url: &str) -> Result<String> {
@@ -212,12 +271,14 @@ fn validate_workflow(workflow: &ExecuteSequenceArgs) -> Result<()> {
     for (i, step) in workflow.steps.iter().enumerate() {
         if step.tool_name.is_none() && step.group_name.is_none() {
             return Err(anyhow::anyhow!(
-                "Step {} must have either tool_name or group_name", i
+                "Step {} must have either tool_name or group_name",
+                i
             ));
         }
         if step.tool_name.is_some() && step.group_name.is_some() {
             return Err(anyhow::anyhow!(
-                "Step {} cannot have both tool_name and group_name", i
+                "Step {} cannot have both tool_name and group_name",
+                i
             ));
         }
     }
@@ -236,7 +297,7 @@ fn validate_workflow(workflow: &ExecuteSequenceArgs) -> Result<()> {
 
     info!("Workflow validation passed");
     Ok(())
-} 
+}
 
 /// Parse the input content (JSON or YAML) into an `ExecuteSequenceArgs` workflow.
 ///
@@ -289,4 +350,4 @@ fn extract_from_wrapper(value: &serde_json::Value) -> Result<Option<ExecuteSeque
         }
     }
     Ok(None)
-} 
+}

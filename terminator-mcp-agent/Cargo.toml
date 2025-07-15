@@ -39,14 +39,13 @@ terminator-workflow-recorder = { path = "../terminator-workflow-recorder" }
 jsonpath_lib = "0.3.0"
 regex = { workspace = true }
 
-quick-js = "0.4"
+boa_engine = "0.20.0"
 tempfile = "3"
 
 reqwest = { version = "0.12.5", features = ["json"] }
 
 # YAML parsing support
 serde_yaml = "0.9"
-
 
 [dev-dependencies]
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d61ebd6e8385cbc4aa105d4e25774fc1a59c", features = [
