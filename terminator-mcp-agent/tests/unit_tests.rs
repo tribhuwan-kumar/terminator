@@ -121,6 +121,7 @@ fn test_complex_arguments_preservation() {
         arguments: complex_args.clone(),
         continue_on_error: None,
         delay_ms: None,
+        id: None,
     };
 
     let serialized = serde_json::to_value(&tool_call).unwrap();

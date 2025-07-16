@@ -97,7 +97,8 @@ pub enum ConditionOperator {
 pub fn run_output_parser(parser_def_val: &Value, tool_output: &Value) -> Result<Option<Value>> {
     let parser_def: OutputParserDefinition = serde_json::from_value(parser_def_val.clone())?;
 
-    let parsed_tree = find_ui_tree_in_results(tool_output, parser_def.ui_tree_source_step_id.as_deref())?;
+    let parsed_tree =
+        find_ui_tree_in_results(tool_output, parser_def.ui_tree_source_step_id.as_deref())?;
 
     match parsed_tree {
         Some(tree) => {
@@ -125,30 +126,33 @@ fn find_ui_tree_in_results(tool_output: &Value, step_id: Option<&str>) -> Result
     if let Some(target_step_id) = step_id {
         if let Some(results) = tool_output.get("results") {
             if let Some(results_array) = results.as_array() {
-                for result in results_array {
-                    // Check if this result has a matching step ID
-                    if let Some(result_step_id) = result.get("step_id").and_then(|v| v.as_str()) {
-                        if result_step_id == target_step_id {
-                            // Found the target step, look for UI tree in it
-                            if let Some(ui_tree) = result.get("ui_tree") {
-                                return Ok(Some(ui_tree.clone()));
-                            }
-                            if let Some(result_obj) = result.get("result") {
-                                if let Some(ui_tree) = result_obj.get("ui_tree") {
-                                    return Ok(Some(ui_tree.clone()));
+                // Recursive function to search through results and group results
+                fn search_for_step_id(results: &[Value], target_step_id: &str) -> Option<Value> {
+                    for result in results {
+                        // Check if this result has a matching step ID
+                        if let Some(result_step_id) = result.get("step_id").and_then(|v| v.as_str()) {
+                            if result_step_id == target_step_id {
+                                // Found the target step, look for UI tree in it
+                                if let Some(ui_tree) = result.get("ui_tree") {
+                                    return Some(ui_tree.clone());
                                 }
-                                // Check for ui_tree in result.result.content[].text (parsed JSON)
-                                if let Some(content) = result_obj.get("content") {
-                                    if let Some(content_array) = content.as_array() {
-                                        for content_item in content_array {
-                                            if let Some(text) = content_item.get("text") {
-                                                if let Some(text_str) = text.as_str() {
-                                                    // Try to parse the text as JSON
-                                                    if let Ok(parsed_json) =
-                                                        serde_json::from_str::<Value>(text_str)
-                                                    {
-                                                        if let Some(ui_tree) = parsed_json.get("ui_tree") {
-                                                            return Ok(Some(ui_tree.clone()));
+                                if let Some(result_obj) = result.get("result") {
+                                    if let Some(ui_tree) = result_obj.get("ui_tree") {
+                                        return Some(ui_tree.clone());
+                                    }
+                                    // Check for ui_tree in result.result.content[].text (parsed JSON)
+                                    if let Some(content) = result_obj.get("content") {
+                                        if let Some(content_array) = content.as_array() {
+                                            for content_item in content_array {
+                                                if let Some(text) = content_item.get("text") {
+                                                    if let Some(text_str) = text.as_str() {
+                                                        // Try to parse the text as JSON
+                                                        if let Ok(parsed_json) =
+                                                            serde_json::from_str::<Value>(text_str)
+                                                        {
+                                                            if let Some(ui_tree) = parsed_json.get("ui_tree") {
+                                                                return Some(ui_tree.clone());
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -156,18 +160,36 @@ fn find_ui_tree_in_results(tool_output: &Value, step_id: Option<&str>) -> Result
                                         }
                                     }
                                 }
+                                // If we found the step but no UI tree, return None
+                                return None;
                             }
-                            // If we found the step but no UI tree, return None
-                            return Ok(None);
+                        }
+                        
+                        // If this is a group result, search recursively in its results
+                        if let Some(group_results) = result.get("results") {
+                            if let Some(group_results_array) = group_results.as_array() {
+                                if let Some(found) = search_for_step_id(group_results_array, target_step_id) {
+                                    return Some(found);
+                                }
+                            }
                         }
                     }
+                    None
                 }
+                
+                if let Some(ui_tree) = search_for_step_id(results_array, target_step_id) {
+                    return Ok(Some(ui_tree));
+                }
+                
                 // Step ID was specified but not found
                 anyhow::bail!("Step with ID '{}' not found in results", target_step_id);
             }
         }
         // Step ID was specified but no results array found
-        anyhow::bail!("Step ID '{}' specified but no results array found", target_step_id);
+        anyhow::bail!(
+            "Step ID '{}' specified but no results array found",
+            target_step_id
+        );
     }
 
     // Strategy 1: Check if there's a direct ui_tree field
@@ -326,7 +348,8 @@ fn extract_fields_from_container(
                 }
             }
         } else if let Some(from_self) = &extractor.from_self {
-            if let Some(value) = get_property_value(container, &from_self.extract_property).cloned() {
+            if let Some(value) = get_property_value(container, &from_self.extract_property).cloned()
+            {
                 extracted_object.insert(field_name.clone(), value);
             }
         }

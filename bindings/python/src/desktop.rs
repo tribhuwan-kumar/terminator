@@ -529,10 +529,8 @@ impl Desktop {
                 .get_all_applications_tree()
                 .await
                 .map_err(automation_error_to_pyerr)?;
-            let py_result: Vec<crate::types::UINode> = result
-                .into_iter()
-                .map(crate::types::UINode::from)
-                .collect();
+            let py_result: Vec<crate::types::UINode> =
+                result.into_iter().map(crate::types::UINode::from).collect();
             Ok(py_result)
         })
     }
@@ -557,10 +555,8 @@ impl Desktop {
                 .windows_for_application(&name)
                 .await
                 .map_err(automation_error_to_pyerr)?;
-            let py_result: Vec<UIElement> = result
-                .into_iter()
-                .map(|e| UIElement { inner: e })
-                .collect();
+            let py_result: Vec<UIElement> =
+                result.into_iter().map(|e| UIElement { inner: e }).collect();
             Ok(py_result)
         })
     }

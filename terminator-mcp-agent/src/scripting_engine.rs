@@ -533,7 +533,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                 runtime, action, stderr
             );
             Err(McpError::internal_error(
-                format!("Failed to {} terminator.js", action),
+                format!("Failed to {action} terminator.js"),
                 Some(json!({"error": stderr.to_string()})),
             ))
         }
