@@ -183,7 +183,8 @@ jobs:
                 echo "Found .node file: $node_file"
                 
                 # Copy the entire directory structure from artifact to preserve platform packages
-                rsync -av "$artifact_dir/" bindings/nodejs/ --include="*/" --include="*.node" --exclude="*"
+                # Target should be npm/ subdirectory where platform packages are located
+                rsync -av "$artifact_dir/" bindings/nodejs/npm/ --include="*/" --include="*.node" --exclude="*"
               done
             fi
           done
