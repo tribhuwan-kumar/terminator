@@ -1929,6 +1929,9 @@ impl UIElementImpl for LinuxUIElement {
             enabled: self.is_enabled().ok(),
             bounds: self.bounds().ok(),
             is_toggled: None,
+            is_selected: None,
+            child_count: None,
+            index_in_parent: None,
             properties,
         }
     }
