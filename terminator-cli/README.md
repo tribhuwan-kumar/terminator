@@ -95,6 +95,34 @@ arguments:
           extract_property: name
 ```
 
+**JavaScript execution in workflows**:
+```yaml
+tool_name: execute_sequence
+arguments:
+  steps:
+    - tool_name: run_javascript
+      arguments:
+        engine: "nodejs"
+        script: |
+          // Access desktop automation APIs
+          const elements = await desktop.locator('role:button').all();
+          log(`Found ${elements.length} buttons`);
+          
+          // Interact with UI elements
+          for (const element of elements) {
+            const name = await element.name();
+            if (name.includes('Submit')) {
+              await element.click();
+              break;
+            }
+          }
+          
+          return {
+            buttons_found: elements.length,
+            action: 'clicked_submit'
+          };
+```
+
 ### MCP Tool Execution
 
 Execute individual MCP tools directly:
@@ -200,6 +228,88 @@ terminator mcp run workflow.yml --timeout 30000
 terminator mcp run workflow.yml --verbose
 ```
 
+### JavaScript Execution in Workflows
+
+The CLI supports executing JavaScript code within workflows using the `run_javascript` tool, providing access to desktop automation APIs:
+
+**Available Engines:**
+- `nodejs` - Full Node.js runtime with desktop APIs
+- `quickjs` - Lightweight JavaScript engine (default)
+
+**Desktop APIs Available:**
+```javascript
+// Element discovery
+const elements = await desktop.locator('role:button|name:Submit').all();
+const element = await desktop.locator('#button-id').first();
+
+// Element interaction
+await element.click();
+await element.type('Hello World');
+await element.setToggled(true);
+
+// Property access
+const name = await element.name();
+const bounds = await element.bounds();
+const isEnabled = await element.enabled();
+
+// Utilities
+log('Debug message');  // Logging
+await sleep(1000);     // Delay in milliseconds
+```
+
+**Example Use Cases:**
+```yaml
+# Conditional logic based on UI state
+- tool_name: run_javascript
+  arguments:
+    engine: "nodejs"
+    script: |
+      const submitButton = await desktop.locator('role:button|name:Submit').first();
+      const isEnabled = await submitButton.enabled();
+      
+      if (isEnabled) {
+        await submitButton.click();
+        return { action: 'submitted' };
+      } else {
+        log('Submit button is disabled, checking form validation...');
+        return { action: 'validation_needed' };
+      }
+
+# Bulk operations on multiple elements
+- tool_name: run_javascript
+  arguments:
+    script: |
+      const checkboxes = await desktop.locator('role:checkbox').all();
+      let enabledCount = 0;
+      
+      for (const checkbox of checkboxes) {
+        await checkbox.setToggled(true);
+        enabledCount++;
+        await sleep(50); // Small delay between operations
+      }
+      
+      return { total_enabled: enabledCount };
+
+# Dynamic element discovery and interaction
+- tool_name: run_javascript
+  arguments:
+    script: |
+      // Find all buttons containing specific text
+      const buttons = await desktop.locator('role:button').all();
+      const targets = [];
+      
+      for (const button of buttons) {
+        const name = await button.name();
+        if (name.toLowerCase().includes('download')) {
+          targets.push(name);
+          await button.click();
+          await sleep(1000);
+        }
+      }
+      
+      return { downloaded_items: targets };
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -242,7 +352,17 @@ terminator mcp run workflow.yml --verbose
 terminator mcp run workflow.yml --dry-run
 ```
 
+### JavaScript Execution Issues
+
+```bash
+# Test JavaScript execution capability
+terminator mcp exec run_javascript '{"script": "return {test: true};"}'
+
+# Use nodejs engine for full APIs
+terminator mcp exec run_javascript '{"engine": "nodejs", "script": "const elements = await desktop.locator(\"role:button\").all(); return {count: elements.length};"}'
+
+# Debug JavaScript errors with verbose logging
+terminator mcp run workflow.yml --verbose
+```
+
 For more examples and advanced usage, see the [Terminator MCP Agent documentation](../terminator-mcp-agent/README.md).
-
-
-

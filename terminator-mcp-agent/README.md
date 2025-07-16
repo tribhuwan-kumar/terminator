@@ -2,9 +2,9 @@
 
 <!-- BADGES:START -->
 
-[<img alt="Install in VS Code" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D)
-[<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D)
-[<img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20Server&color=22272e">](https://cursor.com/install-mcp?name=terminator-mcp-agent&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50Il19)
+[<img alt="Install in VS Code" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Server&color=0098FF">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2540latest%2522%255D%257D%257D)
+[<img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Server&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2540latest%2522%255D%257D%257D)
+[<img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20Server&color=22272e">](https://cursor.com/install-mcp?name=terminator-mcp-agent&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50QGxhdGVzdCJdfQ%3D%3D)
 
 <!-- BADGES:END -->
 
@@ -20,7 +20,7 @@ Alternatively, you can install and configure the agent from your command line.
 Run the following command and select your MCP client from the list:
 
 ```sh
-npx -y terminator-mcp-agent --add-to-app
+npx -y terminator-mcp-agent@latest --add-to-app
 ```
 
 **2. Manual Configuration**
@@ -31,11 +31,93 @@ If you prefer, you can add the following to your MCP client's settings file:
 	"mcpServers": {
 		"terminator-mcp-agent": {
 			"command": "npx",
-			"args": ["-y", "terminator-mcp-agent"]
+			"args": ["-y", "terminator-mcp-agent@latest"]
 		}
 	}
 }
 ```
+
+### Command Line Interface (CLI) Execution
+
+For automation workflows and CI/CD pipelines, you can execute workflows directly from the command line using the [Terminator CLI](../terminator-cli/README.md):
+
+**Quick Start:**
+```bash
+# Execute a workflow file
+terminator mcp run workflow.yml
+
+# With verbose logging
+terminator mcp run workflow.yml --verbose
+
+# Dry run (validate without executing)
+terminator mcp run workflow.yml --dry-run
+
+# Use specific MCP server version
+terminator mcp run workflow.yml --command "npx -y terminator-mcp-agent@latest"
+```
+
+**Workflow File Formats:**
+
+Direct workflow format (`workflow.yml`):
+```yaml
+steps:
+  - tool_name: navigate_browser
+    arguments:
+      url: "https://example.com"
+  - tool_name: click_element
+    arguments:
+      selector: "role:Button|name:Submit"
+stop_on_error: true
+include_detailed_results: true
+```
+
+Tool call wrapper format (`workflow.json`):
+```json
+{
+  "tool_name": "execute_sequence",
+  "arguments": {
+    "steps": [
+      {
+        "tool_name": "navigate_browser",
+        "arguments": {
+          "url": "https://example.com"
+        }
+      }
+    ]
+  }
+}
+```
+
+**JavaScript Execution in Workflows:**
+
+Execute custom JavaScript code with access to desktop automation APIs:
+
+```yaml
+steps:
+  - tool_name: run_javascript
+    arguments:
+      engine: "nodejs"
+      script: |
+        // Access desktop automation APIs
+        const elements = await desktop.locator('role:button').all();
+        log(`Found ${elements.length} buttons`);
+        
+        // Conditional logic and bulk operations
+        for (const element of elements) {
+          const name = await element.name();
+          if (name.includes('Submit')) {
+            await element.click();
+            break;
+          }
+        }
+        
+        return {
+          buttons_found: elements.length,
+          action: 'clicked_submit'
+        };
+```
+
+For complete CLI documentation, see [Terminator CLI README](../terminator-cli/README.md).
 
 ### Core Workflows: From Interaction to Structured Data
 
@@ -114,6 +196,113 @@ Now, when your MCP client runs `terminator-mcp-agent`, it will use your local bu
 - Make sure you have Node.js installed (v16+ recommended).
 - For VS Code/Insiders, ensure the CLI (`code` or `code-insiders`) is available in your PATH.
 - If you encounter issues, try running with elevated permissions.
+
+### Version Compatibility Issues
+
+**Problem**: "missing field `items`" or schema mismatch errors
+
+**Solution**: Ensure you're using the latest MCP server version:
+```bash
+# Force latest version in CLI
+terminator mcp run workflow.yml --command "npx -y terminator-mcp-agent@latest"
+
+# Update MCP client configuration to use @latest
+{
+  "mcpServers": {
+    "terminator-mcp-agent": {
+      "command": "npx",
+      "args": ["-y", "terminator-mcp-agent@latest"]
+    }
+  }
+}
+
+# Clear npm cache if needed
+npm cache clean --force
+```
+
+### CLI Integration Issues
+
+**Problem**: CLI commands not working or connection errors
+
+**Solution**: Test MCP connectivity step by step:
+```bash
+# Test basic connectivity
+terminator mcp exec get_applications
+
+# Test with verbose logging
+terminator mcp run workflow.yml --verbose
+
+# Test with dry run first
+terminator mcp run workflow.yml --dry-run
+
+# Use HTTP connection for debugging
+terminator mcp run workflow.yml --url http://localhost:3000/mcp
+```
+
+### JavaScript Execution Issues
+
+**Problem**: JavaScript code fails or can't access desktop APIs
+
+**Solution**: Verify JavaScript execution and API access:
+```bash
+# Test basic JavaScript execution
+terminator mcp exec run_javascript '{"script": "return {test: true};"}'
+
+# Test desktop API access with nodejs engine
+terminator mcp exec run_javascript '{"engine": "nodejs", "script": "const elements = await desktop.locator(\"role:button\").all(); return {count: elements.length};"}'
+
+# Debug with verbose logging
+terminator mcp run workflow.yml --verbose
+```
+
+### Workflow File Issues
+
+**Problem**: Workflow parsing errors or unexpected behavior
+
+**Solution**: Validate workflow structure:
+```bash
+# Validate workflow syntax
+terminator mcp run workflow.yml --dry-run
+
+# Test with minimal workflow first
+echo 'steps: [{tool_name: get_applications}]' > test.yml
+terminator mcp run test.yml
+
+# Check both YAML and JSON formats work
+terminator mcp run workflow.yml   # YAML
+terminator mcp run workflow.json  # JSON
+```
+
+### Platform-Specific Issues
+
+**Windows**:
+- Ensure Windows UI Automation APIs are available
+- Run with administrator privileges if accessibility features are restricted
+- Check Windows Defender/antivirus isn't blocking automation
+
+**macOS**:
+- Grant accessibility permissions in System Preferences > Security & Privacy
+- Ensure the terminal/IDE has accessibility access
+- Check macOS version compatibility (10.14+ recommended)
+
+**Linux**:
+- Ensure AT-SPI (assistive technology) is enabled
+- Install required packages: `sudo apt-get install at-spi2-core`
+- Check desktop environment compatibility (GNOME, KDE, XFCE supported)
+
+### Performance Optimization
+
+**Large UI Trees**:
+- Use specific selectors instead of broad element searches
+- Implement delays between rapid operations
+- Consider using `include_tree: false` for intermediate steps
+
+**JavaScript Performance**:
+- Use `quickjs` engine for lightweight operations
+- Use `nodejs` engine only when full APIs are needed
+- Implement `sleep()` delays in loops to prevent overwhelming the UI
+
+For additional help, see the [Terminator CLI documentation](../terminator-cli/README.md) or open an issue on GitHub.
 
 ---
 
