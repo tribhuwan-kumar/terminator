@@ -512,16 +512,23 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
     use tokio::process::Command;
 
     info!("[Node.js] Starting JavaScript execution with terminator.js bindings");
+    debug!("[Node.js] Script to execute ({} bytes):\n{}", script.len(), script);
 
     // Check if bun is available, fallback to node
     let runtime = if let Some(bun_exe) = find_executable("bun") {
         match Command::new(&bun_exe).arg("--version").output().await {
             Ok(output) if output.status.success() => {
-                info!("[Node.js] Found bun at: {}", bun_exe);
+                let version = String::from_utf8_lossy(&output.stdout);
+                info!("[Node.js] Found bun at: {} (version: {})", bun_exe, version.trim());
                 "bun"
             }
-            _ => {
-                info!("[Node.js] Bun found but not working, falling back to node");
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                info!("[Node.js] Bun found but version check failed: {}, falling back to node", stderr);
+                "node"
+            }
+            Err(e) => {
+                info!("[Node.js] Bun found but not working ({}), falling back to node", e);
                 "node"
             }
         }
@@ -534,6 +541,7 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
 
     // Ensure terminator.js is installed and get the script directory
     let script_dir = ensure_terminator_js_installed(runtime).await?;
+    info!("[Node.js] Script directory: {}", script_dir.display());
 
     // Create a wrapper script that:
     // 1. Imports terminator.js
@@ -548,16 +556,24 @@ global.desktop = new Desktop();
 global.log = console.log;
 global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+console.log('[Node.js Wrapper] Starting user script execution...');
+
 // Execute user script
 (async () => {{
     try {{
+        console.log('[Node.js Wrapper] Executing user script...');
         const result = await (async function() {{
             {script}
         }})();
         
+        console.log('[Node.js Wrapper] User script completed, result:', typeof result);
+        
         // Send result back
         process.stdout.write('__RESULT__' + JSON.stringify(result) + '__END__\n');
+        console.log('[Node.js Wrapper] Result sent back to parent process');
     }} catch (error) {{
+        console.error('[Node.js Wrapper] User script error:', error.message);
+        console.error('[Node.js Wrapper] Stack trace:', error.stack);
         process.stdout.write('__ERROR__' + JSON.stringify({{
             message: error.message,
             stack: error.stack
@@ -570,19 +586,24 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     // Write script to the same directory where terminator.js is installed
     let script_path = script_dir.join("main.js");
 
+    info!("[Node.js] Writing wrapper script to: {}", script_path.display());
+    debug!("[Node.js] Wrapper script content:\n{}", wrapper_script);
+
     tokio::fs::write(&script_path, wrapper_script)
         .await
         .map_err(|e| {
+            error!("[Node.js] Failed to write script file: {}", e);
             McpError::internal_error(
                 "Failed to write script file",
-                Some(json!({"error": e.to_string()})),
+                Some(json!({"error": e.to_string(), "path": script_path.to_string_lossy()})),
             )
         })?;
 
-    info!("[Node.js] Script written to: {}", script_path.display());
+    info!("[Node.js] Script written successfully");
 
     // Find the runtime executable for spawning
     let runtime_exe = find_executable(runtime).ok_or_else(|| {
+        error!("[Node.js] Could not find {} executable for spawning", runtime);
         McpError::internal_error(
             format!("Could not find {runtime} executable for spawning"),
             None,
@@ -593,6 +614,7 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     // Spawn Node.js/Bun process from the script directory
     let mut child = if runtime == "bun" {
+        info!("[Node.js] Using direct bun execution");
         // Bun can be executed directly
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
@@ -601,6 +623,7 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             .stderr(Stdio::piped())
             .spawn()
     } else if cfg!(windows) && runtime_exe.ends_with(".exe") {
+        info!("[Node.js] Using direct .exe execution on Windows");
         // Direct execution should work for .exe files
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
@@ -609,6 +632,7 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             .stderr(Stdio::piped())
             .spawn()
     } else if cfg!(windows) {
+        info!("[Node.js] Using cmd.exe fallback on Windows");
         // Fallback to cmd.exe for batch files
         Command::new("cmd")
             .current_dir(&script_dir)
@@ -617,6 +641,7 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             .stderr(Stdio::piped())
             .spawn()
     } else {
+        info!("[Node.js] Using direct execution on Unix");
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
             .arg("main.js")
@@ -625,61 +650,143 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
             .spawn()
     }
     .map_err(|e| {
+        error!("[Node.js] Failed to spawn {} process: {}", runtime, e);
         McpError::internal_error(
             format!("Failed to spawn {runtime} process"),
-            Some(json!({"error": e.to_string()})),
+            Some(json!({"error": e.to_string(), "runtime_exe": runtime_exe})),
         )
     })?;
 
+    info!("[Node.js] Process spawned successfully, reading output...");
+
     let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
     let mut result = None;
+    let mut stderr_output = Vec::new();
 
     // Handle communication with Node.js process
-    while let Ok(Some(line)) = stdout.next_line().await {
-        if line.starts_with("__RESULT__") && line.ends_with("__END__") {
-            // Parse final result
-            let result_json = line.replace("__RESULT__", "").replace("__END__", "");
-            result = serde_json::from_str(&result_json).ok();
-            break;
-        } else if line.starts_with("__ERROR__") && line.ends_with("__END__") {
-            // Parse error
-            let error_json = line.replace("__ERROR__", "").replace("__END__", "");
-            if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&error_json) {
-                return Err(McpError::internal_error(
-                    "JavaScript execution error",
-                    Some(error_data),
-                ));
+    loop {
+        tokio::select! {
+            stdout_line = stdout.next_line() => {
+                match stdout_line {
+                    Ok(Some(line)) => {
+                        debug!("[Node.js stdout] {}", line);
+                        if line.starts_with("__RESULT__") && line.ends_with("__END__") {
+                            // Parse final result
+                            let result_json = line.replace("__RESULT__", "").replace("__END__", "");
+                            info!("[Node.js] Received result, parsing JSON ({} bytes)...", result_json.len());
+                            debug!("[Node.js] Result JSON: {}", result_json);
+                            
+                            match serde_json::from_str(&result_json) {
+                                Ok(parsed_result) => {
+                                    info!("[Node.js] Successfully parsed result");
+                                    result = Some(parsed_result);
+                                    break;
+                                }
+                                Err(e) => {
+                                    error!("[Node.js] Failed to parse result JSON: {}", e);
+                                    debug!("[Node.js] Invalid JSON was: {}", result_json);
+                                }
+                            }
+                        } else if line.starts_with("__ERROR__") && line.ends_with("__END__") {
+                            // Parse error
+                            let error_json = line.replace("__ERROR__", "").replace("__END__", "");
+                            error!("[Node.js] Received error from script: {}", error_json);
+                            
+                            if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&error_json) {
+                                return Err(McpError::internal_error(
+                                    "JavaScript execution error",
+                                    Some(error_data),
+                                ));
+                            }
+                            break;
+                        } else {
+                            // Regular console output
+                            info!("[Node.js output] {}", line);
+                        }
+                    }
+                    Ok(None) => {
+                        info!("[Node.js] stdout stream ended");
+                        break;
+                    }
+                    Err(e) => {
+                        error!("[Node.js] Error reading stdout: {}", e);
+                        break;
+                    }
+                }
             }
-            break;
-        } else {
-            // Regular console output
-            info!("[Node.js] {}", line);
+            stderr_line = stderr.next_line() => {
+                match stderr_line {
+                    Ok(Some(line)) => {
+                        error!("[Node.js stderr] {}", line);
+                        stderr_output.push(line);
+                    }
+                    Ok(None) => {
+                        debug!("[Node.js] stderr stream ended");
+                    }
+                    Err(e) => {
+                        error!("[Node.js] Error reading stderr: {}", e);
+                    }
+                }
+            }
         }
     }
 
     // Wait for process to complete
+    info!("[Node.js] Waiting for process to complete...");
     let status = child.wait().await.map_err(|e| {
+        error!("[Node.js] Process wait failed: {}", e);
         McpError::internal_error(
             "Node.js process failed",
             Some(json!({"error": e.to_string()})),
         )
     })?;
 
+    info!("[Node.js] Process completed with status: {:?}", status);
+
     // Don't clean up script directory - keep it persistent for reuse
-    // (Previously this cleaned up with: tokio::fs::remove_dir_all(&script_dir).await.ok();)
     info!(
         "[Node.js] Keeping persistent script directory for reuse: {}",
         script_dir.display()
     );
 
     if !status.success() {
+        let exit_code = status.code();
+        let stderr_combined = stderr_output.join("\n");
+        
+        error!("[Node.js] Process exited with error code: {:?}", exit_code);
+        error!("[Node.js] Combined stderr output:\n{}", stderr_combined);
+        
         return Err(McpError::internal_error(
             "Node.js process exited with error",
-            Some(json!({"exit_code": status.code()})),
+            Some(json!({
+                "exit_code": exit_code,
+                "stderr": stderr_combined,
+                "script_path": script_path.to_string_lossy(),
+                "working_directory": script_dir.to_string_lossy(),
+                "runtime_exe": runtime_exe
+            })),
         ));
     }
 
-    result.ok_or_else(|| McpError::internal_error("No result received from Node.js process", None))
+    match result {
+        Some(r) => {
+            info!("[Node.js] Execution completed successfully");
+            Ok(r)
+        }
+        None => {
+            error!("[Node.js] No result received from process");
+            let stderr_combined = stderr_output.join("\n");
+            Err(McpError::internal_error(
+                "No result received from Node.js process", 
+                Some(json!({
+                    "stderr": stderr_combined,
+                    "script_path": script_path.to_string_lossy(),
+                    "working_directory": script_dir.to_string_lossy()
+                }))
+            ))
+        }
+    }
 }
 
 /// Execute JavaScript using Node.js runtime with LOCAL terminator.js bindings (for development/testing)
