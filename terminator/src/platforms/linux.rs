@@ -1928,6 +1928,7 @@ impl UIElementImpl for LinuxUIElement {
             is_focused: self.is_focused().ok(),
             enabled: self.is_enabled().ok(),
             bounds: self.bounds().ok(),
+            is_toggled: None,
             properties,
         }
     }

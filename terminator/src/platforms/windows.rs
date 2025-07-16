@@ -2757,6 +2757,7 @@ impl UIElementImpl for WindowsUIElement {
             bounds: None, // Will be populated by get_configurable_attributes if focusable
             text: None,
             enabled: None,
+            is_toggled: None,
         }
     }
 
@@ -5185,6 +5186,11 @@ fn get_configurable_attributes(
 
     if let Ok(is_enabled) = element.is_enabled() {
         attrs.enabled = Some(is_enabled);
+    }
+
+    // Add toggled state if available
+    if let Ok(toggled) = element.is_toggled() {
+        attrs.is_toggled = Some(toggled);
     }
 
     attrs

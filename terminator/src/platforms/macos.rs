@@ -764,6 +764,7 @@ impl UIElementImpl for MacOSUIElement {
                 is_focused: self.is_focused().ok(),
                 enabled: self.is_enabled().ok(),
                 bounds: None, // Will be populated by get_configurable_attributes if focusable
+                is_toggled: None,
             };
 
             // Special handling for window title - try multiple attributes
@@ -869,6 +870,7 @@ impl UIElementImpl for MacOSUIElement {
             is_focused: self.is_focused().ok(),
             enabled: self.is_enabled().ok(),
             bounds: None, // Will be populated by get_configurable_attributes if focusable
+            is_toggled: None,
         };
 
         // Debug attribute collection

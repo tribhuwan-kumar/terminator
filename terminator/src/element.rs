@@ -192,6 +192,8 @@ pub struct UIElementAttributes {
     pub is_keyboard_focusable: Option<bool>,
     #[serde(default, skip_serializing_if = "is_false_bool")]
     pub is_focused: Option<bool>,
+    #[serde(default, skip_serializing_if = "is_false_bool")]
+    pub is_toggled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bounds: Option<(f64, f64, f64, f64)>, // Only populated for keyboard-focusable elements
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -255,6 +257,11 @@ impl fmt::Debug for UIElementAttributes {
         // Only show focused if true
         if let Some(true) = self.is_focused {
             debug_struct.field("is_focused", &true);
+        }
+
+        // Only show toggled if true
+        if let Some(true) = self.is_toggled {
+            debug_struct.field("is_toggled", &true);
         }
 
         // Only show bounds if present
