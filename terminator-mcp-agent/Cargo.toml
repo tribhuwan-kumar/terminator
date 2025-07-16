@@ -62,3 +62,7 @@ which = "4"
 [[example]]
 name = "terminator-ai-summarizer"
 path = "examples/terminator-ai-summarizer/src/main.rs"
+
+[[bin]]
+name = "ai-summarizer"                                 # Your custom CLI name here
+path = "examples/terminator-ai-summarizer/src/main.rs"
