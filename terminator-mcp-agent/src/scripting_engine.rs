@@ -391,11 +391,32 @@ pub fn find_executable(name: &str) -> Option<String> {
     Some(name.to_string())
 }
 
-/// Ensure terminator.js is installed in the system and return the script directory
+/// Ensure terminator.js is installed in a persistent directory and return the script directory
 async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
     use tokio::process::Command;
 
     info!("[{}] Checking if terminator.js is installed...", runtime);
+
+    // Use a persistent directory instead of a new temp directory each time
+    let script_dir = std::env::temp_dir().join("terminator_mcp_persistent");
+
+    // Check if terminator.js is already installed in the persistent directory
+    let node_modules_path = script_dir.join("node_modules").join("terminator.js");
+    let package_json_path = script_dir.join("package.json");
+
+    if node_modules_path.exists() && package_json_path.exists() {
+        info!(
+            "[{}] terminator.js already installed in persistent directory: {}",
+            runtime,
+            script_dir.display()
+        );
+        return Ok(script_dir);
+    }
+
+    info!(
+        "[{}] terminator.js not found in persistent directory, installing...",
+        runtime
+    );
 
     // Find the runtime executable
     let runtime_exe = find_executable(runtime).ok_or_else(|| {
@@ -403,76 +424,6 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     })?;
 
     info!("[{}] Using executable: {}", runtime, runtime_exe);
-
-    // Try to require terminator.js
-    let check_cmd = match runtime {
-        "bun" => {
-            // Bun can be executed directly
-            Command::new(&runtime_exe)
-                .args([
-                    "-e",
-                    "require('terminator.js'); console.log('terminator.js found')",
-                ])
-                .output()
-                .await
-        }
-        _ => {
-            // For Node.js, use cmd.exe on Windows if needed
-            if cfg!(windows) && runtime_exe.ends_with(".exe") {
-                // Direct execution should work for .exe files
-                Command::new(&runtime_exe)
-                    .args([
-                        "-e",
-                        "require('terminator.js'); console.log('terminator.js found')",
-                    ])
-                    .output()
-                    .await
-            } else if cfg!(windows) {
-                // Fallback to cmd.exe for batch files
-                Command::new("cmd")
-                    .args([
-                        "/c",
-                        "node",
-                        "-e",
-                        "require('terminator.js'); console.log('terminator.js found')",
-                    ])
-                    .output()
-                    .await
-            } else {
-                Command::new(&runtime_exe)
-                    .args([
-                        "-e",
-                        "require('terminator.js'); console.log('terminator.js found')",
-                    ])
-                    .output()
-                    .await
-            }
-        }
-    };
-
-    // Log check result but always install fresh for isolation
-    match check_cmd {
-        Ok(output) if output.status.success() => {
-            info!(
-                "[{}] terminator.js found globally, but installing fresh copy for isolation",
-                runtime
-            );
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            info!(
-                "[{}] terminator.js not found ({}), installing...",
-                runtime,
-                stderr.trim()
-            );
-        }
-        Err(e) => {
-            info!(
-                "[{}] Could not check for terminator.js ({}), installing...",
-                runtime, e
-            );
-        }
-    }
 
     // Find npm/bun for installation
     let installer_exe = match runtime {
@@ -486,30 +437,21 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
     info!("[{}] Using installer: {}", runtime, installer_exe);
 
-    // Create a dedicated temp directory for this script execution
-    let script_dir = std::env::temp_dir().join(format!(
-        "terminator_js_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-
-    // Create the directory
+    // Create the persistent directory if it doesn't exist
     tokio::fs::create_dir_all(&script_dir).await.map_err(|e| {
         McpError::internal_error(
-            "Failed to create script directory",
+            "Failed to create persistent script directory",
             Some(json!({"error": e.to_string()})),
         )
     })?;
 
     info!(
-        "[{}] Created script directory: {}",
+        "[{}] Created/using persistent script directory: {}",
         runtime,
         script_dir.display()
     );
 
-    // Install terminator.js in the script directory
+    // Install terminator.js in the persistent directory
     let install_result = match runtime {
         "bun" => {
             // Bun can be executed directly
@@ -539,7 +481,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
     match install_result {
         Ok(output) if output.status.success() => {
-            info!("[{}] terminator.js installed successfully", runtime);
+            info!("[{}] terminator.js installed successfully in persistent directory", runtime);
             Ok(script_dir)
         }
         Ok(output) => {
@@ -720,12 +662,303 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         )
     })?;
 
-    // Clean up script directory
-    tokio::fs::remove_dir_all(&script_dir).await.ok();
+    // Don't clean up script directory - keep it persistent for reuse
+    // (Previously this cleaned up with: tokio::fs::remove_dir_all(&script_dir).await.ok();)
     info!(
-        "[Node.js] Cleaned up script directory: {}",
+        "[Node.js] Keeping persistent script directory for reuse: {}",
         script_dir.display()
     );
+
+    if !status.success() {
+        return Err(McpError::internal_error(
+            "Node.js process exited with error",
+            Some(json!({"exit_code": status.code()})),
+        ));
+    }
+
+    result.ok_or_else(|| McpError::internal_error("No result received from Node.js process", None))
+}
+
+/// Execute JavaScript using Node.js runtime with LOCAL terminator.js bindings (for development/testing)
+pub async fn execute_javascript_with_local_bindings(script: String) -> Result<serde_json::Value, McpError> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
+    info!("[Node.js Local] Starting JavaScript execution with local terminator.js bindings");
+
+    // Check if bun is available, fallback to node
+    let runtime = if let Some(bun_exe) = find_executable("bun") {
+        match Command::new(&bun_exe).arg("--version").output().await {
+            Ok(output) if output.status.success() => {
+                info!("[Node.js Local] Found bun at: {}", bun_exe);
+                "bun"
+            }
+            _ => {
+                info!("[Node.js Local] Bun found but not working, falling back to node");
+                "node"
+            }
+        }
+    } else {
+        info!("[Node.js Local] Bun not found, using node");
+        "node"
+    };
+
+    info!("[Node.js Local] Using runtime: {}", runtime);
+
+    // Get workspace root - assuming we're running from terminator-mcp-agent directory
+    let workspace_root = std::env::current_dir()
+        .map_err(|e| McpError::internal_error("Failed to get current directory", Some(json!({"error": e.to_string()}))))?
+        .parent()
+        .ok_or_else(|| McpError::internal_error("Failed to find workspace root", None))?
+        .to_path_buf();
+    
+    let local_bindings_path = workspace_root.join("bindings").join("nodejs");
+    
+    // Verify the local bindings directory exists
+    if !tokio::fs::metadata(&local_bindings_path).await.is_ok() {
+        return Err(McpError::internal_error(
+            "Local bindings directory not found",
+            Some(json!({"expected_path": local_bindings_path.to_string_lossy()}))
+        ));
+    }
+    
+    info!("[Node.js Local] Using local bindings at: {}", local_bindings_path.display());
+
+    // Build the local bindings if needed
+    info!("[Node.js Local] Building local terminator.js bindings...");
+    let build_result = if cfg!(windows) {
+        Command::new("cmd")
+            .current_dir(&local_bindings_path)
+            .args(["/c", "npm", "run", "build"])
+            .output()
+            .await
+    } else {
+        Command::new("npm")
+            .current_dir(&local_bindings_path)
+            .args(["run", "build"])
+            .output()
+            .await
+    };
+
+    match build_result {
+        Ok(output) => {
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                info!("[Node.js Local] Build failed, continuing with existing build: {}", stderr);
+            } else {
+                info!("[Node.js Local] Local bindings built successfully");
+            }
+        }
+        Err(e) => {
+            info!("[Node.js Local] Failed to run build command, continuing: {}", e);
+        }
+    }
+
+    // Create isolated test directory for this execution
+    let script_dir = std::env::temp_dir().join(format!(
+        "terminator_mcp_local_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    tokio::fs::create_dir_all(&script_dir).await.map_err(|e| {
+        McpError::internal_error(
+            "Failed to create script directory",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    info!("[Node.js Local] Created script directory: {}", script_dir.display());
+
+    // Create package.json that references the local bindings
+    let package_json = format!(
+        r#"{{
+  "name": "terminator-mcp-local-execution",
+  "version": "1.0.0",
+  "dependencies": {{
+    "terminator.js": "file:{}"
+  }}
+}}"#,
+        local_bindings_path.to_string_lossy().replace('\\', "/")
+    );
+
+    let package_json_path = script_dir.join("package.json");
+    tokio::fs::write(&package_json_path, package_json).await.map_err(|e| {
+        McpError::internal_error(
+            "Failed to write package.json",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    // Install the local bindings
+    info!("[Node.js Local] Installing local terminator.js...");
+    let install_result = if cfg!(windows) {
+        Command::new("cmd")
+            .current_dir(&script_dir)
+            .args(["/c", "npm", "install"])
+            .output()
+            .await
+    } else {
+        Command::new("npm")
+            .current_dir(&script_dir)
+            .args(["install"])
+            .output()
+            .await
+    };
+
+    match install_result {
+        Ok(output) => {
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(McpError::internal_error(
+                    "Failed to install local bindings",
+                    Some(json!({"error": stderr.to_string()})),
+                ));
+            } else {
+                info!("[Node.js Local] Local bindings installed successfully");
+            }
+        }
+        Err(e) => {
+            return Err(McpError::internal_error(
+                "Failed to run npm install",
+                Some(json!({"error": e.to_string()})),
+            ));
+        }
+    }
+
+    // Create a wrapper script that:
+    // 1. Imports local terminator.js
+    // 2. Executes user script
+    // 3. Returns result
+    let wrapper_script = format!(
+        r#"
+const {{ Desktop }} = require('terminator.js');
+
+// Create global objects
+global.desktop = new Desktop();
+global.log = console.log;
+global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Execute user script
+(async () => {{
+    try {{
+        const result = await (async function() {{
+            {script}
+        }})();
+        
+        // Send result back
+        process.stdout.write('__RESULT__' + JSON.stringify(result) + '__END__\n');
+    }} catch (error) {{
+        process.stdout.write('__ERROR__' + JSON.stringify({{
+            message: error.message,
+            stack: error.stack
+        }}) + '__END__\n');
+    }}
+}})();
+"#
+    );
+
+    // Write script to the directory with local bindings
+    let script_path = script_dir.join("main.js");
+    tokio::fs::write(&script_path, wrapper_script).await.map_err(|e| {
+        McpError::internal_error(
+            "Failed to write script file",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    info!("[Node.js Local] Script written to: {}", script_path.display());
+
+    // Find the runtime executable for spawning
+    let runtime_exe = find_executable(runtime).ok_or_else(|| {
+        McpError::internal_error(
+            format!("Could not find {runtime} executable for spawning"),
+            None,
+        )
+    })?;
+
+    info!("[Node.js Local] Spawning {} at: {}", runtime, runtime_exe);
+
+    // Spawn Node.js/Bun process from the script directory
+    let mut child = if runtime == "bun" {
+        // Bun can be executed directly
+        Command::new(&runtime_exe)
+            .current_dir(&script_dir)
+            .arg("main.js")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    } else if cfg!(windows) && runtime_exe.ends_with(".exe") {
+        // Direct execution should work for .exe files
+        Command::new(&runtime_exe)
+            .current_dir(&script_dir)
+            .arg("main.js")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    } else if cfg!(windows) {
+        // Fallback to cmd.exe for batch files
+        Command::new("cmd")
+            .current_dir(&script_dir)
+            .args(["/c", "node", "main.js"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    } else {
+        Command::new(&runtime_exe)
+            .current_dir(&script_dir)
+            .arg("main.js")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    }
+    .map_err(|e| {
+        McpError::internal_error(
+            format!("Failed to spawn {runtime} process"),
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut result = None;
+
+    // Handle communication with Node.js process
+    while let Ok(Some(line)) = stdout.next_line().await {
+        if line.starts_with("__RESULT__") && line.ends_with("__END__") {
+            // Parse final result
+            let result_json = line.replace("__RESULT__", "").replace("__END__", "");
+            result = serde_json::from_str(&result_json).ok();
+            break;
+        } else if line.starts_with("__ERROR__") && line.ends_with("__END__") {
+            // Parse error
+            let error_json = line.replace("__ERROR__", "").replace("__END__", "");
+            if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&error_json) {
+                return Err(McpError::internal_error(
+                    "JavaScript execution error with local bindings",
+                    Some(error_data),
+                ));
+            }
+            break;
+        } else {
+            // Regular console output
+            info!("[Node.js Local] {}", line);
+        }
+    }
+
+    // Wait for process to complete
+    let status = child.wait().await.map_err(|e| {
+        McpError::internal_error(
+            "Node.js process failed",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    // Clean up script directory
+    tokio::fs::remove_dir_all(&script_dir).await.ok();
+    info!("[Node.js Local] Cleaned up script directory");
 
     if !status.success() {
         return Err(McpError::internal_error(

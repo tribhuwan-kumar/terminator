@@ -170,7 +170,17 @@ jobs:
               cd "$dir"
               # Check if .node file exists before publishing
               if ls *.node 1> /dev/null 2>&1; then
-                npm publish --access public || echo "Package already published or failed"
+                # Extract package name and version
+                PACKAGE_NAME=$(node -p "require('./package.json').name")
+                PACKAGE_VERSION=$(node -p "require('./package.json').version")
+                
+                # Check if this version already exists on NPM
+                if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version 2>/dev/null; then
+                  echo "Version $PACKAGE_VERSION of $PACKAGE_NAME already exists on NPM, skipping..."
+                else
+                  echo "Publishing $PACKAGE_NAME@$PACKAGE_VERSION"
+                  npm publish --access public || echo "Package publication failed"
+                fi
               else
                 echo "No .node file found, skipping $(basename "$dir")"
               fi
@@ -187,6 +197,20 @@ jobs:
           npm install
           # Remove any tgz files that might interfere
           rm -f *.tgz
-          npm publish --access public
+          
+          # Extract package name and version
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          
+          # Check if this version already exists on NPM
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version 2>/dev/null; then
+            echo "Version $PACKAGE_VERSION of $PACKAGE_NAME already exists on NPM, skipping..."
+          else
+            echo "Publishing $PACKAGE_NAME@$PACKAGE_VERSION"
+            # Use CI-specific script that avoids GitHub API calls
+            npm run prepublish:ci
+            # Publish with ignore-scripts to skip prepublishOnly which causes GitHub API issues
+            npm publish --access public --ignore-scripts
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
