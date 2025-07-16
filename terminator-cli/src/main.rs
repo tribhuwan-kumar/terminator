@@ -370,14 +370,33 @@ fn sync_nodejs_bindings(version: &str) {
         return;
     }
 
-    // Update package.json directly
+    // Update main package.json directly
     if let Err(e) = update_package_json("bindings/nodejs/package.json", version) {
         eprintln!("⚠️  Warning: Failed to update Node.js package.json directly: {e}");
     } else {
         println!("✅ Updated Node.js package.json to {version}");
     }
 
-    // Run sync script if it exists
+    // ALSO update CPU/platform-specific packages under bindings/nodejs/npm
+    let npm_dir = nodejs_dir.join("npm");
+    if npm_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&npm_dir) {
+            for entry in entries.flatten() {
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    let package_json = entry.path().join("package.json");
+                    if package_json.exists() {
+                        if let Err(e) = update_package_json(&package_json.to_string_lossy(), version) {
+                            eprintln!("⚠️  Warning: Failed to update {}: {}", package_json.display(), e);
+                        } else {
+                            println!("📦 Updated {}", entry.file_name().to_string_lossy());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Run sync script if it exists (still useful for additional tasks like N-API metadata)
     let original_dir = match env::current_dir() {
         Ok(dir) => dir,
         Err(e) => {
