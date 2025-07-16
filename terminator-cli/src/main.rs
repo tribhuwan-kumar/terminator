@@ -21,6 +21,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
+// Removed dependency on terminator-mcp-agent to avoid heavy compilation issues.
 
 mod mcp_client;
 
@@ -85,6 +86,49 @@ struct McpExecArgs {
     args: Option<String>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[clap(rename_all = "lower")]
+enum InputType {
+    Auto,
+    Gist,
+    Raw,
+    File,
+}
+
+#[derive(Parser, Debug)]
+struct McpRunArgs {
+    /// MCP server URL (e.g., http://localhost:3000)
+    #[clap(long, short = 'u', conflicts_with = "command")]
+    url: Option<String>,
+
+    /// Command to start MCP server via stdio (e.g., "npx -y terminator-mcp-agent")
+    #[clap(long, short = 'c', conflicts_with = "url")]
+    command: Option<String>,
+
+    /// Input source - can be a GitHub gist URL, raw gist URL, or local file path (JSON/YAML)
+    input: String,
+
+    /// Input type (auto-detected by default)
+    #[clap(long, value_enum, default_value = "auto")]
+    input_type: InputType,
+
+    /// Dry run - parse and validate the workflow without executing
+    #[clap(long)]
+    dry_run: bool,
+
+    /// Verbose output
+    #[clap(long, short)]
+    verbose: bool,
+
+    /// Stop on first error (default: true)
+    #[clap(long)]
+    no_stop_on_error: bool,
+
+    /// Include detailed results (default: true)
+    #[clap(long)]
+    no_detailed_results: bool,
+}
+
 #[derive(Subcommand)]
 enum McpCommands {
     /// Interactive chat with MCP server
@@ -93,6 +137,8 @@ enum McpCommands {
     AiChat(McpChatArgs),
     /// Execute a single MCP tool
     Exec(McpExecArgs),
+    /// Execute a workflow sequence from a local file or GitHub gist
+    Run(McpRunArgs),
 }
 
 #[derive(Subcommand)]
@@ -651,6 +697,7 @@ fn handle_mcp_command(cmd: McpCommands) {
         McpCommands::Chat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
         McpCommands::AiChat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
         McpCommands::Exec(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+        McpCommands::Run(ref args) => parse_transport(args.url.clone(), args.command.clone()),
     };
 
     let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
@@ -661,6 +708,9 @@ fn handle_mcp_command(cmd: McpCommands) {
             McpCommands::AiChat(_) => mcp_client::natural_language_chat(transport).await,
             McpCommands::Exec(args) => {
                 mcp_client::execute_command(transport, args.tool, args.args).await
+            }
+            McpCommands::Run(args) => {
+                run_workflow(transport, args).await
             }
         }
     });
@@ -678,8 +728,11 @@ fn parse_transport(url: Option<String>, command: Option<String>) -> mcp_client::
         let parts = parse_command(&command);
         mcp_client::Transport::Stdio(parts)
     } else {
-        eprintln!("❌ Either --url or --command must be specified");
-        std::process::exit(1);
+        // Default to spawning local MCP agent via npx for convenience
+        let default_cmd = "npx -y terminator-mcp-agent";
+        println!("ℹ️  No --url or --command specified. Falling back to '{default_cmd}'");
+        let parts = parse_command(default_cmd);
+        mcp_client::Transport::Stdio(parts)
     }
 }
 
@@ -707,4 +760,189 @@ fn parse_command(command: &str) -> Vec<String> {
     }
 
     parts
+}
+
+async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> anyhow::Result<()> {
+    use anyhow::Context;
+    use tracing::info;
+
+    if args.verbose {
+        std::env::set_var("RUST_LOG", "debug");
+    }
+
+    // Initialize simple logging
+    {
+        use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+        tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "info".into()),
+            )
+            .with(tracing_subscriber::fmt::layer())
+            .init();
+    }
+
+    info!("Starting workflow execution via terminator CLI");
+    info!(input = %args.input, ?args.input_type);
+
+    // Resolve actual input type (auto-detect if needed)
+    let resolved_type = determine_input_type(&args.input, args.input_type);
+
+    // Fetch workflow content
+    let content = match resolved_type {
+        InputType::File => {
+            info!("Reading local file");
+            read_local_file(&args.input).await?
+        }
+        InputType::Gist => {
+            info!("Fetching GitHub gist");
+            let raw_url = convert_gist_to_raw_url(&args.input)?;
+            fetch_remote_content(&raw_url).await?
+        }
+        InputType::Raw => {
+            info!("Fetching raw URL");
+            fetch_remote_content(&args.input).await?
+        }
+        InputType::Auto => unreachable!(),
+    };
+
+    // Parse to JSON value (JSON first, fallback to YAML)
+    let mut workflow_val: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => serde_yaml::from_str::<serde_json::Value>(&content)
+            .context("Content is neither valid JSON nor YAML")?,
+    };
+
+    // Basic validation: ensure steps array exists and non-empty
+    let steps_count = workflow_val
+        .get("steps")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.len())
+        .unwrap_or(0);
+
+    if steps_count == 0 {
+        anyhow::bail!("Workflow must contain a non-empty 'steps' array");
+    }
+
+    // Apply overrides
+    if let Some(obj) = workflow_val.as_object_mut() {
+        if args.no_stop_on_error {
+            obj.insert("stop_on_error".into(), serde_json::Value::Bool(false));
+        }
+        if args.no_detailed_results {
+            obj.insert(
+                "include_detailed_results".into(),
+                serde_json::Value::Bool(false),
+            );
+        }
+    }
+
+    if args.dry_run {
+        println!("✅ Workflow validation successful! Steps: {steps_count}");
+        return Ok(());
+    }
+
+    // Serialize back to string for execute_sequence tool
+    let workflow_str = serde_json::to_string(&workflow_val)?;
+
+    info!("Executing workflow with {steps_count} steps via MCP");
+
+    mcp_client::execute_command(
+        transport,
+        "execute_sequence".to_string(),
+        Some(workflow_str),
+    )
+    .await?;
+
+    Ok(())
+}
+
+fn determine_input_type(input: &str, specified_type: InputType) -> InputType {
+    match specified_type {
+        InputType::Auto => {
+            if input.starts_with("https://gist.github.com/") {
+                InputType::Gist
+            } else if input.starts_with("https://gist.githubusercontent.com/")
+                || input.starts_with("http://")
+                || input.starts_with("https://")
+            {
+                InputType::Raw
+            } else {
+                InputType::File
+            }
+        }
+        other => other,
+    }
+}
+
+fn convert_gist_to_raw_url(gist_url: &str) -> anyhow::Result<String> {
+    if !gist_url.starts_with("https://gist.github.com/") {
+        return Err(anyhow::anyhow!("Invalid GitHub gist URL format"));
+    }
+
+    let raw_url = gist_url.replace(
+        "https://gist.github.com/",
+        "https://gist.githubusercontent.com/",
+    );
+
+    Ok(if raw_url.ends_with("/raw") {
+        raw_url
+    } else {
+        format!("{raw_url}/raw")
+    })
+}
+
+async fn read_local_file(path: &str) -> anyhow::Result<String> {
+    use tokio::fs;
+    use std::path::Path;
+
+    let p = Path::new(path);
+    if !p.exists() {
+        return Err(anyhow::anyhow!("File not found: {}", p.display()));
+    }
+    if !p.is_file() {
+        return Err(anyhow::anyhow!("Not a file: {}", p.display()));
+    }
+
+    fs::read_to_string(p).await.map_err(|e| e.into())
+}
+
+async fn fetch_remote_content(url: &str) -> anyhow::Result<String> {
+    let client = reqwest::Client::new();
+    let res = client
+        .get(url)
+        .header("User-Agent", "terminator-cli-workflow/1.0")
+        .send()
+        .await?;
+    if !res.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "HTTP request failed: {} for {}",
+            res.status(),
+            url
+        ));
+    }
+    Ok(res.text().await?)
+}
+
+fn validate_workflow(wf: &serde_json::Value) -> anyhow::Result<()> {
+    if wf.get("steps").and_then(|v| v.as_array()).map_or(true, |arr| arr.is_empty()) {
+        return Err(anyhow::anyhow!("Workflow must contain at least one step"));
+    }
+    if let Some(steps) = wf.get("steps").and_then(|v| v.as_array()) {
+        for (i, step) in steps.iter().enumerate() {
+            if step.get("tool_name").is_none() && step.get("group_name").is_none() {
+                return Err(anyhow::anyhow!(
+                    "Step {} must have either tool_name or group_name",
+                    i
+                ));
+            }
+            if step.get("tool_name").is_some() && step.get("group_name").is_some() {
+                return Err(anyhow::anyhow!(
+                    "Step {} cannot have both tool_name and group_name",
+                    i
+                ));
+            }
+        }
+    }
+    Ok(())
 }
