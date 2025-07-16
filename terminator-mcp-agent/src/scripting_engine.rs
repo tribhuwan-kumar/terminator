@@ -444,9 +444,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         );
     } else {
         info!(
-            "[{}] terminator.js found, updating to latest version...",
+            "[{}] terminator.js found, using existing version (skipping update for performance)...",
             runtime
         );
+        // Skip update and use existing installation
+        return Ok(script_dir);
     }
 
     // Find the runtime executable

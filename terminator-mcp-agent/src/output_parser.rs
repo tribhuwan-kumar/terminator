@@ -467,37 +467,37 @@ mod tests {
 
     fn get_quote_parser_definition() -> OutputParserDefinition {
         serde_json::from_value(json!({
-            "itemContainerDefinition": {
-                "nodeConditions": [{"property": "role", "op": "equals", "value": "Group"}],
-                "childConditions": {
+            "item_container_definition": {
+                "node_conditions": [{"property": "role", "op": "equals", "value": "Group"}],
+                "child_conditions": {
                     "logic": "and",
                     "conditions": [
-                        {"existsChild": {"conditions": [{"property": "name", "op": "startsWith", "value": "$"}]}},
-                        {"existsChild": {"conditions": [{"property": "name", "op": "equals", "value": "Monthly Price"}]}}
+                        {"exists_child": {"conditions": [{"property": "name", "op": "starts_with", "value": "$"}]}},
+                        {"exists_child": {"conditions": [{"property": "name", "op": "equals", "value": "Monthly Price"}]}}
                     ]
                 }
             },
-            "fieldsToExtract": {
+            "fields_to_extract": {
                 "carrierProduct": {
-                    "fromChild": {
+                    "from_child": {
                         "conditions": [{"property": "name", "op": "contains", "value": ":"}],
-                        "extractProperty": "name"
+                        "extract_property": "name"
                     }
                 },
                 "monthlyPrice": {
-                    "fromChild": {
-                        "conditions": [{"property": "name", "op": "startsWith", "value": "$"}],
-                        "extractProperty": "name"
+                    "from_child": {
+                        "conditions": [{"property": "name", "op": "starts_with", "value": "$"}],
+                        "extract_property": "name"
                     }
                 },
                 "status": {
-                    "fromChildren": {
+                    "from_children": {
                         "conditions": [
                             {"property": "role", "op": "equals", "value": "Text"},
-                            {"property": "name", "op": "isOneOf", "value": ["Graded", "Discontinued", "Standard"]}
+                            {"property": "name", "op": "is_one_of", "value": ["Graded", "Discontinued", "Standard"]}
                         ],
-                        "extractProperty": "name",
-                        "joinWith": ", "
+                        "extract_property": "name",
+                        "join_with": ", "
                     }
                 }
             }
