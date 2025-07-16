@@ -53,6 +53,12 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d6
     "transport-child-process",
 ] }
 tokio-test = "0.4"
-anyhow = "1.0"
 rand = "0.8"
+ollama-rs = "0.3.2"
+arboard = "3.6.0"
+rdev = "0.5.3"
 which = "4"
+
+[[example]]
+name = "terminator-ai-summarizer"
+path = "examples/terminator-ai-summarizer/src/main.rs"
