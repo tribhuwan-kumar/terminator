@@ -481,7 +481,10 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
     match install_result {
         Ok(output) if output.status.success() => {
-            info!("[{}] terminator.js installed successfully in persistent directory", runtime);
+            info!(
+                "[{}] terminator.js installed successfully in persistent directory",
+                runtime
+            );
             Ok(script_dir)
         }
         Ok(output) => {
@@ -680,7 +683,9 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /// Execute JavaScript using Node.js runtime with LOCAL terminator.js bindings (for development/testing)
-pub async fn execute_javascript_with_local_bindings(script: String) -> Result<serde_json::Value, McpError> {
+pub async fn execute_javascript_with_local_bindings(
+    script: String,
+) -> Result<serde_json::Value, McpError> {
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
@@ -708,22 +713,30 @@ pub async fn execute_javascript_with_local_bindings(script: String) -> Result<se
 
     // Get workspace root - assuming we're running from terminator-mcp-agent directory
     let workspace_root = std::env::current_dir()
-        .map_err(|e| McpError::internal_error("Failed to get current directory", Some(json!({"error": e.to_string()}))))?
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to get current directory",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?
         .parent()
         .ok_or_else(|| McpError::internal_error("Failed to find workspace root", None))?
         .to_path_buf();
-    
+
     let local_bindings_path = workspace_root.join("bindings").join("nodejs");
-    
+
     // Verify the local bindings directory exists
-    if !tokio::fs::metadata(&local_bindings_path).await.is_ok() {
+    if tokio::fs::metadata(&local_bindings_path).await.is_err() {
         return Err(McpError::internal_error(
             "Local bindings directory not found",
-            Some(json!({"expected_path": local_bindings_path.to_string_lossy()}))
+            Some(json!({"expected_path": local_bindings_path.to_string_lossy()})),
         ));
     }
-    
-    info!("[Node.js Local] Using local bindings at: {}", local_bindings_path.display());
+
+    info!(
+        "[Node.js Local] Using local bindings at: {}",
+        local_bindings_path.display()
+    );
 
     // Build the local bindings if needed
     info!("[Node.js Local] Building local terminator.js bindings...");
@@ -745,13 +758,19 @@ pub async fn execute_javascript_with_local_bindings(script: String) -> Result<se
         Ok(output) => {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                info!("[Node.js Local] Build failed, continuing with existing build: {}", stderr);
+                info!(
+                    "[Node.js Local] Build failed, continuing with existing build: {}",
+                    stderr
+                );
             } else {
                 info!("[Node.js Local] Local bindings built successfully");
             }
         }
         Err(e) => {
-            info!("[Node.js Local] Failed to run build command, continuing: {}", e);
+            info!(
+                "[Node.js Local] Failed to run build command, continuing: {}",
+                e
+            );
         }
     }
 
@@ -771,7 +790,10 @@ pub async fn execute_javascript_with_local_bindings(script: String) -> Result<se
         )
     })?;
 
-    info!("[Node.js Local] Created script directory: {}", script_dir.display());
+    info!(
+        "[Node.js Local] Created script directory: {}",
+        script_dir.display()
+    );
 
     // Create package.json that references the local bindings
     let package_json = format!(
@@ -786,12 +808,14 @@ pub async fn execute_javascript_with_local_bindings(script: String) -> Result<se
     );
 
     let package_json_path = script_dir.join("package.json");
-    tokio::fs::write(&package_json_path, package_json).await.map_err(|e| {
-        McpError::internal_error(
-            "Failed to write package.json",
-            Some(json!({"error": e.to_string()})),
-        )
-    })?;
+    tokio::fs::write(&package_json_path, package_json)
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to write package.json",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
 
     // Install the local bindings
     info!("[Node.js Local] Installing local terminator.js...");
@@ -863,14 +887,19 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     // Write script to the directory with local bindings
     let script_path = script_dir.join("main.js");
-    tokio::fs::write(&script_path, wrapper_script).await.map_err(|e| {
-        McpError::internal_error(
-            "Failed to write script file",
-            Some(json!({"error": e.to_string()})),
-        )
-    })?;
+    tokio::fs::write(&script_path, wrapper_script)
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to write script file",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
 
-    info!("[Node.js Local] Script written to: {}", script_path.display());
+    info!(
+        "[Node.js Local] Script written to: {}",
+        script_path.display()
+    );
 
     // Find the runtime executable for spawning
     let runtime_exe = find_executable(runtime).ok_or_else(|| {

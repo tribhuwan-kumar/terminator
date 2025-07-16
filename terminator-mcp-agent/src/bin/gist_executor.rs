@@ -173,9 +173,10 @@ fn determine_input_type(input: &str, specified_type: InputType) -> InputType {
         InputType::Auto => {
             if input.starts_with("https://gist.github.com/") {
                 InputType::Gist
-            } else if input.starts_with("https://gist.githubusercontent.com/") {
-                InputType::Raw
-            } else if input.starts_with("http://") || input.starts_with("https://") {
+            } else if input.starts_with("https://gist.githubusercontent.com/")
+                || input.starts_with("http://")
+                || input.starts_with("https://")
+            {
                 InputType::Raw
             } else {
                 // Default to file for any local path (relative or absolute)
@@ -203,7 +204,7 @@ fn convert_gist_to_raw_url(gist_url: &str) -> Result<String> {
     if raw_url.ends_with("/raw") {
         Ok(raw_url)
     } else {
-        Ok(format!("{}/raw", raw_url))
+        Ok(format!("{raw_url}/raw"))
     }
 }
 
@@ -229,7 +230,7 @@ async fn read_local_file(file_path: &str) -> Result<String> {
     if let Some(extension) = path.extension() {
         let ext = extension.to_string_lossy().to_lowercase();
         if !["json", "yaml", "yml"].contains(&ext.as_str()) {
-            println!("⚠️  Warning: File extension '{}' is not .json, .yaml, or .yml. Attempting to parse anyway...", ext);
+            println!("⚠️  Warning: File extension '{ext}' is not .json, .yaml, or .yml. Attempting to parse anyway...");
         }
     }
 
@@ -247,7 +248,7 @@ async fn fetch_remote_content(url: &str) -> Result<String> {
         .header("User-Agent", "terminator-mcp-gist-executor/1.0")
         .send()
         .await
-        .with_context(|| format!("Failed to fetch URL: {}", url))?;
+        .with_context(|| format!("Failed to fetch URL: {url}"))?;
 
     if !response.status().is_success() {
         return Err(anyhow::anyhow!(
@@ -260,7 +261,7 @@ async fn fetch_remote_content(url: &str) -> Result<String> {
     response
         .text()
         .await
-        .with_context(|| format!("Failed to read response body from URL: {}", url))
+        .with_context(|| format!("Failed to read response body from URL: {url}"))
 }
 
 fn validate_workflow(workflow: &ExecuteSequenceArgs) -> Result<()> {

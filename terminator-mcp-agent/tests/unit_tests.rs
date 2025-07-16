@@ -856,15 +856,21 @@ async fn test_nodejs_execution_with_local_bindings() {
         .parent() // Move up from terminator-mcp-agent to workspace root
         .unwrap()
         .to_path_buf();
-    
+
     let local_bindings_path = workspace_root.join("bindings").join("nodejs");
-    
+
     // Verify the local bindings directory exists
     if !tokio::fs::metadata(&local_bindings_path).await.is_ok() {
-        panic!("❌ Local bindings directory not found at: {}", local_bindings_path.display());
+        panic!(
+            "❌ Local bindings directory not found at: {}",
+            local_bindings_path.display()
+        );
     }
-    
-    println!("📁 Using local bindings at: {}", local_bindings_path.display());
+
+    println!(
+        "📁 Using local bindings at: {}",
+        local_bindings_path.display()
+    );
 
     // Build the local bindings first
     println!("🔨 Building local terminator.js bindings...");
@@ -887,7 +893,10 @@ async fn test_nodejs_execution_with_local_bindings() {
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 println!("⚠️ Build failed: {}", stderr);
-                println!("📄 Build stdout: {}", String::from_utf8_lossy(&output.stdout));
+                println!(
+                    "📄 Build stdout: {}",
+                    String::from_utf8_lossy(&output.stdout)
+                );
                 // Don't panic - the bindings might already be built
                 println!("⚠️ Continuing with existing build...");
             } else {
@@ -925,7 +934,9 @@ async fn test_nodejs_execution_with_local_bindings() {
     );
 
     let package_json_path = test_dir.join("package.json");
-    tokio::fs::write(&package_json_path, package_json).await.unwrap();
+    tokio::fs::write(&package_json_path, package_json)
+        .await
+        .unwrap();
     println!("📄 Created package.json with local dependency");
 
     // Install the local bindings
@@ -1086,20 +1097,33 @@ try {
     // Verify results
     match result {
         Some(res) => {
-            println!("📄 Final result: {}", serde_json::to_string_pretty(&res).unwrap());
-            
+            println!(
+                "📄 Final result: {}",
+                serde_json::to_string_pretty(&res).unwrap()
+            );
+
             if let Some(success) = res.get("success").and_then(|v| v.as_bool()) {
                 assert!(success, "❌ Local bindings test should succeed");
                 println!("✅ Local bindings test completed successfully!");
-                
+
                 // Verify expected fields
-                assert!(res.get("hasDesktop").and_then(|v| v.as_bool()).unwrap_or(false), 
-                        "Should have Desktop instance");
-                assert!(res.get("hasRoot").and_then(|v| v.as_bool()).unwrap_or(false), 
-                        "Should have root element");
-                assert!(res.get("appCount").and_then(|v| v.as_u64()).is_some(), 
-                        "Should have app count");
-                
+                assert!(
+                    res.get("hasDesktop")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    "Should have Desktop instance"
+                );
+                assert!(
+                    res.get("hasRoot")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    "Should have root element"
+                );
+                assert!(
+                    res.get("appCount").and_then(|v| v.as_u64()).is_some(),
+                    "Should have app count"
+                );
+
                 println!("✅ All assertions passed for local bindings test!");
             } else {
                 if let Some(error) = res.get("error") {
@@ -1184,8 +1208,11 @@ try {
                 assert!(obj.contains_key("rootRole"), "Should have rootRole");
                 assert!(obj.contains_key("rootName"), "Should have rootName");
                 assert!(obj.contains_key("appCount"), "Should have appCount");
-                assert!(obj.contains_key("testTimestamp"), "Should have testTimestamp");
-                
+                assert!(
+                    obj.contains_key("testTimestamp"),
+                    "Should have testTimestamp"
+                );
+
                 println!("✅ All expected fields present in result");
             } else {
                 panic!("Result should be an object with success info");
