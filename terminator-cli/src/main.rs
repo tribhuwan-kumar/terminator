@@ -868,8 +868,8 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
 
     info!("Executing workflow with {steps_count} steps via MCP");
 
-    // Pass the workflow directly as structured arguments, not as a JSON string
-    // The MCP server's execute_sequence tool expects ExecuteSequenceArgs parameters
+    // Pass the workflow directly as structured arguments
+    // The MCP client expects arguments as a JSON string that parses to an object
     let workflow_str = serde_json::to_string(&workflow_val)?;
 
     mcp_client::execute_command(

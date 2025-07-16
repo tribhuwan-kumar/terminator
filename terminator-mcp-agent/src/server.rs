@@ -2313,6 +2313,7 @@ impl DesktopWrapper {
                                 tool_call.continue_on_error.unwrap_or(false),
                                 current_index,
                                 include_detailed,
+                                original_step.id.as_deref(),
                             )
                             .await;
 
@@ -2360,6 +2361,7 @@ impl DesktopWrapper {
                                     step_tool_call.continue_on_error.unwrap_or(false),
                                     step_index,
                                     include_detailed,
+                                    None, // Group sub-steps don't have individual IDs
                                 )
                                 .await;
 
@@ -2582,6 +2584,7 @@ impl DesktopWrapper {
         is_skippable: bool,
         index: usize,
         include_detailed: bool,
+        step_id: Option<&str>,
     ) -> (serde_json::Value, bool, Option<u32>) {
         let tool_start_time = chrono::Utc::now();
         let tool_name_short = tool_name
@@ -2629,24 +2632,42 @@ impl DesktopWrapper {
                     json!({ "type": "summary", "content": "Tool executed successfully", "content_count": result.content.len() })
                 };
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
-                let result_json = json!({
+                let mut result_json = json!({
                     "tool_name": tool_name,
                     "index": index,
                     "status": "success",
                     "duration_ms": duration_ms,
                     "result": content_summary,
                 });
+                
+                // Add step_id if provided
+                if let Some(id) = step_id {
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert("step_id".to_string(), json!(id));
+                    }
+                }
+                
+                let result_json = serde_json::Value::Object(result_json.as_object().unwrap().clone());
                 (result_json, false, pid)
             }
             Err(e) => {
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
-                let error_result = json!({
+                let mut error_result = json!({
                     "tool_name": tool_name,
                     "index": index,
                     "status": if is_skippable { "skipped" } else { "error" },
                     "duration_ms": duration_ms,
                     "error": format!("{}", e),
                 });
+                
+                // Add step_id if provided
+                if let Some(id) = step_id {
+                    if let Some(obj) = error_result.as_object_mut() {
+                        obj.insert("step_id".to_string(), json!(id));
+                    }
+                }
+                
+                let error_result = serde_json::Value::Object(error_result.as_object().unwrap().clone());
 
                 if !is_skippable {
                     warn!(
