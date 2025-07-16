@@ -597,7 +597,9 @@ pub struct ZoomArgs {
 
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 pub struct SetZoomArgs {
-    #[schemars(description = "The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)")]
+    #[schemars(
+        description = "The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)"
+    )]
     pub percentage: u32,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
     pub include_tree: Option<bool>,
@@ -713,7 +715,9 @@ pub struct RunJavascriptArgs {
         description = "Optional preferred runtime engine ('quickjs' | 'node' | 'bun' | 'deno'). Currently only 'quickjs' is supported and will be used as default."
     )]
     pub engine: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds before the script execution is aborted.")]
+    #[schemars(
+        description = "Optional timeout in milliseconds before the script execution is aborted."
+    )]
     pub timeout_ms: Option<u64>,
 }
 
