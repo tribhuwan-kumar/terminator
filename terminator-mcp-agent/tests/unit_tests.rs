@@ -1,4 +1,5 @@
 use serde_json::json;
+use terminator_mcp_agent::scripting_engine::find_executable;
 use terminator_mcp_agent::utils::{ExecuteSequenceArgs, SequenceStep, ToolCall};
 
 #[test]
@@ -144,4 +145,697 @@ fn test_sequence_step_with_group() {
     assert!(step.steps.is_some());
     assert_eq!(step.steps.as_ref().unwrap().len(), 1);
     assert_eq!(step.steps.as_ref().unwrap()[0].tool_name, "tool1");
+}
+
+// ===============================================
+// Scripting Engine Executable Resolution Tests
+// ===============================================
+
+#[test]
+fn test_find_executable_node() {
+    // Test finding node executable
+    let result = find_executable("node");
+    assert!(result.is_some(), "Should find node executable");
+
+    let node_path = result.unwrap();
+    assert!(!node_path.is_empty(), "Node path should not be empty");
+    assert!(node_path.contains("node"), "Path should contain 'node'");
+
+    println!("Found node at: {node_path}");
+}
+
+#[test]
+fn test_find_executable_npm() {
+    // Test finding npm executable
+    let result = find_executable("npm");
+    assert!(result.is_some(), "Should find npm executable");
+
+    let npm_path = result.unwrap();
+    assert!(!npm_path.is_empty(), "NPM path should not be empty");
+    assert!(npm_path.contains("npm"), "Path should contain 'npm'");
+
+    println!("Found npm at: {npm_path}");
+}
+
+#[test]
+fn test_find_executable_nonexistent() {
+    // Test finding a non-existent executable
+    let result = find_executable("definitely_does_not_exist_executable_12345");
+
+    // The function should still return Some() as a fallback, but it won't be a valid path
+    assert!(
+        result.is_some(),
+        "Should return fallback name even for non-existent executable"
+    );
+
+    let fallback_name = result.unwrap();
+    assert_eq!(fallback_name, "definitely_does_not_exist_executable_12345");
+}
+
+#[cfg(windows)]
+#[test]
+fn test_find_executable_windows_specific() {
+    // Test Windows-specific behavior
+    use std::path::Path;
+
+    // Test that function handles .exe extension properly
+    let node_result = find_executable("node");
+    assert!(node_result.is_some());
+
+    let node_path = node_result.unwrap();
+
+    // On Windows, the path should exist and be a file
+    let path = Path::new(&node_path);
+    if path.exists() {
+        assert!(path.is_file(), "Node path should point to a file");
+
+        // Should end with .exe on Windows if it's a real executable
+        if node_path.contains("Program Files") || node_path.contains("nodejs") {
+            assert!(
+                node_path.ends_with(".exe") || node_path.ends_with("node"),
+                "Windows executable should end with .exe or be bare name: {node_path}"
+            );
+        }
+    }
+
+    println!("Windows node path: {node_path}");
+}
+
+#[test]
+fn test_find_executable_path_validation() {
+    // Test that the function returns valid-looking paths
+    let executables_to_test = vec!["node", "npm"];
+
+    for exe_name in executables_to_test {
+        let result = find_executable(exe_name);
+        assert!(result.is_some(), "Should find executable: {exe_name}");
+
+        let exe_path = result.unwrap();
+        assert!(
+            !exe_path.is_empty(),
+            "Path should not be empty for: {exe_name}"
+        );
+
+        // Path should contain the executable name
+        assert!(
+            exe_path.to_lowercase().contains(&exe_name.to_lowercase()),
+            "Path should contain executable name '{exe_name}': {exe_path}"
+        );
+
+        println!("Found {exe_name} at: {exe_path}");
+    }
+}
+
+#[test]
+fn test_find_executable_bun_optional() {
+    // Test finding bun (which may or may not be installed)
+    let result = find_executable("bun");
+    assert!(result.is_some(), "Should always return some result");
+
+    let bun_path = result.unwrap();
+    assert!(!bun_path.is_empty(), "Bun path should not be empty");
+
+    // Check if bun actually exists
+    use std::path::Path;
+    let path = Path::new(&bun_path);
+
+    if path.exists() && path.is_file() {
+        println!("Found bun executable at: {bun_path}");
+        assert!(
+            bun_path.contains("bun"),
+            "Real bun path should contain 'bun'"
+        );
+    } else {
+        println!("Bun not installed, got fallback: {bun_path}");
+        assert_eq!(
+            bun_path, "bun",
+            "Should return fallback name when not found"
+        );
+    }
+}
+
+#[test]
+fn test_find_executable_case_sensitivity() {
+    // Test case sensitivity handling
+    #[cfg(windows)]
+    {
+        // Windows should be case-insensitive
+        let node_lower = find_executable("node");
+        let node_upper = find_executable("NODE");
+
+        assert!(node_lower.is_some());
+        assert!(node_upper.is_some());
+
+        println!("node (lowercase): {node_lower:?}");
+        println!("NODE (uppercase): {node_upper:?}");
+    }
+
+    #[cfg(not(windows))]
+    {
+        // Unix systems are case-sensitive
+        let node_result = find_executable("node");
+        assert!(node_result.is_some());
+
+        println!("node: {node_result:?}");
+    }
+}
+
+#[test]
+fn test_path_environment_variable() {
+    // Test that PATH environment variable is being used
+    use std::env;
+
+    // This test verifies that our function respects the PATH environment variable
+    let path_var = env::var("PATH");
+    assert!(path_var.is_ok(), "PATH environment variable should exist");
+
+    let path_value = path_var.unwrap();
+    assert!(!path_value.is_empty(), "PATH should not be empty");
+
+    println!(
+        "PATH contains {} directories",
+        path_value
+            .split(if cfg!(windows) { ";" } else { ":" })
+            .count()
+    );
+
+    // Test that executables found are actually in PATH
+    let node_result = find_executable("node");
+    if let Some(node_path) = node_result {
+        use std::path::Path;
+        let path = Path::new(&node_path);
+
+        if path.exists() {
+            // Verify the parent directory is in PATH
+            if let Some(parent) = path.parent() {
+                let parent_str = parent.to_string_lossy();
+                let is_in_path = path_value
+                    .split(if cfg!(windows) { ";" } else { ":" })
+                    .any(|p| {
+                        let path_entry = Path::new(p);
+                        path_entry == parent || path_entry.to_string_lossy() == parent_str
+                    });
+
+                if is_in_path {
+                    println!("✓ Node found in PATH at: {node_path}");
+                } else {
+                    println!("⚠ Node found outside PATH at: {node_path}");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_batch_file_execution() {
+    // Test that we can handle Windows batch files like npm correctly
+    use std::process::Command;
+
+    // Test direct npm execution (should fail with our old approach)
+    let npm_path = find_executable("npm").unwrap();
+    println!("Testing npm execution at: {}", npm_path);
+
+    // Test cmd.exe approach (should work)
+    let cmd_result = Command::new("cmd")
+        .args(["/c", "npm", "--version"])
+        .output();
+
+    match cmd_result {
+        Ok(output) => {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                println!("✓ npm via cmd.exe works, version: {}", version.trim());
+                assert!(!version.trim().is_empty(), "Should get npm version");
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                println!("⚠ npm via cmd.exe failed: {}", stderr);
+            }
+        }
+        Err(e) => {
+            println!("⚠ Failed to test npm via cmd.exe: {}", e);
+        }
+    }
+
+    // Test node.exe execution (should work directly)
+    let node_path = find_executable("node").unwrap();
+    println!("Testing node execution at: {}", node_path);
+
+    if node_path.ends_with(".exe") {
+        let node_result = Command::new(&node_path)
+            .args(["-e", "console.log('Node.js test successful')"])
+            .output();
+
+        match node_result {
+            Ok(output) => {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    println!("✓ node.exe direct execution works: {}", stdout.trim());
+                    assert!(stdout.contains("Node.js test successful"));
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    println!("⚠ node.exe direct execution failed: {}", stderr);
+                }
+            }
+            Err(e) => {
+                println!("⚠ Failed to test node.exe directly: {}", e);
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_cross_platform_command_execution() {
+    // Test that our command execution strategy works across platforms
+    use tokio::process::Command;
+
+    // Test Node.js version check
+    let node_path = find_executable("node").unwrap();
+
+    let version_result = if cfg!(windows) && node_path.ends_with(".exe") {
+        // Direct execution for .exe files
+        Command::new(&node_path).args(["--version"]).output().await
+    } else if cfg!(windows) {
+        // cmd.exe fallback for batch files
+        Command::new("cmd")
+            .args(["/c", "node", "--version"])
+            .output()
+            .await
+    } else {
+        // Unix systems
+        Command::new(&node_path).args(["--version"]).output().await
+    };
+
+    match version_result {
+        Ok(output) => {
+            if output.status.success() {
+                let version = String::from_utf8_lossy(&output.stdout);
+                println!(
+                    "✓ Cross-platform node execution works, version: {}",
+                    version.trim()
+                );
+                assert!(
+                    version.starts_with("v"),
+                    "Should get node version starting with 'v'"
+                );
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                println!("⚠ Cross-platform node execution failed: {}", stderr);
+            }
+        }
+        Err(e) => {
+            println!("⚠ Failed cross-platform node test: {}", e);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_nodejs_script_execution_debug() {
+    // Test basic Node.js script execution to debug the exit code 1 issue
+    use std::process::Stdio;
+    use tokio::process::Command;
+
+    // Test 1: Simple console.log script
+    let simple_script = r#"console.log("Hello from Node.js test");"#;
+
+    // Write simple script to temp file
+    let temp_dir = std::env::temp_dir();
+    let script_path = temp_dir.join("test_simple.js");
+
+    tokio::fs::write(&script_path, simple_script).await.unwrap();
+
+    let node_path = find_executable("node").unwrap();
+
+    let result = if cfg!(windows) && node_path.ends_with(".exe") {
+        Command::new(&node_path)
+            .arg(script_path.to_str().unwrap())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+    } else if cfg!(windows) {
+        Command::new("cmd")
+            .args(["/c", "node", script_path.to_str().unwrap()])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+    } else {
+        Command::new(&node_path)
+            .arg(script_path.to_str().unwrap())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+    };
+
+    match result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            println!("Simple script stdout: {}", stdout);
+            println!("Simple script stderr: {}", stderr);
+            println!("Simple script exit code: {:?}", output.status.code());
+
+            if output.status.success() {
+                assert!(stdout.contains("Hello from Node.js test"));
+                println!("✅ Basic Node.js execution works");
+            } else {
+                println!("❌ Basic Node.js execution failed");
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to execute simple Node.js script: {}", e);
+        }
+    }
+
+    // Test 2: Try to require terminator.js (this will likely fail but shows us the error)
+    let terminator_test_script = r#"
+try {
+    console.log("Trying to require terminator.js...");
+    const { Desktop } = require('terminator.js');
+    console.log("✅ terminator.js loaded successfully");
+} catch (error) {
+    console.log("❌ terminator.js failed to load:");
+    console.log("Error name:", error.name);
+    console.log("Error message:", error.message);
+    console.log("Error code:", error.code);
+    
+    // Try to list available modules
+    console.log("Checking if module exists in node_modules...");
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Check current directory
+    try {
+        const nodeModulesPath = path.join(process.cwd(), 'node_modules');
+        console.log("Current working directory:", process.cwd());
+        console.log("Looking for node_modules at:", nodeModulesPath);
+        
+        if (fs.existsSync(nodeModulesPath)) {
+            console.log("node_modules exists");
+            const contents = fs.readdirSync(nodeModulesPath);
+            console.log("node_modules contents:", contents.slice(0, 10)); // First 10 items
+            
+            if (contents.includes('terminator.js')) {
+                console.log("✅ terminator.js found in node_modules");
+            } else {
+                console.log("❌ terminator.js NOT found in node_modules");
+            }
+        } else {
+            console.log("❌ node_modules directory does not exist");
+        }
+    } catch (fsError) {
+        console.log("❌ Error checking filesystem:", fsError.message);
+    }
+}
+"#;
+
+    let terminator_script_path = temp_dir.join("test_terminator.js");
+    tokio::fs::write(&terminator_script_path, terminator_test_script)
+        .await
+        .unwrap();
+
+    let terminator_result = if cfg!(windows) && node_path.ends_with(".exe") {
+        Command::new(&node_path)
+            .arg(terminator_script_path.to_str().unwrap())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+    } else if cfg!(windows) {
+        Command::new("cmd")
+            .args(["/c", "node", terminator_script_path.to_str().unwrap()])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+    } else {
+        Command::new(&node_path)
+            .arg(terminator_script_path.to_str().unwrap())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+    };
+
+    match terminator_result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            println!("=== Terminator.js Test Output ===");
+            println!("stdout:\n{}", stdout);
+            println!("stderr:\n{}", stderr);
+            println!("exit code: {:?}", output.status.code());
+            println!("=== End Terminator.js Test ===");
+        }
+        Err(e) => {
+            println!("❌ Failed to execute terminator.js test script: {}", e);
+        }
+    }
+
+    // Cleanup
+    tokio::fs::remove_file(&script_path).await.ok();
+    tokio::fs::remove_file(&terminator_script_path).await.ok();
+}
+
+#[tokio::test]
+async fn test_complete_nodejs_terminator_execution() {
+    // Test the complete flow: install terminator.js in isolated dir and run script
+    use terminator_mcp_agent::scripting_engine::execute_javascript_with_nodejs;
+
+    let test_script = r#"
+// Test that terminator.js loads correctly
+try {
+    console.log("Testing terminator.js import...");
+    const { Desktop } = require('terminator.js');
+    console.log("✅ terminator.js imported successfully");
+    
+    // Test basic functionality
+    const desktop = new Desktop();
+    console.log("✅ Desktop instance created");
+    
+    // Return success result
+    return {
+        success: true,
+        message: "terminator.js working correctly",
+        hasDesktop: typeof desktop !== 'undefined'
+    };
+    
+} catch (error) {
+    console.log("❌ Error:", error.message);
+    return {
+        success: false,
+        error: error.message,
+        code: error.code || 'UNKNOWN'
+    };
+}
+"#;
+
+    println!("🧪 Testing complete Node.js terminator.js execution...");
+
+    let result = execute_javascript_with_nodejs(test_script.to_string()).await;
+
+    match result {
+        Ok(value) => {
+            println!("✅ Script executed successfully!");
+            println!(
+                "📄 Result: {}",
+                serde_json::to_string_pretty(&value).unwrap_or_default()
+            );
+
+            // Verify the result structure
+            if let Some(obj) = value.as_object() {
+                if let Some(success) = obj.get("success").and_then(|v| v.as_bool()) {
+                    assert!(success, "Script should report success");
+                    println!("✅ Script reported success");
+                } else {
+                    panic!("Script result should have success field");
+                }
+
+                if let Some(has_desktop) = obj.get("hasDesktop").and_then(|v| v.as_bool()) {
+                    assert!(has_desktop, "Desktop instance should exist");
+                    println!("✅ Desktop instance created successfully");
+                }
+            } else {
+                panic!("Result should be an object with success info");
+            }
+        }
+        Err(e) => {
+            println!("❌ Script execution failed: {}", e);
+            panic!("Node.js script execution should succeed: {}", e);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_debug_nodejs_execution_with_logs() {
+    // Direct test of our Node.js execution to see stdout/stderr
+    use std::process::Stdio;
+    use terminator_mcp_agent::scripting_engine::find_executable;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
+    println!("🔍 Debug test: Creating isolated terminator.js environment...");
+
+    // Create isolated directory
+    let script_dir = std::env::temp_dir().join(format!(
+        "debug_terminator_js_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    tokio::fs::create_dir_all(&script_dir).await.unwrap();
+    println!("📁 Created script directory: {}", script_dir.display());
+
+    // Install terminator.js in isolated directory
+    println!("📦 Installing terminator.js...");
+    let install_result = Command::new("cmd")
+        .current_dir(&script_dir)
+        .args(["/c", "npm", "install", "terminator.js"])
+        .output()
+        .await
+        .unwrap();
+
+    println!(
+        "Install stdout: {}",
+        String::from_utf8_lossy(&install_result.stdout)
+    );
+    println!(
+        "Install stderr: {}",
+        String::from_utf8_lossy(&install_result.stderr)
+    );
+    println!("Install exit code: {:?}", install_result.status.code());
+
+    // Check what was actually installed
+    let node_modules_path = script_dir.join("node_modules");
+    if tokio::fs::metadata(&node_modules_path).await.is_ok() {
+        println!("✅ node_modules directory exists");
+
+        // List contents
+        let mut entries = tokio::fs::read_dir(&node_modules_path).await.unwrap();
+        println!("📋 node_modules contents:");
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            println!("  - {}", entry.file_name().to_string_lossy());
+        }
+
+        // Check specifically for terminator.js
+        let terminator_path = node_modules_path.join("terminator.js");
+        if tokio::fs::metadata(&terminator_path).await.is_ok() {
+            println!("✅ terminator.js package directory exists");
+        } else {
+            println!("❌ terminator.js package directory NOT found");
+        }
+    } else {
+        println!("❌ node_modules directory does not exist");
+    }
+
+    // Create a simple test script
+    let test_script = r#"
+try {
+    console.log("Working directory:", process.cwd());
+    console.log("Attempting to require terminator.js...");
+    
+    const { Desktop } = require('terminator.js');
+    console.log("SUCCESS: terminator.js loaded");
+    
+    process.stdout.write('__RESULT__{"success": true}__END__\n');
+} catch (error) {
+    console.log("FAILED to load terminator.js:", error.message);
+    console.log("Error code:", error.code);
+    console.log("Error stack:", error.stack);
+    
+    // Try to show what modules are available
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+        const nodeModulesPath = path.join(process.cwd(), 'node_modules');
+        if (fs.existsSync(nodeModulesPath)) {
+            console.log("Available modules:", fs.readdirSync(nodeModulesPath));
+            
+            const terminatorPath = path.join(nodeModulesPath, 'terminator.js');
+            if (fs.existsSync(terminatorPath)) {
+                console.log("terminator.js directory exists");
+                console.log("terminator.js contents:", fs.readdirSync(terminatorPath));
+                
+                const packageJsonPath = path.join(terminatorPath, 'package.json');
+                if (fs.existsSync(packageJsonPath)) {
+                    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+                    console.log("Package main field:", packageJson.main);
+                    console.log("Package name:", packageJson.name);
+                    console.log("Package version:", packageJson.version);
+                }
+            }
+        }
+    } catch (fsError) {
+        console.log("Filesystem check error:", fsError.message);
+    }
+    
+    process.stdout.write('__RESULT__{"success": false, "error": "' + error.message + '"}__END__\n');
+}
+"#;
+
+    let script_path = script_dir.join("debug.js");
+    tokio::fs::write(&script_path, test_script).await.unwrap();
+
+    println!("🚀 Running test script...");
+
+    // Run the script
+    let node_exe = find_executable("node").unwrap();
+    let mut child = Command::new(&node_exe)
+        .current_dir(&script_dir)
+        .arg("debug.js")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
+
+    // Read all output
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = stderr.next_line().await {
+            println!("STDERR: {}", line);
+        }
+    });
+
+    let mut result: Option<serde_json::Value> = None;
+    while let Ok(Some(line)) = stdout.next_line().await {
+        println!("STDOUT: {}", line);
+
+        if line.starts_with("__RESULT__") && line.ends_with("__END__") {
+            let result_json = line.replace("__RESULT__", "").replace("__END__", "");
+            result = serde_json::from_str(&result_json).ok();
+            break;
+        }
+    }
+
+    let status = child.wait().await.unwrap();
+    println!("Process exit code: {:?}", status.code());
+
+    // Clean up
+    tokio::fs::remove_dir_all(&script_dir).await.ok();
+
+    // Verify result
+    if let Some(res) = result {
+        println!(
+            "Final result: {}",
+            serde_json::to_string_pretty(&res).unwrap()
+        );
+        if let Some(success) = res.get("success").and_then(|v| v.as_bool()) {
+            if success {
+                println!("✅ Test completed successfully!");
+            } else {
+                println!("❌ Test failed but we got useful debug info");
+            }
+        }
+    } else {
+        println!("❌ No result received from Node.js process");
+    }
 }

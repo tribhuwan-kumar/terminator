@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "terminator.js": "^0.8.3"
+  }
+}

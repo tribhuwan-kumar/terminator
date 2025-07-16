@@ -356,3 +356,383 @@ where
 
     Ok(execution_result)
 }
+
+/// Find executable with cross-platform path resolution
+pub fn find_executable(name: &str) -> Option<String> {
+    use std::env;
+    use std::path::Path;
+
+    // On Windows, try both with and without .exe extension
+    let candidates = if cfg!(windows) {
+        vec![name.to_string(), format!("{}.exe", name)]
+    } else {
+        vec![name.to_string()]
+    };
+
+    // Check each candidate in PATH
+    if let Ok(path_var) = env::var("PATH") {
+        let separator = if cfg!(windows) { ";" } else { ":" };
+
+        for path_dir in path_var.split(separator) {
+            let path_dir = Path::new(path_dir);
+
+            for candidate in &candidates {
+                let full_path = path_dir.join(candidate);
+                if full_path.exists() && full_path.is_file() {
+                    info!("Found executable: {}", full_path.display());
+                    return Some(full_path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: try the name as-is (might work on some systems)
+    info!("Executable '{}' not found in PATH, using name as-is", name);
+    Some(name.to_string())
+}
+
+/// Ensure terminator.js is installed in the system and return the script directory
+async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
+    use tokio::process::Command;
+
+    info!("[{}] Checking if terminator.js is installed...", runtime);
+
+    // Find the runtime executable
+    let runtime_exe = find_executable(runtime).ok_or_else(|| {
+        McpError::internal_error(format!("Could not find {runtime} executable"), None)
+    })?;
+
+    info!("[{}] Using executable: {}", runtime, runtime_exe);
+
+    // Try to require terminator.js
+    let check_cmd = match runtime {
+        "bun" => {
+            // Bun can be executed directly
+            Command::new(&runtime_exe)
+                .args([
+                    "-e",
+                    "require('terminator.js'); console.log('terminator.js found')",
+                ])
+                .output()
+                .await
+        }
+        _ => {
+            // For Node.js, use cmd.exe on Windows if needed
+            if cfg!(windows) && runtime_exe.ends_with(".exe") {
+                // Direct execution should work for .exe files
+                Command::new(&runtime_exe)
+                    .args([
+                        "-e",
+                        "require('terminator.js'); console.log('terminator.js found')",
+                    ])
+                    .output()
+                    .await
+            } else if cfg!(windows) {
+                // Fallback to cmd.exe for batch files
+                Command::new("cmd")
+                    .args([
+                        "/c",
+                        "node",
+                        "-e",
+                        "require('terminator.js'); console.log('terminator.js found')",
+                    ])
+                    .output()
+                    .await
+            } else {
+                Command::new(&runtime_exe)
+                    .args([
+                        "-e",
+                        "require('terminator.js'); console.log('terminator.js found')",
+                    ])
+                    .output()
+                    .await
+            }
+        }
+    };
+
+    // Log check result but always install fresh for isolation
+    match check_cmd {
+        Ok(output) if output.status.success() => {
+            info!(
+                "[{}] terminator.js found globally, but installing fresh copy for isolation",
+                runtime
+            );
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            info!(
+                "[{}] terminator.js not found ({}), installing...",
+                runtime,
+                stderr.trim()
+            );
+        }
+        Err(e) => {
+            info!(
+                "[{}] Could not check for terminator.js ({}), installing...",
+                runtime, e
+            );
+        }
+    }
+
+    // Find npm/bun for installation
+    let installer_exe = match runtime {
+        "bun" => find_executable("bun").ok_or_else(|| {
+            McpError::internal_error("Could not find bun executable for installation", None)
+        })?,
+        _ => find_executable("npm").ok_or_else(|| {
+            McpError::internal_error("Could not find npm executable for installation", None)
+        })?,
+    };
+
+    info!("[{}] Using installer: {}", runtime, installer_exe);
+
+    // Create a dedicated temp directory for this script execution
+    let script_dir = std::env::temp_dir().join(format!(
+        "terminator_js_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+
+    // Create the directory
+    tokio::fs::create_dir_all(&script_dir).await.map_err(|e| {
+        McpError::internal_error(
+            "Failed to create script directory",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    info!(
+        "[{}] Created script directory: {}",
+        runtime,
+        script_dir.display()
+    );
+
+    // Install terminator.js in the script directory
+    let install_result = match runtime {
+        "bun" => {
+            // Bun can be executed directly
+            Command::new(&installer_exe)
+                .current_dir(&script_dir)
+                .args(["install", "terminator.js"])
+                .output()
+                .await
+        }
+        _ => {
+            // On Windows, npm is a batch file, so we need to run it through cmd.exe
+            if cfg!(windows) {
+                Command::new("cmd")
+                    .current_dir(&script_dir)
+                    .args(["/c", "npm", "install", "terminator.js"])
+                    .output()
+                    .await
+            } else {
+                Command::new(&installer_exe)
+                    .current_dir(&script_dir)
+                    .args(["install", "terminator.js"])
+                    .output()
+                    .await
+            }
+        }
+    };
+
+    match install_result {
+        Ok(output) if output.status.success() => {
+            info!("[{}] terminator.js installed successfully", runtime);
+            Ok(script_dir)
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!("[{}] Failed to install terminator.js: {}", runtime, stderr);
+            Err(McpError::internal_error(
+                "Failed to install terminator.js",
+                Some(json!({"error": stderr.to_string()})),
+            ))
+        }
+        Err(e) => {
+            error!("[{}] Failed to run install command: {}", runtime, e);
+            Err(McpError::internal_error(
+                "Failed to run package manager",
+                Some(json!({"error": e.to_string()})),
+            ))
+        }
+    }
+}
+
+/// Execute JavaScript using Node.js/Bun runtime with terminator.js bindings available
+pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json::Value, McpError> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
+    info!("[Node.js] Starting JavaScript execution with terminator.js bindings");
+
+    // Check if bun is available, fallback to node
+    let runtime = if let Some(bun_exe) = find_executable("bun") {
+        match Command::new(&bun_exe).arg("--version").output().await {
+            Ok(output) if output.status.success() => {
+                info!("[Node.js] Found bun at: {}", bun_exe);
+                "bun"
+            }
+            _ => {
+                info!("[Node.js] Bun found but not working, falling back to node");
+                "node"
+            }
+        }
+    } else {
+        info!("[Node.js] Bun not found, using node");
+        "node"
+    };
+
+    info!("[Node.js] Using runtime: {}", runtime);
+
+    // Ensure terminator.js is installed and get the script directory
+    let script_dir = ensure_terminator_js_installed(runtime).await?;
+
+    // Create a wrapper script that:
+    // 1. Imports terminator.js
+    // 2. Executes user script
+    // 3. Returns result
+    let wrapper_script = format!(
+        r#"
+const {{ Desktop }} = require('terminator.js');
+
+// Create global objects
+global.desktop = new Desktop();
+global.log = console.log;
+global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Execute user script
+(async () => {{
+    try {{
+        const result = await (async function() {{
+            {script}
+        }})();
+        
+        // Send result back
+        process.stdout.write('__RESULT__' + JSON.stringify(result) + '__END__\n');
+    }} catch (error) {{
+        process.stdout.write('__ERROR__' + JSON.stringify({{
+            message: error.message,
+            stack: error.stack
+        }}) + '__END__\n');
+    }}
+}})();
+"#
+    );
+
+    // Write script to the same directory where terminator.js is installed
+    let script_path = script_dir.join("main.js");
+
+    tokio::fs::write(&script_path, wrapper_script)
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to write script file",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+
+    info!("[Node.js] Script written to: {}", script_path.display());
+
+    // Find the runtime executable for spawning
+    let runtime_exe = find_executable(runtime).ok_or_else(|| {
+        McpError::internal_error(
+            format!("Could not find {runtime} executable for spawning"),
+            None,
+        )
+    })?;
+
+    info!("[Node.js] Spawning {} at: {}", runtime, runtime_exe);
+
+    // Spawn Node.js/Bun process from the script directory
+    let mut child = if runtime == "bun" {
+        // Bun can be executed directly
+        Command::new(&runtime_exe)
+            .current_dir(&script_dir)
+            .arg("main.js")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    } else if cfg!(windows) && runtime_exe.ends_with(".exe") {
+        // Direct execution should work for .exe files
+        Command::new(&runtime_exe)
+            .current_dir(&script_dir)
+            .arg("main.js")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    } else if cfg!(windows) {
+        // Fallback to cmd.exe for batch files
+        Command::new("cmd")
+            .current_dir(&script_dir)
+            .args(["/c", "node", "main.js"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    } else {
+        Command::new(&runtime_exe)
+            .current_dir(&script_dir)
+            .arg("main.js")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+    }
+    .map_err(|e| {
+        McpError::internal_error(
+            format!("Failed to spawn {runtime} process"),
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut result = None;
+
+    // Handle communication with Node.js process
+    while let Ok(Some(line)) = stdout.next_line().await {
+        if line.starts_with("__RESULT__") && line.ends_with("__END__") {
+            // Parse final result
+            let result_json = line.replace("__RESULT__", "").replace("__END__", "");
+            result = serde_json::from_str(&result_json).ok();
+            break;
+        } else if line.starts_with("__ERROR__") && line.ends_with("__END__") {
+            // Parse error
+            let error_json = line.replace("__ERROR__", "").replace("__END__", "");
+            if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&error_json) {
+                return Err(McpError::internal_error(
+                    "JavaScript execution error",
+                    Some(error_data),
+                ));
+            }
+            break;
+        } else {
+            // Regular console output
+            info!("[Node.js] {}", line);
+        }
+    }
+
+    // Wait for process to complete
+    let status = child.wait().await.map_err(|e| {
+        McpError::internal_error(
+            "Node.js process failed",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    // Clean up script directory
+    tokio::fs::remove_dir_all(&script_dir).await.ok();
+    info!(
+        "[Node.js] Cleaned up script directory: {}",
+        script_dir.display()
+    );
+
+    if !status.success() {
+        return Err(McpError::internal_error(
+            "Node.js process exited with error",
+            Some(json!({"exit_code": status.code()})),
+        ));
+    }
+
+    result.ok_or_else(|| McpError::internal_error("No result received from Node.js process", None))
+}

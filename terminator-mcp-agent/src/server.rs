@@ -1,7 +1,7 @@
 use crate::expression_eval;
 use crate::helpers::*;
 use crate::output_parser;
-use crate::terminator_js;
+use crate::scripting_engine;
 use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::WaitForOutputParserArgs;
@@ -3499,36 +3499,44 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use serde_json::json;
 
-        let engine = args.engine.clone().unwrap_or_else(|| "boa".to_string());
+        let engine = args.engine.clone().unwrap_or_else(|| "nodejs".to_string());
 
         if engine == "boa" {
             let self_clone = self.clone();
-            
+
             // Create a tool dispatcher closure that calls our dispatch_tool method
             let tool_dispatcher = move |tool_name: String, args_val: serde_json::Value| {
                 let self_clone = self_clone.clone();
                 async move {
                     match self_clone.dispatch_tool(&tool_name, &args_val).await {
-                        Ok(call_result) => {
-                            serde_json::to_string(&call_result).map_err(|e| {
-                                McpError::internal_error(
-                                    "Failed to serialize tool result",
-                                    Some(json!({"error": e.to_string(), "tool": tool_name})),
-                                )
-                            })
-                        }
+                        Ok(call_result) => serde_json::to_string(&call_result).map_err(|e| {
+                            McpError::internal_error(
+                                "Failed to serialize tool result",
+                                Some(json!({"error": e.to_string(), "tool": tool_name})),
+                            )
+                        }),
                         Err(e) => Err(e),
                     }
                 }
             };
 
             // Execute JavaScript using the new terminator_js module
-            let execution_result = terminator_js::execute_javascript(args.script, tool_dispatcher).await?;
+            let execution_result =
+                scripting_engine::execute_javascript(args.script, tool_dispatcher).await?;
 
             return Ok(CallToolResult::success(vec![Content::json(json!({
                 "action": "run_javascript",
                 "status": "success",
                 "engine": "boa",
+                "result": execution_result
+            }))?]));
+        } else if engine == "nodejs" {
+            let execution_result =
+                scripting_engine::execute_javascript_with_nodejs(args.script).await?;
+            return Ok(CallToolResult::success(vec![Content::json(json!({
+                "action": "run_javascript",
+                "status": "success",
+                "engine": "nodejs",
                 "result": execution_result
             }))?]));
         }
@@ -3554,5 +3562,3 @@ impl ServerHandler for DesktopWrapper {
         }
     }
 }
-
-

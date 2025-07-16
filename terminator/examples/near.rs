@@ -18,19 +18,28 @@ async fn main() -> Result<(), AutomationError> {
     // Note: The specific output will vary depending on the active application.
     println!("Looking for the last combobox...");
 
-    // Measure time to find the element
-    let start = Instant::now();
-    let element = opened_app
-        .locator("role:text|View Details")?
-        .wait(Some(Duration::from_millis(100000)))
-        .await?;
-    let elapsed = start.elapsed();
-    println!(
-        "Time to find element: {:.2?} ms",
-        elapsed.as_secs_f64() * 1000.0
-    );
+    // // Measure time to find the element
+    // let start = Instant::now();
+    // let element = opened_app
+    //     .locator("role:text|View Details")?
+    //     .wait(Some(Duration::from_millis(100000)))
+    //     .await?;
+    // let elapsed = start.elapsed();
+    // println!(
+    //     "Time to find element: {:.2?} ms",
+    //     elapsed.as_secs_f64() * 1000.0
+    // );
 
-    println!("Found last combobox: {:?}", element.attributes());
+    // println!("Found last combobox: {:?}", element.attributes());
+
+    // get all checkboxes and toggle them
+    let checkboxes = opened_app
+        .locator("role:checkbox")?
+        .all(Some(Duration::from_millis(100000)), None)
+        .await?;
+    for checkbox in checkboxes {
+        checkbox.set_toggled(false)?;
+    }
 
     // You can now interact with it, for example, click to open it.
     // element.click()?;

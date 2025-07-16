@@ -4192,7 +4192,7 @@ impl UIElementImpl for WindowsUIElement {
         // })?;
         // return Ok(state == uiautomation::types::ToggleState::On);
 
-        let current_state = self.element.0.get_name().unwrap_or_default().contains("[");
+        let current_state = self.element.0.get_name().unwrap_or_default().contains("");
 
         Ok(current_state)
         // }
@@ -4232,12 +4232,12 @@ impl UIElementImpl for WindowsUIElement {
         // First, try to use the TogglePattern, which is the primary pattern for toggleable controls.
         if let Ok(toggle_pattern) = self.element.0.get_pattern::<patterns::UITogglePattern>() {
             if let Ok(current_state_enum) = toggle_pattern.get_toggle_state() {
-                let current_state = current_state_enum == uiautomation::types::ToggleState::On;
-                debug!("Current state: {current_state}, desired state: {state}, enum: {current_state_enum}");
+                // let current_state = current_state_enum == uiautomation::types::ToggleState::On;
 
                 // VERY DIRTY HACK BECAUSE TOGGLE STATE DOES NOT WORK
                 // CHECK IF THERE IS [] IN THE NAME OF THE CONTROL
-                let current_state = self.element.0.get_name().unwrap_or_default().contains("[");
+                let current_state = self.element.0.get_name().unwrap_or_default().contains("");
+                debug!("Current state: {current_state}, desired state: {state}, enum: {current_state_enum} name: {}", self.element.0.get_name().unwrap_or_default());
 
                 if current_state != state {
                     // Only toggle if the state is different.
