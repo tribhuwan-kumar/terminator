@@ -129,7 +129,32 @@ jobs:
 
       - name: Copy artifacts to npm packages
         run: |
-          cp -r artifacts/bindings-*/npm/* bindings/nodejs/npm/ || true
+          echo "Listing downloaded artifacts:"
+          find artifacts -name "*.node" -type f
+          
+          echo "Copying .node files to platform packages:"
+          for artifact_dir in artifacts/bindings-*/; do
+            if [ -d "$artifact_dir" ]; then
+              echo "Processing $artifact_dir"
+              # Copy all .node files from this artifact to the corresponding npm packages
+              find "$artifact_dir" -name "*.node" -type f | while read -r node_file; do
+                # Extract the platform name from the .node filename
+                filename=$(basename "$node_file")
+                platform=$(echo "$filename" | sed 's/terminator\.//g' | sed 's/\.node//g')
+                target_dir="bindings/nodejs/npm/$platform"
+                
+                if [ -d "$target_dir" ]; then
+                  echo "Copying $filename to $target_dir/"
+                  cp "$node_file" "$target_dir/"
+                else
+                  echo "Warning: Target directory $target_dir does not exist for $filename"
+                fi
+              done
+            fi
+          done
+          
+          echo "Verifying copied files:"
+          find bindings/nodejs/npm -name "*.node" -type f
 
       - name: Sync version for publish
         run: |
