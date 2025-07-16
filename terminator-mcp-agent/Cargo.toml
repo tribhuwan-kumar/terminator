@@ -11,9 +11,6 @@ path = "src/lib.rs"
 name = "terminator-mcp-agent"
 path = "src/main.rs"
 
-[[bin]]
-name = "gist-executor"
-path = "src/bin/gist_executor.rs"
 
 [dependencies]
 serde = { workspace = true }

@@ -732,7 +732,7 @@ fn parse_transport(url: Option<String>, command: Option<String>) -> mcp_client::
         mcp_client::Transport::Stdio(parts)
     } else {
         // Default to spawning local MCP agent via npx for convenience
-        let default_cmd = "npx -y terminator-mcp-agent";
+        let default_cmd = "npx -y terminator-mcp-agent@latest";
         println!("ℹ️  No --url or --command specified. Falling back to '{default_cmd}'");
         let parts = parse_command(default_cmd);
         mcp_client::Transport::Stdio(parts)
@@ -868,8 +868,14 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
 
     info!("Executing workflow with {steps_count} steps via MCP");
 
-    // Pass the workflow directly as structured arguments
-    // The MCP client expects arguments as a JSON string that parses to an object
+    // Debug: Print the workflow structure that we're about to send
+    if args.verbose {
+        let workflow_debug = serde_json::to_string_pretty(&workflow_val)?;
+        info!("Workflow structure being sent: {}", workflow_debug);
+    }
+
+    // Send the clean workflow JSON directly instead of converting through ExecuteSequenceArgs
+    // to avoid adding null fields that might confuse the server
     let workflow_str = serde_json::to_string(&workflow_val)?;
 
     mcp_client::execute_command(
