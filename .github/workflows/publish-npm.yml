@@ -114,12 +114,17 @@ jobs:
         run: |
           cd bindings/nodejs
           echo "Verifying .node file was created and copied:"
-          platform_package="npm/${{ matrix.settings.platform }}-${{ matrix.settings.arch }}-"
+          
+          # Construct platform package directory name correctly
           if [ "${{ matrix.settings.platform }}" = "win32" ]; then
-            platform_package="${platform_package}msvc"
+            platform_package="npm/${{ matrix.settings.platform }}-${{ matrix.settings.arch }}-msvc"
           elif [ "${{ matrix.settings.platform }}" = "linux" ]; then
-            platform_package="${platform_package}gnu"
+            platform_package="npm/${{ matrix.settings.platform }}-${{ matrix.settings.arch }}-gnu"
+          else
+            # For darwin and other platforms, no suffix
+            platform_package="npm/${{ matrix.settings.platform }}-${{ matrix.settings.arch }}"
           fi
+          
           echo "Looking for .node file in: ${platform_package}/"
           ls -la "${platform_package}/" || echo "Directory not found"
           if ls "${platform_package}/"*.node 1> /dev/null 2>&1; then
