@@ -15,13 +15,12 @@
 //!   cargo run --bin terminator -- release    # Full release: bump patch + tag + push
 //!   cargo run --bin terminator -- release minor # Full release: bump minor + tag + push
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
-// Removed dependency on terminator-mcp-agent to avoid heavy compilation issues.
 
 mod mcp_client;
 
@@ -431,8 +430,14 @@ fn sync_nodejs_bindings(version: &str) {
                 if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                     let package_json = entry.path().join("package.json");
                     if package_json.exists() {
-                        if let Err(e) = update_package_json(&package_json.to_string_lossy(), version) {
-                            eprintln!("⚠️  Warning: Failed to update {}: {}", package_json.display(), e);
+                        if let Err(e) =
+                            update_package_json(&package_json.to_string_lossy(), version)
+                        {
+                            eprintln!(
+                                "⚠️  Warning: Failed to update {}: {}",
+                                package_json.display(),
+                                e
+                            );
                         } else {
                             println!("📦 Updated {}", entry.file_name().to_string_lossy());
                         }
@@ -709,9 +714,7 @@ fn handle_mcp_command(cmd: McpCommands) {
             McpCommands::Exec(args) => {
                 mcp_client::execute_command(transport, args.tool, args.args).await
             }
-            McpCommands::Run(args) => {
-                run_workflow(transport, args).await
-            }
+            McpCommands::Run(args) => run_workflow(transport, args).await,
         }
     });
 
@@ -763,23 +766,22 @@ fn parse_command(command: &str) -> Vec<String> {
 }
 
 async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> anyhow::Result<()> {
-    use anyhow::Context;
     use tracing::info;
 
     if args.verbose {
         std::env::set_var("RUST_LOG", "debug");
     }
 
-    // Initialize simple logging
+    // Initialize simple logging (only if not already initialized)
     {
         use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-        tracing_subscriber::registry()
+        let _ = tracing_subscriber::registry()
             .with(
                 tracing_subscriber::EnvFilter::try_from_default_env()
                     .unwrap_or_else(|_| "info".into()),
             )
             .with(tracing_subscriber::fmt::layer())
-            .init();
+            .try_init(); // Use try_init instead of init to avoid panics on duplicate initialization
     }
 
     info!("Starting workflow execution via terminator CLI");
@@ -806,23 +808,24 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
         InputType::Auto => unreachable!(),
     };
 
-    // Parse to JSON value (JSON first, fallback to YAML)
-    let mut workflow_val: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => serde_yaml::from_str::<serde_json::Value>(&content)
-            .context("Content is neither valid JSON nor YAML")?,
-    };
+    // Parse workflow using the same robust logic as gist_executor
+    let mut workflow_val = parse_workflow_content(&content)
+        .with_context(|| format!("Failed to parse workflow from {}", args.input))?;
 
-    // Basic validation: ensure steps array exists and non-empty
+    // Validate workflow structure early to catch issues
+    validate_workflow(&workflow_val).with_context(|| "Workflow validation failed")?;
+
+    // Get steps count for logging
     let steps_count = workflow_val
         .get("steps")
         .and_then(|v| v.as_array())
         .map(|arr| arr.len())
         .unwrap_or(0);
 
-    if steps_count == 0 {
-        anyhow::bail!("Workflow must contain a non-empty 'steps' array");
-    }
+    info!(
+        "Successfully parsed and validated workflow with {} steps",
+        steps_count
+    );
 
     // Apply overrides
     if let Some(obj) = workflow_val.as_object_mut() {
@@ -838,14 +841,36 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     }
 
     if args.dry_run {
-        println!("✅ Workflow validation successful! Steps: {steps_count}");
+        println!("✅ Workflow validation successful!");
+        println!("📊 Workflow Summary:");
+        println!("   • Steps: {steps_count}");
+
+        if let Some(variables) = workflow_val.get("variables").and_then(|v| v.as_object()) {
+            println!("   • Variables: {}", variables.len());
+        } else {
+            println!("   • Variables: 0");
+        }
+
+        if let Some(selectors) = workflow_val.get("selectors").and_then(|v| v.as_object()) {
+            println!("   • Selectors: {}", selectors.len());
+        } else {
+            println!("   • Selectors: 0");
+        }
+
+        let stop_on_error = workflow_val
+            .get("stop_on_error")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        println!("   • Stop on error: {stop_on_error}");
+
         return Ok(());
     }
 
-    // Serialize back to string for execute_sequence tool
-    let workflow_str = serde_json::to_string(&workflow_val)?;
-
     info!("Executing workflow with {steps_count} steps via MCP");
+
+    // Pass the workflow directly as structured arguments, not as a JSON string
+    // The MCP server's execute_sequence tool expects ExecuteSequenceArgs parameters
+    let workflow_str = serde_json::to_string(&workflow_val)?;
 
     mcp_client::execute_command(
         transport,
@@ -893,8 +918,8 @@ fn convert_gist_to_raw_url(gist_url: &str) -> anyhow::Result<String> {
 }
 
 async fn read_local_file(path: &str) -> anyhow::Result<String> {
-    use tokio::fs;
     use std::path::Path;
+    use tokio::fs;
 
     let p = Path::new(path);
     if !p.exists() {
@@ -924,25 +949,144 @@ async fn fetch_remote_content(url: &str) -> anyhow::Result<String> {
     Ok(res.text().await?)
 }
 
-fn validate_workflow(wf: &serde_json::Value) -> anyhow::Result<()> {
-    if wf.get("steps").and_then(|v| v.as_array()).map_or(true, |arr| arr.is_empty()) {
-        return Err(anyhow::anyhow!("Workflow must contain at least one step"));
+/// Parse workflow content using robust parsing strategies from gist_executor.rs
+fn parse_workflow_content(content: &str) -> anyhow::Result<serde_json::Value> {
+    // Strategy 1: Try direct JSON workflow
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+        // Check if it's a valid workflow (has steps field)
+        if val.get("steps").is_some() {
+            return Ok(val);
+        }
+
+        // Check if it's a wrapper object
+        if let Some(extracted) = extract_workflow_from_wrapper(&val)? {
+            return Ok(extracted);
+        }
     }
-    if let Some(steps) = wf.get("steps").and_then(|v| v.as_array()) {
-        for (i, step) in steps.iter().enumerate() {
-            if step.get("tool_name").is_none() && step.get("group_name").is_none() {
-                return Err(anyhow::anyhow!(
-                    "Step {} must have either tool_name or group_name",
-                    i
-                ));
-            }
-            if step.get("tool_name").is_some() && step.get("group_name").is_some() {
-                return Err(anyhow::anyhow!(
-                    "Step {} cannot have both tool_name and group_name",
-                    i
-                ));
+
+    // Strategy 2: Try direct YAML workflow
+    if let Ok(val) = serde_yaml::from_str::<serde_json::Value>(content) {
+        // Check if it's a valid workflow (has steps field)
+        if val.get("steps").is_some() {
+            return Ok(val);
+        }
+
+        // Check if it's a wrapper object
+        if let Some(extracted) = extract_workflow_from_wrapper(&val)? {
+            return Ok(extracted);
+        }
+    }
+
+    // Strategy 3: Try parsing as JSON wrapper first, then extract
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+        if let Some(extracted) = extract_workflow_from_wrapper(&val)? {
+            return Ok(extracted);
+        }
+    }
+
+    // Strategy 4: Try parsing as YAML wrapper first, then extract
+    if let Ok(val) = serde_yaml::from_str::<serde_json::Value>(content) {
+        if let Some(extracted) = extract_workflow_from_wrapper(&val)? {
+            return Ok(extracted);
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "Unable to parse content as JSON or YAML workflow or wrapper object. Content must either be:\n\
+        1. A workflow with 'steps' field\n\
+        2. A wrapper object with tool_name='execute_sequence' and 'arguments' field\n\
+        3. Valid JSON or YAML format"
+    ))
+}
+
+/// Extract workflow from wrapper object if it has tool_name: execute_sequence
+fn extract_workflow_from_wrapper(
+    value: &serde_json::Value,
+) -> anyhow::Result<Option<serde_json::Value>> {
+    if let Some(tool_name) = value.get("tool_name") {
+        if tool_name == "execute_sequence" {
+            if let Some(arguments) = value.get("arguments") {
+                return Ok(Some(arguments.clone()));
+            } else {
+                return Err(anyhow::anyhow!("Tool call missing 'arguments' field"));
             }
         }
     }
+    Ok(None)
+}
+
+/// Validate workflow structure to provide early error detection
+fn validate_workflow(workflow: &serde_json::Value) -> anyhow::Result<()> {
+    // Check that it's an object
+    let obj = workflow
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("Workflow must be a JSON object"))?;
+
+    // Check that steps exists and is an array
+    let steps = obj
+        .get("steps")
+        .ok_or_else(|| anyhow::anyhow!("Workflow must contain a 'steps' field"))?;
+
+    let steps_array = steps
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("'steps' field must be an array"))?;
+
+    if steps_array.is_empty() {
+        return Err(anyhow::anyhow!("Workflow must contain at least one step"));
+    }
+
+    // Validate each step
+    for (i, step) in steps_array.iter().enumerate() {
+        let step_obj = step
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("Step {} must be an object", i))?;
+
+        let has_tool_name = step_obj.contains_key("tool_name");
+        let has_group_name = step_obj.contains_key("group_name");
+
+        if !has_tool_name && !has_group_name {
+            return Err(anyhow::anyhow!(
+                "Step {} must have either 'tool_name' or 'group_name'",
+                i
+            ));
+        }
+
+        if has_tool_name && has_group_name {
+            return Err(anyhow::anyhow!(
+                "Step {} cannot have both 'tool_name' and 'group_name'",
+                i
+            ));
+        }
+    }
+
+    // Validate variables if present
+    if let Some(variables) = obj.get("variables") {
+        if let Some(vars_obj) = variables.as_object() {
+            for (name, def) in vars_obj {
+                if name.is_empty() {
+                    return Err(anyhow::anyhow!("Variable name cannot be empty"));
+                }
+
+                if let Some(def_obj) = def.as_object() {
+                    if let Some(label) = def_obj.get("label") {
+                        if let Some(label_str) = label.as_str() {
+                            if label_str.is_empty() {
+                                return Err(anyhow::anyhow!(
+                                    "Variable '{}' must have a non-empty label",
+                                    name
+                                ));
+                            }
+                        }
+                    } else {
+                        return Err(anyhow::anyhow!(
+                            "Variable '{}' must have a 'label' field",
+                            name
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
