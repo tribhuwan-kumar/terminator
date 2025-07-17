@@ -603,6 +603,7 @@ try {
 }
 
 #[tokio::test]
+#[ignore] // wont work in ci
 async fn test_complete_nodejs_terminator_execution() {
     // Test the complete flow: install terminator.js in isolated dir and run script
     use terminator_mcp_agent::scripting_engine::execute_javascript_with_nodejs;
@@ -1142,6 +1143,7 @@ try {
 }
 
 #[tokio::test]
+#[ignore] // wont work in ci
 async fn test_scripting_engine_with_local_bindings() {
     // Test the new execute_javascript_with_local_bindings function
     use terminator_mcp_agent::scripting_engine::execute_javascript_with_local_bindings;
