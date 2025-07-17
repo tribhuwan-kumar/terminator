@@ -21,6 +21,4 @@ dist/
 
 .env 
 
-
-workflows/
-
+/workflows/
