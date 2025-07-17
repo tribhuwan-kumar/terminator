@@ -1148,7 +1148,7 @@ impl DesktopWrapper {
                 // Try to run output parser
                 let tree_json = json!({ "ui_tree": tree });
 
-                match output_parser::run_output_parser(&args.output_parser, &tree_json) {
+                match output_parser::run_output_parser(&args.output_parser, &tree_json).await {
                     Ok(Some(parsed_data)) => {
                         // Check if we got the expected data
                         let is_valid = if let Some(criteria) = &args.success_criteria {
@@ -2468,7 +2468,7 @@ impl DesktopWrapper {
             let mut parser_json = parser_def.clone();
             substitute_variables(&mut parser_json, &execution_context);
 
-            match output_parser::run_output_parser(&parser_json, &summary) {
+            match output_parser::run_output_parser(&parser_json, &summary).await {
                 Ok(Some(parsed_data)) => {
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parsed_output".to_string(), parsed_data);

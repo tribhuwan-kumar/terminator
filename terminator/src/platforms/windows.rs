@@ -5183,9 +5183,12 @@ fn get_configurable_attributes(
         attrs.enabled = Some(is_enabled);
     }
 
-    // Add toggled state if available
+    // Add toggled state if available (or default to false for checkboxes)
     if let Ok(toggled) = element.is_toggled() {
         attrs.is_toggled = Some(toggled);
+    } else if element.role() == "CheckBox" {
+        // Default checkboxes to false when is_toggled() fails (common for unchecked boxes)
+        attrs.is_toggled = Some(false);
     }
 
     if let Ok(is_selected) = element.is_selected() {

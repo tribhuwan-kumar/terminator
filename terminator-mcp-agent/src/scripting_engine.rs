@@ -398,8 +398,6 @@ pub fn find_executable(name: &str) -> Option<String> {
 
 /// Ensure terminator.js is installed in a persistent directory and return the script directory
 async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
-    use tokio::process::Command;
-
     info!("[{}] Checking if terminator.js is installed...", runtime);
 
     // Use a persistent directory instead of a new temp directory each time
@@ -485,68 +483,431 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         vec!["update"]
     };
 
-    let install_result = match runtime {
+    info!(
+        "[{}] Preparing to run package manager with args: {:?}",
+        runtime, command_args
+    );
+    
+    // Add retry mechanism based on screenpipe patterns
+    let max_retries = 3;
+    let mut attempt = 0;
+    let mut last_error = None;
+
+    loop {
+        attempt += 1;
+        info!("[{}] Installation attempt {} of {}", runtime, attempt, max_retries);
+
+        // Use spawn with real-time output to see what's happening
+        let install_result = match runtime {
         "bun" => {
-            // Bun can be executed directly
-            Command::new(&installer_exe)
+            info!(
+                "[{}] Running bun directly: {} {:?}",
+                runtime, installer_exe, command_args
+            );
+            info!("[{}] Spawning bun process...", runtime);
+            let child = match tokio::process::Command::new(&installer_exe)
                 .current_dir(&script_dir)
                 .args(&command_args)
-                .output()
-                .await
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+            {
+                Ok(child) => child,
+                Err(e) => {
+                    error!("[{}] Failed to spawn bun process: {}", runtime, e);
+                    return Err(McpError::internal_error(
+                        "Failed to spawn bun process",
+                        Some(json!({"error": e.to_string()})),
+                    ));
+                }
+            };
+
+            info!(
+                "[{}] Bun process spawned, waiting for completion...",
+                runtime
+            );
+            child.wait_with_output().await
         }
         _ => {
             // On Windows, npm is a batch file, so we need to run it through cmd.exe
             if cfg!(windows) {
                 let mut cmd_args = vec!["/c", "npm"];
+                // Add comprehensive flags based on screenpipe patterns
+                cmd_args.extend(
+                    [
+                        "--verbose",
+                        "--no-audit",
+                        "--no-fund",
+                        "--yes",
+                        "--force",                                // Force resolve conflicts
+                        "--legacy-peer-deps",                     // Handle peer dependency issues
+                        "--no-optional", // Skip optional dependencies that might hang
+                        "--registry=https://registry.npmjs.org/", // Explicit registry
+                    ]
+                    .iter(),
+                );
                 cmd_args.extend(command_args.iter().copied());
-                Command::new("cmd")
+                info!(
+                    "[{}] Running npm via cmd.exe: cmd {:?} in directory {}",
+                    runtime,
+                    cmd_args,
+                    script_dir.display()
+                );
+
+                info!("[{}] About to spawn cmd.exe process...", runtime);
+
+                // First, let's test if npm is working at all with a simple version check
+                // Debug: show what's in the directory and what we're trying to install
+                info!("[{}] Debugging directory contents...", runtime);
+                if let Ok(entries) = std::fs::read_dir(&script_dir) {
+                    for entry in entries.flatten() {
+                        info!(
+                            "[{}] Directory contains: {}",
+                            runtime,
+                            entry.file_name().to_string_lossy()
+                        );
+                    }
+                }
+
+                if let Ok(package_json) = std::fs::read_to_string(script_dir.join("package.json")) {
+                    info!("[{}] package.json contents:\n{}", runtime, package_json);
+                } else {
+                    error!("[{}] Could not read package.json!", runtime);
+                }
+
+                info!("[{}] Testing npm connectivity first...", runtime);
+                let test_result = tokio::process::Command::new("cmd")
+                    .current_dir(&script_dir)
+                    .args(["/c", "npm", "--version"])
+                    .output()
+                    .await;
+
+                match test_result {
+                    Ok(output) if output.status.success() => {
+                        let version = String::from_utf8_lossy(&output.stdout);
+                        info!(
+                            "[{}] npm version test successful: {}",
+                            runtime,
+                            version.trim()
+                        );
+                    }
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        error!("[{}] npm version test failed: {}", runtime, stderr);
+                        info!(
+                            "[{}] npm stdout: {}",
+                            runtime,
+                            String::from_utf8_lossy(&output.stdout)
+                        );
+                    }
+                    Err(e) => {
+                        error!("[{}] Failed to run npm version test: {}", runtime, e);
+                    }
+                }
+
+                // Now test npm registry connectivity
+                info!("[{}] Testing npm registry connectivity...", runtime);
+                let registry_test = tokio::process::Command::new("cmd")
+                    .current_dir(&script_dir)
+                    .args(["/c", "npm", "ping"])
+                    .output()
+                    .await;
+
+                match registry_test {
+                    Ok(output) if output.status.success() => {
+                        let ping_result = String::from_utf8_lossy(&output.stdout);
+                        info!(
+                            "[{}] npm registry ping successful: {}",
+                            runtime,
+                            ping_result.trim()
+                        );
+                    }
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        error!("[{}] npm registry ping failed: {}", runtime, stderr);
+                        info!(
+                            "[{}] npm ping stdout: {}",
+                            runtime,
+                            String::from_utf8_lossy(&output.stdout)
+                        );
+                    }
+                    Err(e) => {
+                        error!("[{}] Failed to run npm ping test: {}", runtime, e);
+                    }
+                }
+                let spawn_result = tokio::process::Command::new("cmd")
                     .current_dir(&script_dir)
                     .args(&cmd_args)
-                    .output()
-                    .await
+                    // Core npm configuration (based on screenpipe patterns)
+                    .env("NPM_CONFIG_REGISTRY", "https://registry.npmjs.org/")
+                    .env("NPM_CONFIG_LOGLEVEL", "info")
+                    .env("NPM_CONFIG_PROGRESS", "true")
+                    .env("NPM_CONFIG_YES", "true")
+                    .env("NPM_CONFIG_FORCE", "true")
+                    .env("NPM_CONFIG_LEGACY_PEER_DEPS", "true")
+                    .env("NPM_CONFIG_NO_OPTIONAL", "true")
+                    .env("NPM_CONFIG_NO_AUDIT", "true")
+                    .env("NPM_CONFIG_NO_FUND", "true")
+                    // Network and timeout configuration
+                    .env("NPM_CONFIG_FETCH_TIMEOUT", "60000") // 60 second timeout
+                    .env("NPM_CONFIG_FETCH_RETRY_MINTIMEOUT", "10000") // 10 sec min retry
+                    .env("NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT", "60000") // 60 sec max retry
+                    .env("NPM_CONFIG_FETCH_RETRIES", "3")
+                    // CI and non-interactive mode
+                    .env("CI", "true")
+                    .env("NODE_ENV", "production")
+                    .env("NPM_CONFIG_INTERACTIVE", "false")
+                    .env("NPM_CONFIG_STDIN", "false")
+                    // Cache configuration to prevent corruption issues
+                    .env("NPM_CONFIG_CACHE_VERIFY", "false") // Skip cache verification
+                    .env("NPM_CONFIG_PREFER_OFFLINE", "false") // Always try network first
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn();
+
+                match spawn_result {
+                    Ok(mut child) => {
+                        info!(
+                            "[{}] cmd.exe process spawned successfully, PID: {:?}",
+                            runtime,
+                            child.id()
+                        );
+                        info!("[{}] Waiting for npm install to complete...", runtime);
+
+                        // Read stdout and stderr in real-time
+                        use tokio::io::{AsyncBufReadExt, BufReader};
+
+                        let stdout = child.stdout.take().unwrap();
+                        let stderr = child.stderr.take().unwrap();
+
+                        let mut stdout_reader = BufReader::new(stdout).lines();
+                        let mut stderr_reader = BufReader::new(stderr).lines();
+
+                        let timeout_duration = std::time::Duration::from_secs(300); // 5 minutes
+                        let start_time = std::time::Instant::now();
+                        let mut last_progress_time = start_time;
+
+                        loop {
+                            if start_time.elapsed() > timeout_duration {
+                                error!(
+                                    "[{}] npm install timed out after {:?}, killing process",
+                                    runtime, timeout_duration
+                                );
+                                let _ = child.kill().await;
+                                return Err(McpError::internal_error(
+                                    "npm install timed out",
+                                    Some(json!({"timeout_secs": timeout_duration.as_secs()})),
+                                ));
+                            }
+
+                            tokio::select! {
+                                // Read stdout
+                                stdout_line = stdout_reader.next_line() => {
+                                    match stdout_line {
+                                        Ok(Some(line)) => {
+                                            info!("[{}] npm stdout: {}", runtime, line);
+                                            last_progress_time = std::time::Instant::now(); // Reset progress timer on output
+                                        }
+                                        Ok(None) => {
+                                            info!("[{}] npm stdout stream ended", runtime);
+                                        }
+                                        Err(e) => {
+                                            error!("[{}] Error reading npm stdout: {}", runtime, e);
+                                        }
+                                    }
+                                }
+
+                                // Read stderr
+                                stderr_line = stderr_reader.next_line() => {
+                                    match stderr_line {
+                                        Ok(Some(line)) => {
+                                            info!("[{}] npm stderr: {}", runtime, line);
+                                            last_progress_time = std::time::Instant::now(); // Reset progress timer on output
+                                        }
+                                        Ok(None) => {
+                                            info!("[{}] npm stderr stream ended", runtime);
+                                        }
+                                        Err(e) => {
+                                            error!("[{}] Error reading npm stderr: {}", runtime, e);
+                                        }
+                                    }
+                                }
+
+                                // Check if process is done and show progress
+                                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
+                                    match child.try_wait() {
+                                        Ok(Some(status)) => {
+                                            info!("[{}] npm process completed with status: {:?}", runtime, status);
+
+                                            // Read any remaining output
+                                            while let Ok(Some(line)) = stdout_reader.next_line().await {
+                                                if !line.is_empty() {
+                                                    info!("[{}] npm stdout (final): {}", runtime, line);
+                                                }
+                                            }
+                                            while let Ok(Some(line)) = stderr_reader.next_line().await {
+                                                if !line.is_empty() {
+                                                    info!("[{}] npm stderr (final): {}", runtime, line);
+                                                }
+                                            }
+
+                                            break if status.success() {
+                                                Ok(std::process::Output {
+                                                    status,
+                                                    stdout: Vec::new(), // We already logged the output
+                                                    stderr: Vec::new(),
+                                                })
+                                            } else {
+                                                Ok(std::process::Output {
+                                                    status,
+                                                    stdout: Vec::new(),
+                                                    stderr: format!("npm exited with code {:?}", status.code()).into_bytes(),
+                                                })
+                                            };
+                                        }
+                                        Ok(None) => {
+                                            // Still running - show progress occasionally
+                                            if last_progress_time.elapsed().as_secs() >= 10 {
+                                                info!(
+                                                    "[{}] npm still running... ({:.1}s elapsed, waiting for output...)",
+                                                    runtime,
+                                                    start_time.elapsed().as_secs_f32()
+                                                );
+                                                last_progress_time = std::time::Instant::now();
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("[{}] Error checking npm process status: {}", runtime, e);
+                                            break Err(e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("[{}] Failed to spawn cmd.exe process: {}", runtime, e);
+                        error!("[{}] Working directory: {}", runtime, script_dir.display());
+                        error!("[{}] Command attempted: cmd {:?}", runtime, cmd_args);
+                        Err(e)
+                    }
+                }
             } else {
-                Command::new(&installer_exe)
+                info!(
+                    "[{}] Running npm directly: {} {:?}",
+                    runtime, installer_exe, command_args
+                );
+                info!("[{}] Spawning npm process...", runtime);
+                let child = match tokio::process::Command::new(&installer_exe)
                     .current_dir(&script_dir)
                     .args(&command_args)
-                    .output()
-                    .await
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                {
+                    Ok(child) => child,
+                    Err(e) => {
+                        error!("[{}] Failed to spawn npm process: {}", runtime, e);
+                        return Err(McpError::internal_error(
+                            "Failed to spawn npm process",
+                            Some(json!({"error": e.to_string()})),
+                        ));
+                    }
+                };
+
+                info!(
+                    "[{}] npm process spawned, waiting for completion...",
+                    runtime
+                );
+                child.wait_with_output().await
             }
         }
     };
 
-    match install_result {
-        Ok(output) if output.status.success() => {
-            let action = if should_install {
-                "installed"
-            } else {
-                "updated"
-            };
-            info!(
-                "[{}] terminator.js {} successfully to latest version in persistent directory",
-                runtime, action
-            );
-            Ok(script_dir)
+        info!("[{}] Package manager command execution initiated", runtime);
+
+        match install_result {
+            Ok(output) => {
+                info!(
+                    "[{}] Package manager command completed with exit status: {:?}",
+                    runtime, output.status
+                );
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+
+                if !stdout.is_empty() {
+                    info!("[{}] Package manager stdout:\n{}", runtime, stdout);
+                }
+                if !stderr.is_empty() {
+                    info!("[{}] Package manager stderr:\n{}", runtime, stderr);
+                }
+
+                if output.status.success() {
+                    let action = if should_install {
+                        "installed"
+                    } else {
+                        "updated"
+                    };
+                    info!(
+                        "[{}] terminator.js {} successfully to latest version in persistent directory",
+                        runtime, action
+                    );
+                    return Ok(script_dir); // Success - exit retry loop
+                } else {
+                    let action = if should_install { "install" } else { "update" };
+                    let error_msg = format!(
+                        "Failed to {} terminator.js with exit code {:?}: {}",
+                        action,
+                        output.status.code(),
+                        stderr
+                    );
+                    error!("[{}] {}", runtime, error_msg);
+                    
+                    last_error = Some(McpError::internal_error(
+                        format!("Failed to {action} terminator.js"),
+                        Some(json!({
+                            "error": stderr.to_string(),
+                            "stdout": stdout.to_string(),
+                            "exit_code": output.status.code(),
+                            "attempt": attempt,
+                            "max_retries": max_retries
+                        })),
+                    ));
+                }
+            }
+            Err(e) => {
+                let action = if should_install { "install" } else { "update" };
+                let error_msg = format!("Failed to run {} command: {}", action, e);
+                error!("[{}] {}", runtime, error_msg);
+                
+                last_error = Some(McpError::internal_error(
+                    "Failed to run package manager",
+                    Some(json!({
+                        "error": e.to_string(),
+                        "attempt": attempt,
+                        "max_retries": max_retries
+                    })),
+                ));
+            }
         }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let action = if should_install { "install" } else { "update" };
-            error!(
-                "[{}] Failed to {} terminator.js: {}",
-                runtime, action, stderr
-            );
-            Err(McpError::internal_error(
-                format!("Failed to {action} terminator.js"),
-                Some(json!({"error": stderr.to_string()})),
-            ))
+
+        // Check if we should retry
+        if attempt >= max_retries {
+            error!("[{}] All {} installation attempts failed", runtime, max_retries);
+            return Err(last_error.unwrap_or_else(|| McpError::internal_error(
+                "Installation failed after maximum retries",
+                None
+            )));
         }
-        Err(e) => {
-            let action = if should_install { "install" } else { "update" };
-            error!("[{}] Failed to run {} command: {}", runtime, action, e);
-            Err(McpError::internal_error(
-                "Failed to run package manager",
-                Some(json!({"error": e.to_string()})),
-            ))
-        }
+
+        // Wait before retrying (exponential backoff like screenpipe)
+        let delay_secs = 2u64.pow(attempt as u32);
+        error!(
+            "[{}] Installation attempt {} failed, retrying in {} seconds...",
+            runtime, attempt, delay_secs
+        );
+        tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
     }
 }
 

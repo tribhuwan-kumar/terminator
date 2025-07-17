@@ -30,15 +30,19 @@ async fn main() -> Result<(), AutomationError> {
     //     elapsed.as_secs_f64() * 1000.0
     // );
 
+
     // println!("Found last combobox: {:?}", element.attributes());
 
     // get all checkboxes and toggle them
     let checkboxes = opened_app
-        .locator("role:checkbox")?
-        .all(Some(Duration::from_millis(100000)), None)
+        .locator("role:dialog >> role:checkbox")?
+        .all(Some(Duration::from_millis(1000)), None)
         .await?;
     for checkbox in checkboxes {
-        checkbox.set_toggled(false)?;
+        // checkbox.set_toggled(false)?;
+        if checkbox.is_toggled()? {
+            checkbox.click()?;
+        }
     }
 
     // You can now interact with it, for example, click to open it.
