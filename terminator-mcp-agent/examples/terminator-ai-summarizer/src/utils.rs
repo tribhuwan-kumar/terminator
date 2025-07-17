@@ -1,14 +1,18 @@
-use std::env;
-use clap::Parser;
-use tracing::Level;
 use anyhow::Result;
+use clap::Parser;
+use std::env;
 use std::path::PathBuf;
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    #[arg(short, long, default_value = "you're are screen summarizer assitant and here is the data of ui element tree as context. the ui element tree data would be in json format. use the `name` and `text` attr of ui tree to summarize the screen context consicely")]
+    #[arg(
+        short,
+        long,
+        default_value = "you're are screen summarizer assitant and here is the data of ui element tree as context. the ui element tree data would be in json format. use the `name` and `text` attr of ui tree to summarize the screen context consicely"
+    )]
     pub system_prompt: String,
     #[arg(short, long, default_value = "gemma3:1b")]
     pub model: String,
@@ -50,4 +54,3 @@ pub fn get_agent_binary_path() -> PathBuf {
     path.set_extension("exe");
     path
 }
-

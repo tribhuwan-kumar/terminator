@@ -1,15 +1,15 @@
-use clap::Parser;
-use std::sync::Arc;
-use anyhow::Result;
-use std::sync::Mutex;
-use arboard::Clipboard;
-use tracing::{debug, info, error};
-use rdev::{listen, Event, EventType, Key};
 use crate::{
-    utils::{init_logging, Args},
     client::get_mcp_tool_result,
     ollama::summrize_by_ollama,
+    utils::{init_logging, Args},
 };
+use anyhow::Result;
+use arboard::Clipboard;
+use clap::Parser;
+use rdev::{listen, Event, EventType, Key};
+use std::sync::Arc;
+use std::sync::Mutex;
+use tracing::{debug, error, info};
 
 mod client;
 mod ollama;
@@ -20,7 +20,10 @@ async fn main() -> Result<()> {
     init_logging()?;
 
     let args = Args::parse();
-    info!("initializing summarizer with model: '{}' hotkey: {}", args.model, args.hotkey);
+    info!(
+        "initializing summarizer with model: '{}' hotkey: {}",
+        args.model, args.hotkey
+    );
 
     let is_triggered = Arc::new(Mutex::new(false));
     let trigger_clone = Arc::clone(&is_triggered);
@@ -32,40 +35,38 @@ async fn main() -> Result<()> {
     let alt_state = Arc::clone(&alt_pressed);
 
     std::thread::spawn(move || {
-        if let Err(e) = listen(move |event: Event| {
-            match event.event_type {
-                EventType::KeyPress(Key::ControlLeft) | EventType::KeyPress(Key::ControlRight) => {
-                    if let Ok(mut ctrl) = ctrl_state.lock() {
-                        *ctrl = true;
-                    }
+        if let Err(e) = listen(move |event: Event| match event.event_type {
+            EventType::KeyPress(Key::ControlLeft) | EventType::KeyPress(Key::ControlRight) => {
+                if let Ok(mut ctrl) = ctrl_state.lock() {
+                    *ctrl = true;
                 }
-                EventType::KeyRelease(Key::ControlLeft) | EventType::KeyRelease(Key::ControlRight) => {
-                    if let Ok(mut ctrl) = ctrl_state.lock() {
-                        *ctrl = false;
-                    }
-                }
-                EventType::KeyPress(Key::Alt) => {
-                    if let Ok(mut alt) = alt_state.lock() {
-                        *alt = true;
-                    }
-                }
-                EventType::KeyRelease(Key::Alt) => {
-                    if let Ok(mut alt) = alt_state.lock() {
-                        *alt = false;
-                    }
-                }
-                EventType::KeyPress(Key::KeyJ) => {
-                    let ctrl = ctrl_state.lock().unwrap();
-                    let alt = alt_state.lock().unwrap();
-                    if *ctrl && *alt {
-                        info!("'{}' pressed!", args.hotkey);
-                        if let Ok(mut triggered) = trigger_clone.lock() {
-                            *triggered = true;
-                        }
-                    }
-                }
-                _ => {}
             }
+            EventType::KeyRelease(Key::ControlLeft) | EventType::KeyRelease(Key::ControlRight) => {
+                if let Ok(mut ctrl) = ctrl_state.lock() {
+                    *ctrl = false;
+                }
+            }
+            EventType::KeyPress(Key::Alt) => {
+                if let Ok(mut alt) = alt_state.lock() {
+                    *alt = true;
+                }
+            }
+            EventType::KeyRelease(Key::Alt) => {
+                if let Ok(mut alt) = alt_state.lock() {
+                    *alt = false;
+                }
+            }
+            EventType::KeyPress(Key::KeyJ) => {
+                let ctrl = ctrl_state.lock().unwrap();
+                let alt = alt_state.lock().unwrap();
+                if *ctrl && *alt {
+                    info!("'{}' pressed!", args.hotkey);
+                    if let Ok(mut triggered) = trigger_clone.lock() {
+                        *triggered = true;
+                    }
+                }
+            }
+            _ => {}
         }) {
             error!("error listening to keyboard events: {:?}", e);
         }
@@ -118,6 +119,5 @@ async fn main() -> Result<()> {
 
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
+    }
 }
-}
-

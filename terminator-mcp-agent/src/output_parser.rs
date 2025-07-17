@@ -16,7 +16,10 @@ pub struct OutputParserDefinition {
 }
 
 /// The main entry point for parsing tool output.
-pub async fn run_output_parser(parser_def_val: &Value, tool_output: &Value) -> Result<Option<Value>> {
+pub async fn run_output_parser(
+    parser_def_val: &Value,
+    tool_output: &Value,
+) -> Result<Option<Value>> {
     let parser_def: OutputParserDefinition = serde_json::from_value(parser_def_val.clone())
         .map_err(|e| {
             anyhow::anyhow!(
@@ -39,15 +42,16 @@ pub async fn run_output_parser(parser_def_val: &Value, tool_output: &Value) -> R
                 // Execute the user's parsing logic and return the result
                 {}
                 "#,
-                serde_json::to_string(&tree).map_err(|e| anyhow::anyhow!("Failed to serialize tree: {}", e))?,
+                serde_json::to_string(&tree)
+                    .map_err(|e| anyhow::anyhow!("Failed to serialize tree: {}", e))?,
                 parser_def.javascript_code
             );
-            
+
             // Execute JavaScript code asynchronously
             let result = execute_javascript_with_nodejs(full_script)
                 .await
                 .map_err(|e| anyhow::anyhow!("JavaScript execution failed: {}", e))?;
-            
+
             Ok(Some(result))
         }
         None => {

@@ -30,7 +30,6 @@ async fn main() -> Result<(), AutomationError> {
     //     elapsed.as_secs_f64() * 1000.0
     // );
 
-
     // println!("Found last combobox: {:?}", element.attributes());
 
     // get all checkboxes and toggle them

@@ -84,15 +84,27 @@ arguments:
       id: capture_result
   output_parser:
     ui_tree_source_step_id: capture_result
-    item_container_definition:
-      node_conditions:
-        - property: role
-          op: equals
-          value: CheckBox
-    fields_to_extract:
-      name:
-        from_self:
-          extract_property: name
+    javascript_code: |
+      // Extract all checkbox names
+      const results = [];
+      
+      function findElementsRecursively(element) {
+          if (element.attributes && element.attributes.role === 'CheckBox') {
+              const item = {
+                  name: element.attributes.name || ''
+              };
+              results.push(item);
+          }
+          
+          if (element.children) {
+              for (const child of element.children) {
+                  findElementsRecursively(child);
+              }
+          }
+      }
+      
+      findElementsRecursively(tree);
+      return results;
 ```
 
 **JavaScript execution in workflows**:

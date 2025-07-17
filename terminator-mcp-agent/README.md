@@ -130,31 +130,62 @@ This is the most powerful and flexible method. You build a workflow step-by-step
 1.  **Inspect the UI**: Start by using `get_focused_window_tree` to understand the structure of your target application. This gives you the roles, names, and IDs of all elements.
 2.  **Build a Sequence**: Create an `execute_sequence` tool call with a series of actions (`click_element`, `type_into_element`, etc.). Use robust selectors (like `role|name` or stable `properties:AutomationId:value` selectors) whenever possible.
 3.  **Capture the Final State**: Ensure the last step in your sequence is an action that returns a UI tree. The `wait_for_element` tool with `include_tree: true` is perfect for this, as it captures the application's state after your automation has run.
-4.  **Extract Structured Data with `output_parser`**: Add the `output_parser` argument to your `execute_sequence` call. Define a set of rules using our JSON-based DSL to parse the final UI tree. If successful, the tool result will contain a `parsed_output` field with your clean JSON data.
+4.  **Extract Structured Data with `output_parser`**: Add the `output_parser` argument to your `execute_sequence` call. Write JavaScript code to parse the final UI tree and extract structured data. If successful, the tool result will contain a `parsed_output` field with your clean JSON data.
 
 Here is an example of an `output_parser` that extracts insurance quote data from a web page:
-```json
-"output_parser": {
-    "uiTreeJsonPath": "$.results[-1].results[-1].result.content[0].Json.ui_tree",
-    "itemContainerDefinition": {
-        "nodeConditions": [{ "property": "role", "op": "equals", "value": "Group" }],
-        "childConditions": {
-            "logic": "and",
-            "conditions": [
-                { "existsChild": { "conditions": [{ "property": "name", "op": "startsWith", "value": "$" }] } },
-                { "existsChild": { "conditions": [{ "property": "name", "op": "equals", "value": "Monthly Price" }] } }
-            ]
+```yaml
+output_parser:
+  ui_tree_source_step_id: capture_quotes_tree
+  javascript_code: |
+    // Find all quote groups with Image and Text children
+    const results = [];
+    
+    function findElementsRecursively(element) {
+        if (element.attributes && element.attributes.role === 'Group') {
+            const children = element.children || [];
+            const hasImage = children.some(child => 
+                child.attributes && child.attributes.role === 'Image'
+            );
+            const hasText = children.some(child => 
+                child.attributes && child.attributes.role === 'Text'
+            );
+            
+            if (hasImage && hasText) {
+                const textElements = children.filter(child => 
+                    child.attributes && child.attributes.role === 'Text' && child.attributes.name
+                );
+                
+                let carrierProduct = '';
+                let monthlyPrice = '';
+                
+                for (const textEl of textElements) {
+                    const text = textEl.attributes.name;
+                    if (text.includes(':')) {
+                        carrierProduct = text;
+                    }
+                    if (text.startsWith('$')) {
+                        monthlyPrice = text;
+                    }
+                }
+                
+                if (carrierProduct && monthlyPrice) {
+                    results.push({
+                        carrierProduct: carrierProduct,
+                        monthlyPrice: monthlyPrice
+                    });
+                }
+            }
         }
-    },
-    "fieldsToExtract": {
-        "monthlyPrice": {
-            "fromChild": {
-                "conditions": [{ "property": "name", "op": "startsWith", "value": "$" }],
-                "extractProperty": "name"
+        
+        if (element.children) {
+            for (const child of element.children) {
+                findElementsRecursively(child);
             }
         }
     }
-}
+    
+    findElementsRecursively(tree);
+    return results;
 ```
 
 #### 2. Recording Human Actions with `record_workflow`
@@ -397,17 +428,7 @@ For additional help, see the [Terminator CLI documentation](../terminator-cli/RE
       }
     ],
     "output_parser": {        // 5️⃣ Turn the tree into clean JSON
-      "uiTreeJsonPath": "$.results[-1].result.ui_tree",
-      "fieldsToExtract": {
-        "displayValue": {
-          "fromChild": {
-            "conditions": [
-              { "property": "role", "op": "equals", "value": "Text" }
-            ],
-            "extractProperty": "name"
-          }
-        }
-      }
+      "javascript_code": "// Extract calculator display value\nconst results = [];\n\nfunction findElementsRecursively(element) {\n    if (element.attributes && element.attributes.role === 'Text') {\n        const item = {\n            displayValue: element.attributes.name || ''\n        };\n        results.push(item);\n    }\n    \n    if (element.children) {\n        for (const child of element.children) {\n            findElementsRecursively(child);\n        }\n    }\n}\n\nfindElementsRecursively(tree);\nreturn results;"
     }
   }
 }
