@@ -889,16 +889,8 @@ impl AccessibilityEngine for WindowsEngine {
                     }
                 }
 
-                // After the chain, we expect exactly one element for find_element.
-                if current_results.len() == 1 {
-                    Ok(vec![current_results.remove(0)])
-                } else {
-                    Err(AutomationError::ElementNotFound(format!(
-                        "Selector chain `{:?}` resolved to {} elements, but expected 1.",
-                        selectors,
-                        current_results.len(),
-                    )))
-                }
+                // After the chain, return all elements found (this is find_elements, not find_element)
+                Ok(current_results)
             }
             Selector::ClassName(classname) => {
                 debug!("searching elements by class name: {}", classname);
