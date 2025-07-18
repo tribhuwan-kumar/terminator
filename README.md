@@ -39,7 +39,7 @@ There are three paths to train deterministic workflows with AI fallback:
 
 1.  **AI-Assisted Workflow Building**: Use an MCP client like [Cursor](https://cursor.com) to iteratively build and test complex workflows with an AI assistant in a human-in-the-loop process.
 2.  **Record Human Baselines**: Use our open-source tools to record a human demonstrating a task (our MCP has a recording tool). This generates a baseline workflow that can be refined and automated.
-3.  **Enterprise-Grade Recording**: For businesses needing scalable, high-fidelity workflow creation from human experts, our [enterprise recorder](https://mediar.ai) provides the most robust solution.
+3.  **Enterprise-Grade Recording**: For businesses needing scalable, >95% success rate automation workflows, our [enterprise recorder](https://mediar.ai) provides the most robust solution.
 
 For detailed instructions on building with AI agents through MCP client, see our [**Terminator MCP Agent README**](terminator-mcp-agent/README.md).
 
@@ -157,8 +157,6 @@ You can build and debug selector paths incrementally using `.locator()` chaining
 
 ## Explore Further
 
-- https://github.com/mediar-ai/terminator-typescript-examples
-- https://github.com/mediar-ai/terminator-python-examples
 - https://github.com/mediar-ai/terminator/examples
 
 ## contributing
