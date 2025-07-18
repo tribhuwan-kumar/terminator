@@ -157,7 +157,7 @@ You can build and debug selector paths incrementally using `.locator()` chaining
 
 ## Explore Further
 
-- https://github.com/mediar-ai/terminator/examples
+- [https://github.com/mediar-ai/terminator/examples](https://github.com/mediar-ai/terminator/tree/main/examples)
 
 ## contributing
 
