@@ -1074,6 +1074,7 @@ fn validate_workflow(workflow: &serde_json::Value) -> anyhow::Result<()> {
                 }
 
                 if let Some(def_obj) = def.as_object() {
+                    // Ensure label exists and is non-empty
                     if let Some(label) = def_obj.get("label") {
                         if let Some(label_str) = label.as_str() {
                             if label_str.is_empty() {
@@ -1089,6 +1090,33 @@ fn validate_workflow(workflow: &serde_json::Value) -> anyhow::Result<()> {
                             name
                         ));
                     }
+
+                    // --------------------- NEW VALIDATION ---------------------
+                    // Enforce `required` property logic
+                    let is_required = def_obj
+                        .get("required")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
+
+                    if is_required {
+                        // Check for default value in definition
+                        let has_default = def_obj.contains_key("default");
+
+                        // Check if inputs provide a value for this variable
+                        let input_has_value = obj
+                            .get("inputs")
+                            .and_then(|v| v.as_object())
+                            .map(|inputs_obj| inputs_obj.contains_key(name))
+                            .unwrap_or(false);
+
+                        if !has_default && !input_has_value {
+                            return Err(anyhow::anyhow!(
+                                "Required variable '{}' is missing and has no default value",
+                                name
+                            ));
+                        }
+                    }
+                    // ----------------------------------------------------------------
                 }
             }
         }
