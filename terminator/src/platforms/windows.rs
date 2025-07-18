@@ -3785,12 +3785,54 @@ impl UIElementImpl for WindowsUIElement {
                 // Fallback: try to send Alt+F4 to close the window
                 debug!("WindowPattern not available, trying Alt+F4 as fallback");
                 self.element.0.try_focus(); // Focus first
-                self.element
-                    .0
-                    .send_keys("%{F4}", 10) // Alt+F4
-                    .map_err(|e| {
-                        AutomationError::PlatformError(format!("Failed to send Alt+F4: {e}"))
-                    })
+                match self.element.0.send_keys("%{F4}", 10) {
+                    Ok(()) => Ok(()),
+                    Err(alt_err) => {
+                        debug!("Alt+F4 failed: {alt_err}. Attempting process termination fallback");
+
+                        // Try to get the process ID so we can force-terminate it
+                        match self.element.0.get_process_id() {
+                            Ok(pid) => {
+                                // First, try taskkill (built-in)
+                                let taskkill_status = std::process::Command::new("taskkill")
+                                    .args(["/PID", &pid.to_string(), "/T", "/F"])
+                                    .status();
+
+                                if let Ok(status) = taskkill_status {
+                                    if status.success() {
+                                        debug!("Successfully terminated process {pid} using taskkill");
+                                        return Ok(());
+                                    }
+                                }
+
+                                // If taskkill failed, fall back to PowerShell Stop-Process
+                                let ps_status = std::process::Command::new("powershell")
+                                    .args([
+                                        "-NoProfile",
+                                        "-WindowStyle",
+                                        "hidden",
+                                        "-Command",
+                                        &format!("Stop-Process -Id {} -Force", pid),
+                                    ])
+                                    .status();
+
+                                if let Ok(status) = ps_status {
+                                    if status.success() {
+                                        debug!("Successfully terminated process {pid} using PowerShell Stop-Process");
+                                        return Ok(());
+                                    }
+                                }
+
+                                Err(AutomationError::PlatformError(format!(
+                                    "Failed to close window: WindowPattern/Alt+F4 failed, and both taskkill and Stop-Process were unsuccessful (Alt+F4 error: {alt_err})"
+                                )))
+                            }
+                            Err(pid_err) => Err(AutomationError::PlatformError(format!(
+                                "Failed to close window: Alt+F4 failed ({alt_err}) and could not determine PID: {pid_err}"
+                            ))),
+                        }
+                    }
+                }
             }
             ControlType::Button => {
                 // For buttons, check if it's a close button by name/text
