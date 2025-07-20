@@ -421,58 +421,117 @@ impl AccessibilityEngine for WindowsEngine {
         // Strip .exe suffix if present
         let search_name = name
             .strip_suffix(".exe")
-            .or_else(|| name.strip_suffix(".EXE")) // Also check uppercase
+            .or_else(|| name.strip_suffix(".EXE"))
             .unwrap_or(name);
-        debug!("using search name: {}", search_name);
 
-        // first find element by matcher
+        let search_name_lower = search_name.to_lowercase();
+        let is_browser = KNOWN_BROWSER_PROCESS_NAMES
+            .iter()
+            .any(|&browser| search_name_lower.contains(browser));
+
+        // For non-browsers, try fast PID lookup first
+        if !is_browser {
+            if let Some(pid) = get_pid_by_name(search_name) {
+                debug!(
+                    "Found process PID {} for non-browser app: {}",
+                    pid, search_name
+                );
+
+                let condition = self
+                    .automation
+                    .0
+                    .create_property_condition(UIProperty::ProcessId, Variant::from(pid), None)
+                    .unwrap();
+                let root_ele = self.automation.0.get_root_element().unwrap();
+
+                // Try direct window lookup by PID
+                if let Ok(ele) = root_ele.find_first(TreeScope::Children, &condition) {
+                    debug!("Found application window for PID {}", pid);
+                    let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
+                    return Ok(UIElement::new(Box::new(WindowsUIElement {
+                        element: arc_ele,
+                    })));
+                }
+            }
+        }
+
+        // For browsers and fallback: Use window title search
+        debug!("Using window title search for: {}", search_name);
         let root_ele = self.automation.0.get_root_element().unwrap();
-        let search_name_norm = crate::utils::normalize(search_name);
+
         let matcher = self
             .automation
             .0
             .create_matcher()
             .control_type(ControlType::Window)
             .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
-                let name = crate::utils::normalize(&e.get_name().unwrap_or_default());
-                Ok(name.contains(&search_name_norm))
-            }))
-            .from_ref(&root_ele)
-            .depth(50)
-            .timeout(5000);
-        let ele_res = matcher
-            .find_first()
-            .map_err(|e| AutomationError::ElementNotFound(e.to_string()));
+                let window_name = e.get_name().unwrap_or_default();
+                let window_name_lower = window_name.to_lowercase();
 
-        // fallback to find by pid
-        let ele = match ele_res {
-            Ok(ele) => ele,
-            Err(_) => {
-                let pid = match get_pid_by_name(search_name) {
-                    // Use stripped name
-                    Some(pid) => pid,
-                    None => {
-                        return Err(AutomationError::PlatformError(format!(
-                            "no running application found from name: {:?} (searched as: {:?})",
-                            name,
-                            search_name // Include original name in error
-                        )));
+                // Enhanced browser matching logic with better detection
+                let matches = match search_name_lower.as_str() {
+                    "chrome" => {
+                        window_name_lower.contains("chrome")
+                            || window_name_lower.contains("google chrome")
+                            || (window_name_lower.contains("google")
+                                && window_name_lower.contains("browser"))
+                    }
+                    "firefox" => {
+                        window_name_lower.contains("firefox")
+                            || window_name_lower.contains("mozilla")
+                            || window_name_lower.contains("mozilla firefox")
+                    }
+                    "msedge" | "edge" => {
+                        // Enhanced Edge detection
+                        if window_name_lower.contains("edge")
+                            || window_name_lower.contains("microsoft edge")
+                            || window_name_lower.contains("microsoft")
+                        {
+                            true
+                        } else if let Ok(pid) = e.get_process_id() {
+                            get_process_name_by_pid(pid as i32)
+                                .map(|p| {
+                                    let proc_name = p.to_lowercase();
+                                    proc_name == "msedge" || proc_name == "edge"
+                                })
+                                .unwrap_or(false)
+                        } else {
+                            false
+                        }
+                    }
+                    "brave" => {
+                        window_name_lower.contains("brave")
+                            || window_name_lower.contains("brave browser")
+                    }
+                    "opera" => {
+                        window_name_lower.contains("opera")
+                            || window_name_lower.contains("opera browser")
+                    }
+                    "vivaldi" => {
+                        window_name_lower.contains("vivaldi")
+                            || window_name_lower.contains("vivaldi browser")
+                    }
+                    "arc" => {
+                        window_name_lower.contains("arc")
+                            || window_name_lower.contains("arc browser")
+                    }
+                    _ => {
+                        // For non-browsers, use more flexible matching
+                        window_name_lower.contains(&search_name_lower)
+                            || search_name_lower.contains(&window_name_lower)
                     }
                 };
-                let condition = self
-                    .automation
-                    .0
-                    .create_property_condition(
-                        UIProperty::ProcessId,
-                        Variant::from(pid as i32),
-                        None,
-                    )
-                    .unwrap();
-                root_ele
-                    .find_first(TreeScope::Subtree, &condition)
-                    .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?
-            }
-        };
+                Ok(matches)
+            }))
+            .from_ref(&root_ele)
+            .depth(3)
+            .timeout(3000);
+
+        let ele = matcher.find_first().map_err(|e| {
+            AutomationError::PlatformError(format!("No window found for application '{name}': {e}"))
+        })?;
+
+        debug!("Found window: {}", ele.get_name().unwrap_or_default());
         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
         Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_ele,
