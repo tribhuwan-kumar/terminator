@@ -22,6 +22,7 @@ pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
 
+/// Recommend to use any of these: ["Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi"]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Browser {
     Default,
@@ -31,7 +32,6 @@ pub enum Browser {
     Brave,
     Opera,
     Vivaldi,
-    Arc,
     Custom(String),
 }
 
