@@ -162,19 +162,38 @@ enum Commands {
 }
 
 fn main() {
-    // Ensure we're in the project root (workspace root)
-    ensure_project_root();
-
     let cli = Cli::parse();
 
+    // Only ensure we're in the project root for development commands
     match cli.command {
-        Commands::Patch => bump_version("patch"),
-        Commands::Minor => bump_version("minor"),
-        Commands::Major => bump_version("major"),
-        Commands::Sync => sync_all_versions(),
-        Commands::Status => show_status(),
-        Commands::Tag => tag_and_push(),
-        Commands::Release(args) => full_release(&args.level.to_string()),
+        Commands::Patch => {
+            ensure_project_root();
+            bump_version("patch");
+        },
+        Commands::Minor => {
+            ensure_project_root();
+            bump_version("minor");
+        },
+        Commands::Major => {
+            ensure_project_root();
+            bump_version("major");
+        },
+        Commands::Sync => {
+            ensure_project_root();
+            sync_all_versions();
+        },
+        Commands::Status => {
+            ensure_project_root();
+            show_status();
+        },
+        Commands::Tag => {
+            ensure_project_root();
+            tag_and_push();
+        },
+        Commands::Release(args) => {
+            ensure_project_root();
+            full_release(&args.level.to_string());
+        },
         Commands::Mcp(mcp_cmd) => handle_mcp_command(mcp_cmd),
     }
 }
