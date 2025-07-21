@@ -31,33 +31,55 @@ pub async fn run_output_parser(
     let ui_tree =
         find_ui_tree_in_results(tool_output, parser_def.ui_tree_source_step_id.as_deref())?;
 
-    match ui_tree {
+    // Create JavaScript code that injects available data and executes the user code
+    let full_script = match ui_tree {
         Some(tree) => {
-            // Create JavaScript code that injects the tree and executes the user code
-            let full_script = format!(
+            // UI tree parsing mode - inject both tree and full results
+            format!(
                 r#"
-                // Inject the UI tree as a global variable
+                // Inject the UI tree as the primary variable for backward compatibility
                 const tree = {};
+                
+                // Also inject the full tool output for advanced use cases
+                const sequenceResult = {};
                 
                 // Execute the user's parsing logic and return the result
                 {}
                 "#,
                 serde_json::to_string(&tree)
                     .map_err(|e| anyhow::anyhow!("Failed to serialize tree: {}", e))?,
+                serde_json::to_string(tool_output)
+                    .map_err(|e| anyhow::anyhow!("Failed to serialize tool output: {}", e))?,
                 parser_def.javascript_code
-            );
-
-            // Execute JavaScript code asynchronously
-            let result = execute_javascript_with_nodejs(full_script)
-                .await
-                .map_err(|e| anyhow::anyhow!("JavaScript execution failed: {}", e))?;
-
-            Ok(Some(result))
+            )
         }
         None => {
-            anyhow::bail!("No UI tree found in the tool output. Make sure to include get_focused_window_tree or get_window_tree in your workflow to capture the UI state.");
+            // No UI tree found - API/general result parsing mode
+            // Inject the full tool output as sequenceResult for JavaScript to process
+            format!(
+                r#"
+                // No UI tree available - this is likely an API-based workflow
+                const tree = null;
+                
+                // Inject the full tool output for result parsing
+                const sequenceResult = {};
+                
+                // Execute the user's parsing logic and return the result
+                {}
+                "#,
+                serde_json::to_string(tool_output)
+                    .map_err(|e| anyhow::anyhow!("Failed to serialize tool output: {}", e))?,
+                parser_def.javascript_code
+            )
         }
-    }
+    };
+
+    // Execute JavaScript code asynchronously
+    let result = execute_javascript_with_nodejs(full_script)
+        .await
+        .map_err(|e| anyhow::anyhow!("JavaScript execution failed: {}", e))?;
+
+    Ok(Some(result))
 }
 
 /// Finds a UI tree in the tool output results

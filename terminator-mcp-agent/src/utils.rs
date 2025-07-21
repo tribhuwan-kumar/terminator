@@ -530,7 +530,7 @@ pub struct ExecuteSequenceArgs {
     )]
     pub include_detailed_results: Option<bool>,
     #[schemars(
-        description = "An optional, structured parser to process the final tool output and extract structured data. **Must be an object** with required fields: uiTreeJsonPath, itemContainerDefinition, fieldsToExtract."
+        description = "An optional, structured parser to process the final tool output and extract structured data."
     )]
     pub output_parser: Option<serde_json::Value>,
 }
