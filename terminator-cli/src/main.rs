@@ -169,31 +169,31 @@ fn main() {
         Commands::Patch => {
             ensure_project_root();
             bump_version("patch");
-        },
+        }
         Commands::Minor => {
             ensure_project_root();
             bump_version("minor");
-        },
+        }
         Commands::Major => {
             ensure_project_root();
             bump_version("major");
-        },
+        }
         Commands::Sync => {
             ensure_project_root();
             sync_all_versions();
-        },
+        }
         Commands::Status => {
             ensure_project_root();
             show_status();
-        },
+        }
         Commands::Tag => {
             ensure_project_root();
             tag_and_push();
-        },
+        }
         Commands::Release(args) => {
             ensure_project_root();
             full_release(&args.level.to_string());
-        },
+        }
         Commands::Mcp(mcp_cmd) => handle_mcp_command(mcp_cmd),
     }
 }
