@@ -1,5 +1,4 @@
 use tracing::Level;
-use std::time::Duration;
 use terminator::Browser;
 use terminator::{platforms, AutomationError};
 
@@ -23,7 +22,6 @@ async fn test_open_url() -> Result<(), AutomationError> {
 
     for (url, browser) in cases {
         let result = engine.open_url(url, Some(browser.clone()));
-        tokio::time::sleep(Duration::from_secs(5)).await;
 
         if url == "https://thisisatest.com/" {
             assert!(result.is_err(), "expected failure for invalid url");
