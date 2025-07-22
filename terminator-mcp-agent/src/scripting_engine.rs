@@ -74,6 +74,10 @@ where
     F: Fn(String, serde_json::Value) -> Fut + Send + 'static + Clone,
     Fut: std::future::Future<Output = Result<String, McpError>> + Send,
 {
+    // Initialize queues only once to prevent spam
+    TOOL_QUEUE.get_or_init(|| Arc::new(Mutex::new(VecDeque::new())));
+    RESPONSE_MAP.get_or_init(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
+
     let script_src = script.clone();
 
     // Spawn the JavaScript execution task
@@ -121,7 +125,7 @@ where
                 )
             })?;
 
-        info!("[JavaScript] Tool queues initialized, ready to execute script");
+        debug!("[JavaScript] Tool queues initialized, ready to execute script");
 
         let call_tool_fn = NativeFunction::from_fn_ptr(|_, args, _| {
             let tool_name = args
@@ -264,7 +268,7 @@ where
     let tool_handler = {
         let tool_dispatcher = tool_dispatcher.clone();
         tokio::spawn(async move {
-            info!("[JavaScript->Rust] Tool handler started, polling queue for tool calls...");
+            debug!("[JavaScript->Rust] Tool handler started, polling queue for tool calls...");
 
             loop {
                 // Check for tool calls in queue
@@ -314,8 +318,8 @@ where
                         }
                     }
                 } else {
-                    // No tool calls, sleep briefly
-                    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+                    // No tool calls, sleep longer to reduce CPU usage and log spam
+                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
                 }
 
                 // Note: This loop runs until the task is aborted from the main thread
@@ -710,11 +714,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stdout_line = stdout_reader.next_line() => {
                                         match stdout_line {
                                             Ok(Some(line)) => {
-                                                info!("[{}] npm stdout: {}", runtime, line);
+                                                debug!("[{}] npm stdout: {}", runtime, line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                info!("[{}] npm stdout stream ended", runtime);
+                                                debug!("[{}] npm stdout stream ended", runtime);
                                             }
                                             Err(e) => {
                                                 error!("[{}] Error reading npm stdout: {}", runtime, e);
@@ -726,11 +730,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stderr_line = stderr_reader.next_line() => {
                                         match stderr_line {
                                             Ok(Some(line)) => {
-                                                info!("[{}] npm stderr: {}", runtime, line);
+                                                debug!("[{}] npm stderr: {}", runtime, line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                info!("[{}] npm stderr stream ended", runtime);
+                                                debug!("[{}] npm stderr stream ended", runtime);
                                             }
                                             Err(e) => {
                                                 error!("[{}] Error reading npm stderr: {}", runtime, e);
@@ -742,17 +746,17 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
                                         match child.try_wait() {
                                             Ok(Some(status)) => {
-                                                info!("[{}] npm process completed with status: {:?}", runtime, status);
+                                                debug!("[{}] npm process completed with status: {:?}", runtime, status);
 
                                                 // Read any remaining output
                                                 while let Ok(Some(line)) = stdout_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        info!("[{}] npm stdout (final): {}", runtime, line);
+                                                        debug!("[{}] npm stdout (final): {}", runtime, line);
                                                     }
                                                 }
                                                 while let Ok(Some(line)) = stderr_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        info!("[{}] npm stderr (final): {}", runtime, line);
+                                                        debug!("[{}] npm stderr (final): {}", runtime, line);
                                                     }
                                                 }
 
