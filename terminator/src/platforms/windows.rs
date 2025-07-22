@@ -1572,19 +1572,44 @@ impl AccessibilityEngine for WindowsEngine {
     ) -> Result<UIElement, AutomationError> {
         info!("Opening URL on Windows: {} (browser: {:?})", url, browser);
 
-        let (browser_exe, browser_search_name) = match browser.as_ref() {
-            Some(crate::Browser::Chrome) => (Some("chrome.exe"), "chrome"),
-            Some(crate::Browser::Firefox) => (Some("firefox.exe"), "firefox"),
-            Some(crate::Browser::Edge) => (Some("msedge.exe"), "msedge"),
-            Some(crate::Browser::Brave) => (Some("brave.exe"), "brave"),
-            Some(crate::Browser::Opera) => (Some("opera.exe"), "opera"),
-            Some(crate::Browser::Vivaldi) => (Some("vivaldi.exe"), "vivaldi"),
-            Some(crate::Browser::Arc) => (Some("Arc.exe"), "Arc"),
+        let url_clone = url.to_string();
+        let handle = thread::spawn(move || -> Result<String, AutomationError> {
+            let client = reqwest::blocking::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to build http client: {e}")))?;
+
+            let html = client.get(&url_clone)
+                .send()
+                .map_err(|e| AutomationError::PlatformError(format!("Failed to fetch url: {e}")))?
+                .text()
+                .map_err(|e| AutomationError::PlatformError(format!("Fetched url content is not valid: {e}")))?;
+
+            let title = regex::Regex::new(r"(?is)<title>(.*?)</title>")
+                .unwrap()
+                .captures(&html)
+                .and_then(|caps| caps.get(1).map(|m| m.as_str().trim().to_string()))
+                .unwrap_or_default();
+
+            Ok(title)
+        });
+
+
+        let title = handle.join().map_err(|_| AutomationError::PlatformError("thread panicked :(".to_string()))??;
+        debug!("Extracted title from url: '{:?}'", title);
+
+        let (browser_exe, browser_search_name): (Option<String>, String) = match browser.as_ref() {
+            Some(crate::Browser::Chrome) => (Some("chrome.exe".to_string()), "chrome".to_string()),
+            Some(crate::Browser::Firefox) => (Some("firefox.exe".to_string()), "firefox".to_string()),
+            Some(crate::Browser::Edge) => (Some("msedge.exe".to_string()), "msedge".to_string()),
+            Some(crate::Browser::Brave) => (Some("brave.exe".to_string()), "brave".to_string()),
+            Some(crate::Browser::Opera) => (Some("opera.exe".to_string()), "opera".to_string()),
+            Some(crate::Browser::Vivaldi) => (Some("vivaldi.exe".to_string()), "vivaldi".to_string()),
             Some(crate::Browser::Custom(path)) => {
                 let path_str: &str = path;
-                (Some(path_str), path_str.trim_end_matches(".exe"))
+                (Some(path_str.to_string()), path_str.trim_end_matches(".exe").to_string())
             }
-            Some(crate::Browser::Default) | None => (None, ""),
+            Some(crate::Browser::Default) | None => (None, "".to_string()),
         };
 
         let url_hstring = HSTRING::from(url);
@@ -1628,15 +1653,12 @@ impl AccessibilityEngine for WindowsEngine {
 
         // Enhanced polling for browser window with better reliability
         let start_time = std::time::Instant::now();
-        let timeout = std::time::Duration::from_millis(10000); // Increased to 10 seconds
-        let initial_poll_interval = std::time::Duration::from_millis(500); // Start with longer interval
-        let fast_poll_interval = std::time::Duration::from_millis(100); // Faster polling after initial delay
+        let timeout = std::time::Duration::from_millis(10000);
+        let initial_poll_interval = std::time::Duration::from_millis(500);
+        let fast_poll_interval = std::time::Duration::from_millis(200);
 
-        // Give browser more time to start up initially
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-
-        if browser_search_name.is_empty() {
-            // For default browser, we assume the foreground window is the browser that just opened.
+        // For default browser, we assume the foreground window is the browser that just opened.
+        if browser_search_name.clone().is_empty() {
             info!("No specific browser requested, getting the current focused application.");
             // This is a synchronous block inside an async-compatible function.
             // We need to get the current application. Since `get_current_application` is async,
@@ -1654,46 +1676,82 @@ impl AccessibilityEngine for WindowsEngine {
             self.get_application_by_pid(pid as i32, Some(Duration::from_millis(5000)))
         } else {
             // For specific browser, poll with more patience and better error handling
-            info!("Polling for {} browser to appear", browser_search_name);
+            info!("Polling for '{}' browser to appear", browser_search_name.clone());
 
             loop {
                 if start_time.elapsed() > timeout {
-                    // Before giving up, try a broader search
-                    for &fallback_name in KNOWN_BROWSER_PROCESS_NAMES {
-                        if fallback_name.contains(browser_search_name)
-                            || browser_search_name.contains(fallback_name)
-                        {
-                            if let Ok(app) = self.get_application_by_name(fallback_name) {
-                                info!("Found browser using fallback name: {}", fallback_name);
-                                return Ok(app);
-                            }
+                    // try to find the browser window by `get_application_by_name` 
+                    match self.get_application_by_name(&browser_search_name) {
+                        Ok(app) => {
+                            info!("Found {} browser window, returning.", browser_search_name);
+                            return Ok(app);
+                        }
+                        Err(e) => {
+                            debug!(
+                                "{} browser not found yet: {}, continuing poll",
+                                browser_search_name, e
+                            );
                         }
                     }
-
-                    return Err(AutomationError::ElementNotFound(format!(
-                        "Timeout waiting for {} browser to open. Available browsers: {:?}",
-                        browser_search_name,
-                        KNOWN_BROWSER_PROCESS_NAMES
-                            .iter()
-                            .filter_map(|&name| self
-                                .get_application_by_name(name)
-                                .ok()
-                                .map(|_| name))
-                            .collect::<Vec<_>>()
-                    )));
                 }
 
-                // Try to find the browser window with better error handling
-                match self.get_application_by_name(browser_search_name) {
-                    Ok(app) => {
-                        info!("Found {} browser window, returning.", browser_search_name);
-                        return Ok(app);
-                    }
-                    Err(e) => {
-                        debug!(
-                            "{} browser not found yet: {}, continuing poll",
-                            browser_search_name, e
-                        );
+                if !title.is_empty() {
+                    let automation = match create_ui_automation_with_com_init() {
+                        Ok(a) => a,
+                        Err(e) => {
+                            return Err(AutomationError::ElementNotFound(
+                                format!("Failed to create UIAutomation instance for opening_url: {}", e))
+                            );
+                        }
+                    };
+
+                    let root = automation.get_root_element().unwrap();
+                    let browser_search_name_cloned = browser_search_name.clone();
+                    let search_keywords: String = title
+                        .split_whitespace()
+                        .take(5)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .to_lowercase();
+                    debug!("search keywords: {}", search_keywords);
+                    let search_title_norm = crate::utils::normalize(&search_keywords);
+
+                    let matcher = automation
+                        .create_matcher()
+                        .from_ref(&root)
+                        .filter(Box::new(OrFilter {
+                            left: Box::new(ControlTypeFilter {
+                                control_type: ControlType::Window,
+                            }),
+                            right: Box::new(ControlTypeFilter {
+                                control_type: ControlType::Pane,
+                            }),
+                        }))
+                        .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                            let name = crate::utils::normalize(&e.get_name().unwrap_or_default());
+                            let name_lower = name.to_lowercase();
+                            if name_lower.contains(&search_title_norm) 
+                                || name_lower.contains(&browser_search_name_cloned) 
+                            {
+                                Ok(true)
+                            } else {
+                                Ok(false)
+                            }
+                        }))
+                        .depth(10)
+                        .timeout(2000);
+
+                    match matcher.find_first() {
+                        Ok(ele) => {
+                            info!("Found browser document window with title '{}'", title);
+                            let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
+                            return Ok(UIElement::new(Box::new(WindowsUIElement {
+                                element: arc_ele,
+                            })))
+                        }
+                        Err(e) => {
+                            debug!("Failed to find element: '{}' will use the get_application_by_name method", e)
+                        }
                     }
                 }
 

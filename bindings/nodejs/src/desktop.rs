@@ -223,7 +223,7 @@ impl Desktop {
     /// Open a URL in a browser.
     ///
     /// @param {string} url - The URL to open.
-    /// @param {string} [browser] - The browser to use. Can be "Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Arc", or a custom browser path.
+    /// @param {string} [browser] - The browser to use. Can be "Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", or a custom browser path.
     #[napi]
     pub fn open_url(&self, url: String, browser: Option<String>) -> napi::Result<Element> {
         let browser_enum = browser.map(|b| match b.to_lowercase().as_str() {
@@ -234,7 +234,6 @@ impl Desktop {
             "brave" => terminator::Browser::Brave,
             "opera" => terminator::Browser::Opera,
             "vivaldi" => terminator::Browser::Vivaldi,
-            "arc" => terminator::Browser::Arc,
             custom => terminator::Browser::Custom(custom.to_string()),
         });
         self.inner
