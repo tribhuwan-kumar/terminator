@@ -3,6 +3,7 @@ use terminator::{platforms, AutomationError};
 use tracing::{info, Level};
 
 #[tokio::test]
+#[ignore] // TODO does not work in ci
 async fn test_open_url() -> Result<(), AutomationError> {
     tracing_subscriber::fmt::Subscriber::builder()
         .with_max_level(Level::DEBUG)
