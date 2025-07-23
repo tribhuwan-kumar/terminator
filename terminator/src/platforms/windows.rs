@@ -1670,12 +1670,142 @@ impl AccessibilityEngine for WindowsEngine {
         let initial_poll_interval = std::time::Duration::from_millis(200); // Faster initial polling
         let fast_poll_interval = std::time::Duration::from_millis(100); // Faster subsequent polling
 
-        // For default browser, we assume the foreground window is the browser that just opened.
+        // For default browser, try to find the browser window intelligently
         if browser_search_name.clone().is_empty() {
-            info!("No specific browser requested, getting the current focused application.");
-            // This is a synchronous block inside an async-compatible function.
-            // We need to get the current application. Since `get_current_application` is async,
-            // we will replicate its logic here in a sync way.
+            info!("No specific browser requested, searching for any browser window with the page title.");
+
+            // Try to find a browser window that contains the page title or looks like a browser
+            if !title.is_empty() {
+                let automation = match create_ui_automation_with_com_init() {
+                    Ok(a) => a,
+                    Err(e) => {
+                        return Err(AutomationError::ElementNotFound(format!(
+                            "Failed to create UIAutomation instance for default browser search: {e}"
+                        )));
+                    }
+                };
+
+                let root = automation.get_root_element().unwrap();
+                let search_keywords: String = title
+                    .split_whitespace()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .to_lowercase();
+                debug!(
+                    "Searching for browser window with title keywords: {}",
+                    search_keywords
+                );
+                let search_title_norm = crate::utils::normalize(&search_keywords);
+
+                let matcher = automation
+                    .create_matcher()
+                    .from_ref(&root)
+                    .filter(Box::new(OrFilter {
+                        left: Box::new(ControlTypeFilter {
+                            control_type: ControlType::Window,
+                        }),
+                        right: Box::new(ControlTypeFilter {
+                            control_type: ControlType::Pane,
+                        }),
+                    }))
+                    .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                        let name = crate::utils::normalize(&e.get_name().unwrap_or_default())
+                            .to_lowercase();
+
+                        // Look for windows with the page title or common browser indicators
+                        if !search_title_norm.is_empty() && name.contains(&search_title_norm) {
+                            Ok(true)
+                        } else if name.contains("chrome")
+                            || name.contains("firefox")
+                            || name.contains("edge")
+                            || name.contains("browser")
+                            || name.contains("mozilla")
+                            || name.contains("safari")
+                        {
+                            Ok(true)
+                        } else {
+                            Ok(false)
+                        }
+                    }))
+                    .depth(10)
+                    .timeout(1000);
+
+                match matcher.find_first() {
+                    Ok(ele) => {
+                        info!(
+                            "Found browser window for default browser: '{}'",
+                            ele.get_name().unwrap_or_default()
+                        );
+                        let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
+                        return Ok(UIElement::new(Box::new(WindowsUIElement {
+                            element: arc_ele,
+                        })));
+                    }
+                    Err(_) => {
+                        debug!(
+                            "Could not find browser window by title, trying browser name search"
+                        );
+                    }
+                }
+            }
+
+            // Fallback: try common browser names with shorter timeout
+            let common_browsers = vec!["chrome", "firefox", "msedge", "edge"];
+            for browser_name in common_browsers {
+                debug!("Quick search for browser: {}", browser_name);
+                // Use find_element with shorter timeout to avoid long delays
+                let start_search = std::time::Instant::now();
+                let automation = match create_ui_automation_with_com_init() {
+                    Ok(a) => a,
+                    Err(_) => continue,
+                };
+
+                let root = automation.get_root_element().ok();
+                if let Some(root) = root {
+                    let matcher = automation
+                        .create_matcher()
+                        .from_ref(&root)
+                        .filter(Box::new(ControlTypeFilter {
+                            control_type: ControlType::Window,
+                        }))
+                        .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
+                            let name = e.get_name().unwrap_or_default().to_lowercase();
+                            Ok(name.contains(browser_name))
+                        }))
+                        .timeout(1000); // 1 second timeout instead of 4 seconds
+
+                    match matcher.find_first() {
+                        Ok(element) => {
+                            debug!(
+                                "Found browser '{}' in {}ms",
+                                browser_name,
+                                start_search.elapsed().as_millis()
+                            );
+                            let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
+                            let app =
+                                UIElement::new(Box::new(WindowsUIElement { element: arc_ele }));
+                            info!(
+                                "Found default browser '{}': {}",
+                                browser_name,
+                                app.name().unwrap_or_default()
+                            );
+                            return Ok(app);
+                        }
+                        Err(_) => {
+                            debug!(
+                                "Browser '{}' not found in {}ms, trying next...",
+                                browser_name,
+                                start_search.elapsed().as_millis()
+                            );
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Last resort: get focused application (old behavior)
+            info!("Could not find browser window, falling back to focused application.");
             let focused_element_raw = self.automation.0.get_focused_element().map_err(|e| {
                 AutomationError::PlatformError(format!("Failed to get focused element: {e}"))
             })?;
