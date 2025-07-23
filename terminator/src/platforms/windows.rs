@@ -1577,13 +1577,18 @@ impl AccessibilityEngine for WindowsEngine {
             let client = reqwest::blocking::Client::builder()
                 .danger_accept_invalid_certs(true)
                 .build()
-                .map_err(|e| AutomationError::PlatformError(format!("Failed to build http client: {e}")))?;
+                .map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to build http client: {e}"))
+                })?;
 
-            let html = client.get(&url_clone)
+            let html = client
+                .get(&url_clone)
                 .send()
                 .map_err(|e| AutomationError::PlatformError(format!("Failed to fetch url: {e}")))?
                 .text()
-                .map_err(|e| AutomationError::PlatformError(format!("Fetched url content is not valid: {e}")))?;
+                .map_err(|e| {
+                    AutomationError::PlatformError(format!("Fetched url content is not valid: {e}"))
+                })?;
 
             let title = regex::Regex::new(r"(?is)<title>(.*?)</title>")
                 .unwrap()
@@ -1594,20 +1599,28 @@ impl AccessibilityEngine for WindowsEngine {
             Ok(title)
         });
 
-
-        let title = handle.join().map_err(|_| AutomationError::PlatformError("thread panicked :(".to_string()))??;
+        let title = handle
+            .join()
+            .map_err(|_| AutomationError::PlatformError("thread panicked :(".to_string()))??;
         debug!("Extracted title from url: '{:?}'", title);
 
         let (browser_exe, browser_search_name): (Option<String>, String) = match browser.as_ref() {
             Some(crate::Browser::Chrome) => (Some("chrome.exe".to_string()), "chrome".to_string()),
-            Some(crate::Browser::Firefox) => (Some("firefox.exe".to_string()), "firefox".to_string()),
+            Some(crate::Browser::Firefox) => {
+                (Some("firefox.exe".to_string()), "firefox".to_string())
+            }
             Some(crate::Browser::Edge) => (Some("msedge.exe".to_string()), "msedge".to_string()),
             Some(crate::Browser::Brave) => (Some("brave.exe".to_string()), "brave".to_string()),
             Some(crate::Browser::Opera) => (Some("opera.exe".to_string()), "opera".to_string()),
-            Some(crate::Browser::Vivaldi) => (Some("vivaldi.exe".to_string()), "vivaldi".to_string()),
+            Some(crate::Browser::Vivaldi) => {
+                (Some("vivaldi.exe".to_string()), "vivaldi".to_string())
+            }
             Some(crate::Browser::Custom(path)) => {
                 let path_str: &str = path;
-                (Some(path_str.to_string()), path_str.trim_end_matches(".exe").to_string())
+                (
+                    Some(path_str.to_string()),
+                    path_str.trim_end_matches(".exe").to_string(),
+                )
             }
             Some(crate::Browser::Default) | None => (None, "".to_string()),
         };
@@ -1676,11 +1689,14 @@ impl AccessibilityEngine for WindowsEngine {
             self.get_application_by_pid(pid as i32, Some(Duration::from_millis(5000)))
         } else {
             // For specific browser, poll with more patience and better error handling
-            info!("Polling for '{}' browser to appear", browser_search_name.clone());
+            info!(
+                "Polling for '{}' browser to appear",
+                browser_search_name.clone()
+            );
 
             loop {
                 if start_time.elapsed() > timeout {
-                    // try to find the browser window by `get_application_by_name` 
+                    // try to find the browser window by `get_application_by_name`
                     match self.get_application_by_name(&browser_search_name) {
                         Ok(app) => {
                             info!("Found {} browser window, returning.", browser_search_name);
@@ -1699,9 +1715,10 @@ impl AccessibilityEngine for WindowsEngine {
                     let automation = match create_ui_automation_with_com_init() {
                         Ok(a) => a,
                         Err(e) => {
-                            return Err(AutomationError::ElementNotFound(
-                                format!("Failed to create UIAutomation instance for opening_url: {}", e))
-                            );
+                            return Err(AutomationError::ElementNotFound(format!(
+                                "Failed to create UIAutomation instance for opening_url: {}",
+                                e
+                            )));
                         }
                     };
 
@@ -1730,8 +1747,8 @@ impl AccessibilityEngine for WindowsEngine {
                         .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                             let name = crate::utils::normalize(&e.get_name().unwrap_or_default());
                             let name_lower = name.to_lowercase();
-                            if name_lower.contains(&search_title_norm) 
-                                || name_lower.contains(&browser_search_name_cloned) 
+                            if name_lower.contains(&search_title_norm)
+                                || name_lower.contains(&browser_search_name_cloned)
                             {
                                 Ok(true)
                             } else {
@@ -1747,7 +1764,7 @@ impl AccessibilityEngine for WindowsEngine {
                             let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                             return Ok(UIElement::new(Box::new(WindowsUIElement {
                                 element: arc_ele,
-                            })))
+                            })));
                         }
                         Err(e) => {
                             debug!("Failed to find element: '{}' will use the get_application_by_name method", e)
