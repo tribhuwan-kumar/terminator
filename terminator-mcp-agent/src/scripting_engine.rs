@@ -913,6 +913,69 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         "[{}] terminator.js {} successfully to latest version in persistent directory",
                         runtime, action
                     );
+
+                    // Check for version mismatches and fix them
+                    if !platform_package_name.is_empty() {
+                        let main_pkg_json = script_dir
+                            .join("node_modules")
+                            .join("terminator.js")
+                            .join("package.json");
+                        let platform_pkg_json = script_dir
+                            .join("node_modules")
+                            .join(platform_package_name)
+                            .join("package.json");
+
+                        if let (Ok(main_content), Ok(platform_content)) = (
+                            tokio::fs::read_to_string(&main_pkg_json).await,
+                            tokio::fs::read_to_string(&platform_pkg_json).await,
+                        ) {
+                            if let (Ok(main_pkg), Ok(platform_pkg)) = (
+                                serde_json::from_str::<serde_json::Value>(&main_content),
+                                serde_json::from_str::<serde_json::Value>(&platform_content),
+                            ) {
+                                let main_version = main_pkg.get("version").and_then(|v| v.as_str());
+                                let platform_version =
+                                    platform_pkg.get("version").and_then(|v| v.as_str());
+
+                                if let (Some(mv), Some(pv)) = (main_version, platform_version) {
+                                    if mv != pv {
+                                        info!("[{}] Version mismatch detected: terminator.js@{} vs {}@{}", runtime, mv, platform_package_name, pv);
+                                        info!("[{}] Upgrading main package to match platform package version...", runtime);
+
+                                        // Install specific version of main package to match platform package
+                                        let package_spec = format!("terminator.js@{pv}");
+                                        let upgrade_result = if runtime == "bun" {
+                                            tokio::process::Command::new(&installer_exe)
+                                                .current_dir(&script_dir)
+                                                .args(["add", &package_spec])
+                                                .output()
+                                                .await
+                                        } else {
+                                            tokio::process::Command::new("cmd")
+                                                .current_dir(&script_dir)
+                                                .args(["/c", "npm", "install", &package_spec])
+                                                .output()
+                                                .await
+                                        };
+
+                                        match upgrade_result {
+                                            Ok(out) if out.status.success() => {
+                                                info!("[{}] Successfully upgraded terminator.js to match platform package version {}", runtime, pv);
+                                            }
+                                            Ok(out) => {
+                                                let stderr = String::from_utf8_lossy(&out.stderr);
+                                                info!("[{}] Failed to upgrade main package (continuing): {}", runtime, stderr);
+                                            }
+                                            Err(e) => {
+                                                info!("[{}] Error upgrading main package (continuing): {}", runtime, e);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     return Ok(script_dir); // Success - exit retry loop
                 } else {
                     let action = if should_install { "install" } else { "update" };
