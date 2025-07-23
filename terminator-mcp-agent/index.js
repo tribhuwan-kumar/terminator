@@ -101,6 +101,14 @@ if (argv.includes("--add-to-app")) {
   }
 } else {
   // Default: run the agent and forward arguments
+  const packageInfo = require('./package.json');
+
+  // Display version banner
+  console.error(`🤖 Terminator MCP Agent v${packageInfo.version}`);
+  console.error(`📦 Platform: ${process.platform}-${process.arch}`);
+  console.error(`🚀 Starting MCP server...`);
+  console.error(''); // Empty line for readability
+
   const { pkg, bin, npmDir } = getPlatformInfo();
   let binary;
 
@@ -108,15 +116,18 @@ if (argv.includes("--add-to-app")) {
   const localPath = path.join(__dirname, "npm", npmDir, bin);
   if (fs.existsSync(localPath)) {
     binary = localPath;
+    console.error(`🔧 Using local binary: ${path.relative(process.cwd(), binary)}`);
   } else {
     // 2. Try installed npm package
     try {
       binary = require.resolve(pkg);
+      console.error(`📦 Using npm package: ${pkg}`);
     } catch (e) {
-      console.error(`Failed to find platform binary: ${pkg}`);
+      console.error(`❌ Failed to find platform binary: ${pkg}`);
       process.exit(1);
     }
   }
+  console.error(''); // Empty line before starting
 
   // Filter out --start if it exists, as it's for the wrapper script
   const agentArgs = argv.filter((arg) => arg !== "--start");

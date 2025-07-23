@@ -598,6 +598,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                             "--force",            // Force resolve conflicts
                             "--legacy-peer-deps", // Handle peer dependency issues
                             "--include=optional", // Ensure optional dependencies (platform packages) are installed
+                            "--save-exact",       // Lock to exact versions to prevent mismatches
                             "--registry=https://registry.npmjs.org/", // Explicit registry
                         ]
                         .iter(),
@@ -704,6 +705,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         .env("NPM_CONFIG_FORCE", "true")
                         .env("NPM_CONFIG_LEGACY_PEER_DEPS", "true")
                         .env("NPM_CONFIG_INCLUDE", "optional")
+                        .env("NPM_CONFIG_SAVE_EXACT", "true")
                         .env("NPM_CONFIG_NO_AUDIT", "true")
                         .env("NPM_CONFIG_NO_FUND", "true")
                         // Network and timeout configuration
