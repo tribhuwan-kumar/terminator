@@ -419,12 +419,19 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         )
     })?;
 
-    // Always create/update package.json to ensure we use latest
+    // Always create/update package.json to ensure we use latest with all platform packages
     let package_json_content = r#"{
   "name": "terminator-mcp-persistent",
   "version": "1.0.0",
   "dependencies": {
     "terminator.js": "latest"
+  },
+  "optionalDependencies": {
+    "terminator.js-darwin-arm64": "latest",
+    "terminator.js-darwin-x64": "latest", 
+    "terminator.js-linux-x64-gnu": "latest",
+    "terminator.js-win32-arm64-msvc": "latest",
+    "terminator.js-win32-x64-msvc": "latest"
   }
 }"#;
 
@@ -437,19 +444,62 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
             )
         })?;
 
+    // Check if we need to install/reinstall
     let should_install = !node_modules_path.exists();
+
+    // Check if platform-specific package exists for current platform
+    let platform_package_name = if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
+        "terminator.js-win32-x64-msvc"
+    } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "windows") {
+        "terminator.js-win32-arm64-msvc"
+    } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "macos") {
+        "terminator.js-darwin-x64"
+    } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "macos") {
+        "terminator.js-darwin-arm64"
+    } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
+        "terminator.js-linux-x64-gnu"
+    } else {
+        ""
+    };
+
+    let platform_package_exists = if !platform_package_name.is_empty() {
+        script_dir
+            .join("node_modules")
+            .join(platform_package_name)
+            .exists()
+    } else {
+        true // Skip platform check for unsupported platforms
+    };
 
     if should_install {
         info!(
             "[{}] terminator.js not found, installing latest version...",
             runtime
         );
+    } else if !platform_package_exists {
+        info!(
+            "[{}] terminator.js found but platform package {} missing, reinstalling...",
+            runtime, platform_package_name
+        );
+        // Remove existing node_modules to force clean reinstall
+        let node_modules_dir = script_dir.join("node_modules");
+        if node_modules_dir.exists() {
+            info!(
+                "[{}] Removing existing node_modules for clean reinstall...",
+                runtime
+            );
+            if let Err(e) = tokio::fs::remove_dir_all(&node_modules_dir).await {
+                info!(
+                    "[{}] Failed to remove node_modules (continuing): {}",
+                    runtime, e
+                );
+            }
+        }
     } else {
         info!(
-            "[{}] terminator.js found, using existing version (skipping update for performance)...",
+            "[{}] terminator.js and platform package found, using existing installation...",
             runtime
         );
-        // Skip update and use existing installation
         return Ok(script_dir);
     }
 
@@ -478,9 +528,9 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         script_dir.display()
     );
 
-    // Install or update terminator.js@latest in the persistent directory
-    let command_args = if should_install {
-        // Fresh install
+    // Install or reinstall terminator.js@latest in the persistent directory
+    let command_args = if should_install || !platform_package_exists {
+        // Fresh install or reinstall when platform package missing
         vec!["install"]
     } else {
         // Update existing packages to latest
@@ -495,7 +545,6 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     // Add retry mechanism based on screenpipe patterns
     let max_retries = 3;
     let mut attempt = 0;
-    let mut last_error = None;
 
     loop {
         attempt += 1;
@@ -548,7 +597,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                             "--yes",
                             "--force",            // Force resolve conflicts
                             "--legacy-peer-deps", // Handle peer dependency issues
-                            "--no-optional",      // Skip optional dependencies that might hang
+                            "--include=optional", // Ensure optional dependencies (platform packages) are installed
                             "--registry=https://registry.npmjs.org/", // Explicit registry
                         ]
                         .iter(),
@@ -654,7 +703,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         .env("NPM_CONFIG_YES", "true")
                         .env("NPM_CONFIG_FORCE", "true")
                         .env("NPM_CONFIG_LEGACY_PEER_DEPS", "true")
-                        .env("NPM_CONFIG_NO_OPTIONAL", "true")
+                        .env("NPM_CONFIG_INCLUDE", "optional")
                         .env("NPM_CONFIG_NO_AUDIT", "true")
                         .env("NPM_CONFIG_NO_FUND", "true")
                         // Network and timeout configuration
@@ -873,7 +922,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     );
                     error!("[{}] {}", runtime, error_msg);
 
-                    last_error = Some(McpError::internal_error(
+                    let error = McpError::internal_error(
                         format!("Failed to {action} terminator.js"),
                         Some(json!({
                             "error": stderr.to_string(),
@@ -882,34 +931,41 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                             "attempt": attempt,
                             "max_retries": max_retries
                         })),
-                    ));
+                    );
+
+                    // Check if we should retry
+                    if attempt >= max_retries {
+                        error!(
+                            "[{}] All {} installation attempts failed",
+                            runtime, max_retries
+                        );
+                        return Err(error);
+                    }
                 }
             }
             Err(e) => {
                 let action = if should_install { "install" } else { "update" };
-                let error_msg = format!("Failed to run {} command: {}", action, e);
+                let error_msg = format!("Failed to run {action} command: {e}");
                 error!("[{}] {}", runtime, error_msg);
 
-                last_error = Some(McpError::internal_error(
+                let error = McpError::internal_error(
                     "Failed to run package manager",
                     Some(json!({
                         "error": e.to_string(),
                         "attempt": attempt,
                         "max_retries": max_retries
                     })),
-                ));
-            }
-        }
+                );
 
-        // Check if we should retry
-        if attempt >= max_retries {
-            error!(
-                "[{}] All {} installation attempts failed",
-                runtime, max_retries
-            );
-            return Err(last_error.unwrap_or_else(|| {
-                McpError::internal_error("Installation failed after maximum retries", None)
-            }));
+                // Check if we should retry
+                if attempt >= max_retries {
+                    error!(
+                        "[{}] All {} installation attempts failed",
+                        runtime, max_retries
+                    );
+                    return Err(error);
+                }
+            }
         }
 
         // Wait before retrying (exponential backoff like screenpipe)
