@@ -56,6 +56,7 @@ Your most reliable strategy is to inspect the application's UI structure *before
           \"alternative_selectors\": \"#12345\"
         }}
         ```
+    *   **Chrome Window Selector Quirks:** When targeting Chrome browser windows, avoid complex window titles with special characters. Instead of `role:Window|name:Best John Doe Online v2 - Google Chrome`, use simpler patterns like `role:Window|name:Google Chrome` or just the numeric ID. Complex Chrome window titles with special characters (like \"v2\", \"&\", etc.) often timeout in Windows UI Automation searches.
     *   **Avoid:** Generic selectors like `\"role:Button\"` alone - they're too ambiguous.
 
 **Action Examples**
@@ -88,6 +89,16 @@ Your most reliable strategy is to inspect the application's UI structure *before
         \"args\": {{
             \"selector\": \"#17517999067772859239\",
             \"alternative_selectors\": \"role:Group|name:Run Quote\"
+        }}
+    }}
+    ```
+*   **Closing Chrome windows (avoid complex titles):**
+    ```json
+    {{
+        \"tool_name\": \"close_element\",
+        \"args\": {{
+            \"selector\": \"#559901\",
+            \"alternative_selectors\": \"role:Window|name:Google Chrome\"
         }}
     }}
     ```

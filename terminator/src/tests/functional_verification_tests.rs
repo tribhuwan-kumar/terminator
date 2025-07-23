@@ -665,3 +665,222 @@ fn test_window_activation() {
         }
     }
 }
+
+#[test]
+#[ignore] // Run with: cargo test test_close_functionality -- --ignored --nocapture
+fn test_close_functionality() {
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    println!("\n🔍 Testing close() functionality with and without focus");
+
+    let desktop = init_test_environment();
+
+    // Test 1: Close when window is focused
+    println!("\n📋 Test 1: Close when window is focused");
+
+    // Open Notepad for testing
+    match desktop.open_application("notepad") {
+        Ok(notepad) => {
+            println!("  ✅ Opened Notepad successfully");
+            sleep(Duration::from_millis(1000));
+
+            // Make sure the window is focused
+            match notepad.focus() {
+                Ok(()) => println!("  ✅ Focused Notepad window"),
+                Err(e) => println!("  ❌ Failed to focus Notepad: {e}"),
+            }
+            sleep(Duration::from_millis(500));
+
+            // Verify it's focused
+            match notepad.is_focused() {
+                Ok(is_focused) => println!("  📊 Window is focused: {is_focused}"),
+                Err(e) => println!("  ❌ Failed to check focus state: {e}"),
+            }
+
+            // Attempt to close while focused
+            match notepad.close() {
+                Ok(()) => println!("  ✅ Successfully closed focused window"),
+                Err(e) => println!("  ❌ Failed to close focused window: {e}"),
+            }
+        }
+        Err(e) => println!("  ❌ Failed to open Notepad: {e}"),
+    }
+
+    sleep(Duration::from_millis(2000));
+
+    // Test 2: Close when window is NOT focused
+    println!("\n📋 Test 2: Close when window is NOT focused");
+
+    // Open Notepad again
+    match desktop.open_application("notepad") {
+        Ok(notepad) => {
+            println!("  ✅ Opened Notepad successfully");
+            sleep(Duration::from_millis(1000));
+
+            // Make sure we have another application to focus on
+            match desktop.open_application("calc") {
+                Ok(calc) => {
+                    println!("  ✅ Opened Calculator to steal focus");
+                    sleep(Duration::from_millis(1000));
+
+                    // Focus on Calculator (so Notepad is not focused)
+                    match calc.focus() {
+                        Ok(()) => println!("  ✅ Focused Calculator window"),
+                        Err(e) => println!("  ❌ Failed to focus Calculator: {e}"),
+                    }
+                    sleep(Duration::from_millis(500));
+
+                    // Verify Notepad is NOT focused
+                    match notepad.is_focused() {
+                        Ok(is_focused) => {
+                            println!("  📊 Notepad is focused: {is_focused}");
+                            if is_focused {
+                                println!("  ⚠️  Expected Notepad to NOT be focused, but it is");
+                            }
+                        }
+                        Err(e) => println!("  ❌ Failed to check Notepad focus state: {e}"),
+                    }
+
+                    // Attempt to close Notepad while it's NOT focused
+                    match notepad.close() {
+                        Ok(()) => println!("  ✅ Successfully closed unfocused window"),
+                        Err(e) => println!("  ❌ Failed to close unfocused window: {e}"),
+                    }
+
+                    // Clean up Calculator
+                    match calc.close() {
+                        Ok(()) => println!("  ✅ Cleaned up Calculator"),
+                        Err(e) => println!("  ❌ Failed to cleanup Calculator: {e}"),
+                    }
+                }
+                Err(e) => {
+                    println!("  ❌ Failed to open Calculator: {e}");
+                    // Still try to close Notepad
+                    match notepad.close() {
+                        Ok(()) => println!("  ✅ Closed Notepad (focus state unknown)"),
+                        Err(e) => println!("  ❌ Failed to close Notepad: {e}"),
+                    }
+                }
+            }
+        }
+        Err(e) => println!("  ❌ Failed to open Notepad: {e}"),
+    }
+
+    sleep(Duration::from_millis(2000));
+
+    // Test 3: Test close mechanism details with Chrome
+    println!("\n📋 Test 3: Test close mechanisms with Chrome");
+
+    match desktop.open_application("chrome") {
+        Ok(chrome) => {
+            println!("  ✅ Opened Chrome successfully");
+            sleep(Duration::from_millis(2000));
+
+            // Test focused close
+            match chrome.focus() {
+                Ok(()) => println!("  ✅ Focused Chrome window"),
+                Err(e) => println!("  ❌ Failed to focus Chrome: {e}"),
+            }
+            sleep(Duration::from_millis(500));
+
+            match chrome.close() {
+                Ok(()) => println!("  ✅ Successfully closed Chrome"),
+                Err(e) => println!("  ❌ Failed to close Chrome: {e}"),
+            }
+        }
+        Err(e) => println!("  ❌ Failed to open Chrome: {e}"),
+    }
+
+    sleep(Duration::from_millis(2000));
+
+    // Test 4: Multiple close attempts (edge case)
+    println!("\n📋 Test 4: Multiple close attempts");
+
+    match desktop.open_application("notepad") {
+        Ok(notepad) => {
+            println!("  ✅ Opened Notepad for multiple close test");
+            sleep(Duration::from_millis(1000));
+
+            // First close attempt
+            match notepad.close() {
+                Ok(()) => println!("  ✅ First close attempt succeeded"),
+                Err(e) => println!("  ❌ First close attempt failed: {e}"),
+            }
+
+            sleep(Duration::from_millis(1000));
+
+            // Second close attempt (should fail gracefully)
+            match notepad.close() {
+                Ok(()) => println!("  ⚠️  Second close attempt succeeded (unexpected)"),
+                Err(e) => println!("  ✅ Second close attempt failed as expected: {e}"),
+            }
+        }
+        Err(e) => println!("  ❌ Failed to open Notepad: {e}"),
+    }
+
+    println!("\n🏁 Close functionality tests completed");
+}
+
+#[test]
+#[ignore] // Run with: cargo test test_close_button_functionality -- --ignored --nocapture
+fn test_close_button_functionality() {
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    println!("\n🔍 Testing close button vs window close functionality");
+
+    let desktop = init_test_environment();
+
+    // Test close button clicking vs window close
+    match desktop.open_application("notepad") {
+        Ok(notepad) => {
+            println!("  ✅ Opened Notepad for close button test");
+            sleep(Duration::from_millis(1000));
+
+            // Get the window tree to find the close button
+            match notepad.children() {
+                Ok(children) => {
+                    println!("  📊 Found {} children in Notepad window", children.len());
+
+                    // Look for close button
+                    let mut close_button_found = false;
+                    for child in &children {
+                        if let Some(name) = child.name() {
+                            if name.to_lowercase().contains("close") {
+                                println!("  🔍 Found potential close button: '{name}'");
+                                close_button_found = true;
+
+                                // Test clicking the close button instead of using window.close()
+                                match child.click() {
+                                    Ok(_) => println!("  ✅ Successfully clicked close button"),
+                                    Err(e) => println!("  ❌ Failed to click close button: {e}"),
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    if !close_button_found {
+                        println!("  ⚠️  No close button found, falling back to window.close()");
+                        match notepad.close() {
+                            Ok(()) => println!("  ✅ Successfully closed using window.close()"),
+                            Err(e) => println!("  ❌ Failed to close using window.close(): {e}"),
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("  ❌ Failed to get children: {e}");
+                    // Fallback to normal close
+                    match notepad.close() {
+                        Ok(()) => println!("  ✅ Fallback close succeeded"),
+                        Err(e) => println!("  ❌ Fallback close failed: {e}"),
+                    }
+                }
+            }
+        }
+        Err(e) => println!("  ❌ Failed to open Notepad: {e}"),
+    }
+
+    println!("\n🏁 Close button functionality tests completed");
+}
