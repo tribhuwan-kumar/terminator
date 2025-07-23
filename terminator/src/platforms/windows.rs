@@ -1666,9 +1666,9 @@ impl AccessibilityEngine for WindowsEngine {
 
         // Enhanced polling for browser window with better reliability
         let start_time = std::time::Instant::now();
-        let timeout = std::time::Duration::from_millis(10000);
-        let initial_poll_interval = std::time::Duration::from_millis(500);
-        let fast_poll_interval = std::time::Duration::from_millis(200);
+        let timeout = std::time::Duration::from_millis(2000); // Reduced to 2s due to immediate fallback
+        let initial_poll_interval = std::time::Duration::from_millis(200); // Faster initial polling
+        let fast_poll_interval = std::time::Duration::from_millis(100); // Faster subsequent polling
 
         // For default browser, we assume the foreground window is the browser that just opened.
         if browser_search_name.clone().is_empty() {
@@ -1694,6 +1694,8 @@ impl AccessibilityEngine for WindowsEngine {
                 browser_search_name.clone()
             );
 
+            let mut title_search_failed = false;
+
             loop {
                 if start_time.elapsed() > timeout {
                     // try to find the browser window by `get_application_by_name`
@@ -1703,21 +1705,70 @@ impl AccessibilityEngine for WindowsEngine {
                             return Ok(app);
                         }
                         Err(e) => {
-                            debug!(
-                                "{} browser not found yet: {}, continuing poll",
-                                browser_search_name, e
-                            );
+                            return Err(AutomationError::PlatformError(format!(
+                                "Timeout waiting for {} browser to appear after {}ms. Last error: {}",
+                                browser_search_name, timeout.as_millis(), e
+                            )));
                         }
                     }
                 }
 
-                if !title.is_empty() {
+                // Try name-based search after 1 second or if title search failed
+                if start_time.elapsed() > std::time::Duration::from_millis(1000)
+                    || title_search_failed
+                {
+                    match self.get_application_by_name(&browser_search_name) {
+                        Ok(app) => {
+                            info!(
+                                "Found {} browser window using name search, returning.",
+                                browser_search_name
+                            );
+                            return Ok(app);
+                        }
+                        Err(_) => {
+                            // Continue with title search if name search fails
+                        }
+                    }
+                }
+
+                // Skip title search for Edge (known to be slow) and try name-based search immediately
+                if browser_search_name == "msedge" {
+                    debug!("Skipping title search for Edge, trying name-based search directly");
+                    match self.get_application_by_name(&browser_search_name) {
+                        Ok(app) => {
+                            info!(
+                                "Found {} browser window using direct name search, returning.",
+                                browser_search_name
+                            );
+                            return Ok(app);
+                        }
+                        Err(name_err) => {
+                            debug!("Direct name search failed for Edge: {}", name_err);
+                        }
+                    }
+                }
+
+                // Only try title search once, and only in the first 1.5 seconds
+                if !title.is_empty()
+                    && !title_search_failed
+                    && start_time.elapsed() < std::time::Duration::from_millis(1500)
+                {
+                    debug!(
+                        "Creating UI automation instance at {}ms",
+                        start_time.elapsed().as_millis()
+                    );
+                    let automation_start = std::time::Instant::now();
                     let automation = match create_ui_automation_with_com_init() {
-                        Ok(a) => a,
+                        Ok(a) => {
+                            debug!(
+                                "UI automation created in {}ms",
+                                automation_start.elapsed().as_millis()
+                            );
+                            a
+                        }
                         Err(e) => {
                             return Err(AutomationError::ElementNotFound(format!(
-                                "Failed to create UIAutomation instance for opening_url: {}",
-                                e
+                                "Failed to create UIAutomation instance for opening_url: {e}"
                             )));
                         }
                     };
@@ -1756,10 +1807,20 @@ impl AccessibilityEngine for WindowsEngine {
                             }
                         }))
                         .depth(10)
-                        .timeout(2000);
+                        .timeout(500); // Reduced to 500ms since API timeout doesn't work reliably
+
+                    debug!(
+                        "Starting title search at {}ms",
+                        start_time.elapsed().as_millis()
+                    );
+                    let search_start = std::time::Instant::now();
 
                     match matcher.find_first() {
                         Ok(ele) => {
+                            debug!(
+                                "Title search succeeded in {}ms",
+                                search_start.elapsed().as_millis()
+                            );
                             info!("Found browser document window with title '{}'", title);
                             let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                             return Ok(UIElement::new(Box::new(WindowsUIElement {
@@ -1767,13 +1828,25 @@ impl AccessibilityEngine for WindowsEngine {
                             })));
                         }
                         Err(e) => {
-                            debug!("Failed to find element: '{}' will use the get_application_by_name method", e)
+                            debug!("Title search failed in {}ms: '{}', immediately trying name-based search", search_start.elapsed().as_millis(), e);
+                            title_search_failed = true;
+
+                            // Immediately try name-based search when title search fails
+                            match self.get_application_by_name(&browser_search_name) {
+                                Ok(app) => {
+                                    info!("Found {} browser window using name search after title failure, returning.", browser_search_name);
+                                    return Ok(app);
+                                }
+                                Err(name_err) => {
+                                    debug!("Name-based search also failed: {}", name_err);
+                                }
+                            }
                         }
                     }
                 }
 
                 // Use adaptive polling
-                let poll_interval = if start_time.elapsed() < std::time::Duration::from_millis(2000)
+                let poll_interval = if start_time.elapsed() < std::time::Duration::from_millis(1000)
                 {
                     initial_poll_interval
                 } else {
