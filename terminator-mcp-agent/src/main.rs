@@ -11,6 +11,7 @@ use rmcp::{
 use std::net::SocketAddr;
 use terminator_mcp_agent::server;
 use terminator_mcp_agent::utils::init_logging;
+use tower_http::cors::CorsLayer;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -30,6 +31,10 @@ struct Args {
     /// Host to bind to (only used for SSE and HTTP transports)
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
+
+    /// Enable CORS for HTTP and SSE transports
+    #[arg(long)]
+    cors: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -50,6 +55,9 @@ async fn main() -> Result<()> {
 
     tracing::info!("Initializing Terminator MCP server...");
     tracing::info!("Transport mode: {:?}", args.transport);
+    if args.cors {
+        tracing::info!("CORS enabled for web transports");
+    }
 
     match args.transport {
         TransportMode::Stdio => {
@@ -71,6 +79,9 @@ async fn main() -> Result<()> {
                 .with_service(move || desktop.clone());
 
             println!("SSE server running on http://{addr}");
+            if args.cors {
+                println!("Note: CORS for SSE transport may need to be configured at the reverse proxy level");
+            }
             println!("Connect your MCP client to:");
             println!("  SSE endpoint: http://{addr}/sse");
             println!("  Message endpoint: http://{addr}/message");
@@ -91,12 +102,20 @@ async fn main() -> Result<()> {
                 Default::default(),
             );
 
-            let router = axum::Router::new()
+            let mut router = axum::Router::new()
                 .route("/health", axum::routing::get(health_check))
                 .nest_service("/mcp", service);
+
+            if args.cors {
+                router = router.layer(CorsLayer::permissive());
+            }
+
             let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
 
             println!("Streamable HTTP server running on http://{addr}");
+            if args.cors {
+                println!("CORS enabled - accessible from web browsers");
+            }
             println!("Connect your MCP client to: http://{addr}/mcp");
             println!("Health check available at: http://{addr}/health");
             println!("Press Ctrl+C to stop");

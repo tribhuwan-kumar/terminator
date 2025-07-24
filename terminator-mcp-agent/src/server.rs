@@ -23,7 +23,6 @@ use rmcp::model::{
 use rmcp::{tool, Error as McpError, ServerHandler};
 use rmcp::{tool_handler, tool_router};
 use serde_json::{json, Value};
-use std::env;
 use std::future::Future;
 use std::io::Cursor;
 use std::sync::Arc;
@@ -2935,6 +2934,15 @@ impl DesktopWrapper {
                     )),
                 }
             }
+            "export_workflow_sequence" => {
+                match serde_json::from_value::<ExportWorkflowSequenceArgs>(arguments.clone()) {
+                    Ok(args) => self.export_workflow_sequence(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for export_workflow_sequence",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),
@@ -2949,10 +2957,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ExportWorkflowSequenceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let output_format = args.output_format.clone().unwrap_or("json".to_string());
+        let output_format = args.output_format.clone().unwrap_or("yaml".to_string()); // Default to YAML
         let include_ai_fallbacks = args.include_ai_fallbacks.unwrap_or(true);
         let add_validation_steps = args.add_validation_steps.unwrap_or(true);
-        let include_tree_captures = args.include_tree_captures.unwrap_or(false);
 
         // Parse the JSON value as an array of tool calls
         let tool_calls_array: Vec<serde_json::Value> = serde_json::from_value(args.successful_tool_calls.clone())
@@ -2988,224 +2995,165 @@ impl DesktopWrapper {
             }
         }
 
-        // Build the workflow steps with enhancements
-        let mut enhanced_steps = Vec::new();
-        let mut step_counter = 1;
+        // Build workflow steps with enhancements in execute_sequence format
+        let mut workflow_steps = Vec::new();
+        let mut variables = serde_json::Map::new();
+        let mut selectors = serde_json::Map::new();
 
-        for (index, tool_call) in parsed_tool_calls.iter().enumerate() {
-            // Analyze the tool to determine what enhancements to add
-            let tool_name = &tool_call.tool_name;
-
-            // Add focus check before UI interaction tools
-            if matches!(
-                tool_name.as_str(),
-                "click_element"
-                    | "type_into_element"
-                    | "press_key"
-                    | "invoke_element"
-                    | "select_option"
-            ) && (index == 0 || should_add_focus_check(&parsed_tool_calls, index))
+        // Extract common selectors and create variables
+        let mut selector_counter = 1;
+        for tool_call in &parsed_tool_calls {
+            if let Some(selector_value) =
+                tool_call.arguments.get("selector").and_then(|v| v.as_str())
             {
-                enhanced_steps.push(json!({
-                    "step": step_counter,
-                    "action": "validate_focus",
-                    "description": "Ensure the target application has focus",
-                    "tool_name": "get_applications",
-                    "condition": "Check if target app is_focused=true",
-                    "fallback": "Use activate_element if not focused"
-                }));
-                step_counter += 1;
-            }
-
-            // Add wait after navigation or state-changing actions
-            if matches!(tool_name.as_str(), "navigate_browser" | "open_application") {
-                enhanced_steps.push(json!({
-                    "step": step_counter,
-                    "action": tool_name,
-                    "description": tool_call.arguments.get("description").and_then(|v| v.as_str()).unwrap_or("Execute action"),
-                    "tool_name": tool_name,
-                    "arguments": tool_call.arguments.clone(),
-                    "success_criteria": "Page/App loads successfully"
-                }));
-                step_counter += 1;
-
-                // Add intelligent wait
-                enhanced_steps.push(json!({
-                    "step": step_counter,
-                    "action": "wait_for_stability",
-                    "description": "Wait for UI to stabilize after navigation",
-                    "tool_name": "wait_for_element",
-                    "arguments": {
-                        "selector": "role:Document",
-                        "condition": "exists",
-                        "timeout_ms": 5000
-                    },
-                    "fallback": "If timeout, check get_window_tree for current state"
-                }));
-                step_counter += 1;
-            } else {
-                // Process the actual tool call with enhancements
-                let mut enhanced_args = tool_call.arguments.clone();
-
-                // Extract selectors and add alternatives if available
-                if let Some(_selector) =
-                    tool_call.arguments.get("selector").and_then(|v| v.as_str())
-                {
-                    // Look for alternative selectors from the arguments
-                    if let Some(alternatives) = tool_call.arguments.get("alternative_selectors") {
-                        enhanced_args["alternative_selectors"] = alternatives.clone();
-                    }
-                }
-
-                enhanced_steps.push(json!({
-                    "step": step_counter,
-                    "action": tool_name,
-                    "description": generate_step_description(tool_name, &tool_call.arguments),
-                    "tool_name": tool_name,
-                    "arguments": enhanced_args,
-                    "wait_for": get_wait_condition(tool_name),
-                    "verify_success": add_validation_steps
-                }));
-                step_counter += 1;
-            }
-
-            // Add validation after state-changing actions if requested
-            if add_validation_steps && is_state_changing_action(tool_name) {
-                if let Some(selector) = tool_call.arguments.get("selector") {
-                    enhanced_steps.push(json!({
-                        "step": step_counter,
-                        "action": "validate_action_result",
-                        "description": format!("Verify {} completed successfully", tool_name),
-                        "tool_name": "validate_element",
-                        "arguments": {
-                            "selector": selector,
-                            "timeout_ms": 1000
-                        },
-                        "condition": "Element still exists and state changed as expected"
-                    }));
-                    step_counter += 1;
-                }
-            }
-
-            // Add tree capture at key points if requested
-            if include_tree_captures
-                && should_capture_tree(tool_name, index, parsed_tool_calls.len())
-            {
-                enhanced_steps.push(json!({
-                    "step": step_counter,
-                    "action": "capture_ui_state",
-                    "description": "Capture UI tree for debugging/verification",
-                    "tool_name": "get_window_tree",
-                    "arguments": {
-                        "include_tree": true
-                    },
-                    "purpose": "State checkpoint for recovery"
-                }));
-                step_counter += 1;
+                let selector_var_name = format!("selector_{}", selector_counter);
+                selectors.insert(selector_var_name, json!(selector_value));
+                selector_counter += 1;
             }
         }
 
-        // Build the complete workflow structure
+        // Add workflow metadata as variables
+        variables.insert(
+            "workflow_name".to_string(),
+            json!({
+                "type": "string",
+                "label": "Workflow Name",
+                "default": args.workflow_name,
+                "description": args.workflow_description
+            }),
+        );
+
+        // Convert tool calls to workflow steps with enhancements
+        for (index, tool_call) in parsed_tool_calls.iter().enumerate() {
+            let tool_name = &tool_call.tool_name;
+            let step_id = format!("step_{}", index + 1);
+
+            // Add stability wait after navigation/app opening
+            if matches!(tool_name.as_str(), "navigate_browser" | "open_application") {
+                // Original step
+                workflow_steps.push(json!({
+                    "id": step_id,
+                    "tool_name": tool_name,
+                    "arguments": tool_call.arguments.clone(),
+                    "retries": if add_validation_steps { 2 } else { 0 }
+                }));
+
+                // Add wait step if validation enabled
+                if add_validation_steps {
+                    workflow_steps.push(json!({
+                        "id": format!("wait_after_{}", step_id),
+                        "tool_name": "delay",
+                        "arguments": {
+                            "delay_ms": 2000
+                        }
+                    }));
+                }
+            } else {
+                // Enhanced step with better error handling
+                let mut enhanced_step = json!({
+                    "id": step_id,
+                    "tool_name": tool_name,
+                    "arguments": tool_call.arguments.clone()
+                });
+
+                // Add timeout and retry for UI interactions
+                if matches!(
+                    tool_name.as_str(),
+                    "click_element" | "type_into_element" | "press_key"
+                ) {
+                    if let Some(obj) = enhanced_step.as_object_mut() {
+                        if let Some(args) = obj.get_mut("arguments").and_then(|v| v.as_object_mut())
+                        {
+                            args.insert("timeout_ms".to_string(), json!(5000));
+                            if add_validation_steps {
+                                args.insert("include_tree".to_string(), json!(false));
+                            }
+                        }
+                        obj.insert("retries".to_string(), json!(1));
+                    }
+                }
+
+                workflow_steps.push(enhanced_step);
+            }
+        }
+
+        // Build execute_sequence format workflow (matching existing workflows)
         let workflow = json!({
-            "workflow": {
+            "tool_name": "execute_sequence",
+            "arguments": {
+                "variables": variables,
+                "inputs": json!({}),
+                "selectors": selectors,
+                "steps": workflow_steps
+            },
+            "workflow_info": {
                 "name": args.workflow_name,
                 "version": "1.0",
                 "description": args.workflow_description,
                 "goal": args.workflow_goal,
                 "created_at": chrono::Utc::now().to_rfc3339(),
-                "created_by": "terminator-mcp-agent",
-
-                "prerequisites": {
-                    "browser": "Chrome",
-                    "platform": env::consts::OS,
-                    "required_tools": self.extract_required_tools(&parsed_tool_calls)
-                },
-
-                "parameters": {
-                    "credentials": args.credentials.unwrap_or(json!({})),
-                    "form_data": args.expected_data.unwrap_or(json!({}))
-                },
-
-                "configuration": {
-                    "include_ai_fallbacks": include_ai_fallbacks,
-                    "add_validation_steps": add_validation_steps,
-                    "default_timeout_ms": 3000,
-                    "retry_on_failure": true,
-                    "max_retries": 2
-                },
-
-                "steps": enhanced_steps,
-
-                "error_handling": {
-                    "known_errors": args.known_error_handlers.unwrap_or(json!([])),
-                    "general_strategies": [
-                        {
-                            "error": "ElementNotFound",
-                            "solution": "Call get_window_tree to refresh UI state, then retry with alternative selectors"
-                        },
-                        {
-                            "error": "ElementDisabled",
-                            "solution": "Check prerequisites - ensure all required fields are filled and conditions met"
-                        },
-                        {
-                            "error": "Timeout",
-                            "solution": "Increase timeout_ms or add explicit wait_for_element steps"
-                        }
+                "created_by": "export_workflow_sequence tool",
+                "prerequisites": self.extract_required_tools(&parsed_tool_calls),
+                "notes": if include_ai_fallbacks {
+                    vec![
+                        "This workflow was automatically generated from successful tool executions",
+                        "Enhanced with validation steps and error handling",
+                        "Use execute_sequence tool to run this workflow"
                     ]
-                },
-
-                "success_criteria": {
-                    "final_validation": "Verify the workflow goal has been achieved",
-                    "expected_outcomes": self.infer_expected_outcomes(&parsed_tool_calls),
-                    "verification_steps": if add_validation_steps {
-                        vec!["Check final UI state matches expected", "Verify data was processed correctly"]
-                    } else {
-                        vec![]
-                    }
-                },
-
-                "ai_decision_points": if include_ai_fallbacks {
-                    json!([
-                        {
-                            "condition": "Dialog or popup appears unexpectedly",
-                            "action": "Analyze dialog content and decide whether to accept, cancel, or handle differently"
-                        },
-                        {
-                            "condition": "Expected element not found after multiple retries",
-                            "action": "Use get_window_tree to understand current state and find alternative path"
-                        },
-                        {
-                            "condition": "Form validation errors",
-                            "action": "Read error messages and adjust input data accordingly"
-                        }
-                    ])
                 } else {
-                    json!([])
-                },
-
-                "notes": [
-                    "This workflow was automatically generated from successful tool executions",
-                    "Selectors use exact IDs where possible for maximum reliability",
-                    "Alternative selectors are included for robustness",
-                    "Wait conditions and validations ensure each step completes before proceeding"
-                ]
+                    vec![
+                        "This workflow was automatically generated from successful tool executions",
+                        "Use execute_sequence tool to run this workflow"
+                    ]
+                }
             }
         });
 
         // Convert to requested format
-        let output = match output_format.to_lowercase().as_str() {
+        match output_format.to_lowercase().as_str() {
             "yaml" => {
-                // For YAML output, we'll return instructions since we can't directly convert
-                json!({
-                    "format": "yaml",
-                    "content": workflow,
-                    "note": "Copy the 'content' field and convert to YAML using a JSON-to-YAML converter for proper formatting"
-                })
-            }
-            _ => workflow,
-        };
+                // Serialize to actual YAML
+                let yaml_string = serde_yaml::to_string(&workflow).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to serialize workflow to YAML",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
 
-        Ok(CallToolResult::success(vec![Content::json(output)?]))
+                Ok(CallToolResult::success(vec![
+                    Content::json(json!({
+                        "action": "export_workflow_sequence",
+                        "status": "success",
+                        "format": "yaml",
+                        "workflow_name": args.workflow_name,
+                        "workflow_description": args.workflow_description,
+                        "tools_count": parsed_tool_calls.len(),
+                        "enhanced_with_validation": add_validation_steps,
+                        "timestamp": chrono::Utc::now().to_rfc3339()
+                    }))?,
+                    Content::text(format!(
+                        "# Exported Workflow: {}\n# Description: {}\n# Generated: {}\n---\n{}",
+                        args.workflow_name,
+                        args.workflow_description,
+                        chrono::Utc::now().to_rfc3339(),
+                        yaml_string
+                    )),
+                ]))
+            }
+            "json" => Ok(CallToolResult::success(vec![Content::json(json!({
+                "action": "export_workflow_sequence",
+                "status": "success",
+                "format": "json",
+                "workflow": workflow,
+                "workflow_name": args.workflow_name,
+                "tools_count": parsed_tool_calls.len(),
+                "timestamp": chrono::Utc::now().to_rfc3339()
+            }))?])),
+            _ => Err(McpError::invalid_params(
+                "Invalid output format. Must be 'yaml' or 'json'",
+                Some(json!({"provided_format": output_format})),
+            )),
+        }
     }
 
     fn extract_required_tools(&self, tool_calls: &[crate::utils::ToolCall]) -> Vec<String> {
@@ -3217,32 +3165,6 @@ impl DesktopWrapper {
             .collect()
     }
 
-    fn infer_expected_outcomes(&self, tool_calls: &[crate::utils::ToolCall]) -> Vec<String> {
-        let mut outcomes = Vec::new();
-
-        for call in tool_calls {
-            match call.tool_name.as_str() {
-                "navigate_browser" => {
-                    outcomes.push("Target webpage loaded successfully".to_string())
-                }
-                "type_into_element" => outcomes.push("Form fields populated with data".to_string()),
-                "click_element"
-                    if call
-                        .arguments
-                        .get("selector")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .contains("Submit") =>
-                {
-                    outcomes.push("Form submitted successfully".to_string())
-                }
-                "select_option" => outcomes.push("Option selected in dropdown".to_string()),
-                _ => {}
-            }
-        }
-
-        outcomes
-    }
 
     #[tool(description = "Maximizes a window.")]
     async fn maximize_window(

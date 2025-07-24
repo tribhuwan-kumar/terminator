@@ -34,6 +34,7 @@ image = { version = "0.25.1", features = ["png"] }
 base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }
 axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
 terminator-workflow-recorder = { path = "../terminator-workflow-recorder" }
 jsonpath_lib = "0.3.0"
 regex = { workspace = true }

@@ -5203,6 +5203,7 @@ dependencies = [
  "terminator-workflow-recorder",
  "tokio",
  "tokio-test",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "which",
