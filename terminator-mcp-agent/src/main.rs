@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use terminator_mcp_agent::server;
 use terminator_mcp_agent::utils::init_logging;
 use tower_http::cors::CorsLayer;
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -73,19 +74,27 @@ async fn main() -> Result<()> {
             let addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
             tracing::info!("Starting SSE server on http://{}", addr);
 
+            if args.cors {
+                error!("SSE transport does not support CORS");
+                info!("Use HTTP transport for CORS support:");
+                info!(
+                    "   terminator-mcp-agent -t http --cors --port {}",
+                    args.port
+                );
+                info!("   Then connect to: http://{}:{}/mcp", args.host, args.port);
+                return Ok(());
+            }
+
             let desktop = server::DesktopWrapper::new().await?;
             let ct = SseServer::serve(addr)
                 .await?
                 .with_service(move || desktop.clone());
 
-            println!("SSE server running on http://{addr}");
-            if args.cors {
-                println!("Note: CORS for SSE transport may need to be configured at the reverse proxy level");
-            }
-            println!("Connect your MCP client to:");
-            println!("  SSE endpoint: http://{addr}/sse");
-            println!("  Message endpoint: http://{addr}/message");
-            println!("Press Ctrl+C to stop");
+            info!("SSE server running on http://{addr}");
+            info!("Connect your MCP client to:");
+            info!("  SSE endpoint: http://{addr}/sse");
+            info!("  Message endpoint: http://{addr}/message");
+            info!("Press Ctrl+C to stop");
 
             tokio::signal::ctrl_c().await?;
             ct.cancel();
@@ -112,13 +121,13 @@ async fn main() -> Result<()> {
 
             let tcp_listener = tokio::net::TcpListener::bind(addr).await?;
 
-            println!("Streamable HTTP server running on http://{addr}");
+            info!("Streamable HTTP server running on http://{addr}");
             if args.cors {
-                println!("CORS enabled - accessible from web browsers");
+                info!("CORS enabled - accessible from web browsers");
             }
-            println!("Connect your MCP client to: http://{addr}/mcp");
-            println!("Health check available at: http://{addr}/health");
-            println!("Press Ctrl+C to stop");
+            info!("Connect your MCP client to: http://{addr}/mcp");
+            info!("Health check available at: http://{addr}/health");
+            info!("Press Ctrl+C to stop");
 
             axum::serve(tcp_listener, router)
                 .with_graceful_shutdown(async {
