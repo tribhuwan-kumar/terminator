@@ -206,6 +206,8 @@ impl Default for WorkflowRecorderConfig {
                 "lastpass".to_string(),
                 "dashlane".to_string(),
                 "bitwarden".to_string(),
+                // Mediar product - ignore our own product interactions
+                "mediar".to_string(),
                 // Common background noise patterns
                 "battery".to_string(),
                 "volume".to_string(),
@@ -244,6 +246,8 @@ impl Default for WorkflowRecorderConfig {
                 "lastpass".to_string(),
                 "dashlane".to_string(),
                 "bitwarden".to_string(),
+                // Mediar product - ignore our own product interactions
+                "mediar".to_string(),
                 // System status and background updates
                 "battery".to_string(),
                 "volume".to_string(),
@@ -286,6 +290,8 @@ impl Default for WorkflowRecorderConfig {
                 "LastPass".to_string(),
                 "Dashlane".to_string(),
                 "Bitwarden".to_string(),
+                // Mediar product - ignore our own product interactions
+                "Mediar".to_string(),
                 // Browser screen sharing notifications
                 "is sharing your screen".to_string(),
                 "Screen sharing".to_string(),
@@ -333,6 +339,8 @@ impl Default for WorkflowRecorderConfig {
                 "cmd.exe".to_string(),
                 "cursor.exe".to_string(),
                 "code.exe".to_string(),
+                // Mediar product - ignore our own product interactions
+                "mediar.exe".to_string(),
                 // Windows system processes that generate noise
                 "explorer.exe".to_string(),
                 "winlogon.exe".to_string(),
