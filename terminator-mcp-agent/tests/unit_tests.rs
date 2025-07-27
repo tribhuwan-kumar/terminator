@@ -1,6 +1,12 @@
+use rmcp::handler::server::tool::Parameters;
 use serde_json::json;
+use std::fs;
+use tempfile::TempDir;
 use terminator_mcp_agent::scripting_engine::find_executable;
-use terminator_mcp_agent::utils::{ExecuteSequenceArgs, SequenceStep, ToolCall};
+use terminator_mcp_agent::utils::{
+    DesktopWrapper, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, SequenceStep, ToolCall,
+};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[test]
 fn test_execute_sequence_args_serialization() {
@@ -456,150 +462,166 @@ async fn test_nodejs_script_execution_debug() {
     use std::process::Stdio;
     use tokio::process::Command;
 
-    // Test 1: Simple console.log script
-    let simple_script = r#"console.log("Hello from Node.js test");"#;
+    println!("🔍 Debug test: Creating isolated terminator.js environment...");
 
-    // Write simple script to temp file
-    let temp_dir = std::env::temp_dir();
-    let script_path = temp_dir.join("test_simple.js");
+    // Create isolated directory
+    let script_dir = std::env::temp_dir().join(format!(
+        "debug_terminator_js_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
 
-    tokio::fs::write(&script_path, simple_script).await.unwrap();
+    tokio::fs::create_dir_all(&script_dir).await.unwrap();
+    println!("📁 Created script directory: {}", script_dir.display());
 
-    let node_path = find_executable("node").unwrap();
-
-    let result = if cfg!(windows) && node_path.ends_with(".exe") {
-        Command::new(&node_path)
-            .arg(script_path.to_str().unwrap())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-    } else if cfg!(windows) {
-        Command::new("cmd")
-            .args(["/c", "node", script_path.to_str().unwrap()])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-    } else {
-        Command::new(&node_path)
-            .arg(script_path.to_str().unwrap())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-    };
-
-    match result {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-
-            println!("Simple script stdout: {}", stdout);
-            println!("Simple script stderr: {}", stderr);
-            println!("Simple script exit code: {:?}", output.status.code());
-
-            if output.status.success() {
-                assert!(stdout.contains("Hello from Node.js test"));
-                println!("✅ Basic Node.js execution works");
-            } else {
-                println!("❌ Basic Node.js execution failed");
-            }
-        }
-        Err(e) => {
-            println!("❌ Failed to execute simple Node.js script: {}", e);
-        }
-    }
-
-    // Test 2: Try to require terminator.js (this will likely fail but shows us the error)
-    let terminator_test_script = r#"
-try {
-    console.log("Trying to require terminator.js...");
-    const { Desktop } = require('terminator.js');
-    console.log("✅ terminator.js loaded successfully");
-} catch (error) {
-    console.log("❌ terminator.js failed to load:");
-    console.log("Error name:", error.name);
-    console.log("Error message:", error.message);
-    console.log("Error code:", error.code);
-    
-    // Try to list available modules
-    console.log("Checking if module exists in node_modules...");
-    const fs = require('fs');
-    const path = require('path');
-    
-    // Check current directory
-    try {
-        const nodeModulesPath = path.join(process.cwd(), 'node_modules');
-        console.log("Current working directory:", process.cwd());
-        console.log("Looking for node_modules at:", nodeModulesPath);
-        
-        if (fs.existsSync(nodeModulesPath)) {
-            console.log("node_modules exists");
-            const contents = fs.readdirSync(nodeModulesPath);
-            console.log("node_modules contents:", contents.slice(0, 10)); // First 10 items
-            
-            if (contents.includes('terminator.js')) {
-                console.log("✅ terminator.js found in node_modules");
-            } else {
-                console.log("❌ terminator.js NOT found in node_modules");
-            }
-        } else {
-            console.log("❌ node_modules directory does not exist");
-        }
-    } catch (fsError) {
-        console.log("❌ Error checking filesystem:", fsError.message);
-    }
-}
-"#;
-
-    let terminator_script_path = temp_dir.join("test_terminator.js");
-    tokio::fs::write(&terminator_script_path, terminator_test_script)
+    // Install terminator.js in isolated directory
+    println!("📦 Installing terminator.js...");
+    let install_result = Command::new("cmd")
+        .current_dir(&script_dir)
+        .args(["/c", "npm", "install", "terminator.js"])
+        .output()
         .await
         .unwrap();
 
-    let terminator_result = if cfg!(windows) && node_path.ends_with(".exe") {
-        Command::new(&node_path)
-            .arg(terminator_script_path.to_str().unwrap())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-    } else if cfg!(windows) {
-        Command::new("cmd")
-            .args(["/c", "node", terminator_script_path.to_str().unwrap()])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-    } else {
-        Command::new(&node_path)
-            .arg(terminator_script_path.to_str().unwrap())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-            .await
-    };
+    println!(
+        "Install stdout: {}",
+        String::from_utf8_lossy(&install_result.stdout)
+    );
+    println!(
+        "Install stderr: {}",
+        String::from_utf8_lossy(&install_result.stderr)
+    );
+    println!("Install exit code: {:?}", install_result.status.code());
 
-    match terminator_result {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
+    // Check what was actually installed
+    let node_modules_path = script_dir.join("node_modules");
+    if tokio::fs::metadata(&node_modules_path).await.is_ok() {
+        println!("✅ node_modules directory exists");
 
-            println!("=== Terminator.js Test Output ===");
-            println!("stdout:\n{}", stdout);
-            println!("stderr:\n{}", stderr);
-            println!("exit code: {:?}", output.status.code());
-            println!("=== End Terminator.js Test ===");
+        // List contents
+        let mut entries = tokio::fs::read_dir(&node_modules_path).await.unwrap();
+        println!("📋 node_modules contents:");
+        while let Some(entry) = entries.next_entry().await.unwrap() {
+            println!("  - {}", entry.file_name().to_string_lossy());
         }
-        Err(e) => {
-            println!("❌ Failed to execute terminator.js test script: {}", e);
+
+        // Check specifically for terminator.js
+        let terminator_path = node_modules_path.join("terminator.js");
+        if tokio::fs::metadata(&terminator_path).await.is_ok() {
+            println!("✅ terminator.js package directory exists");
+        } else {
+            println!("❌ terminator.js package directory NOT found");
+        }
+    } else {
+        println!("❌ node_modules directory does not exist");
+    }
+
+    // Create a simple test script
+    let test_script = r#"
+try {
+    console.log("Working directory:", process.cwd());
+    console.log("Attempting to require terminator.js...");
+    
+    const { Desktop } = require('terminator.js');
+    console.log("SUCCESS: terminator.js loaded");
+    
+    process.stdout.write('__RESULT__{"success": true}__END__\n');
+} catch (error) {
+    console.log("FAILED to load terminator.js:", error.message);
+    console.log("Error code:", error.code);
+    console.log("Error stack:", error.stack);
+    
+    // Try to show what modules are available
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+        const nodeModulesPath = path.join(process.cwd(), 'node_modules');
+        if (fs.existsSync(nodeModulesPath)) {
+            console.log("Available modules:", fs.readdirSync(nodeModulesPath));
+            
+            const terminatorPath = path.join(nodeModulesPath, 'terminator.js');
+            if (fs.existsSync(terminatorPath)) {
+                console.log("terminator.js directory exists");
+                console.log("terminator.js contents:", fs.readdirSync(terminatorPath));
+                
+                const packageJsonPath = path.join(terminatorPath, 'package.json');
+                if (fs.existsSync(packageJsonPath)) {
+                    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+                    console.log("Package main field:", packageJson.main);
+                    console.log("Package name:", packageJson.name);
+                    console.log("Package version:", packageJson.version);
+                }
+            }
+        }
+    } catch (fsError) {
+        console.log("Filesystem check error:", fsError.message);
+    }
+    
+    process.stdout.write('__RESULT__{"success": false, "error": "' + error.message + '"}__END__\n');
+}
+"#;
+
+    let script_path = script_dir.join("debug.js");
+    tokio::fs::write(&script_path, test_script).await.unwrap();
+
+    println!("🚀 Running test script...");
+
+    // Run the script
+    let node_exe = find_executable("node").unwrap();
+    let mut child = Command::new(&node_exe)
+        .current_dir(&script_dir)
+        .arg("debug.js")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
+
+    // Read all output
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = stderr.next_line().await {
+            println!("STDERR: {}", line);
+        }
+    });
+
+    let mut result: Option<serde_json::Value> = None;
+    while let Ok(Some(line)) = stdout.next_line().await {
+        println!("STDOUT: {}", line);
+
+        if line.starts_with("__RESULT__") && line.ends_with("__END__") {
+            let result_json = line.replace("__RESULT__", "").replace("__END__", "");
+            result = serde_json::from_str(&result_json).ok();
+            break;
         }
     }
 
-    // Cleanup
-    tokio::fs::remove_file(&script_path).await.ok();
-    tokio::fs::remove_file(&terminator_script_path).await.ok();
+    let status = child.wait().await.unwrap();
+    println!("Process exit code: {:?}", status.code());
+
+    // Clean up
+    tokio::fs::remove_dir_all(&script_dir).await.ok();
+
+    // Verify result
+    if let Some(res) = result {
+        println!(
+            "Final result: {}",
+            serde_json::to_string_pretty(&res).unwrap()
+        );
+        if let Some(success) = res.get("success").and_then(|v| v.as_bool()) {
+            if success {
+                println!("✅ Test completed successfully!");
+            } else {
+                println!("❌ Test failed but we got useful debug info");
+            }
+        }
+    } else {
+        println!("❌ No result received from Node.js process");
+    }
 }
 
 #[tokio::test]
@@ -1227,4 +1249,339 @@ try {
             panic!("Scripting engine with local bindings should succeed: {}", e);
         }
     }
+}
+
+#[tokio::test]
+async fn test_workflow_editor_create_new_file() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("new_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "tool_name: execute_sequence\narguments:\n  steps: []\n".to_string(),
+        find_pattern: None,
+        use_regex: None,
+        create_if_missing: Some(true),
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify file was created with correct content
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(content.contains("tool_name: execute_sequence"));
+    assert!(content.contains("steps: []"));
+}
+
+#[tokio::test]
+async fn test_workflow_editor_append_to_existing() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("existing_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create initial file
+    fs::write(&file_path, "existing_content:\n  data: value\n").unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "new_section:\n  additional: data".to_string(),
+        find_pattern: None,
+        use_regex: None,
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify content was appended
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(content.contains("existing_content:"));
+    assert!(content.contains("new_section:"));
+    assert!(content.contains("additional: data"));
+}
+
+#[tokio::test]
+async fn test_workflow_editor_simple_string_replace() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("replace_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create initial file with content to replace
+    fs::write(
+        &file_path,
+        "tool_name: old_tool\narguments:\n  selector: old_selector",
+    )
+    .unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "new_tool".to_string(),
+        find_pattern: Some("old_tool".to_string()),
+        use_regex: Some(false),
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify replacement occurred
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(content.contains("tool_name: new_tool"));
+    assert!(!content.contains("old_tool"));
+}
+
+#[tokio::test]
+async fn test_workflow_editor_regex_replace() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("regex_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create initial file with content to replace using regex
+    fs::write(
+        &file_path,
+        "step_1: click_element\nstep_2: type_text\nstep_3: press_key",
+    )
+    .unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "action_$1".to_string(),
+        find_pattern: Some(r"step_(\d+)".to_string()),
+        use_regex: Some(true),
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify regex replacement occurred
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(content.contains("action_1: click_element"));
+    assert!(content.contains("action_2: type_text"));
+    assert!(content.contains("action_3: press_key"));
+    assert!(!content.contains("step_"));
+}
+
+#[tokio::test]
+async fn test_workflow_editor_pattern_not_found() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("no_match_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create initial file without the pattern we're looking for
+    fs::write(&file_path, "tool_name: existing_tool\narguments: {}").unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "replacement".to_string(),
+        find_pattern: Some("nonexistent_pattern".to_string()),
+        use_regex: Some(false),
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_err());
+
+    // Verify error message mentions pattern not found
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("Pattern not found"));
+}
+
+#[tokio::test]
+async fn test_workflow_editor_invalid_regex() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("invalid_regex_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create initial file
+    fs::write(&file_path, "some content").unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "replacement".to_string(),
+        find_pattern: Some("[invalid_regex".to_string()), // Invalid regex - missing closing bracket
+        use_regex: Some(true),
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_err());
+
+    // Verify error message mentions invalid regex
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("Invalid regex pattern"));
+}
+
+#[tokio::test]
+async fn test_workflow_editor_create_if_missing_false() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("nonexistent_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "new content".to_string(),
+        find_pattern: None,
+        use_regex: None,
+        create_if_missing: Some(false),
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_err());
+
+    // Verify error message mentions file doesn't exist
+    let error = result.unwrap_err();
+    assert!(error.to_string().contains("File does not exist"));
+}
+
+#[tokio::test]
+async fn test_workflow_editor_empty_file_append() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("empty_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create empty file
+    fs::write(&file_path, "").unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "first_content".to_string(),
+        find_pattern: None,
+        use_regex: None,
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify content was added to empty file
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert_eq!(content, "first_content");
+}
+
+#[tokio::test]
+async fn test_workflow_editor_no_trailing_newline() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("no_newline_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create file without trailing newline
+    fs::write(&file_path, "existing_content").unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "appended_content".to_string(),
+        find_pattern: None,
+        use_regex: None,
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify newline was added between existing and new content
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert_eq!(content, "existing_content\nappended_content");
+}
+
+#[tokio::test]
+async fn test_workflow_editor_with_trailing_newline() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("with_newline_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create file with trailing newline
+    fs::write(&file_path, "existing_content\n").unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "appended_content".to_string(),
+        find_pattern: None,
+        use_regex: None,
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify no extra newline was added
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert_eq!(content, "existing_content\nappended_content");
+}
+
+#[tokio::test]
+async fn test_workflow_editor_multiline_replacement() {
+    let temp_dir = TempDir::new().unwrap();
+    let file_path = temp_dir
+        .path()
+        .join("multiline_workflow.yaml")
+        .to_string_lossy()
+        .to_string();
+
+    // Create file with multiline content
+    fs::write(
+        &file_path,
+        "section_a:\n  old_data: value\n  more_data: stuff\nsection_b:\n  other: info",
+    )
+    .unwrap();
+
+    let server = DesktopWrapper::new().await.unwrap();
+    let args = ExportWorkflowSequenceArgs {
+        file_path: file_path.clone(),
+        content: "section_a:\n  new_data: updated_value\n  additional: info".to_string(),
+        find_pattern: Some("section_a:\n  old_data: value\n  more_data: stuff".to_string()),
+        use_regex: Some(false),
+        create_if_missing: None,
+    };
+
+    let result = server.export_workflow_sequence(Parameters(args)).await;
+    assert!(result.is_ok());
+
+    // Verify multiline replacement occurred
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(content.contains("new_data: updated_value"));
+    assert!(content.contains("additional: info"));
+    assert!(content.contains("section_b:"));
+    assert!(!content.contains("old_data: value"));
 }

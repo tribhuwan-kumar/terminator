@@ -904,48 +904,22 @@ pub async fn find_element_with_fallbacks(
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExportWorkflowSequenceArgs {
-    #[schemars(
-        description = "JSON value containing an array of successfully executed tool calls to convert into a reliable workflow. Each tool call should be a JSON object with 'tool_name' (string), 'arguments' (object), 'continue_on_error' (optional bool), and 'delay_ms' (optional number)."
-    )]
-    pub successful_tool_calls: serde_json::Value,
+    #[schemars(description = "Path to the workflow file to create or edit")]
+    pub file_path: String,
 
-    #[schemars(description = "Name for the workflow being exported")]
-    pub workflow_name: String,
-
-    #[schemars(description = "Description of what this workflow accomplishes")]
-    pub workflow_description: String,
-
-    #[schemars(description = "The primary goal or intent of the workflow")]
-    pub workflow_goal: String,
-
-    #[schemars(description = "Output format: 'json' or 'yaml' (default: 'json')")]
-    pub output_format: Option<String>,
+    #[schemars(description = "Text content to add to the workflow file")]
+    pub content: String,
 
     #[schemars(
-        description = "Whether to include AI decision points for dynamic conditions (default: true)"
+        description = "Text pattern to find and replace (optional - if not provided, content will be appended)"
     )]
-    pub include_ai_fallbacks: Option<bool>,
+    pub find_pattern: Option<String>,
 
-    #[schemars(
-        description = "Whether to add extra validation steps between actions (default: true)"
-    )]
-    pub add_validation_steps: Option<bool>,
+    #[schemars(description = "Whether to use regex for pattern matching (default: false)")]
+    pub use_regex: Option<bool>,
 
-    #[schemars(description = "Whether to include UI tree captures at key points (default: false)")]
-    pub include_tree_captures: Option<bool>,
-
-    #[schemars(description = "Expected form data or input values used in the workflow")]
-    pub expected_data: Option<serde_json::Value>,
-
-    #[schemars(
-        description = "Any credentials or login information needed (will be parameterized in output)"
-    )]
-    pub credentials: Option<serde_json::Value>,
-
-    #[schemars(
-        description = "Known error conditions and their solutions from the successful run as a JSON array"
-    )]
-    pub known_error_handlers: Option<serde_json::Value>,
+    #[schemars(description = "Create new file if it doesn't exist (default: true)")]
+    pub create_if_missing: Option<bool>,
 }
 
 /// A robust helper that finds a UI element and executes a provided action on it,

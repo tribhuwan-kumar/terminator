@@ -2951,218 +2951,91 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Exports a sequence of successful tool calls into a structured, reliable workflow format that can be executed by another AI agent with minimal context. This tool analyzes the provided sequence and enhances it with intelligent error handling, validation steps, wait conditions, and fallback strategies to maximize success rate. The output can be in JSON or YAML format and includes comprehensive metadata to ensure reproducibility."
+        description = "Edits workflow files using simple text find/replace operations. Works like sed - finds text patterns and replaces them, or appends content if no pattern specified."
     )]
     pub async fn export_workflow_sequence(
         &self,
         Parameters(args): Parameters<ExportWorkflowSequenceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let output_format = args.output_format.clone().unwrap_or("yaml".to_string()); // Default to YAML
-        let include_ai_fallbacks = args.include_ai_fallbacks.unwrap_or(true);
-        let add_validation_steps = args.add_validation_steps.unwrap_or(true);
+        let use_regex = args.use_regex.unwrap_or(false);
+        let create_if_missing = args.create_if_missing.unwrap_or(true);
 
-        // Parse the JSON value as an array of tool calls
-        let tool_calls_array: Vec<serde_json::Value> = serde_json::from_value(args.successful_tool_calls.clone())
-            .map_err(|e| McpError::invalid_params(
-                "successful_tool_calls must be a JSON array",
-                Some(json!({
-                    "error": e.to_string(),
-                    "expected": "JSON array of tool call objects",
-                    "example": "[{\"tool_name\": \"click_element\", \"arguments\": {\"selector\": \"#button\"}}]"
-                })),
-            ))?;
-
-        // Parse the JSON values into ToolCall structs
-        let mut parsed_tool_calls = Vec::new();
-        for (index, json_value) in tool_calls_array.iter().enumerate() {
-            match serde_json::from_value::<ToolCall>(json_value.clone()) {
-                Ok(tool_call) => parsed_tool_calls.push(tool_call),
-                Err(e) => {
+        // Read existing file or start with empty content
+        let current_content = match std::fs::read_to_string(&args.file_path) {
+            Ok(content) => content,
+            Err(_) => {
+                if create_if_missing {
+                    String::new()
+                } else {
                     return Err(McpError::invalid_params(
-                        "Invalid tool call format",
-                        Some(json!({
-                            "error": e.to_string(),
-                            "index": index,
-                            "expected_format": {
-                                "tool_name": "string",
-                                "arguments": "object",
-                                "continue_on_error": "optional bool",
-                                "delay_ms": "optional number"
-                            }
-                        })),
-                    ))
+                        "File does not exist and create_if_missing is false",
+                        Some(json!({"file_path": args.file_path})),
+                    ));
                 }
             }
-        }
+        };
 
-        // Build workflow steps with enhancements in execute_sequence format
-        let mut workflow_steps = Vec::new();
-        let mut variables = serde_json::Map::new();
-        let mut selectors = serde_json::Map::new();
-
-        // Extract common selectors and create variables
-        let mut selector_counter = 1;
-        for tool_call in &parsed_tool_calls {
-            if let Some(selector_value) =
-                tool_call.arguments.get("selector").and_then(|v| v.as_str())
-            {
-                let selector_var_name = format!("selector_{}", selector_counter);
-                selectors.insert(selector_var_name, json!(selector_value));
-                selector_counter += 1;
-            }
-        }
-
-        // Add workflow metadata as variables
-        variables.insert(
-            "workflow_name".to_string(),
-            json!({
-                "type": "string",
-                "label": "Workflow Name",
-                "default": args.workflow_name,
-                "description": args.workflow_description
-            }),
-        );
-
-        // Convert tool calls to workflow steps with enhancements
-        for (index, tool_call) in parsed_tool_calls.iter().enumerate() {
-            let tool_name = &tool_call.tool_name;
-            let step_id = format!("step_{}", index + 1);
-
-            // Add stability wait after navigation/app opening
-            if matches!(tool_name.as_str(), "navigate_browser" | "open_application") {
-                // Original step
-                workflow_steps.push(json!({
-                    "id": step_id,
-                    "tool_name": tool_name,
-                    "arguments": tool_call.arguments.clone(),
-                    "retries": if add_validation_steps { 2 } else { 0 }
-                }));
-
-                // Add wait step if validation enabled
-                if add_validation_steps {
-                    workflow_steps.push(json!({
-                        "id": format!("wait_after_{}", step_id),
-                        "tool_name": "delay",
-                        "arguments": {
-                            "delay_ms": 2000
+        let new_content = if let Some(find_pattern) = &args.find_pattern {
+            // Replace mode - find and replace pattern with content
+            if use_regex {
+                // Use regex replacement
+                match regex::Regex::new(find_pattern) {
+                    Ok(re) => {
+                        let result = re.replace_all(&current_content, args.content.as_str());
+                        if result == current_content {
+                            return Err(McpError::invalid_params(
+                                "Pattern not found in file",
+                                Some(json!({"pattern": find_pattern, "file": args.file_path})),
+                            ));
                         }
-                    }));
-                }
-            } else {
-                // Enhanced step with better error handling
-                let mut enhanced_step = json!({
-                    "id": step_id,
-                    "tool_name": tool_name,
-                    "arguments": tool_call.arguments.clone()
-                });
-
-                // Add timeout and retry for UI interactions
-                if matches!(
-                    tool_name.as_str(),
-                    "click_element" | "type_into_element" | "press_key"
-                ) {
-                    if let Some(obj) = enhanced_step.as_object_mut() {
-                        if let Some(args) = obj.get_mut("arguments").and_then(|v| v.as_object_mut())
-                        {
-                            args.insert("timeout_ms".to_string(), json!(5000));
-                            if add_validation_steps {
-                                args.insert("include_tree".to_string(), json!(false));
-                            }
-                        }
-                        obj.insert("retries".to_string(), json!(1));
+                        result.to_string()
+                    }
+                    Err(e) => {
+                        return Err(McpError::invalid_params(
+                            "Invalid regex pattern",
+                            Some(json!({"pattern": find_pattern, "error": e.to_string()})),
+                        ));
                     }
                 }
-
-                workflow_steps.push(enhanced_step);
-            }
-        }
-
-        // Build execute_sequence format workflow (matching existing workflows)
-        let workflow = json!({
-            "tool_name": "execute_sequence",
-            "arguments": {
-                "variables": variables,
-                "inputs": json!({}),
-                "selectors": selectors,
-                "steps": workflow_steps
-            },
-            "workflow_info": {
-                "name": args.workflow_name,
-                "version": "1.0",
-                "description": args.workflow_description,
-                "goal": args.workflow_goal,
-                "created_at": chrono::Utc::now().to_rfc3339(),
-                "created_by": "export_workflow_sequence tool",
-                "prerequisites": self.extract_required_tools(&parsed_tool_calls),
-                "notes": if include_ai_fallbacks {
-                    vec![
-                        "This workflow was automatically generated from successful tool executions",
-                        "Enhanced with validation steps and error handling",
-                        "Use execute_sequence tool to run this workflow"
-                    ]
-                } else {
-                    vec![
-                        "This workflow was automatically generated from successful tool executions",
-                        "Use execute_sequence tool to run this workflow"
-                    ]
+            } else {
+                // Simple string replacement
+                if !current_content.contains(find_pattern) {
+                    return Err(McpError::invalid_params(
+                        "Pattern not found in file",
+                        Some(json!({"pattern": find_pattern, "file": args.file_path})),
+                    ));
                 }
+                current_content.replace(find_pattern, &args.content)
             }
-        });
-
-        // Convert to requested format
-        match output_format.to_lowercase().as_str() {
-            "yaml" => {
-                // Serialize to actual YAML
-                let yaml_string = serde_yaml::to_string(&workflow).map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to serialize workflow to YAML",
-                        Some(json!({"error": e.to_string()})),
-                    )
-                })?;
-
-                Ok(CallToolResult::success(vec![
-                    Content::json(json!({
-                        "action": "export_workflow_sequence",
-                        "status": "success",
-                        "format": "yaml",
-                        "workflow_name": args.workflow_name,
-                        "workflow_description": args.workflow_description,
-                        "tools_count": parsed_tool_calls.len(),
-                        "enhanced_with_validation": add_validation_steps,
-                        "timestamp": chrono::Utc::now().to_rfc3339()
-                    }))?,
-                    Content::text(format!(
-                        "# Exported Workflow: {}\n# Description: {}\n# Generated: {}\n---\n{}",
-                        args.workflow_name,
-                        args.workflow_description,
-                        chrono::Utc::now().to_rfc3339(),
-                        yaml_string
-                    )),
-                ]))
+        } else {
+            // Append mode - add content to end of file
+            if current_content.is_empty() {
+                args.content
+            } else if current_content.ends_with('\n') {
+                format!("{}{}", current_content, args.content)
+            } else {
+                format!("{}\n{}", current_content, args.content)
             }
-            "json" => Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "export_workflow_sequence",
-                "status": "success",
-                "format": "json",
-                "workflow": workflow,
-                "workflow_name": args.workflow_name,
-                "tools_count": parsed_tool_calls.len(),
-                "timestamp": chrono::Utc::now().to_rfc3339()
-            }))?])),
-            _ => Err(McpError::invalid_params(
-                "Invalid output format. Must be 'yaml' or 'json'",
-                Some(json!({"provided_format": output_format})),
-            )),
-        }
-    }
+        };
 
-    fn extract_required_tools(&self, tool_calls: &[crate::utils::ToolCall]) -> Vec<String> {
-        tool_calls
-            .iter()
-            .map(|tc| tc.tool_name.clone())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect()
+        // Write back to file
+        std::fs::write(&args.file_path, &new_content).map_err(|e| {
+            McpError::internal_error(
+                "Failed to write file",
+                Some(json!({"error": e.to_string(), "path": args.file_path})),
+            )
+        })?;
+
+        // Return success
+        Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "edit_workflow_file",
+            "status": "success",
+            "file_path": args.file_path,
+            "operation": if args.find_pattern.is_some() { "replace" } else { "append" },
+            "pattern_type": if use_regex { "regex" } else { "string" },
+            "file_size": new_content.len(),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))?]))
     }
 
     #[tool(description = "Maximizes a window.")]
