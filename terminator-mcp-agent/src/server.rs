@@ -3165,7 +3165,6 @@ impl DesktopWrapper {
             .collect()
     }
 
-
     #[tool(description = "Maximizes a window.")]
     async fn maximize_window(
         &self,
