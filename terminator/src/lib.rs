@@ -241,7 +241,7 @@ impl Desktop {
         self.engine.get_root_element()
     }
 
-    #[instrument(skip(self, selector))]
+    #[instrument(level = "debug", skip(self, selector))]
     pub fn locator(&self, selector: impl Into<Selector>) -> Locator {
         let selector = selector.into();
         Locator::new(self.engine.clone(), selector)
