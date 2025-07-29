@@ -12,8 +12,8 @@ use crate::utils::{
     MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
     OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs,
     ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    SetValueArgs, SetZoomArgs, ToolCall, TypeIntoElementArgs, ValidateElementArgs,
-    WaitForElementArgs, ZoomArgs,
+    SetValueArgs, SetZoomArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
