@@ -3652,15 +3652,29 @@ impl UIElementImpl for WindowsUIElement {
             )
         })?;
 
-        // 2. Use ScrollPattern to scroll
+        // 2. Use ScrollPattern to scroll with enhanced direction support
         if let Ok(scroll_pattern) = target_element.get_pattern::<patterns::UIScrollPattern>() {
-            let h_amount = uiautomation::types::ScrollAmount::NoAmount;
-            let v_amount = match direction {
-                "up" => uiautomation::types::ScrollAmount::LargeDecrement,
-                "down" => uiautomation::types::ScrollAmount::LargeIncrement,
+            let (h_amount, v_amount) = match direction {
+                "up" => (
+                    uiautomation::types::ScrollAmount::NoAmount,
+                    uiautomation::types::ScrollAmount::LargeDecrement,
+                ),
+                "down" => (
+                    uiautomation::types::ScrollAmount::NoAmount,
+                    uiautomation::types::ScrollAmount::LargeIncrement,
+                ),
+                "left" => (
+                    uiautomation::types::ScrollAmount::LargeDecrement,
+                    uiautomation::types::ScrollAmount::NoAmount,
+                ),
+                "right" => (
+                    uiautomation::types::ScrollAmount::LargeIncrement,
+                    uiautomation::types::ScrollAmount::NoAmount,
+                ),
                 _ => {
                     return Err(AutomationError::InvalidArgument(
-                        "Invalid scroll direction. Only 'up' or 'down' are supported.".to_string(),
+                        "Invalid scroll direction. Supported: 'up', 'down', 'left', 'right'"
+                            .to_string(),
                     ))
                 }
             };
@@ -4847,9 +4861,20 @@ impl ScrollFallback for WindowsUIElement {
                     self.press_key(key)?;
                 }
             }
+            "left" | "right" => {
+                let times = amount.abs().round().max(1.0) as usize;
+                let key = if direction == "left" {
+                    "{left}"
+                } else {
+                    "{right}"
+                };
+                for _ in 0..times {
+                    self.press_key(key)?;
+                }
+            }
             _ => {
                 return Err(AutomationError::UnsupportedOperation(
-                    "Only 'up' and 'down' scroll directions are supported".to_string(),
+                    "Supported scroll directions: 'up', 'down', 'left', 'right'".to_string(),
                 ));
             }
         }
