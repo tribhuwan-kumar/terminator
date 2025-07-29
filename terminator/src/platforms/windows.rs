@@ -3629,73 +3629,70 @@ impl UIElementImpl for WindowsUIElement {
             }
 
             // Move to parent
-            if let Ok(parent) = current_element_arc.get_cached_parent() {
-                // Check if we've hit the root or a cycle
-                if let (Ok(cur_id), Ok(par_id)) = (
-                    current_element_arc.get_runtime_id(),
-                    parent.get_runtime_id(),
-                ) {
-                    if cur_id == par_id {
-                        break;
+            match current_element_arc.get_cached_parent() {
+                Ok(parent) => {
+                    // Check if we've hit the root or a cycle
+                    if let (Ok(cur_id), Ok(par_id)) = (
+                        current_element_arc.get_runtime_id(),
+                        parent.get_runtime_id(),
+                    ) {
+                        if cur_id == par_id {
+                            break;
+                        }
                     }
+                    current_element_arc = Arc::new(parent);
                 }
-                current_element_arc = Arc::new(parent);
-            } else {
-                // No more parents
-                break;
+                Err(_) => {
+                    break;
+                }
             }
         }
 
-        let target_element = scrollable_element.ok_or_else(|| {
-            AutomationError::UnsupportedOperation(
-                "No scrollable container found for this element".to_string(),
-            )
-        })?;
+        if let Some(target_element) = scrollable_element {
+            // 2. Use ScrollPattern to scroll with enhanced direction support
+            if let Ok(scroll_pattern) = target_element.get_pattern::<patterns::UIScrollPattern>() {
+                let (h_amount, v_amount) =
+                    match direction {
+                        "up" => (
+                            uiautomation::types::ScrollAmount::NoAmount,
+                            uiautomation::types::ScrollAmount::LargeDecrement,
+                        ),
+                        "down" => (
+                            uiautomation::types::ScrollAmount::NoAmount,
+                            uiautomation::types::ScrollAmount::LargeIncrement,
+                        ),
+                        "left" => (
+                            uiautomation::types::ScrollAmount::LargeDecrement,
+                            uiautomation::types::ScrollAmount::NoAmount,
+                        ),
+                        "right" => (
+                            uiautomation::types::ScrollAmount::LargeIncrement,
+                            uiautomation::types::ScrollAmount::NoAmount,
+                        ),
+                        _ => return Err(AutomationError::InvalidArgument(
+                            "Invalid scroll direction. Supported: 'up', 'down', 'left', 'right'"
+                                .to_string(),
+                        )),
+                    };
 
-        // 2. Use ScrollPattern to scroll with enhanced direction support
-        if let Ok(scroll_pattern) = target_element.get_pattern::<patterns::UIScrollPattern>() {
-            let (h_amount, v_amount) = match direction {
-                "up" => (
-                    uiautomation::types::ScrollAmount::NoAmount,
-                    uiautomation::types::ScrollAmount::LargeDecrement,
-                ),
-                "down" => (
-                    uiautomation::types::ScrollAmount::NoAmount,
-                    uiautomation::types::ScrollAmount::LargeIncrement,
-                ),
-                "left" => (
-                    uiautomation::types::ScrollAmount::LargeDecrement,
-                    uiautomation::types::ScrollAmount::NoAmount,
-                ),
-                "right" => (
-                    uiautomation::types::ScrollAmount::LargeIncrement,
-                    uiautomation::types::ScrollAmount::NoAmount,
-                ),
-                _ => {
-                    return Err(AutomationError::InvalidArgument(
-                        "Invalid scroll direction. Supported: 'up', 'down', 'left', 'right'"
-                            .to_string(),
-                    ))
+                let num_scrolls = amount.round().max(1.0) as usize;
+                for i in 0..num_scrolls {
+                    if scroll_pattern.scroll(h_amount, v_amount).is_err() {
+                        // If pattern fails, break and try the key press fallback
+                        warn!(
+                            "ScrollPattern failed on iteration {}. Attempting key-press fallback.",
+                            i
+                        );
+                        return self.scroll_with_fallback(direction, amount);
+                    }
+                    // Small delay between programmatic scrolls to allow UI to catch up
+                    std::thread::sleep(std::time::Duration::from_millis(50));
                 }
-            };
-
-            let num_scrolls = amount.round().max(1.0) as usize;
-            for i in 0..num_scrolls {
-                if scroll_pattern.scroll(h_amount, v_amount).is_err() {
-                    // If pattern fails, break and try the key press fallback
-                    warn!(
-                        "ScrollPattern failed on iteration {}. Attempting key-press fallback.",
-                        i
-                    );
-                    return self.scroll_with_fallback(direction, amount);
-                }
-                // Small delay between programmatic scrolls to allow UI to catch up
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                return Ok(());
             }
-            return Ok(());
         }
 
-        // 3. If ScrollPattern fails, fall back to key presses on the original element
+        // 3. If ScrollPattern fails or no scrollable element found, fall back to key presses on the original element
         self.scroll_with_fallback(direction, amount)
     }
 

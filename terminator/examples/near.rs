@@ -5,7 +5,6 @@ use tracing::Level;
 
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
-    use std::time::Instant;
 
     tracing_subscriber::fmt::Subscriber::builder()
         .with_max_level(Level::DEBUG)
@@ -33,16 +32,12 @@ async fn main() -> Result<(), AutomationError> {
     // println!("Found last combobox: {:?}", element.attributes());
 
     // get all checkboxes and toggle them
-    let checkboxes = opened_app
-        .locator("role:dialog >> role:checkbox")?
-        .all(Some(Duration::from_millis(1000)), None)
+    let e = opened_app
+        .locator("role:list")?
+        .first(Some(Duration::from_millis(10000)))
         .await?;
-    for checkbox in checkboxes {
-        // checkbox.set_toggled(false)?;
-        if checkbox.is_toggled()? {
-            checkbox.click()?;
-        }
-    }
+    e.highlight(None, None)?;
+    e.scroll("down", 100.0)?;
 
     // You can now interact with it, for example, click to open it.
     // element.click()?;
