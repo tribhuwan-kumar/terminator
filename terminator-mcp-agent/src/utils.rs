@@ -28,6 +28,10 @@ fn default_desktop() -> Arc<Desktop> {
     Arc::new(desktop)
 }
 
+fn default_scroll_amount() -> f64 {
+    3.0
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DesktopWrapper {
     #[serde(skip, default = "default_desktop")]
@@ -429,8 +433,8 @@ pub struct ScrollElementArgs {
     #[serde(default)]
     #[schemars(description = "Direction to scroll: 'up', 'down', 'left', 'right'")]
     pub direction: String,
-    #[serde(default)]
-    #[schemars(description = "Amount to scroll (number of lines or pages)")]
+    #[serde(default = "default_scroll_amount")]
+    #[schemars(description = "Amount to scroll (number of lines or pages, default: 3)")]
     pub amount: f64,
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
