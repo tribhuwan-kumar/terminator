@@ -908,7 +908,7 @@ pub async fn find_element_with_fallbacks(
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ExportWorkflowSequenceArgs {
-    #[schemars(description = "Path to the workflow file to create or edit")]
+    #[schemars(description = "Absolute path to the workflow file to create or edit")]
     pub file_path: String,
 
     #[schemars(description = "Text content to add to the workflow file")]

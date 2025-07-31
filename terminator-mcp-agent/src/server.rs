@@ -633,7 +633,7 @@ impl DesktopWrapper {
     #[tool(
         description = "Activates the window containing the specified element, bringing it to the foreground."
     )]
-    async fn activate_element(
+    pub(crate) async fn activate_element(
         &self,
         Parameters(args): Parameters<ActivateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
@@ -659,15 +659,75 @@ impl DesktopWrapper {
             }?;
 
         let element_info = build_element_info(&element);
+        let target_pid = element.process_id().unwrap_or(0);
+
+        // Add verification to check if activation actually worked
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await; // Give window system time to respond
+
+        let mut verification;
+
+        // Method 1: Check if target application is now the focused app (most reliable)
+        if let Ok(focused_element) = self.desktop.focused_element() {
+            if let Ok(focused_pid) = focused_element.process_id() {
+                let pid_match = focused_pid == target_pid;
+                verification = json!({
+                    "activation_verified": pid_match,
+                    "verification_method": "process_id_comparison",
+                    "target_pid": target_pid,
+                    "focused_pid": focused_pid,
+                    "pid_match": pid_match
+                });
+
+                // Method 2: Also check if the specific element is focused (additional confirmation)
+                if pid_match {
+                    let element_focused = element.is_focused().unwrap_or(false);
+                    if let Some(obj) = verification.as_object_mut() {
+                        obj.insert("target_element_focused".to_string(), json!(element_focused));
+                    }
+                }
+            } else {
+                verification = json!({
+                    "activation_verified": false,
+                    "verification_method": "process_id_comparison",
+                    "target_pid": target_pid,
+                    "error": "Could not get focused element PID"
+                });
+            }
+        } else {
+            verification = json!({
+                "activation_verified": false,
+                "verification_method": "process_id_comparison",
+                "target_pid": target_pid,
+                "error": "Could not get focused element"
+            });
+        }
+
+        // Determine final status based on verification
+        let verified_success = verification
+            .get("activation_verified")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let final_status = if verified_success {
+            "success"
+        } else {
+            "success_unverified"
+        };
+
+        let recommendation = if verified_success {
+            "Window activated and verified successfully. The target application is now in the foreground."
+        } else {
+            "Window activation was called but could not be verified. The target application may not be in the foreground."
+        };
 
         let mut result_json = json!({
             "action": "activate_element",
-            "status": "success",
+            "status": final_status,
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "recommendation": "Window activated successfully. The UI tree is attached to help you find specific elements to interact with next."
+            "verification": verification,
+            "recommendation": recommendation
         });
 
         // Always attach UI tree for activated elements to help with next actions
@@ -1187,7 +1247,7 @@ impl DesktopWrapper {
                             );
                         }
                     }
-                    Ok(None) => {
+                    Ok(_) => {
                         info!(
                             "[wait_for_output_parser] Parser found no data, continuing to poll..."
                         );
@@ -1245,7 +1305,7 @@ impl DesktopWrapper {
     }
 
     #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
-    async fn open_application(
+    pub async fn open_application(
         &self,
         Parameters(args): Parameters<OpenApplicationArgs>,
     ) -> Result<CallToolResult, McpError> {
@@ -1290,7 +1350,7 @@ impl DesktopWrapper {
     #[tool(
         description = "Closes a UI element (window, application, dialog, etc.) if it's closable."
     )]
-    async fn close_element(
+    pub async fn close_element(
         &self,
         Parameters(args): Parameters<CloseElementArgs>,
     ) -> Result<CallToolResult, McpError> {
