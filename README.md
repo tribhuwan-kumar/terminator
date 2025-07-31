@@ -21,17 +21,16 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 <p align="center">
-  <a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D">
+  <a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22terminator-mcp-agent%22%3A%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22terminator-mcp-agent%40latest%22%5D%7D%7D">
     <img alt="Install in VS Code" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20MCP&color=0098FF">
   </a>
-  <a href="https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522terminator-mcp-agent%2522%253A%257B%2522command%2522%253A%2522npx%2522%252C%2522args%2522%253A%255B%2522-y%2522%252C%2522terminator-mcp-agent%2522%255D%257D%257D">
+  <a href="https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%7B%22terminator-mcp-agent%22%3A%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22terminator-mcp-agent%40latest%22%5D%7D%7D">
     <img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20MCP&color=24bfa5">
   </a>
-  <a href="https://cursor.com/install-mcp?name=terminator-mcp-agent&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50Il19">
+  <a href="https://cursor.com/install-mcp?name=terminator-mcp-agent&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50QGxhdGVzdCJdfQ==">
     <img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20MCP&color=22272e">
   </a>
 </p>
-
 
 ⚠️ Announcement: [we raised $2.8m to give AI hands to every desktop](https://x.com/louis030195/status/1948745185178914929) ⚠️
 
@@ -56,13 +55,14 @@ import terminator
 desktop = terminator.Desktop()
 desktop.open_application('calc')
 desktop.locator('name:Seven').click()
-desktop.locator('name:Plus').click()  
+desktop.locator('name:Plus').click()
 desktop.locator('name:Three').click()
 desktop.locator('name:Equals').click()
 # Result: 10 appears in calculator
 ```
 
 **Installation:**
+
 ```bash
 pip install terminator.py
 ```
@@ -70,16 +70,17 @@ pip install terminator.py
 ### 🟦 TypeScript / Node.js
 
 ```typescript
-const { Desktop } = require('terminator.js');
+const { Desktop } = require("terminator.js");
 
 // Async/await for modern control flow
 const desktop = new Desktop();
-await desktop.openApplication('notepad');
-await desktop.locator('name:Edit').typeText('Hello from TypeScript!');
-await desktop.pressKey('{Ctrl}s'); // Save
+await desktop.openApplication("notepad");
+await desktop.locator("name:Edit").typeText("Hello from TypeScript!");
+await desktop.pressKey("{Ctrl}s"); // Save
 ```
 
 **Installation:**
+
 ```bash
 npm install terminator.js
 # or: bun add terminator.js
@@ -89,24 +90,25 @@ npm install terminator.js
 
 While Terminator aims for full cross-platform support, current capabilities vary by OS. Windows is the primary development target and has the most complete feature set.
 
-| Feature                  | Windows | macOS | Linux | Notes                                        |
-| ------------------------ | :-----: | :---: | :---: | -------------------------------------------- |
-| **Core Automation**      |         |       |       |                                              |
-| Element Locators         |    ✅   |  🟡   |  🟡   | Find elements by `name`, `role`, `window`, etc. |
-| UI Actions (`click`, `type`) |    ✅   |  🟡   |  🟡   | Core interactions with UI elements.          |
-| Application Management   |    ✅   |  🟡   |  🟡   | Launch, list, and manage applications. |
-| Window Management        |    ✅   |  🟡   |  🟡   | Get active window, list windows.             |
-| **Advanced Features**    |         |       |       |                                              |
-| Workflow Recording       |    ✅   |  ❌   |  ❌   | Record human workflows for deterministic automation.     |
-| Monitor Management       |    ✅   |  🟡   |  🟡   | Multi-display support.                       |
-| Screen & Element Capture |    ✅   |  ✅   |  🟡   | Take screenshots of displays or elements.     |
-| **Language Bindings**    |         |       |       |                                              |
-| Python (`terminator.py`) |    ✅   |  ✅   |  ✅   | `pip install terminator.py`                  |
-| TypeScript (`terminator.js`) |    ✅   |  ✅   |  ✅   | `npm i terminator.js`                        |
-| MCP (`terminator-mcp-agent`) |    ✅   |  ✅   |  ✅   | `npx -y terminator-mcp-agent --add-to-app [app]`                        |
-| Rust (`terminator-rs`) |    ✅   |  ✅   |  ✅   | `cargo add terminator-rs`                        |
+| Feature                      | Windows | macOS | Linux | Notes                                                |
+| ---------------------------- | :-----: | :---: | :---: | ---------------------------------------------------- |
+| **Core Automation**          |         |       |       |                                                      |
+| Element Locators             |   ✅    |  🟡   |  🟡   | Find elements by `name`, `role`, `window`, etc.      |
+| UI Actions (`click`, `type`) |   ✅    |  🟡   |  🟡   | Core interactions with UI elements.                  |
+| Application Management       |   ✅    |  🟡   |  🟡   | Launch, list, and manage applications.               |
+| Window Management            |   ✅    |  🟡   |  🟡   | Get active window, list windows.                     |
+| **Advanced Features**        |         |       |       |                                                      |
+| Workflow Recording           |   ✅    |  ❌   |  ❌   | Record human workflows for deterministic automation. |
+| Monitor Management           |   ✅    |  🟡   |  🟡   | Multi-display support.                               |
+| Screen & Element Capture     |   ✅    |  ✅   |  🟡   | Take screenshots of displays or elements.            |
+| **Language Bindings**        |         |       |       |                                                      |
+| Python (`terminator.py`)     |   ✅    |  ✅   |  ✅   | `pip install terminator.py`                          |
+| TypeScript (`terminator.js`) |   ✅    |  ✅   |  ✅   | `npm i terminator.js`                                |
+| MCP (`terminator-mcp-agent`) |   ✅    |  ✅   |  ✅   | `npx -y terminator-mcp-agent --add-to-app [app]`     |
+| Rust (`terminator-rs`)       |   ✅    |  ✅   |  ✅   | `cargo add terminator-rs`                            |
 
 **Legend:**
+
 - ✅: **Supported** - The feature is stable and well-tested.
 - 🟡: **Partial / Experimental** - The feature is in development and may have limitations.
 - ❌: **Not Supported** - The feature is not yet available on this platform.
@@ -117,9 +119,9 @@ To create reliable selectors (e.g. `name:Seven`, `role:Button`, `window:Calculat
 
 ### 🪟 Windows
 
-* **Tool:** [Accessibility Insights for Windows](https://accessibilityinsights.io/downloads/)
-* **Alt:** [Inspect.exe](https://learn.microsoft.com/en-us/windows/win32/winauto/inspect-objects) (comes with Windows SDK)
-* **Usage:** Open the app you want to inspect → launch Accessibility Insights → hover or use keyboard navigation to explore the UI tree (Name, Role, ControlType, AutomationId).
+- **Tool:** [Accessibility Insights for Windows](https://accessibilityinsights.io/downloads/)
+- **Alt:** [Inspect.exe](https://learn.microsoft.com/en-us/windows/win32/winauto/inspect-objects) (comes with Windows SDK)
+- **Usage:** Open the app you want to inspect → launch Accessibility Insights → hover or use keyboard navigation to explore the UI tree (Name, Role, ControlType, AutomationId).
 
 > These tools show you the `Name`, `Role`, `ControlType`, and other metadata used in Terminator selectors.
 
@@ -127,20 +129,21 @@ To create reliable selectors (e.g. `name:Seven`, `role:Button`, `window:Calculat
 
 ### 🍎 macOS
 
-* **Tool:** [Accessibility Inspector](https://developer.apple.com/documentation/xcode/accessibility_inspector)
-* **Usage:** Comes with Xcode → Open `Xcode > Open Developer Tool > Accessibility Inspector` → Use the target icon to explore UI elements on screen.
+- **Tool:** [Accessibility Inspector](https://developer.apple.com/documentation/xcode/accessibility_inspector)
+- **Usage:** Comes with Xcode → Open `Xcode > Open Developer Tool > Accessibility Inspector` → Use the target icon to explore UI elements on screen.
 
 ---
 
 ### 🐧 Linux
 
-* **Tool:** [Accerciser](https://wiki.gnome.org/Apps/Accerciser)
-* **Install:**
+- **Tool:** [Accerciser](https://wiki.gnome.org/Apps/Accerciser)
+- **Install:**
 
   ```bash
   sudo apt install accerciser
   ```
-* **Usage:** Launch Accerciser → Select the window/app → Browse the accessible widget tree.
+
+- **Usage:** Launch Accerciser → Select the window/app → Browse the accessible widget tree.
 
 ---
 
@@ -165,6 +168,6 @@ You can build and debug selector paths incrementally using `.locator()` chaining
 
 contributions are welcome! please feel free to submit issues and pull requests. many parts are experimental, and help is appreciated. join our [discord](https://discord.gg/dU9EBuw7Uq) to discuss.
 
-## businesses 
+## businesses
 
 if you want desktop automation at scale for your business, [let's talk](https://mediar.ai)
