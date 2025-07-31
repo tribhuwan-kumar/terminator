@@ -1,29 +1,39 @@
-# Safe Git Operations
+---
+description: "Safe git operations, pushing code, committing changes, git workflow protocols"
+---
 
-## Allowed Operations
+# Safe Git Push Protocol
 
-- `git status` - Check working directory state
-- `git add .` or `git add <file>` - Stage changes
-- `git commit -m "message"` - Commit with descriptive message
-- `git push` - Push to remote (current branch only)
-- `git log --oneline` - View recent commits
-- `git diff` - Show unstaged changes
+**CRITICAL**: Follow this exact sequence for ALL git operations. Never deviate.
+
+## Mandatory Pre-Push Checks
+```bash
+git status                    # Always check working directory first
+git log --oneline -5         # Review recent commits  
+git diff --stat              # Review changes scope
+```
+
+## Safe Push Sequence
+```bash
+git add .                    # Stage all changes
+git commit -m "descriptive message"  # Never use -m with empty/vague messages
+git push origin main         # Only push to main branch
+```
+
+## Forbidden Operations
+- `git push --force` or `git push -f` 
+- `git reset --hard`
+- `git rebase` in shared branches
+- Interactive commands requiring user input
+- Any command with `--force-with-lease`
 
 ## Commit Message Format
-
 ```
-<type>: <description>
+type: brief description
 
-- <detail 1>
-- <detail 2>
+- Specific change 1
+- Specific change 2  
+- Impact/scope summary
 ```
 
-Types: fix, feat, docs, refactor, test, chore
-
-## Never Use
-
-- `git reset --hard`
-- `git push --force`
-- `git rebase -i`
-- `git checkout` (destructive)
-- Operations on `main`/`master` without explicit approval
+**If ANY command fails, STOP immediately. Do not proceed.**
