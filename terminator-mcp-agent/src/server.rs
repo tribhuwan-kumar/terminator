@@ -35,6 +35,32 @@ use tracing::{info, warn};
 use base64::{engine::general_purpose, Engine as _};
 use image::codecs::png::PngEncoder;
 
+/// Extracts JSON data from Content objects without double serialization
+pub fn extract_content_json(content: &Content) -> Result<serde_json::Value, serde_json::Error> {
+    // First serialize the Content to understand its structure
+    let content_value = serde_json::to_value(content)?;
+
+    // Check if it's a JSON content type with a "text" field containing JSON string
+    if let Some(content_obj) = content_value.as_object() {
+        if let Some(content_type) = content_obj.get("type") {
+            if content_type == "text" {
+                if let Some(text_value) = content_obj.get("text") {
+                    if let Some(text_str) = text_value.as_str() {
+                        // Try to parse the text as JSON
+                        if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(text_str)
+                        {
+                            return Ok(parsed_json);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: return the content as-is if it's not a JSON text type
+    Ok(content_value)
+}
+
 // Helper function to validate extracted data against success criteria
 fn is_valid_extraction(extracted_data: &serde_json::Value, criteria: &serde_json::Value) -> bool {
     // Default validation: check if we have any data
@@ -2569,12 +2595,11 @@ impl DesktopWrapper {
                 let mut extracted_content = Vec::new();
 
                 for content in &result.content {
-                    if let Ok(json_content) = serde_json::to_value(content) {
-                        extracted_content.push(json_content);
-                    } else {
-                        extracted_content.push(
+                    match extract_content_json(content) {
+                        Ok(json_content) => extracted_content.push(json_content),
+                        Err(_) => extracted_content.push(
                             json!({ "type": "unknown", "data": "Content extraction failed" }),
-                        );
+                        ),
                     }
                 }
 
