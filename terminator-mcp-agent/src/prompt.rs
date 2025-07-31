@@ -151,18 +151,18 @@ const monitors = await desktop.listMonitors();
 *   **Bulk operations on multiple elements:**
 ```javascript
 const checkboxes = await desktop.locator('role:checkbox').all();
-for (const checkbox of checkboxes) {
+for (const checkbox of checkboxes) {{
     await checkbox.setToggled(false); // Uncheck all
-}
+}}
 ```
 
 *   **Conditional logic based on UI state:**
 ```javascript
 const submitButton = await desktop.locator('role:button|name:Submit').first();
-if (await submitButton.isEnabled()) {
+if (await submitButton.isEnabled()) {{
     await submitButton.click();
     return {{ action: 'submitted' }};
-} else {{
+}} else {{
     log('Submit button disabled, checking form validation...');
     return {{ action: 'validation_needed' }};
 }}
