@@ -1,0 +1,29 @@
+# Safe Git Operations
+
+## Allowed Operations
+
+- `git status` - Check working directory state
+- `git add .` or `git add <file>` - Stage changes
+- `git commit -m "message"` - Commit with descriptive message
+- `git push` - Push to remote (current branch only)
+- `git log --oneline` - View recent commits
+- `git diff` - Show unstaged changes
+
+## Commit Message Format
+
+```
+<type>: <description>
+
+- <detail 1>
+- <detail 2>
+```
+
+Types: fix, feat, docs, refactor, test, chore
+
+## Never Use
+
+- `git reset --hard`
+- `git push --force`
+- `git rebase -i`
+- `git checkout` (destructive)
+- Operations on `main`/`master` without explicit approval
