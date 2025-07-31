@@ -103,6 +103,101 @@ Your most reliable strategy is to inspect the application's UI structure *before
     }}
     ```
 
+**JavaScript Automation with run_javascript**
+
+The `run_javascript` tool enables powerful automation workflows using familiar JavaScript syntax with full access to desktop automation APIs.
+
+**Global Objects Available:**
+*   `desktop` - Main Desktop automation instance
+*   `log(message)` - Console logging function
+*   `sleep(ms)` - Async delay function (returns Promise)
+
+**Core Desktop APIs:**
+```javascript
+// Element discovery
+const elements = await desktop.locator('role:button|name:Submit').all();
+const element = await desktop.locator('#123').first();
+const appElements = desktop.applications();
+const focusedElement = desktop.focusedElement();
+
+// Element interaction  
+await element.click();
+await element.typeText('Hello World');
+await element.setToggled(true);
+await element.selectOption('Option Text');
+await element.setValue('new value');
+await element.focus();
+
+// Element properties
+const name = await element.name();
+const bounds = await element.bounds();
+const isEnabled = await element.isEnabled();
+const isVisible = await element.isVisible();
+const text = await element.text();
+
+// Window/Application management
+await desktop.openApplication('notepad');
+await desktop.activateApplication('calculator');
+element.activateWindow();
+element.close();
+
+// Screenshots and monitoring
+const screenshot = await desktop.captureScreen();
+const monitors = await desktop.listMonitors();
+```
+
+**Common JavaScript Patterns:**
+
+*   **Bulk operations on multiple elements:**
+```javascript
+const checkboxes = await desktop.locator('role:checkbox').all();
+for (const checkbox of checkboxes) {
+    await checkbox.setToggled(false); // Uncheck all
+}
+```
+
+*   **Conditional logic based on UI state:**
+```javascript
+const submitButton = await desktop.locator('role:button|name:Submit').first();
+if (await submitButton.isEnabled()) {
+    await submitButton.click();
+    return {{ action: 'submitted' }};
+} else {{
+    log('Submit button disabled, checking form validation...');
+    return {{ action: 'validation_needed' }};
+}}
+```
+
+*   **Find and configure elements dynamically:**
+```javascript
+// Enable specific products from a list
+const productsToEnable = ['Product A', 'Product B'];
+for (const productName of productsToEnable) {{
+    const checkbox = await desktop.locator(`role:checkbox|name:${{productName}}`).first();
+    await checkbox.setToggled(true);
+    log(`✓ ${{productName}}: ENABLED`);
+}}
+```
+
+*   **Error handling and retries:**
+```javascript
+try {{
+    const element = await desktop.locator('role:button|name:Submit').first();
+    await element.click();
+}} catch (error) {{
+    log(`Element not found: ${{error.message}}`);
+    // Fallback strategy
+    const fallbackElement = await desktop.locator('#submit-btn').first();
+    await fallbackElement.click();
+}}
+```
+
+**Performance Tips:**
+*   Use `await sleep(ms)` for delays instead of blocking operations
+*   Cache element references when performing multiple operations
+*   Use specific selectors (role:Type|name:Name) over generic ones
+*   Return structured data objects from scripts for output parsing
+
 **Common Pitfalls & Solutions**
 
 *   **Click fails on buttons not in viewport:** Use `invoke_element` instead of `click_element`.

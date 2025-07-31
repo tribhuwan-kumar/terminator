@@ -8,12 +8,11 @@ use crate::utils::WaitForOutputParserArgs;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, CloseElementArgs, DelayArgs,
     ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs, GetFocusedWindowTreeArgs,
-    GetWindowTreeArgs, GetWindowsArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
-    MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
-    OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs,
-    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    SetValueArgs, SetZoomArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
-    ZoomArgs,
+    GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs, MaximizeWindowArgs,
+    MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
+    RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs, ScrollElementArgs, SelectOptionArgs,
+    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -282,44 +281,6 @@ impl DesktopWrapper {
             "applications": app_info,
             "count": app_info.len(),
             "recommendation": "For applications, the name is usually reliable. For elements inside the app, prefer role|name selectors and use the ID as a fallback. Use get_window_tree with the PID for details."
-        }))?]))
-    }
-
-    #[tool(description = "Get windows for a specific application by name.")]
-    async fn get_windows_for_application(
-        &self,
-        Parameters(args): Parameters<GetWindowsArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let windows = self
-            .desktop
-            .windows_for_application(&args.app_name)
-            .await
-            .map_err(|e| {
-                McpError::resource_not_found(
-                    "Failed to get windows for application",
-                    Some(json!({"reason": e.to_string()})),
-                )
-            })?;
-
-        let window_info: Vec<_> = windows
-            .iter()
-            .map(|window| {
-                json!({
-                    "title": window.name().unwrap_or_default(),
-                    "id": window.id().unwrap_or_default(),
-                    "role": window.role(),
-                    "bounds": window.bounds().map(|b| json!({
-                        "x": b.0, "y": b.1, "width": b.2, "height": b.3
-                    })).unwrap_or(json!(null)),
-                    "suggested_selector": format!("name:{}", window.name().unwrap_or_default())
-                })
-            })
-            .collect();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "windows": window_info,
-            "count": windows.len(),
-            "application": args.app_name
         }))?]))
     }
 
@@ -633,7 +594,7 @@ impl DesktopWrapper {
     #[tool(
         description = "Activates the window containing the specified element, bringing it to the foreground."
     )]
-    pub(crate) async fn activate_element(
+    pub async fn activate_element(
         &self,
         Parameters(args): Parameters<ActivateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
@@ -2813,15 +2774,6 @@ impl DesktopWrapper {
                     Some(json!({"error": e.to_string()})),
                 )),
             },
-            "get_windows_for_application" => {
-                match serde_json::from_value::<GetWindowsArgs>(arguments.clone()) {
-                    Ok(args) => self.get_windows_for_application(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for get_windows_for_application",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
             "run_command" => match serde_json::from_value::<RunCommandArgs>(arguments.clone()) {
                 Ok(args) => self.run_command(Parameters(args)).await,
                 Err(e) => Err(McpError::invalid_params(

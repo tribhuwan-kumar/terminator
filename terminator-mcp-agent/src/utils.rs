@@ -62,12 +62,6 @@ pub struct GetWindowTreeArgs {
 pub struct GetFocusedWindowTreeArgs {}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetWindowsArgs {
-    #[schemars(description = "Name of the application to get windows for")]
-    pub app_name: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetApplicationsArgs {
     #[schemars(
         description = "Whether to include the full UI tree for each application. Defaults to false."
