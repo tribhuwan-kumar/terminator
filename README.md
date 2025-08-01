@@ -1,4 +1,4 @@
-# terminator 🤖
+# terminator 🤖 Mediar.ai
 
 https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 
