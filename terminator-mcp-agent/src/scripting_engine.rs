@@ -3,7 +3,7 @@ use rmcp::Error as McpError;
 use serde_json::json;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 // Simple thread-safe queue for tool calls
 type ToolCall = (String, serde_json::Value, String); // (tool_name, args, response_id)
@@ -1120,8 +1120,9 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         
         console.log('[Node.js Wrapper] User script completed, result:', typeof result);
         
-        // Send result back
-        process.stdout.write('__RESULT__' + JSON.stringify(result) + '__END__\n');
+        // Send result back, handling undefined properly
+        const resultToSend = result === undefined ? null : result;
+        process.stdout.write('__RESULT__' + JSON.stringify(resultToSend) + '__END__\n');
         console.log('[Node.js Wrapper] Result sent back to parent process');
     }} catch (error) {{
         console.error('[Node.js Wrapper] User script error:', error.message);
@@ -1136,7 +1137,12 @@ console.log('[Node.js Wrapper] Starting user script execution...');
     );
 
     // Write script to the same directory where terminator.js is installed
-    let script_path = script_dir.join("main.js");
+    // Use unique filename to avoid race conditions between concurrent tests
+    let unique_filename = format!(
+        "main_{}.js",
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    );
+    let script_path = script_dir.join(&unique_filename);
 
     info!(
         "[Node.js] Writing wrapper script to: {}",
@@ -1189,7 +1195,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         // Use cmd.exe for batch files on Windows
         Command::new("cmd")
             .current_dir(&script_dir)
-            .args(["/c", &runtime_exe, "main.js"])
+            .args(["/c", &runtime_exe, &unique_filename])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1198,7 +1204,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         // Direct execution should work for .exe files
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
-            .arg("main.js")
+            .arg(&unique_filename)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1206,7 +1212,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         info!("[Node.js] Using direct execution");
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
-            .arg("main.js")
+            .arg(&unique_filename)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1305,6 +1311,15 @@ console.log('[Node.js Wrapper] Starting user script execution...');
     })?;
 
     info!("[Node.js] Process completed with status: {:?}", status);
+
+    // Clean up the temporary script file (but keep the directory for reuse)
+    if let Err(e) = tokio::fs::remove_file(&script_path).await {
+        warn!(
+            "[Node.js] Failed to clean up script file {}: {}",
+            script_path.display(),
+            e
+        );
+    }
 
     // Don't clean up script directory - keep it persistent for reuse
     info!(
@@ -1555,7 +1570,12 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     );
 
     // Write script to the directory with local bindings
-    let script_path = script_dir.join("main.js");
+    // Use unique filename to avoid race conditions between concurrent tests
+    let unique_filename = format!(
+        "main_{}.js",
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    );
+    let script_path = script_dir.join(&unique_filename);
     tokio::fs::write(&script_path, wrapper_script)
         .await
         .map_err(|e| {
@@ -1589,7 +1609,7 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         // Bun can be executed directly if it's not a batch file
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
-            .arg("main.js")
+            .arg(&unique_filename)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1597,7 +1617,7 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         // Use cmd.exe for batch files on Windows
         Command::new("cmd")
             .current_dir(&script_dir)
-            .args(["/c", &runtime_exe, "main.js"])
+            .args(["/c", &runtime_exe, &unique_filename])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1605,14 +1625,14 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         // Direct execution should work for .exe files
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
-            .arg("main.js")
+            .arg(&unique_filename)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
     } else {
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
-            .arg("main.js")
+            .arg(&unique_filename)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

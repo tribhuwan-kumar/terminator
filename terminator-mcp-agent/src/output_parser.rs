@@ -248,11 +248,6 @@ mod tests {
             "#
             .to_string(),
         };
-
-        let tool_output = json!({
-            "ui_tree": ui_tree
-        });
-
         // Note: This test would require an async runtime to execute JavaScript
         // For now, we'll just verify the parser definition structure is correct
         let parser_def_json = serde_json::to_value(&parser_def).unwrap();
@@ -283,10 +278,6 @@ mod tests {
             "#
             .to_string(),
         };
-
-        let tool_output = json!({
-            "ui_tree": ui_tree
-        });
 
         // Verify parser definition structure
         let parser_def_json = serde_json::to_value(&parser_def).unwrap();
@@ -333,15 +324,6 @@ mod tests {
             "#
             .to_string(),
         };
-
-        let tool_output = json!({
-            "results": [
-                {
-                    "step_id": "test_step",
-                    "ui_tree": ui_tree
-                }
-            ]
-        });
 
         // Verify parser definition structure
         let parser_def_json = serde_json::to_value(&parser_def).unwrap();
@@ -406,10 +388,6 @@ mod tests {
                     }
                 }
             ]
-        });
-
-        let tool_output = json!({
-            "ui_tree": ui_tree
         });
 
         // Verify parser definition structure
