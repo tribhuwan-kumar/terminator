@@ -110,7 +110,7 @@ fn is_valid_extraction(extracted_data: &serde_json::Value, criteria: &serde_json
 
 #[tool_router]
 impl DesktopWrapper {
-    pub async fn new() -> Result<Self, McpError> {
+    pub fn new() -> Result<Self, McpError> {
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         let desktop = match Desktop::new(false, false) {
             Ok(d) => d,
@@ -140,18 +140,14 @@ impl DesktopWrapper {
         })
     }
 
-    #[tool(
-        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. This is a read-only operation."
-    )]
-    pub async fn get_window_tree(
-        &self,
-        Parameters(args): Parameters<GetWindowTreeArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Default to comprehensive attributes for LLM usage
-        let include_detailed = args.include_detailed_attributes.unwrap_or(true);
+    /// Create TreeBuildConfig based on include_detailed_attributes parameter
+    /// Defaults to comprehensive attributes for LLM usage if include_detailed_attributes is not specified
+    fn create_tree_config(
+        include_detailed_attributes: Option<bool>,
+    ) -> terminator::platforms::TreeBuildConfig {
+        let include_detailed = include_detailed_attributes.unwrap_or(true);
 
-        // Configure tree building based on detail level
-        let tree_config = if include_detailed {
+        if include_detailed {
             terminator::platforms::TreeBuildConfig {
                 property_mode: terminator::platforms::PropertyLoadingMode::Complete,
                 timeout_per_operation_ms: Some(100), // Slightly higher timeout for detailed loading
@@ -160,7 +156,17 @@ impl DesktopWrapper {
             }
         } else {
             terminator::platforms::TreeBuildConfig::default() // Fast mode
-        };
+        }
+    }
+
+    #[tool(
+        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. This is a read-only operation."
+    )]
+    pub async fn get_window_tree(
+        &self,
+        Parameters(args): Parameters<GetWindowTreeArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let tree_config = Self::create_tree_config(args.include_detailed_attributes);
 
         let tree = self
             .desktop
@@ -177,7 +183,7 @@ impl DesktopWrapper {
             "status": "success",
             "pid": args.pid,
             "title": args.title,
-            "detailed_attributes": include_detailed,
+            "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic."
         });
@@ -199,20 +205,7 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<crate::utils::GetFocusedWindowTreeArgs>,
     ) -> Result<CallToolResult, McpError> {
-        // Default to comprehensive attributes for LLM usage
-        let include_detailed = args.include_detailed_attributes.unwrap_or(true);
-
-        // Configure tree building based on detail level
-        let tree_config = if include_detailed {
-            terminator::platforms::TreeBuildConfig {
-                property_mode: terminator::platforms::PropertyLoadingMode::Complete,
-                timeout_per_operation_ms: Some(100), // Slightly higher timeout for detailed loading
-                yield_every_n_elements: Some(25),    // More frequent yielding for responsiveness
-                batch_size: Some(25),
-            }
-        } else {
-            terminator::platforms::TreeBuildConfig::default() // Fast mode
-        };
+        let tree_config = Self::create_tree_config(args.include_detailed_attributes);
 
         // Get the currently focused element
         let focused_element = self.desktop.focused_element().map_err(|e| {
@@ -259,7 +252,7 @@ impl DesktopWrapper {
                 "window_title": window_title,
                 "application_name": app_name,
             },
-            "detailed_attributes": include_detailed,
+            "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
             "ui_tree": tree,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic."
@@ -283,6 +276,11 @@ impl DesktopWrapper {
         })?;
 
         let include_tree = args.include_tree.unwrap_or(false);
+        let tree_config = if include_tree {
+            Some(Self::create_tree_config(args.include_detailed_attributes))
+        } else {
+            None
+        };
 
         let app_info_futures: Vec<_> = apps
             .iter()
@@ -293,6 +291,7 @@ impl DesktopWrapper {
                 let app_role = app.role();
                 let app_pid = app.process_id().unwrap_or(0);
                 let is_focused = app.is_focused().unwrap_or(false);
+                let config = tree_config.clone();
 
                 let suggested_selector = if !app_name.is_empty() {
                     format!("{}|{}", &app_role, &app_name)
@@ -302,7 +301,10 @@ impl DesktopWrapper {
 
                 tokio::spawn(async move {
                     let tree = if include_tree && app_pid > 0 {
-                        desktop.get_window_tree(app_pid, None, None).ok()
+                        match desktop.get_window_tree(app_pid, None, config) {
+                            Ok(tree_data) => Some(tree_data),
+                            Err(_) => None,
+                        }
                     } else {
                         None
                     };
@@ -314,24 +316,34 @@ impl DesktopWrapper {
                         "pid": app_pid,
                         "is_focused": is_focused,
                         "suggested_selector": suggested_selector,
-                        "alternative_selectors": [
-                            format!("#{}", app_id),
-                            format!("name:{}", app_name)
-                        ],
-                        "ui_tree": tree.and_then(|t| serde_json::to_value(t).ok())
+                        "ui_tree": tree
                     })
                 })
             })
             .collect();
 
-        let results = futures::future::join_all(app_info_futures).await;
-        let app_info: Vec<Value> = results.into_iter().filter_map(Result::ok).collect();
+        let app_info_results = futures::future::join_all(app_info_futures).await;
+        let mut applications = Vec::new();
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "applications": app_info,
-            "count": app_info.len(),
-            "recommendation": "For applications, the name is usually reliable. For elements inside the app, prefer role|name selectors and use the ID as a fallback. Use get_window_tree with the PID for details."
-        }))?]))
+        for result in app_info_results {
+            match result {
+                Ok(app_info) => applications.push(app_info),
+                Err(e) => {
+                    warn!("Failed to get app info: {}", e);
+                }
+            }
+        }
+
+        let result_json = json!({
+            "action": "get_applications",
+            "status": "success",
+            "include_tree": include_tree,
+            "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
+            "applications": applications,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     #[tool(
@@ -445,6 +457,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
@@ -455,58 +468,53 @@ impl DesktopWrapper {
     #[tool(
         description = "Clicks a UI element. This action requires the application to be focused and may change the UI."
     )]
-    async fn click_element(
+    pub async fn click_element(
         &self,
         Parameters(args): Parameters<ClickElementArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let ((_click_result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        tracing::info!("[click_element] Called with selector: '{}'", args.selector);
+
+        let ((_, element), successful_selector) =
+            crate::utils::find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
                 args.alternative_selectors.as_deref(),
                 args.fallback_selectors.as_deref(),
                 args.timeout_ms,
                 args.retries,
-                |element| async move { element.click() },
+                |el| async move { el.click() },
             )
             .await
-            {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
-                Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
-                    e,
-                )),
-            }?;
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to click element",
+                    Some(json!({
+                        "selector": args.selector,
+                        "alternative_selectors": args.alternative_selectors,
+                        "fallback_selectors": args.fallback_selectors,
+                        "error": e.to_string()
+                    })),
+                )
+            })?;
 
-        let element_info = build_element_info(&element);
-        let original_element_id = element.id_or_empty();
-
-        // --- Action Consequence Verification ---
-        let consequence = wait_for_ui_change(
-            &self.desktop,
-            &original_element_id,
-            std::time::Duration::from_millis(300),
-        )
-        .await;
-
-        // Build base result
         let mut result_json = json!({
             "action": "click",
             "status": "success",
-            "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "consequence": consequence
+            "element": {
+                "role": element.role(),
+                "name": element.name(),
+                "bounds": element.bounds().ok(),
+                "window_title": element.window_title()
+            },
+            "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        // Always attach tree for better context
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
-            element.process_id().ok(),
+            args.include_detailed_attributes,
+            Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
 
@@ -561,6 +569,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             true, // press_key_global does not have include_tree option
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -608,6 +617,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             true, // press_key_global does not have include_tree option
+            None, // GlobalKeyArgs doesn't have include_detailed_attributes
             element.process_id().ok(),
             &mut result_json,
         );
@@ -745,6 +755,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
@@ -823,6 +834,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -868,6 +880,7 @@ impl DesktopWrapper {
                 maybe_attach_tree(
                     &self.desktop,
                     args.include_tree.unwrap_or(true),
+                    args.include_detailed_attributes,
                     element.process_id().ok(),
                     &mut result_json,
                 );
@@ -949,6 +962,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -997,6 +1011,7 @@ impl DesktopWrapper {
                     maybe_attach_tree(
                         &self.desktop,
                         args.include_tree.unwrap_or(false),
+                        args.include_detailed_attributes,
                         element.process_id().ok(),
                         &mut result_json,
                     );
@@ -1123,6 +1138,7 @@ impl DesktopWrapper {
                         maybe_attach_tree(
                             &self.desktop,
                             args.include_tree.unwrap_or(false),
+                            args.include_detailed_attributes,
                             element.process_id().ok(),
                             &mut result_json,
                         );
@@ -1308,6 +1324,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(false),
+            args.include_detailed_attributes,
             ui_element.process_id().ok(),
             &mut result_json,
         );
@@ -1446,6 +1463,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -1498,6 +1516,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -1547,6 +1566,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -1597,6 +1617,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
@@ -1647,6 +1668,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
@@ -1697,6 +1719,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
@@ -1744,6 +1767,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -1791,6 +1815,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -1838,6 +1863,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -1945,6 +1971,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -3138,6 +3165,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -3184,6 +3212,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -3240,7 +3269,8 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(false),
-            None,
+            args.include_detailed_attributes,
+            None, // No specific element for zoom operation
             &mut result_json,
         );
 
@@ -3294,6 +3324,7 @@ impl DesktopWrapper {
         maybe_attach_tree(
             &self.desktop,
             args.include_tree.unwrap_or(true),
+            args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
         );
