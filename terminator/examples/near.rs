@@ -5,7 +5,6 @@ use tracing::Level;
 
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
-
     tracing_subscriber::fmt::Subscriber::builder()
         .with_max_level(Level::DEBUG)
         .init();
