@@ -348,6 +348,190 @@ impl Default for BrowserTabTracker {
     }
 }
 
+/// Double click tracking state
+#[derive(Debug, Clone)]
+pub struct DoubleClickTracker {
+    /// Last click position
+    pub last_click_position: Option<crate::events::Position>,
+    /// Last click time
+    pub last_click_time: Option<Instant>,
+    /// Last clicked button
+    pub last_click_button: Option<crate::events::MouseButton>,
+    /// Maximum time between clicks to be considered a double click (in milliseconds)
+    pub double_click_threshold_ms: u64,
+    /// Maximum distance between clicks to be considered a double click (in pixels)
+    pub double_click_distance_threshold: i32,
+}
+
+impl Default for DoubleClickTracker {
+    fn default() -> Self {
+        Self {
+            last_click_position: None,
+            last_click_time: None,
+            last_click_button: None,
+            double_click_threshold_ms: 500, // Standard Windows double-click time
+            double_click_distance_threshold: 5, // 5 pixels tolerance
+        }
+    }
+}
+
+impl DoubleClickTracker {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Check if a new click should be considered a double click
+    pub fn is_double_click(
+        &mut self,
+        button: crate::events::MouseButton,
+        position: crate::events::Position,
+        current_time: Instant,
+    ) -> bool {
+        let is_double = if let (Some(last_pos), Some(last_time), Some(last_button)) = (
+            &self.last_click_position,
+            &self.last_click_time,
+            &self.last_click_button,
+        ) {
+            // Check if same button
+            *last_button == button &&
+            // Check if within time threshold
+            current_time.duration_since(*last_time).as_millis() <= self.double_click_threshold_ms as u128 &&
+            // Check if within distance threshold
+            {
+                let distance = ((position.x - last_pos.x).pow(2) + (position.y - last_pos.y).pow(2)) as f64;
+                distance.sqrt() <= self.double_click_distance_threshold as f64
+            }
+        } else {
+            false
+        };
+
+        if is_double {
+            // Reset tracking state after double click is detected
+            // This prevents triple clicks from being detected as multiple double clicks
+            self.reset();
+        } else {
+            // Update tracking state only if it's not a double click
+            self.last_click_position = Some(position);
+            self.last_click_time = Some(current_time);
+            self.last_click_button = Some(button);
+        }
+
+        is_double
+    }
+
+    /// Reset the tracker (e.g., when a different type of input occurs)
+    pub fn reset(&mut self) {
+        self.last_click_position = None;
+        self.last_click_time = None;
+        self.last_click_button = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::events::{MouseButton, Position};
+
+    #[test]
+    fn test_double_click_tracker_basic() {
+        let mut tracker = DoubleClickTracker::new();
+        let position = Position { x: 100, y: 100 };
+        let button = MouseButton::Left;
+        let time1 = std::time::Instant::now();
+
+        // First click should not be a double click
+        let is_double = tracker.is_double_click(button, position, time1);
+        assert!(
+            !is_double,
+            "First click should not be detected as double click"
+        );
+
+        // Second click within threshold should be a double click
+        let time2 = time1 + std::time::Duration::from_millis(200);
+        let is_double = tracker.is_double_click(button, position, time2);
+        assert!(
+            is_double,
+            "Second click within threshold should be double click"
+        );
+    }
+
+    #[test]
+    fn test_double_click_tracker_timeout() {
+        let mut tracker = DoubleClickTracker::new();
+        let position = Position { x: 100, y: 100 };
+        let button = MouseButton::Left;
+        let time1 = std::time::Instant::now();
+
+        // First click
+        let is_double = tracker.is_double_click(button, position, time1);
+        assert!(!is_double);
+
+        // Second click after timeout should not be a double click
+        let time2 = time1 + std::time::Duration::from_millis(600); // Longer than 500ms threshold
+        let is_double = tracker.is_double_click(button, position, time2);
+        assert!(!is_double, "Click after timeout should not be double click");
+    }
+
+    #[test]
+    fn test_double_click_tracker_distance() {
+        let mut tracker = DoubleClickTracker::new();
+        let position1 = Position { x: 100, y: 100 };
+        let position2 = Position { x: 200, y: 200 }; // Far away
+        let button = MouseButton::Left;
+        let time1 = std::time::Instant::now();
+
+        // First click
+        let is_double = tracker.is_double_click(button, position1, time1);
+        assert!(!is_double);
+
+        // Second click at different position should not be a double click
+        let time2 = time1 + std::time::Duration::from_millis(200);
+        let is_double = tracker.is_double_click(button, position2, time2);
+        assert!(
+            !is_double,
+            "Click at different position should not be double click"
+        );
+    }
+
+    #[test]
+    fn test_double_click_tracker_different_button() {
+        let mut tracker = DoubleClickTracker::new();
+        let position = Position { x: 100, y: 100 };
+        let time1 = std::time::Instant::now();
+
+        // First click with left button
+        let is_double = tracker.is_double_click(MouseButton::Left, position, time1);
+        assert!(!is_double);
+
+        // Second click with right button should not be a double click
+        let time2 = time1 + std::time::Duration::from_millis(200);
+        let is_double = tracker.is_double_click(MouseButton::Right, position, time2);
+        assert!(
+            !is_double,
+            "Click with different button should not be double click"
+        );
+    }
+
+    #[test]
+    fn test_double_click_tracker_reset() {
+        let mut tracker = DoubleClickTracker::new();
+        let position = Position { x: 100, y: 100 };
+        let button = MouseButton::Left;
+        let time1 = std::time::Instant::now();
+
+        // First click
+        tracker.is_double_click(button, position, time1);
+
+        // Reset tracker
+        tracker.reset();
+
+        // Next click should not be a double click because tracker was reset
+        let time2 = time1 + std::time::Duration::from_millis(200);
+        let is_double = tracker.is_double_click(button, position, time2);
+        assert!(!is_double, "Click after reset should not be double click");
+    }
+}
+
 /// Convert a Key to a u32
 pub fn key_to_u32(key: &Key) -> u32 {
     match key {

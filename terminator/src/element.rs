@@ -95,6 +95,26 @@ pub struct SerializableUIElement {
     pub process_id: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub children: Option<Vec<SerializableUIElement>>,
+
+    // Additional fields for better LLM understanding of UI state
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "is_false_bool")]
+    pub is_keyboard_focusable: Option<bool>,
+    #[serde(skip_serializing_if = "is_false_bool")]
+    pub is_focused: Option<bool>,
+    #[serde(skip_serializing_if = "is_false_bool")]
+    pub is_toggled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "is_false_bool")]
+    pub is_selected: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub child_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_in_parent: Option<usize>,
 }
 
 impl From<&UIElement> for SerializableUIElement {
@@ -114,6 +134,17 @@ impl From<&UIElement> for SerializableUIElement {
             url: element.url(),
             process_id: element.process_id().ok(),
             children: None,
+
+            // Additional fields for better LLM understanding of UI state
+            label: attrs.label,
+            text: attrs.text,
+            is_keyboard_focusable: attrs.is_keyboard_focusable,
+            is_focused: attrs.is_focused,
+            is_toggled: attrs.is_toggled,
+            enabled: attrs.enabled,
+            is_selected: attrs.is_selected,
+            child_count: attrs.child_count,
+            index_in_parent: attrs.index_in_parent,
         }
     }
 }
@@ -133,6 +164,17 @@ impl SerializableUIElement {
             url: None,
             process_id: None,
             children: None,
+
+            // Additional fields for better LLM understanding of UI state
+            label: None,
+            text: None,
+            is_keyboard_focusable: None,
+            is_focused: None,
+            is_toggled: None,
+            enabled: None,
+            is_selected: None,
+            child_count: None,
+            index_in_parent: None,
         }
     }
 

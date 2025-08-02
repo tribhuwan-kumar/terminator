@@ -56,10 +56,19 @@ pub struct GetWindowTreeArgs {
     pub pid: u32,
     #[schemars(description = "Optional window title filter")]
     pub title: Option<String>,
+    #[schemars(
+        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
+    )]
+    pub include_detailed_attributes: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetFocusedWindowTreeArgs {}
+pub struct GetFocusedWindowTreeArgs {
+    #[schemars(
+        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
+    )]
+    pub include_detailed_attributes: Option<bool>,
+}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetApplicationsArgs {

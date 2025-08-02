@@ -147,13 +147,24 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<GetWindowTreeArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Default to comprehensive attributes for LLM usage
+        let include_detailed = args.include_detailed_attributes.unwrap_or(true);
+
+        // Configure tree building based on detail level
+        let tree_config = if include_detailed {
+            terminator::platforms::TreeBuildConfig {
+                property_mode: terminator::platforms::PropertyLoadingMode::Complete,
+                timeout_per_operation_ms: Some(100), // Slightly higher timeout for detailed loading
+                yield_every_n_elements: Some(25),    // More frequent yielding for responsiveness
+                batch_size: Some(25),
+            }
+        } else {
+            terminator::platforms::TreeBuildConfig::default() // Fast mode
+        };
+
         let tree = self
             .desktop
-            .get_window_tree(
-                args.pid,
-                args.title.as_deref(),
-                None, // Use default config for now
-            )
+            .get_window_tree(args.pid, args.title.as_deref(), Some(tree_config))
             .map_err(|e| {
                 McpError::resource_not_found(
                     "Failed to get window tree",
@@ -166,6 +177,7 @@ impl DesktopWrapper {
             "status": "success",
             "pid": args.pid,
             "title": args.title,
+            "detailed_attributes": include_detailed,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic."
         });
@@ -185,8 +197,23 @@ impl DesktopWrapper {
     )]
     pub async fn get_focused_window_tree(
         &self,
-        Parameters(_args): Parameters<crate::utils::GetFocusedWindowTreeArgs>,
+        Parameters(args): Parameters<crate::utils::GetFocusedWindowTreeArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Default to comprehensive attributes for LLM usage
+        let include_detailed = args.include_detailed_attributes.unwrap_or(true);
+
+        // Configure tree building based on detail level
+        let tree_config = if include_detailed {
+            terminator::platforms::TreeBuildConfig {
+                property_mode: terminator::platforms::PropertyLoadingMode::Complete,
+                timeout_per_operation_ms: Some(100), // Slightly higher timeout for detailed loading
+                yield_every_n_elements: Some(25),    // More frequent yielding for responsiveness
+                batch_size: Some(25),
+            }
+        } else {
+            terminator::platforms::TreeBuildConfig::default() // Fast mode
+        };
+
         // Get the currently focused element
         let focused_element = self.desktop.focused_element().map_err(|e| {
             McpError::internal_error(
@@ -211,11 +238,7 @@ impl DesktopWrapper {
         // Get the window tree for the focused application
         let tree = self
             .desktop
-            .get_window_tree(
-                pid,
-                Some(&window_title),
-                None, // Use default config
-            )
+            .get_window_tree(pid, Some(&window_title), Some(tree_config))
             .map_err(|e| {
                 McpError::resource_not_found(
                     "Failed to get window tree for focused window",
@@ -236,6 +259,7 @@ impl DesktopWrapper {
                 "window_title": window_title,
                 "application_name": app_name,
             },
+            "detailed_attributes": include_detailed,
             "ui_tree": tree,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic."

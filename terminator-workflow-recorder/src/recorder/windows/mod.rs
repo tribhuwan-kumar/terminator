@@ -77,6 +77,9 @@ pub struct WindowsRecorder {
 
     /// Currently focused text input element tracking with keystroke counting
     current_text_input: Arc<Mutex<Option<TextInputTracker>>>,
+
+    /// Double click detection tracker
+    double_click_tracker: Arc<Mutex<structs::DoubleClickTracker>>,
 }
 
 impl WindowsRecorder {
@@ -150,6 +153,7 @@ impl WindowsRecorder {
             last_event_time: Arc::new(Mutex::new(Instant::now())),
             events_this_second: Arc::new(Mutex::new((0, Instant::now()))),
             current_text_input: Arc::new(Mutex::new(None)),
+            double_click_tracker: Arc::new(Mutex::new(structs::DoubleClickTracker::default())),
         };
 
         let handle = tokio::runtime::Handle::current();
@@ -352,6 +356,7 @@ impl WindowsRecorder {
         let uia_processor_last_event_time = Arc::clone(&self.last_event_time);
         let uia_processor_events_counter = Arc::clone(&self.events_this_second);
         let capture_ui_elements = self.config.capture_ui_elements;
+        let uia_processor_double_click_tracker = Arc::clone(&self.double_click_tracker);
 
         thread::spawn(move || {
             if !capture_ui_elements {
@@ -372,6 +377,7 @@ impl WindowsRecorder {
                             &uia_processor_event_tx,
                             &uia_processor_last_event_time,
                             &uia_processor_events_counter,
+                            &uia_processor_double_click_tracker,
                         );
                     }
                     UIAInputRequest::ButtonRelease { button, position } => {
@@ -1699,12 +1705,49 @@ impl WindowsRecorder {
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
+        double_click_tracker: &Arc<Mutex<structs::DoubleClickTracker>>,
     ) {
+        // Check for double click first
+        let current_time = Instant::now();
+        let is_double_click = if let Ok(mut tracker) = double_click_tracker.try_lock() {
+            tracker.is_double_click(button, *position, current_time)
+        } else {
+            false
+        };
+
         let ui_element = if config.capture_ui_elements {
             Self::get_element_from_point_with_timeout(config, *position, 100)
         } else {
             None
         };
+
+        // If this is a double click, emit the double click event
+        if is_double_click {
+            let double_click_event = crate::MouseEvent {
+                event_type: crate::MouseEventType::DoubleClick,
+                button,
+                position: *position,
+                scroll_delta: None,
+                drag_start: None,
+                metadata: crate::EventMetadata {
+                    ui_element: ui_element.clone(),
+                    timestamp: Some(Self::capture_timestamp()),
+                },
+            };
+
+            debug!(
+                "🖱️🖱️ Double click detected: button={:?}, position=({}, {})",
+                button, position.x, position.y
+            );
+
+            Self::send_filtered_event_static(
+                event_tx,
+                config,
+                performance_last_event_time,
+                performance_events_counter,
+                WorkflowEvent::Mouse(double_click_event),
+            );
+        }
 
         // Debug: Log what UI element we captured at mouse down
         if let Some(ref element) = ui_element {
