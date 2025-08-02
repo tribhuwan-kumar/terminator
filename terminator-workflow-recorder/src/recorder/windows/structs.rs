@@ -239,6 +239,68 @@ pub struct ApplicationState {
     pub start_time: Instant,
 }
 
+/// Tracks pending Alt+Tab state for application switch attribution
+#[derive(Debug, Clone)]
+pub struct AltTabTracker {
+    /// Whether Alt+Tab was recently pressed
+    pub pending_alt_tab: bool,
+    /// When the Alt+Tab was pressed
+    pub alt_tab_time: Option<Instant>,
+    /// Timeout for considering Alt+Tab as the cause of app switch (ms)
+    pub timeout_ms: u64,
+}
+
+impl AltTabTracker {
+    pub fn new() -> Self {
+        Self {
+            pending_alt_tab: false,
+            alt_tab_time: None,
+            timeout_ms: 2000, // 2 second timeout for Alt+Tab attribution
+        }
+    }
+
+    /// Mark that Alt+Tab was just pressed
+    pub fn mark_alt_tab_pressed(&mut self) {
+        self.pending_alt_tab = true;
+        self.alt_tab_time = Some(Instant::now());
+    }
+
+    /// Check if a recent Alt+Tab should be attributed to an app switch
+    pub fn consume_pending_alt_tab(&mut self) -> bool {
+        if !self.pending_alt_tab {
+            return false;
+        }
+
+        if let Some(alt_tab_time) = self.alt_tab_time {
+            let elapsed = Instant::now().duration_since(alt_tab_time);
+            if elapsed.as_millis() <= self.timeout_ms as u128 {
+                // Consume the pending Alt+Tab
+                self.pending_alt_tab = false;
+                self.alt_tab_time = None;
+                return true;
+            } else {
+                // Expired, clear state
+                self.pending_alt_tab = false;
+                self.alt_tab_time = None;
+            }
+        }
+
+        false
+    }
+
+    /// Clear any pending Alt+Tab state (e.g., on timeout)
+    pub fn clear_pending(&mut self) {
+        self.pending_alt_tab = false;
+        self.alt_tab_time = None;
+    }
+}
+
+impl Default for AltTabTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Tracks browser tab navigation state
 #[derive(Debug, Clone)]
 pub struct BrowserTabTracker {

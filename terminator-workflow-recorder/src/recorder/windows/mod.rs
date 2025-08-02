@@ -66,6 +66,9 @@ pub struct WindowsRecorder {
     /// Browser tab navigation tracking
     browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
 
+    /// Alt+Tab tracking for application switch attribution
+    alt_tab_tracker: Arc<Mutex<AltTabTracker>>,
+
     /// Rate limiting for performance modes
     last_event_time: Arc<Mutex<std::time::Instant>>,
 
@@ -143,6 +146,7 @@ impl WindowsRecorder {
             ui_automation_thread_id: Arc::new(Mutex::new(None)),
             current_application: Arc::new(Mutex::new(None)),
             browser_tab_tracker: Arc::new(Mutex::new(BrowserTabTracker::default())),
+            alt_tab_tracker: Arc::new(Mutex::new(AltTabTracker::default())),
             last_event_time: Arc::new(Mutex::new(Instant::now())),
             events_this_second: Arc::new(Mutex::new((0, Instant::now()))),
             current_text_input: Arc::new(Mutex::new(None)),
@@ -161,8 +165,9 @@ impl WindowsRecorder {
         current_app: &Arc<Mutex<Option<ApplicationState>>>,
         event_tx: &broadcast::Sender<WorkflowEvent>,
         new_element: &Option<UIElement>,
-        switch_method: ApplicationSwitchMethod,
+        default_switch_method: ApplicationSwitchMethod,
         config: &WorkflowRecorderConfig,
+        alt_tab_tracker: &Arc<Mutex<AltTabTracker>>,
     ) {
         if !config.record_application_switches {
             return;
@@ -183,6 +188,19 @@ impl WindowsRecorder {
 
                     if is_switch {
                         let now = Instant::now();
+
+                        // Determine the actual switch method - check for Alt+Tab first
+                        let actual_switch_method =
+                            if let Ok(mut tracker) = alt_tab_tracker.try_lock() {
+                                if tracker.consume_pending_alt_tab() {
+                                    debug!("🔥 Application switch attributed to Alt+Tab!");
+                                    ApplicationSwitchMethod::AltTab
+                                } else {
+                                    default_switch_method
+                                }
+                            } else {
+                                default_switch_method
+                            };
 
                         // Calculate dwell time for previous app
                         let dwell_time = if let Some(ref current_state) = *current {
@@ -205,7 +223,7 @@ impl WindowsRecorder {
                                 to_application: app_name.clone(),
                                 from_process_id: current.as_ref().map(|s| s.process_id),
                                 to_process_id: process_id,
-                                switch_method,
+                                switch_method: actual_switch_method.clone(),
                                 dwell_time_ms: dwell_time,
                                 switch_count: None, // TODO: Track Alt+Tab cycles
                                 metadata: EventMetadata::with_ui_element_and_timestamp(Some(
@@ -217,6 +235,16 @@ impl WindowsRecorder {
                                 event_tx.send(WorkflowEvent::ApplicationSwitch(switch_event))
                             {
                                 debug!("Failed to send application switch event: {}", e);
+                            } else {
+                                debug!(
+                                    "✅ Application switch event sent: {} -> {} (method: {:?})",
+                                    current
+                                        .as_ref()
+                                        .map(|s| s.name.as_str())
+                                        .unwrap_or("(none)"),
+                                    app_name,
+                                    actual_switch_method
+                                );
                             }
                         }
 
@@ -292,6 +320,7 @@ impl WindowsRecorder {
             Arc::clone(&self.current_application),
             Arc::clone(&self.browser_tab_tracker),
             Arc::clone(&self.current_text_input),
+            Arc::clone(&self.alt_tab_tracker),
             handle,
         )?;
 
@@ -310,6 +339,7 @@ impl WindowsRecorder {
         let performance_last_event_time = Arc::clone(&self.last_event_time);
         let performance_events_counter = Arc::clone(&self.events_this_second);
         let current_text_input = Arc::clone(&self.current_text_input);
+        let alt_tab_tracker = Arc::clone(&self.alt_tab_tracker);
 
         // --- UIA Processor Thread ---
         // Create a channel for rdev events that need UIA processing
@@ -428,6 +458,17 @@ impl WindowsRecorder {
                             if let Some(hotkey) =
                                 Self::detect_hotkey(&hotkey_patterns, &active_keys)
                             {
+                                // Check if this is Alt+Tab specifically
+                                if hotkey.action.as_ref().map(|a| a.as_str())
+                                    == Some("Switch Window")
+                                {
+                                    // Mark Alt+Tab as pressed for application switch attribution
+                                    if let Ok(mut tracker) = alt_tab_tracker.try_lock() {
+                                        tracker.mark_alt_tab_pressed();
+                                        debug!("🔥 Alt+Tab detected - marking for application switch attribution");
+                                    }
+                                }
+
                                 let _ = event_tx.send(WorkflowEvent::Hotkey(hotkey));
                             }
                         }
@@ -821,6 +862,7 @@ impl WindowsRecorder {
         current_application: Arc<Mutex<Option<ApplicationState>>>,
         browser_tab_tracker: Arc<Mutex<BrowserTabTracker>>,
         current_text_input: Arc<Mutex<Option<TextInputTracker>>>,
+        alt_tab_tracker: Arc<Mutex<AltTabTracker>>,
         handle: tokio::runtime::Handle,
     ) -> Result<()> {
         let event_tx = self.event_tx.clone();
@@ -944,6 +986,7 @@ impl WindowsRecorder {
             let focus_current_app = Arc::clone(&current_application);
             let focus_browser_tracker = Arc::clone(&browser_tab_tracker);
             let focus_current_text_input = Arc::clone(&current_text_input);
+            let focus_alt_tab_tracker = Arc::clone(&alt_tab_tracker);
 
             let focus_processing_config = config_clone.clone();
             let focus_processing_ignore_patterns = ignore_focus_patterns.clone();
@@ -978,6 +1021,7 @@ impl WindowsRecorder {
                             focus_processing_ignore_window_titles.clone();
                         let app_switch_ignore_applications =
                             focus_processing_ignore_applications.clone();
+                        let app_switch_alt_tab_tracker = Arc::clone(&focus_alt_tab_tracker);
 
                         processing_handle.spawn(async move {
                             if WindowsRecorder::should_ignore_focus_event(
@@ -994,12 +1038,13 @@ impl WindowsRecorder {
                                 return;
                             }
 
-                            Self::check_and_emit_application_switch(
+                            WindowsRecorder::check_and_emit_application_switch(
                                 &app_switch_current_app,
                                 &app_switch_event_tx_clone,
                                 &app_switch_ui_element,
                                 ApplicationSwitchMethod::WindowClick,
                                 &app_switch_config_clone,
+                                &app_switch_alt_tab_tracker,
                             );
                         });
 

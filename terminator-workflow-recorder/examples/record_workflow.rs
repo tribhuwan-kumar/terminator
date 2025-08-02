@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         track_modifier_states: true,
         mouse_move_throttle_ms: 100, // PERFORMANCE: Increase throttle to reduce event spam
         min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
-        enable_multithreading: true,
+        enable_multithreading: false,
         record_browser_tab_navigation: true,
 
         // performance_mode: PerformanceMode::LowEnergy,
