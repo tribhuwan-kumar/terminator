@@ -2904,16 +2904,13 @@ impl AccessibilityEngine for MacOSEngine {
                 if let Some(root_element) = root {
                     if let Some(macos_element) = root_element.as_any().downcast_ref::<MacOSUIElement>() {
                         match macos_element.element.0.parent() {
-                            Ok(Some(parent_native)) => {
+                            Ok(parent_native) => {
                                 let parent_element = MacOSUIElement {
                                     element: ThreadSafeAXUIElement::new(parent_native),
                                     use_background_apps: self.use_background_apps,
                                     activate_app: self.activate_app,
                                 };
                                 Ok(vec![UIElement::new(Box::new(parent_element))])
-                            }
-                            Ok(None) => {
-                                Ok(vec![]) // No parent found
                             }
                             Err(e) => {
                                 debug!("Failed to get parent element: {}", e);
@@ -3225,16 +3222,13 @@ impl AccessibilityEngine for MacOSEngine {
                 if let Some(root_element) = root {
                     if let Some(macos_element) = root_element.as_any().downcast_ref::<MacOSUIElement>() {
                         match macos_element.element.0.parent() {
-                            Ok(Some(parent_native)) => {
+                            Ok(parent_native) => {
                                 let parent_element = MacOSUIElement {
                                     element: ThreadSafeAXUIElement::new(parent_native),
                                     use_background_apps: self.use_background_apps,
                                     activate_app: self.activate_app,
                                 };
                                 Ok(UIElement::new(Box::new(parent_element)))
-                            }
-                            Ok(None) => {
-                                Err(AutomationError::ElementNotFound("No parent element found".to_string()))
                             }
                             Err(e) => {
                                 Err(AutomationError::ElementNotFound(format!("Failed to get parent element: {}", e)))
