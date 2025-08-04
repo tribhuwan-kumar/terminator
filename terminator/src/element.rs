@@ -399,12 +399,15 @@ pub trait UIElementImpl: Send + Sync + Debug {
     fn application(&self) -> Result<Option<UIElement>, AutomationError>;
     fn window(&self) -> Result<Option<UIElement>, AutomationError>;
 
-    // New method to highlight the element
+    // New method to highlight the element with optional text overlay
     fn highlight(
         &self,
         color: Option<u32>,
         duration: Option<std::time::Duration>,
-    ) -> Result<(), AutomationError>;
+        text: Option<&str>,
+        text_position: Option<crate::platforms::windows::TextPosition>,
+        font_style: Option<crate::platforms::windows::FontStyle>,
+    ) -> Result<crate::platforms::windows::HighlightHandle, AutomationError>;
 
     /// Sets the transparency of the window.
     /// The percentage value ranges from 0 (completely transparent) to 100 (completely opaque).
@@ -765,17 +768,43 @@ impl UIElement {
         self.inner.window()
     }
 
-    /// Highlights the element with a colored border.
+    /// Highlights the element with a colored border and optional text overlay.
     ///
     /// # Arguments
     /// * `color` - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
     /// * `duration` - Optional duration for the highlight.
+    /// * `text` - Optional text to display as overlay. Text will be truncated to 10 characters.
+    /// * `text_position` - Optional position for the text overlay (Top, Bottom, etc.)
+    /// * `font_style` - Optional font styling (size, bold, color)
+    #[cfg(target_os = "windows")]
     pub fn highlight(
         &self,
         color: Option<u32>,
         duration: Option<std::time::Duration>,
-    ) -> Result<(), AutomationError> {
-        self.inner.highlight(color, duration)
+        text: Option<&str>,
+        text_position: Option<crate::platforms::windows::TextPosition>,
+        font_style: Option<crate::platforms::windows::FontStyle>,
+    ) -> Result<crate::platforms::windows::HighlightHandle, AutomationError> {
+        self.inner
+            .highlight(color, duration, text, text_position, font_style)
+    }
+
+    /// Highlights the element with a colored border (simplified version for non-Windows platforms).
+    ///
+    /// # Arguments
+    /// * `color` - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
+    /// * `duration` - Optional duration for the highlight.
+    #[cfg(not(target_os = "windows"))]
+    pub fn highlight(
+        &self,
+        color: Option<u32>,
+        duration: Option<std::time::Duration>,
+        _text: Option<&str>,
+        _text_position: Option<crate::platforms::windows::TextPosition>,
+        _font_style: Option<crate::platforms::windows::FontStyle>,
+    ) -> Result<crate::platforms::windows::HighlightHandle, AutomationError> {
+        // For non-Windows platforms, ignore text parameters and create dummy handle
+        self.inner.highlight(color, duration, None, None, None)
     }
 
     /// Capture a screenshot of the element

@@ -9,7 +9,7 @@ use tracing::Level;
 
 #[tokio::test]
 async fn test_execute_sequence_simple_and_error_handling() {
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     // --- Test: Empty sequence ---
     let args = ExecuteSequenceArgs {
@@ -60,7 +60,7 @@ async fn test_execute_sequence_simple_and_error_handling() {
 
 #[tokio::test]
 async fn test_sequence_with_conditional_execution() {
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     // --- Test: Conditional steps ---
     let mut inputs = HashMap::new();
@@ -108,7 +108,7 @@ async fn test_sequence_with_variable_substitution() {
         .with_max_level(Level::DEBUG)
         .try_init();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     // --- Test: Variable substitution ---
     let mut inputs = HashMap::new();
@@ -148,7 +148,7 @@ async fn test_sequence_with_contains_expression() {
         .with_max_level(Level::DEBUG)
         .try_init();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     let args = ExecuteSequenceArgs {
         steps: vec![

@@ -196,6 +196,89 @@ impl From<terminator::UIElementAttributes> for UIElementAttributes {
     }
 }
 
+#[napi(string_enum)]
+pub enum TextPosition {
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+    TopLeft,
+    Inside,
+}
+
+#[napi(object)]
+pub struct FontStyle {
+    pub size: u32,
+    pub bold: bool,
+    pub color: u32,
+}
+
+#[napi]
+pub struct HighlightHandle {
+    inner: Option<terminator::platforms::windows::HighlightHandle>,
+}
+
+#[napi]
+impl HighlightHandle {
+    #[napi]
+    pub fn close(&mut self) {
+        if let Some(handle) = self.inner.take() {
+            handle.close();
+        }
+    }
+}
+
+impl HighlightHandle {
+    pub fn new(handle: terminator::platforms::windows::HighlightHandle) -> Self {
+        Self {
+            inner: Some(handle),
+        }
+    }
+
+    pub fn new_dummy() -> Self {
+        Self { inner: None }
+    }
+}
+
+impl From<TextPosition> for terminator::platforms::windows::TextPosition {
+    fn from(pos: TextPosition) -> Self {
+        match pos {
+            TextPosition::Top => terminator::platforms::windows::TextPosition::Top,
+            TextPosition::TopRight => terminator::platforms::windows::TextPosition::TopRight,
+            TextPosition::Right => terminator::platforms::windows::TextPosition::Right,
+            TextPosition::BottomRight => terminator::platforms::windows::TextPosition::BottomRight,
+            TextPosition::Bottom => terminator::platforms::windows::TextPosition::Bottom,
+            TextPosition::BottomLeft => terminator::platforms::windows::TextPosition::BottomLeft,
+            TextPosition::Left => terminator::platforms::windows::TextPosition::Left,
+            TextPosition::TopLeft => terminator::platforms::windows::TextPosition::TopLeft,
+            TextPosition::Inside => terminator::platforms::windows::TextPosition::Inside,
+        }
+    }
+}
+
+impl From<FontStyle> for terminator::platforms::windows::FontStyle {
+    fn from(style: FontStyle) -> Self {
+        terminator::platforms::windows::FontStyle {
+            size: style.size,
+            bold: style.bold,
+            color: style.color,
+        }
+    }
+}
+
+impl Default for FontStyle {
+    fn default() -> Self {
+        Self {
+            size: 12,
+            bold: false,
+            color: 0x000000,
+        }
+    }
+}
+
 impl From<TreeBuildConfig> for terminator::platforms::TreeBuildConfig {
     fn from(config: TreeBuildConfig) -> Self {
         terminator::platforms::TreeBuildConfig {

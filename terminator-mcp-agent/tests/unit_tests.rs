@@ -1260,7 +1260,7 @@ async fn test_workflow_editor_create_new_file() {
         .to_string_lossy()
         .to_string();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "tool_name: execute_sequence\narguments:\n  steps: []\n".to_string(),
@@ -1290,7 +1290,7 @@ async fn test_workflow_editor_append_to_existing() {
     // Create initial file
     fs::write(&file_path, "existing_content:\n  data: value\n").unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "new_section:\n  additional: data".to_string(),
@@ -1325,7 +1325,7 @@ async fn test_workflow_editor_simple_string_replace() {
     )
     .unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "new_tool".to_string(),
@@ -1359,7 +1359,7 @@ async fn test_workflow_editor_regex_replace() {
     )
     .unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "action_$1".to_string(),
@@ -1391,7 +1391,7 @@ async fn test_workflow_editor_pattern_not_found() {
     // Create initial file without the pattern we're looking for
     fs::write(&file_path, "tool_name: existing_tool\narguments: {}").unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "replacement".to_string(),
@@ -1420,7 +1420,7 @@ async fn test_workflow_editor_invalid_regex() {
     // Create initial file
     fs::write(&file_path, "some content").unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "replacement".to_string(),
@@ -1446,7 +1446,7 @@ async fn test_workflow_editor_create_if_missing_false() {
         .to_string_lossy()
         .to_string();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "new content".to_string(),
@@ -1475,7 +1475,7 @@ async fn test_workflow_editor_empty_file_append() {
     // Create empty file
     fs::write(&file_path, "").unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "first_content".to_string(),
@@ -1504,7 +1504,7 @@ async fn test_workflow_editor_no_trailing_newline() {
     // Create file without trailing newline
     fs::write(&file_path, "existing_content").unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "appended_content".to_string(),
@@ -1533,7 +1533,7 @@ async fn test_workflow_editor_with_trailing_newline() {
     // Create file with trailing newline
     fs::write(&file_path, "existing_content\n").unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "appended_content".to_string(),
@@ -1566,7 +1566,7 @@ async fn test_workflow_editor_multiline_replacement() {
     )
     .unwrap();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
     let args = ExportWorkflowSequenceArgs {
         file_path: file_path.clone(),
         content: "section_a:\n  new_data: updated_value\n  additional: info".to_string(),

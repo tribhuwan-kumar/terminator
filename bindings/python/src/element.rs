@@ -2,6 +2,8 @@ use crate::exceptions::automation_error_to_pyerr;
 use crate::types::{Bounds, ClickResult, UIElementAttributes};
 use ::terminator_core::element::UIElement as TerminatorUIElement;
 use pyo3::prelude::*;
+use pyo3_async_runtimes::tokio as pyo3_tokio;
+use pyo3_async_runtimes::TaskLocals;
 use pyo3_stub_gen::derive::*;
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 
@@ -454,9 +456,11 @@ impl UIElement {
     ///     None
     pub fn highlight(&self, color: Option<u32>, duration_ms: Option<u64>) -> PyResult<()> {
         let duration = duration_ms.map(std::time::Duration::from_millis);
-        self.inner
-            .highlight(color, duration)
-            .map_err(automation_error_to_pyerr)
+        let _handle = self
+            .inner
+            .highlight(color, duration, None, None, None)
+            .map_err(automation_error_to_pyerr)?;
+        Ok(())
     }
 
     #[pyo3(name = "capture", text_signature = "($self)")]
@@ -557,5 +561,88 @@ impl UIElement {
         self.inner
             .set_toggled(state)
             .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "execute_script", text_signature = "($self, script)")]
+    /// Execute JavaScript in web browser elements.
+    /// Returns the result of script execution, or None if not a web element.
+    ///
+    /// Args:
+    ///     script (str): The JavaScript code to execute.
+    ///
+    /// Returns:
+    ///     Optional[str]: The result of script execution, if available.
+    pub fn execute_script(&self, script: &str) -> PyResult<Option<String>> {
+        self.inner
+            .execute_script(script)
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "url", text_signature = "($self)")]
+    /// Get the URL if the element is in a browser window.
+    ///
+    /// Returns:
+    ///     Optional[str]: The URL, if available.
+    pub fn url(&self) -> Option<String> {
+        self.inner.url()
+    }
+
+    #[pyo3(name = "get_html_content", text_signature = "($self)")]
+    /// Get HTML content from web browser elements.
+    /// Returns the HTML content as a string, or None if not a web element.
+    ///
+    /// Returns:
+    ///     Optional[str]: The HTML content, if available.
+    pub fn get_html_content(&self) -> PyResult<Option<String>> {
+        self.inner
+            .get_html_content()
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "get_range_value", text_signature = "($self)")]
+    /// Gets the current value from a range-based control like a slider or progress bar.
+    ///
+    /// Returns:
+    ///     float: The current range value.
+    pub fn get_range_value(&self) -> PyResult<f64> {
+        self.inner
+            .get_range_value()
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "set_range_value", text_signature = "($self, value)")]
+    /// Sets the value of a range-based control like a slider.
+    ///
+    /// Args:
+    ///     value (float): The value to set.
+    ///
+    /// Returns:
+    ///     None
+    pub fn set_range_value(&self, value: f64) -> PyResult<()> {
+        self.inner
+            .set_range_value(value)
+            .map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "is_selected", text_signature = "($self)")]
+    /// Checks if a selectable item (e.g., in a calendar, list, or tab) is currently selected.
+    ///
+    /// Returns:
+    ///     bool: True if the item is selected.
+    pub fn is_selected(&self) -> PyResult<bool> {
+        self.inner.is_selected().map_err(automation_error_to_pyerr)
+    }
+
+    #[pyo3(name = "ocr", text_signature = "($self)")]
+    /// (async) Capture a screenshot of the element and perform OCR to extract text.
+    ///
+    /// Returns:
+    ///     str: The extracted text from the element screenshot.
+    pub fn ocr<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let element = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = element.ocr().await.map_err(automation_error_to_pyerr)?;
+            Ok(result)
+        })
     }
 }

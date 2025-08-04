@@ -14,7 +14,7 @@ async fn test_activate_element_verification_structure() {
         .with_max_level(Level::DEBUG)
         .try_init();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     // Test 1: Test with any element to check verification structure
     println!("🔍 Testing activate_element verification structure...");
@@ -24,6 +24,7 @@ async fn test_activate_element_verification_structure() {
         timeout_ms: Some(2000),
         include_tree: Some(false),
         retries: Some(0),
+        include_detailed_attributes: Some(false),
     };
 
     match server
@@ -57,6 +58,7 @@ async fn test_activate_element_verification_structure() {
         timeout_ms: Some(5000),
         include_tree: Some(false),
         retries: Some(1),
+        include_detailed_attributes: Some(false),
     };
 
     match server
@@ -153,7 +155,7 @@ async fn test_activate_element_verification_timing() {
         .with_max_level(Level::DEBUG)
         .try_init();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     println!("⏱️ Testing activation verification timing...");
 
@@ -166,6 +168,7 @@ async fn test_activate_element_verification_timing() {
         timeout_ms: Some(3000),
         include_tree: Some(false),
         retries: Some(0),
+        include_detailed_attributes: Some(false),
     };
 
     match server.activate_element(Parameters(activate_args)).await {
