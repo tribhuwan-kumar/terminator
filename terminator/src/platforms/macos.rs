@@ -2903,12 +2903,14 @@ impl AccessibilityEngine for MacOSEngine {
                 // Get parent element of the current root
                 if let Some(root_element) = root {
                     if let Some(macos_element) = root_element.as_any().downcast_ref::<MacOSUIElement>() {
-                        match macos_element.element.parent() {
+                        match macos_element.element.0.parent() {
                             Ok(Some(parent_native)) => {
                                 let parent_element = MacOSUIElement {
-                                    element: parent_native,
+                                    element: ThreadSafeAXUIElement::new(parent_native),
+                                    use_background_apps: self.use_background_apps,
+                                    activate_app: self.activate_app,
                                 };
-                                Ok(vec![UIElement::new(Arc::new(parent_element))])
+                                Ok(vec![UIElement::new(Box::new(parent_element))])
                             }
                             Ok(None) => {
                                 Ok(vec![]) // No parent found
@@ -3222,12 +3224,14 @@ impl AccessibilityEngine for MacOSEngine {
                 // Get parent element of the current root
                 if let Some(root_element) = root {
                     if let Some(macos_element) = root_element.as_any().downcast_ref::<MacOSUIElement>() {
-                        match macos_element.element.parent() {
+                        match macos_element.element.0.parent() {
                             Ok(Some(parent_native)) => {
                                 let parent_element = MacOSUIElement {
-                                    element: parent_native,
+                                    element: ThreadSafeAXUIElement::new(parent_native),
+                                    use_background_apps: self.use_background_apps,
+                                    activate_app: self.activate_app,
                                 };
-                                Ok(UIElement::new(Arc::new(parent_element)))
+                                Ok(UIElement::new(Box::new(parent_element)))
                             }
                             Ok(None) => {
                                 Err(AutomationError::ElementNotFound("No parent element found".to_string()))

@@ -5363,7 +5363,6 @@ impl WindowsUIElement {
         &self,
         hwnd: HWND,
     ) -> Result<Option<ICoreWebView2>, AutomationError> {
-
         debug!(
             "Attempting real WebView2 COM interface lookup for HWND: {:?}",
             hwnd
