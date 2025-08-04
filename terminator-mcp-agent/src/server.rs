@@ -8,11 +8,12 @@ use crate::utils::WaitForOutputParserArgs;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, CloseElementArgs, DelayArgs,
     ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs, GetFocusedWindowTreeArgs,
-    GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs, MaximizeWindowArgs,
-    MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
-    RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs, ScrollElementArgs, SelectOptionArgs,
-    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, ImportWorkflowSequenceArgs,
+    LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
+    OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs,
+    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
+    SetValueArgs, SetZoomArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -3031,6 +3032,15 @@ impl DesktopWrapper {
                     )),
                 }
             }
+            "import_workflow_sequence" => {
+                match serde_json::from_value::<ImportWorkflowSequenceArgs>(arguments.clone()) {
+                    Ok(args) => self.import_workflow_sequence(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for import_workflow_sequence",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),
@@ -3126,6 +3136,105 @@ impl DesktopWrapper {
         }))?]))
     }
 
+    #[tool(description = "Load a YAML workflow file or scan folder for YAML workflow files")]
+    pub async fn import_workflow_sequence(
+        &self,
+        Parameters(args): Parameters<ImportWorkflowSequenceArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        match (args.file_path, args.folder_path) {
+            // Load single file
+            (Some(file_path), None) => {
+                let content = std::fs::read_to_string(&file_path).map_err(|e| {
+                    McpError::invalid_params(
+                        "Failed to read file",
+                        Some(json!({"error": e.to_string(), "path": file_path})),
+                    )
+                })?;
+
+                let workflow: serde_json::Value = serde_yaml::from_str(&content).map_err(|e| {
+                    McpError::invalid_params(
+                        "Invalid YAML format",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "operation": "load_file",
+                    "file_path": file_path,
+                    "workflow": workflow
+                }))?]))
+            }
+            // Scan folder
+            (None, Some(folder_path)) => {
+                let files = scan_yaml_files(&folder_path)?;
+
+                Ok(CallToolResult::success(vec![Content::json(json!({
+                    "operation": "scan_folder",
+                    "folder_path": folder_path,
+                    "files": files,
+                    "count": files.len()
+                }))?]))
+            }
+            // Error cases
+            (Some(_), Some(_)) => Err(McpError::invalid_params(
+                "Provide either file_path OR folder_path, not both",
+                None,
+            )),
+            (None, None) => Err(McpError::invalid_params(
+                "Must provide either file_path or folder_path",
+                None,
+            )),
+        }
+    }
+}
+
+fn scan_yaml_files(folder_path: &str) -> Result<Vec<serde_json::Value>, McpError> {
+    let mut files = Vec::new();
+
+    let dir = std::fs::read_dir(folder_path).map_err(|e| {
+        McpError::invalid_params(
+            "Failed to read directory",
+            Some(json!({"error": e.to_string(), "path": folder_path})),
+        )
+    })?;
+
+    for entry in dir {
+        let entry = entry.map_err(|e| {
+            McpError::internal_error(
+                "Directory entry error",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+
+        let path = entry.path();
+
+        if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if ext == "yaml" || ext == "yml" {
+                    let metadata = entry.metadata().ok();
+                    let file_name = path
+                        .file_stem()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    files.push(json!({
+                        "name": file_name,
+                        "file_path": path.to_string_lossy(),
+                        "size": metadata.as_ref().map(|m| m.len()).unwrap_or(0),
+                        "modified": metadata.and_then(|m| m.modified().ok())
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+impl DesktopWrapper {
     #[tool(description = "Maximizes a window.")]
     async fn maximize_window(
         &self,

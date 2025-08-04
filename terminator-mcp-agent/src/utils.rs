@@ -1013,6 +1013,15 @@ pub struct ExportWorkflowSequenceArgs {
     pub create_if_missing: Option<bool>,
 }
 
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ImportWorkflowSequenceArgs {
+    #[schemars(description = "Path to specific YAML workflow file to load")]
+    pub file_path: Option<String>,
+
+    #[schemars(description = "Path to folder to scan for YAML workflow files")]
+    pub folder_path: Option<String>,
+}
+
 /// A robust helper that finds a UI element and executes a provided action on it,
 /// with built-in retry logic for both finding the element and performing the action.
 ///
