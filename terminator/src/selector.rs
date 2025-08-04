@@ -41,6 +41,8 @@ pub enum Selector {
     Nth(i32),
     /// Select elements that have at least one descendant matching the inner selector (Playwright-style :has())
     Has(Box<Selector>),
+    /// Navigate to parent element (Playwright-style ..)
+    Parent,
     /// Represents an invalid selector string, with a reason.
     Invalid(String),
 }
@@ -120,6 +122,23 @@ impl From<&str> for Selector {
                 let value = s[8..].trim().to_lowercase();
                 Selector::Visible(value == "true")
             }
+            _ if s.to_lowercase().starts_with("attr:") => {
+                let attr_part = &s["attr:".len()..];
+                let mut attributes = BTreeMap::new();
+
+                if attr_part.contains('=') {
+                    // Format: attr:key=value (like Playwright)
+                    let parts: Vec<&str> = attr_part.splitn(2, '=').collect();
+                    if parts.len() == 2 {
+                        attributes.insert(parts[0].trim().to_string(), parts[1].trim().to_string());
+                    }
+                } else {
+                    // Format: attr:key (check for existence, assume true)
+                    attributes.insert(attr_part.trim().to_string(), "true".to_string());
+                }
+
+                Selector::Attributes(attributes)
+            }
 
             _ if s.to_lowercase().starts_with("rightof:") => {
                 let inner_selector_str = &s["rightof:".len()..];
@@ -170,8 +189,9 @@ impl From<&str> for Selector {
             _ if s.starts_with('#') => Selector::Id(s[1..].to_string()),
             _ if s.starts_with('/') => Selector::Path(s.to_string()),
             _ if s.to_lowercase().starts_with("text:") => Selector::Text(s[5..].to_string()),
+            ".." => Selector::Parent,
             _ => Selector::Invalid(format!(
-                "Unknown selector format: \"{s}\". Use prefixes like 'role:', 'name:', 'id:', 'text:', 'nativeid:', 'classname:', or 'pos:' to specify the selector type."
+                "Unknown selector format: \"{s}\". Use prefixes like 'role:', 'name:', 'id:', 'text:', 'nativeid:', 'classname:', 'attr:', 'visible:', or 'has:' to specify the selector type."
             )),
         }
     }

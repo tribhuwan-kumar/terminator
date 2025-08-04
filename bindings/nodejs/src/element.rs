@@ -221,6 +221,13 @@ impl Element {
         self.inner.perform_action(&action).map_err(map_error)
     }
 
+    /// Invoke this element (triggers the default action).
+    /// This is often more reliable than clicking for controls like radio buttons or menu items.
+    #[napi]
+    pub fn invoke(&self) -> napi::Result<()> {
+        self.inner.invoke().map_err(map_error)
+    }
+
     /// Scroll the element in a given direction.
     ///
     /// @param {string} direction - The direction to scroll.

@@ -207,6 +207,7 @@ try {{
 *   **Form validation errors:** Verify all fields AND radio buttons/checkboxes before submitting.
 *   **Element not found after UI change:** Call `get_window_tree` again after UI changes.
 *   **Selector matches wrong element:** Use numeric ID when name is empty.
+*   **ID is not unique across machines:** Use different selectors than ID when exporting workflows.
 
 Contextual information:
 - The current date and time is {current_date_time}.

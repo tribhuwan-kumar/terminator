@@ -1,45 +1,65 @@
-use std::time::Duration;
-
-use terminator::{platforms, AutomationError};
-use tracing::Level;
+use terminator::{AutomationError, Desktop, UIElement};
 
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
-    tracing_subscriber::fmt::Subscriber::builder()
-        .with_max_level(Level::DEBUG)
-        .init();
+    tracing_subscriber::fmt::init();
 
-    let engine = platforms::create_engine(true, true)?;
+    let desktop = Desktop::new(true, false)?;
 
-    let opened_app = engine.get_focused_element()?;
+    let opened_app = desktop.focused_element()?;
 
-    // Note: The specific output will vary depending on the active application.
-    println!("Looking for the last combobox...");
-
-    // // Measure time to find the element
-    // let start = Instant::now();
-    // let element = opened_app
-    //     .locator("role:text|View Details")?
-    //     .wait(Some(Duration::from_millis(100000)))
-    //     .await?;
-    // let elapsed = start.elapsed();
-    // println!(
-    //     "Time to find element: {:.2?} ms",
-    //     elapsed.as_secs_f64() * 1000.0
-    // );
-
-    // println!("Found last combobox: {:?}", element.attributes());
-
-    // get all checkboxes and toggle them
-    let e = opened_app
-        .locator("role:list")?
-        .first(Some(Duration::from_millis(10000)))
+    // plan-info automation id
+    let plan_info = opened_app
+        .locator("AutomationId:plan-info")?
+        .first(None)
         .await?;
-    e.highlight(None, None)?;
-    e.scroll("down", 100.0)?;
+    let plan_info_text = plan_info.text(100)?;
+    println!("Plan info text: {}", plan_info_text);
 
-    // You can now interact with it, for example, click to open it.
-    // element.click()?;
+    // let tree = opened_app.to_serializable_tree(5);
+    // let flat_tree = tree.children.iter().flatten().collect::<Vec<_>>();
+    // // println!("{}", serde_json::to_string_pretty(&tree).unwrap());
+
+    // // get the inde of first element which is a text element containing $ with a group before and after
+    // let mut start: i32 = -1;
+
+    // // get the index of the first element which is a text element containing a number followed
+    // // by a text element containing "of " followed by a text element containing a number
+    // let mut end: i32 = -1;
+
+    // for (i, element) in flat_tree.iter().enumerate() {
+    //     if element.role == "Text" {
+    //         let text = element.text.clone().unwrap_or_default();
+    //         if text.contains("$")
+    //             && i > 0
+    //             && i + 1 < flat_tree.len()
+    //             && flat_tree[i - 1].role == "Group"
+    //             && flat_tree[i + 1].role == "Group"
+    //         {
+    //             println!("Found text element containing $: {}", text);
+    //             start = i as i32;
+    //         }
+    //         if text.contains("of ")
+    //             && i > 0
+    //             && i + 1 < flat_tree.len()
+    //             && flat_tree[i - 1].role == "Group"
+    //             && flat_tree[i + 1].role == "Group"
+    //         {
+    //             println!("Found text element containing of: {}", text);
+    //             end = i as i32;
+    //         }
+    //     }
+    // }
+
+    // // print the concatenated text of the elements between start and end
+    // if start != -1 && end != -1 {
+    //     let text = flat_tree[start as usize..end as usize]
+    //         .iter()
+    //         .map(|e| e.text.clone().unwrap_or_default())
+    //         .collect::<Vec<_>>()
+    //         .join("");
+    //     println!("Concatenated text: {}", text);
+    // }
 
     Ok(())
 }

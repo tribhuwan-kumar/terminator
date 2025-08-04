@@ -784,6 +784,38 @@ fn find_elements_inner<'a>(
                     "Selector::Has is not implemented for Linux".to_string(),
                 ));
             }
+            Selector::Parent => {
+                // Get parent element of the current root
+                if let Some(root_element) = root {
+                    if let Some(linux_element) =
+                        root_element.as_any().downcast_ref::<LinuxUIElement>()
+                    {
+                        match &linux_element.accessible.parent() {
+                            Ok(Some(parent_accessible)) => {
+                                let parent_element = LinuxUIElement {
+                                    accessible: parent_accessible.clone(),
+                                };
+                                return Ok(vec![UIElement::new(Arc::new(parent_element))]);
+                            }
+                            Ok(None) => {
+                                return Ok(vec![]); // No parent found
+                            }
+                            Err(e) => {
+                                debug!("Failed to get parent element: {}", e);
+                                return Ok(vec![]); // No parent found
+                            }
+                        }
+                    } else {
+                        return Err(AutomationError::PlatformError(
+                            "Invalid element type for parent navigation".to_string(),
+                        ));
+                    }
+                } else {
+                    return Err(AutomationError::InvalidSelector(
+                        "Parent selector requires a starting element".to_string(),
+                    ));
+                }
+            }
         }
         // Only Role and Name selectors are supported below
         let root_binding = linux_engine.get_root_element();

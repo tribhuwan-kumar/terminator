@@ -2899,6 +2899,32 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::Has(_) => Err(AutomationError::UnsupportedOperation(
                 "Has selector not yet supported for macOS".to_string(),
             )),
+            Selector::Parent => {
+                // Get parent element of the current root
+                if let Some(root_element) = root {
+                    if let Some(macos_element) = root_element.as_any().downcast_ref::<MacOSUIElement>() {
+                        match macos_element.element.parent() {
+                            Ok(Some(parent_native)) => {
+                                let parent_element = MacOSUIElement {
+                                    element: parent_native,
+                                };
+                                Ok(vec![UIElement::new(Arc::new(parent_element))])
+                            }
+                            Ok(None) => {
+                                Ok(vec![]) // No parent found
+                            }
+                            Err(e) => {
+                                debug!("Failed to get parent element: {}", e);
+                                Ok(vec![]) // No parent found
+                            }
+                        }
+                    } else {
+                        Err(AutomationError::PlatformError("Invalid element type for parent navigation".to_string()))
+                    }
+                } else {
+                    Err(AutomationError::InvalidSelector("Parent selector requires a starting element".to_string()))
+                }
+            }
         }
     }
 
@@ -3192,6 +3218,31 @@ impl AccessibilityEngine for MacOSEngine {
             Selector::Has(_) => Err(AutomationError::UnsupportedOperation(
                 "Has selector not yet supported for macOS".to_string(),
             )),
+            Selector::Parent => {
+                // Get parent element of the current root
+                if let Some(root_element) = root {
+                    if let Some(macos_element) = root_element.as_any().downcast_ref::<MacOSUIElement>() {
+                        match macos_element.element.parent() {
+                            Ok(Some(parent_native)) => {
+                                let parent_element = MacOSUIElement {
+                                    element: parent_native,
+                                };
+                                Ok(UIElement::new(Arc::new(parent_element)))
+                            }
+                            Ok(None) => {
+                                Err(AutomationError::ElementNotFound("No parent element found".to_string()))
+                            }
+                            Err(e) => {
+                                Err(AutomationError::ElementNotFound(format!("Failed to get parent element: {}", e)))
+                            }
+                        }
+                    } else {
+                        Err(AutomationError::PlatformError("Invalid element type for parent navigation".to_string()))
+                    }
+                } else {
+                    Err(AutomationError::InvalidSelector("Parent selector requires a starting element".to_string()))
+                }
+            }
         }
     }
 

@@ -53,14 +53,24 @@ core-foundation = { workspace = true }
 core-graphics = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61.1", features = [
+windows = { version = "0.61.3", features = [
     "Win32_Foundation",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Com",
     "Win32_UI_Shell",
     "Win32_Security",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_Graphics_Gdi",
 ] }
+windows-core = "0.58.0"
+windows-result = "0.2.0"
+windows-strings = "0.1.0"
+
 
 uiautomation = { version = "0.22.0", features = [
     "clipboard",
@@ -76,6 +86,9 @@ uiautomation = { version = "0.22.0", features = [
 sysinfo = "0.34.2"
 regex = { workspace = true }
 reqwest = { version = "0.12.5", features = ["json", "blocking", "rustls-tls"] }
+# WebView2 support for HTML extraction
+webview2-com = "0.38.0"
+
 
 [[example]]
 name = "benchmark_example"
@@ -92,3 +105,4 @@ anyhow = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 warp = "0.3.7"
 tiny_http = "0.12.0"
+urlencoding = "2.1.3"

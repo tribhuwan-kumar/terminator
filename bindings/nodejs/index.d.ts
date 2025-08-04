@@ -191,7 +191,7 @@ export declare class Desktop {
    * Open a URL in a browser.
    *
    * @param {string} url - The URL to open.
-   * @param {string} [browser] - The browser to use. Can be "Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", "Arc", or a custom browser path.
+   * @param {string} [browser] - The browser to use. Can be "Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi", or a custom browser path.
    */
   openUrl(url: string, browser?: string | undefined | null): Element
   /**
@@ -405,6 +405,11 @@ export declare class Element {
    */
   performAction(action: string): void
   /**
+   * Invoke this element (triggers the default action).
+   * This is often more reliable than clicking for controls like radio buttons or menu items.
+   */
+  invoke(): void
+  /**
    * Scroll the element in a given direction.
    *
    * @param {string} direction - The direction to scroll.
@@ -611,4 +616,20 @@ export declare class Selector {
   chain(other: Selector): Selector
   /** Filter by visibility. */
   visible(isVisible: boolean): Selector
+  /**
+   * Create a selector that selects the nth element from matches.
+   * Positive values are 0-based from the start (0 = first, 1 = second).
+   * Negative values are from the end (-1 = last, -2 = second-to-last).
+   */
+  static nth(index: number): Selector
+  /**
+   * Create a selector that matches elements having at least one descendant matching the inner selector.
+   * This is similar to Playwright's :has() pseudo-class.
+   */
+  static has(innerSelector: Selector): Selector
+  /**
+   * Create a selector that navigates to the parent element.
+   * This is similar to Playwright's .. syntax.
+   */
+  static parent(): Selector
 }

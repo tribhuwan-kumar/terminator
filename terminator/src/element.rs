@@ -423,6 +423,18 @@ pub trait UIElementImpl: Send + Sync + Debug {
     // New method to get the URL if the element is in a browser window
     fn url(&self) -> Option<String>;
 
+    // New method to get HTML content from web browser elements
+    fn get_html_content(&self) -> Result<Option<String>, AutomationError> {
+        // Default implementation returns None (not a web element)
+        Ok(None)
+    }
+
+    // New method to execute JavaScript in web browser elements
+    fn execute_script(&self, _script: &str) -> Result<Option<String>, AutomationError> {
+        // Default implementation returns None (not a web element)
+        Ok(None)
+    }
+
     // New high-level input functions
     fn select_option(&self, option_name: &str) -> Result<(), AutomationError>;
     fn list_options(&self) -> Result<Vec<String>, AutomationError>;
@@ -771,6 +783,55 @@ impl UIElement {
         self.inner.capture()
     }
 
+    /// Capture a screenshot of the element and perform OCR to extract text
+    ///
+    /// # Returns
+    /// * `Ok(String)` - The extracted text from the element screenshot
+    /// * `Err(AutomationError)` - If screenshot capture or OCR fails
+    ///
+    /// # Examples
+    /// ```rust
+    /// use terminator::Desktop;
+    ///
+    /// # async fn example() -> Result<(), terminator::AutomationError> {
+    /// let desktop = Desktop::new(false, false)?;
+    /// let element = desktop.locator("role:Button").first(None).await?;
+    /// let text = element.ocr().await?;
+    /// println!("Button text: {}", text);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn ocr(&self) -> Result<String, AutomationError> {
+        // First capture the element screenshot
+        let screenshot = self.capture()?;
+
+        // Convert the screenshot to a DynamicImage
+        let img_buffer = image::ImageBuffer::from_raw(
+            screenshot.width,
+            screenshot.height,
+            screenshot.image_data,
+        )
+        .ok_or_else(|| {
+            AutomationError::PlatformError(
+                "Failed to create image buffer from screenshot data".to_string(),
+            )
+        })?;
+
+        let dynamic_image = image::DynamicImage::ImageRgba8(img_buffer);
+
+        // Perform OCR using uni_ocr directly
+        let engine = uni_ocr::OcrEngine::new(uni_ocr::OcrProvider::Auto).map_err(|e| {
+            AutomationError::PlatformError(format!("Failed to create OCR engine: {e}"))
+        })?;
+
+        let (text, _language, _confidence) = engine
+            .recognize_image(&dynamic_image)
+            .await
+            .map_err(|e| AutomationError::PlatformError(format!("OCR recognition failed: {e}")))?;
+
+        Ok(text)
+    }
+
     /// Close the element if it's closable (like windows, applications)
     /// Does nothing for non-closable elements (like buttons, text, etc.)
     pub fn close(&self) -> Result<(), AutomationError> {
@@ -780,6 +841,48 @@ impl UIElement {
     /// Get the URL if the element is in a browser window
     pub fn url(&self) -> Option<String> {
         self.inner.url()
+    }
+
+    /// Execute JavaScript in web browser elements (returns None if not a web element)
+    ///
+    /// # Examples
+    /// ```rust
+    /// use terminator::Desktop;
+    ///
+    /// # async fn example() -> Result<(), terminator::AutomationError> {
+    /// let desktop = Desktop::new(false, false)?;
+    /// let browser = desktop.open_url("https://example.com", None)?;
+    /// let document = browser.locator("role:Document").first(None).await?;
+    ///
+    /// if let Some(title) = document.execute_script("document.title")? {
+    ///     println!("Page title: {}", title);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn execute_script(&self, script: &str) -> Result<Option<String>, AutomationError> {
+        self.inner.execute_script(script)
+    }
+
+    /// Get HTML content from web browser elements (returns None if not a web element)
+    ///
+    /// # Examples
+    /// ```rust
+    /// use terminator::Desktop;
+    ///
+    /// # async fn example() -> Result<(), terminator::AutomationError> {
+    /// let desktop = Desktop::new(false, false)?;
+    /// let browser = desktop.open_url("https://example.com", None)?;
+    /// let document = browser.locator("role:Document").first(None).await?;
+    ///
+    /// if let Some(html) = document.get_html_content()? {
+    ///     println!("Page HTML: {}", html);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get_html_content(&self) -> Result<Option<String>, AutomationError> {
+        self.inner.get_html_content()
     }
 
     /// Selects an option in a dropdown or combobox by its visible text.
