@@ -2112,16 +2112,6 @@ impl WindowsUIElement {
             return Ok(Some(result));
         }
 
-        // Strategy 2: Try Chrome DevTools Protocol (for Chrome/Edge)
-        if let Some(result) = self.try_chrome_devtools_protocol(webview_element, script)? {
-            return Ok(Some(result));
-        }
-
-        // Strategy 3: Fallback to automation-based extraction for known scripts
-        if let Some(result) = self.try_automation_fallback(webview_element, script)? {
-            return Ok(Some(result));
-        }
-
         debug!("No WebView2 interface found for script execution");
         Ok(None)
     }
@@ -2333,14 +2323,108 @@ impl WindowsUIElement {
     /// Execute script using WebView2 interface - temporarily disabled for compilation
     fn execute_webview2_script(
         &self,
-        _webview2: &ICoreWebView2,
+        webview2: &ICoreWebView2,
         script: &str,
     ) -> Result<Option<String>, AutomationError> {
-        // Temporarily disabled - WebView2 script execution requires proper handler implementation
-        debug!("WebView2 script execution temporarily disabled: {}", script);
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
 
+        debug!("Executing WebView2 script: {}", script);
+
+        // Create a shared result container
+        let result_container = Arc::new(Mutex::new(None::<Result<String, String>>));
+        let result_container_clone = Arc::clone(&result_container);
+
+        // Create the completion handler
+        let handler = webview2_com::ExecuteScriptCompletedHandler::create(Box::new(
+            move |result, json_result| {
+                let mut container = result_container_clone.lock().unwrap();
+
+                if result.is_ok() {
+                    // Convert PWSTR to String
+                    let s = unsafe { json_result.to_string() };
+                    let script_result = if s.starts_with('"') && s.ends_with('"') && s.len() > 1 {
+                        // Remove quotes from string results
+                        s[1..s.len() - 1]
+                            .replace("\\\"", "\"")
+                            .replace("\\\\", "\\")
+                    } else {
+                        s
+                    };
+                    *container = Some(Ok(script_result));
+                } else {
+                    let error_msg = format!("WebView2 script execution failed: {:?}", result);
+                    *container = Some(Err(error_msg));
+                }
+
+                Ok(())
+            },
+        ));
+
+        // Convert script to PCWSTR
+        let script_wide = script
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>();
+        let script_pcwstr = windows::core::PCWSTR::from_raw(script_wide.as_ptr());
+
+        // Execute the script
+        unsafe { webview2.ExecuteScript(script_pcwstr, &handler) }.map_err(|e| {
+            AutomationError::PlatformError(format!(
+                "Failed to call ExecuteScript on WebView2: {}",
+                e
+            ))
+        })?;
+
+        // Wait for completion with timeout
+        let timeout = Duration::from_secs(10);
+        let start_time = Instant::now();
+
+        loop {
+            // Check if we have a result
+            {
+                let container = result_container.lock().unwrap();
+                if let Some(ref result) = *container {
+                    match result {
+                        Ok(script_result) => {
+                            debug!("WebView2 script completed successfully: {}", script_result);
+                            return Ok(Some(script_result.clone()));
+                        }
+                        Err(error_msg) => {
+                            debug!("WebView2 script failed: {}", error_msg);
+                            return Err(AutomationError::PlatformError(error_msg.clone()));
+                        }
+                    }
+                }
+            }
+
+            // Check timeout
+            if start_time.elapsed() > timeout {
+                return Err(AutomationError::PlatformError(
+                    "WebView2 script execution timeout".to_string(),
+                ));
+            }
+
+            // Wait a bit before checking again
+            std::thread::sleep(Duration::from_millis(10));
+
+            // Process Windows messages to allow the callback to execute
+            unsafe {
+                let mut msg = std::mem::zeroed();
+                while windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+                )
+                .as_bool()
+                {
+                    windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
+                }
+            }
+        }
     }
-
 
     /// Find title element within the document
     fn find_title_element(
