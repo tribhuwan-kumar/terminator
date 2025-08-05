@@ -2,6 +2,7 @@
 
 use super::engine::WindowsEngine;
 use super::types::{HandleGuard, ThreadSafeWinUIElement};
+use super::webview2::WebView2Handler;
 use crate::{AutomationError, UIElement};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -141,6 +142,7 @@ pub fn get_application_by_name(
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                 return Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    webview2_handler: WebView2Handler::new(),
                 })));
             }
         }
@@ -225,6 +227,7 @@ pub fn get_application_by_name(
     let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
     Ok(UIElement::new(Box::new(WindowsUIElement {
         element: arc_ele,
+        webview2_handler: WebView2Handler::new(),
     })))
 }
 
@@ -268,6 +271,7 @@ pub fn get_application_by_pid(
 
     Ok(UIElement::new(Box::new(WindowsUIElement {
         element: arc_ele,
+        webview2_handler: WebView2Handler::new(),
     })))
 }
 

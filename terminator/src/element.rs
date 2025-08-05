@@ -773,7 +773,7 @@ impl UIElement {
     /// # Arguments
     /// * `color` - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
     /// * `duration` - Optional duration for the highlight.
-    /// * `text` - Optional text to display as overlay. Text will be truncated to 10 characters.
+    /// * `text` - Optional text to display as overlay. Text will be truncated to 30 characters.
     /// * `text_position` - Optional position for the text overlay (Top, Bottom, etc.)
     /// * `font_style` - Optional font styling (size, bold, color)
     #[cfg(target_os = "windows")]

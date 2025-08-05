@@ -4,7 +4,7 @@ use super::types::{FontStyle, HighlightHandle, TextPosition, ThreadSafeWinUIElem
 use super::utils::{create_ui_automation_with_com_init, generate_element_id};
 use crate::element::UIElementImpl;
 use crate::platforms::windows::applications::get_application_by_pid;
-use crate::platforms::windows::{highlighting, WindowsEngine};
+use crate::platforms::windows::{highlighting, webview2::WebView2Handler, WindowsEngine};
 use crate::{
     AutomationError, ClickResult, Locator, ScreenshotResult, Selector, UIElement,
     UIElementAttributes,
@@ -20,10 +20,7 @@ use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uiautomation::UIAutomation;
-use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2;
-use windows::Win32::Foundation::HWND;
-use windows::Win32::System::ProcessStatus::GetModuleBaseNameW;
-use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+
 
 trait ScrollFallback {
     fn scroll_with_fallback(&self, direction: &str, amount: f64) -> Result<(), AutomationError>;
@@ -78,6 +75,7 @@ const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
 pub struct WindowsUIElement {
     pub(crate) element: ThreadSafeWinUIElement,
+    pub(crate) webview2_handler: WebView2Handler,
 }
 
 impl Debug for WindowsUIElement {
@@ -217,6 +215,7 @@ impl UIElementImpl for WindowsUIElement {
             .map(|ele| {
                 UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(ele)),
+                    webview2_handler: WebView2Handler::new(),
                 }))
             })
             .collect())
@@ -240,6 +239,7 @@ impl UIElementImpl for WindowsUIElement {
             Ok(parent_element) => {
                 let par_ele = UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(parent_element)),
+                    webview2_handler: WebView2Handler::new(),
                 }));
                 Ok(Some(par_ele))
             }
@@ -770,6 +770,7 @@ impl UIElementImpl for WindowsUIElement {
 
         let self_element = UIElement::new(Box::new(WindowsUIElement {
             element: self.element.clone(),
+            webview2_handler: WebView2Handler::new(),
         }));
 
         Ok(Locator::new(std::sync::Arc::new(automation), selector).within(self_element))
@@ -778,6 +779,7 @@ impl UIElementImpl for WindowsUIElement {
     fn clone_box(&self) -> Box<dyn UIElementImpl> {
         Box::new(WindowsUIElement {
             element: self.element.clone(),
+            webview2_handler: WebView2Handler::new(),
         })
     }
 
@@ -1032,6 +1034,7 @@ impl UIElementImpl for WindowsUIElement {
                         // Found the window
                         let window_ui_element = WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
+                            webview2_handler: WebView2Handler::new(),
                         };
                         return Ok(Some(UIElement::new(Box::new(window_ui_element))));
                     }
@@ -1370,13 +1373,11 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     /// Execute JavaScript in WebView2 controls (if this element is part of one)
-    fn execute_script(&self, script: &str) -> Result<Option<String>, AutomationError> {
-        // Try to find a WebView2 control that contains this element
-        if let Some(webview2) = self.find_webview2_control()? {
-            return self.execute_script_in_webview2(&webview2, script);
-        }
-
-        // If no WebView2 found, return None (not a web element)
+    fn execute_script(&self, _script: &str) -> Result<Option<String>, AutomationError> {
+        // LEGACY: Complex WebView2 COM approach (disabled for safety)
+        debug!("⚠️  Legacy execute_script called - use execute_script_cdp() for lightweight approach");
+        
+        // For now, return None and recommend the async CDP approach
         Ok(None)
     }
 
@@ -1925,501 +1926,33 @@ impl UIElementImpl for WindowsUIElement {
 }
 
 impl WindowsUIElement {
-    /// Private helper methods for WebView2 functionality
-    /// Find WebView2 control that contains this element
-    fn find_webview2_control(
-        &self,
-    ) -> Result<Option<Arc<uiautomation::UIElement>>, AutomationError> {
-        // Start from current element and walk up the tree
-        let mut current = Some(self.element.0.clone());
-
-        while let Some(element) = current {
-            // Check if this element is a WebView2 control
-            if self.is_webview2_element(&element)? {
-                return Ok(Some(element));
-            }
-
-            // Move to parent
-            current = element.get_cached_parent().ok().map(Arc::new);
-        }
-
-        Ok(None)
-    }
-
-    /// Check if an element is a WebView2 control
-    fn is_webview2_element(
-        &self,
-        element: &Arc<uiautomation::UIElement>,
-    ) -> Result<bool, AutomationError> {
-        // WebView2 detection strategy based on real Chrome/WebView2 behavior:
-        // 1. Check for Chromium-based class names
-        // 2. Check for Document control type (web content)
-        // 3. Check for specific process names
-        // 4. Check automation properties
-
-        let class_name = element.get_classname().unwrap_or_default();
-        let control_type = element.get_control_type().unwrap_or(ControlType::Custom);
-        let name = element.get_name().unwrap_or_default();
-
-        debug!(
-            "WebView2 detection - class: '{}', type: {:?}, name: '{}'",
-            class_name, control_type, name
-        );
-
-        // Strategy 1: Chromium-based class names
-        let chromium_classes = [
-            "Chrome_WidgetWin_0",                // Main Chrome widget window
-            "Chrome_WidgetWin_1",                // Chrome child windows
-            "Chrome_RenderWidgetHostHWND",       // Chrome render widget
-            "WebView2",                          // Direct WebView2 control
-            "Microsoft.WebView2.Win32.WebView2", // WebView2 XAML control
-        ];
-
-        for webview_class in &chromium_classes {
-            if class_name.contains(webview_class) {
-                debug!("WebView2 detected via class name: {}", webview_class);
-                return Ok(true);
-            }
-        }
-
-        // Strategy 2: Document control type with browser indicators
-        if control_type == ControlType::Document {
-            // Check if parent hierarchy contains browser-related elements
-            if self.has_browser_ancestor(element)? {
-                debug!("WebView2 detected via Document with browser ancestor");
-                return Ok(true);
-            }
-        }
-
-        // Strategy 3: Custom control with WebView indicators
-        if control_type == ControlType::Custom {
-            let name_lower = name.to_lowercase();
-            let class_lower = class_name.to_lowercase();
-
-            if name_lower.contains("webview")
-                || name_lower.contains("browser")
-                || name_lower.contains("edge")
-                || class_lower.contains("webview")
-                || class_lower.contains("browser")
-            {
-                debug!("WebView2 detected via custom control indicators");
-                return Ok(true);
-            }
-        }
-
-        // Strategy 4: Check process name for WebView2 hosts
-        if let Ok(process_id) = element.get_process_id() {
-            if self.is_webview2_process(process_id)? {
-                debug!("WebView2 detected via process name");
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// Check if element has browser-related ancestors
-    fn has_browser_ancestor(
-        &self,
-        element: &Arc<uiautomation::UIElement>,
-    ) -> Result<bool, AutomationError> {
-        let mut current = element.get_cached_parent().ok();
-        let mut depth = 0;
-
-        while let Some(parent) = current {
-            depth += 1;
-            if depth > 10 {
-                break;
-            } // Limit traversal depth
-
-            let class_name = parent.get_classname().unwrap_or_default().to_lowercase();
-            let name = parent.get_name().unwrap_or_default().to_lowercase();
-
-            // Look for browser-related class names or names
-            if class_name.contains("chrome")
-                || class_name.contains("edge")
-                || class_name.contains("webview")
-                || class_name.contains("browser")
-                || name.contains("browser")
-                || name.contains("edge")
-                || name.contains("chrome")
-            {
-                return Ok(true);
-            }
-
-            current = parent.get_cached_parent().ok();
-        }
-
-        Ok(false)
-    }
-
-    /// Check if process is a WebView2 host
-    fn is_webview2_process(&self, process_id: u32) -> Result<bool, AutomationError> {
-        use std::ffi::OsString;
-        use std::os::windows::ffi::OsStringExt;
-        use windows::Win32::Foundation::CloseHandle;
-
-        unsafe {
-            let handle = match OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                false,
-                process_id,
-            ) {
-                Ok(h) => h,
-                Err(_) => return Ok(false),
-            };
-
-            let mut buffer = [0u16; 260]; // MAX_PATH
-            let len = GetModuleBaseNameW(handle, None, &mut buffer);
-            let _ = CloseHandle(handle);
-
-            if len > 0 {
-                let process_name = OsString::from_wide(&buffer[..len as usize])
-                    .to_string_lossy()
-                    .to_lowercase();
-
-                debug!("Process name for PID {}: {}", process_id, process_name);
-
-                // Check for WebView2 host processes
-                let webview2_processes = [
-                    "msedgewebview2.exe",
-                    "webview2.exe",
-                    "edge.exe",
-                    "chrome.exe",
-                ];
-
-                for webview_process in &webview2_processes {
-                    if process_name.contains(webview_process) {
-                        return Ok(true);
-                    }
-                }
-            }
-        }
-
-        Ok(false)
-    }
-
-    /// Execute script in a detected WebView2 control using COM interfaces
-    fn execute_script_in_webview2(
-        &self,
-        webview_element: &Arc<uiautomation::UIElement>,
-        script: &str,
-    ) -> Result<Option<String>, AutomationError> {
-        debug!("WebView2 script execution requested: {}", script);
-
-        // Strategy 1: Try to get WebView2 interface through window hierarchy
-        if let Some(result) = self.try_webview2_com_interface(webview_element, script)? {
-            return Ok(Some(result));
-        }
-
-        debug!("No WebView2 interface found for script execution");
-        Ok(None)
-    }
-
-    /// Try to execute script using WebView2 COM interface
-    fn try_webview2_com_interface(
-        &self,
-        webview_element: &Arc<uiautomation::UIElement>,
-        script: &str,
-    ) -> Result<Option<String>, AutomationError> {
-        // Get the window handle from the UI element
-        let hwnd = self.get_element_hwnd(webview_element)?;
-        if hwnd.is_invalid() {
-            debug!("Could not get HWND from WebView2 element");
+    /// LIGHTWEIGHT: Execute JavaScript using Chrome DevTools Protocol (RECOMMENDED)
+    pub async fn execute_script_cdp(&self, script: &str) -> Result<Option<String>, AutomationError> {
+        use super::cdp_client::CdpClient;
+        
+        debug!("🚀 LIGHTWEIGHT: CDP script execution: {}", script);
+        
+        let cdp = CdpClient::edge();
+        
+        // Check if browser available
+        if !cdp.is_available().await {
+            debug!("❌ No browser with CDP. Launch with: msedge.exe --remote-debugging-port=9222");
             return Ok(None);
         }
-
-        debug!("Got HWND: {:?} for WebView2 element", hwnd);
-
-        // Try to find WebView2 interface through the window
-        match self.find_webview2_interface(hwnd) {
-            Ok(Some(webview2)) => {
-                debug!("Found WebView2 interface, executing script");
-                self.execute_webview2_script(&webview2, script)
+        
+        // Execute on any available tab
+        match cdp.execute_on_page("", script).await {
+            Ok(result) => {
+                let result_str = result.as_str().unwrap_or("").to_string();
+                debug!("✅ CDP script success: {}", result_str);
+                Ok(Some(result_str))
             }
-            Ok(None) => {
-                debug!("No WebView2 interface found for HWND");
+            Err(e) => {
+                debug!("❌ CDP script failed: {}", e);
                 Ok(None)
-            }
-            Err(e) => {
-                debug!("Error finding WebView2 interface: {}", e);
-                Ok(None)
-            }
-        }
-    }
-
-    /// Get HWND from UI automation element
-    fn get_element_hwnd(
-        &self,
-        element: &Arc<uiautomation::UIElement>,
-    ) -> Result<HWND, AutomationError> {
-        use windows::Win32::Foundation::HWND;
-
-        debug!(
-            "Getting HWND for element with control type: {:?}",
-            element.get_control_type().unwrap_or(ControlType::Custom)
-        );
-
-        // Strategy 1: If this element has a process ID, find its main window
-        if let Ok(process_id) = element.get_process_id() {
-            debug!("Element has process ID: {}", process_id);
-            if let Some(hwnd) = self.find_main_window_for_process(process_id)? {
-                debug!("Found main window HWND via process ID: {:?}", hwnd);
-                return Ok(hwnd);
-            }
-        }
-
-        // Strategy 2: Traverse up to find a window with HWND
-        let mut current = Some(element.clone());
-        let mut depth = 0;
-        while let Some(elem) = current {
-            depth += 1;
-            if depth > 20 {
-                break;
-            } // Prevent infinite loops
-
-            debug!(
-                "Checking element at depth {}, control type: {:?}",
-                depth,
-                elem.get_control_type().unwrap_or(ControlType::Custom)
-            );
-
-            // Try to get HWND from this element
-            if let Ok(handle_value) = elem.get_property_value(UIProperty::NativeWindowHandle) {
-                let handle_str = handle_value.to_string();
-                debug!("Found NativeWindowHandle: '{}'", handle_str);
-
-                // Parse handle - could be in format "I4(123456)" or just "123456"
-                let handle_num = if handle_str.starts_with("I4(") && handle_str.ends_with(')') {
-                    // Extract number from I4(number) format
-                    let inner = &handle_str[3..handle_str.len() - 1];
-                    inner.parse::<isize>().unwrap_or(0)
-                } else {
-                    // Try to parse directly
-                    handle_str.parse::<isize>().unwrap_or(0)
-                };
-
-                if handle_num != 0 {
-                    debug!("Valid HWND found: {}", handle_num);
-                    return Ok(HWND(handle_num as *mut std::ffi::c_void));
-                } else {
-                    debug!("Invalid or zero HWND: {}", handle_num);
-                }
-            }
-
-            // Move to parent
-            current = elem.get_cached_parent().ok().map(Arc::new);
-        }
-
-        debug!("No HWND found after traversing {} levels", depth);
-        Err(AutomationError::ElementNotFound(
-            "No HWND found".to_string(),
-        ))
-    }
-
-    /// Find main window for a process ID  
-    fn find_main_window_for_process(
-        &self,
-        process_id: u32,
-    ) -> Result<Option<HWND>, AutomationError> {
-        debug!("Finding main window for process ID: {}", process_id);
-
-        // Simple approach: For WebView2 detection, we just need to verify the process exists
-        // and is Edge. We'll use a different strategy to get the actual WebView2 interface.
-
-        // Check if this is an Edge process
-        let mut system = sysinfo::System::new();
-        system.refresh_processes_specifics(
-            sysinfo::ProcessesToUpdate::All,
-            true,
-            sysinfo::ProcessRefreshKind::everything(),
-        );
-
-        for (pid, process) in system.processes() {
-            if pid.as_u32() == process_id {
-                let process_name = process.name().to_string_lossy();
-                debug!("Found process {} with name: {}", process_id, process_name);
-
-                if process_name.contains("msedge")
-                    || process_name.contains("chrome")
-                    || process_name.contains("edge")
-                {
-                    debug!("Process {} is a browser, returning valid HWND", process_id);
-                    // Return a non-zero HWND to indicate we found a valid browser process
-                    // The actual HWND doesn't matter for WebView2 COM interface detection
-                    return Ok(Some(HWND(process_id as isize as *mut std::ffi::c_void)));
-                }
-            }
-        }
-
-        debug!("No browser process found for PID {}", process_id);
-        Ok(None)
-    }
-
-    /// Find WebView2 interface from window handle
-    fn find_webview2_interface(
-        &self,
-        hwnd: HWND,
-    ) -> Result<Option<ICoreWebView2>, AutomationError> {
-        debug!(
-            "Attempting real WebView2 COM interface lookup for HWND: {:?}",
-            hwnd
-        );
-
-        // Strategy 1: Try to find existing WebView2 interface via environment
-        match self.try_find_existing_webview2(hwnd) {
-            Ok(Some(webview2)) => {
-                debug!("Found existing WebView2 interface");
-                return Ok(Some(webview2));
-            }
-            Ok(None) => {
-                debug!("No existing WebView2 interface found");
-            }
-            Err(e) => {
-                debug!("Error finding existing WebView2 interface: {}", e);
-            }
-        }
-
-        // Strategy 2: Try to create a new WebView2 environment and controller
-        match self.try_create_webview2_environment(hwnd) {
-            Ok(Some(webview2)) => {
-                debug!("Created new WebView2 interface");
-                return Ok(Some(webview2));
-            }
-            Ok(None) => {
-                debug!("Could not create WebView2 interface");
-            }
-            Err(e) => {
-                debug!("Error creating WebView2 interface: {}", e);
-            }
-        }
-
-        debug!("WebView2 interface not available via any method");
-        Ok(None)
-    }
-
-    /// Try to find existing WebView2 interface
-    fn try_find_existing_webview2(
-        &self,
-        _hwnd: HWND,
-    ) -> Result<Option<ICoreWebView2>, AutomationError> {
-        // This would require deep WebView2 COM interaction
-        // For now, return None - complex implementation needed
-        debug!("Existing WebView2 interface lookup not yet implemented");
-        Ok(None)
-    }
-
-    /// Try to create new WebView2 environment
-    fn try_create_webview2_environment(
-        &self,
-        _hwnd: HWND,
-    ) -> Result<Option<ICoreWebView2>, AutomationError> {
-        // This would require creating a new WebView2 environment
-        // For now, return None - requires async WebView2 creation
-        debug!("WebView2 environment creation not yet implemented");
-        Ok(None)
-    }
-
-    /// Execute script using WebView2 interface - temporarily disabled for compilation
-    fn execute_webview2_script(
-        &self,
-        webview2: &ICoreWebView2,
-        script: &str,
-    ) -> Result<Option<String>, AutomationError> {
-        use std::sync::{Arc, Mutex};
-        use std::time::{Duration, Instant};
-
-        debug!("Executing WebView2 script: {}", script);
-
-        // Create a shared result container
-        let result_container = Arc::new(Mutex::new(None::<Result<String, String>>));
-        let result_container_clone = Arc::clone(&result_container);
-
-        // Create the completion handler
-        let handler = webview2_com::ExecuteScriptCompletedHandler::create(Box::new(
-            move |result, json_result| {
-                let mut container = result_container_clone.lock().unwrap();
-
-                if result.is_ok() {
-                    // Convert PWSTR to String
-                    let s = json_result.to_string();
-                    let script_result = if s.starts_with('"') && s.ends_with('"') && s.len() > 1 {
-                        // Remove quotes from string results
-                        s[1..s.len() - 1]
-                            .replace("\\\"", "\"")
-                            .replace("\\\\", "\\")
-                    } else {
-                        s
-                    };
-                    *container = Some(Ok(script_result));
-                } else {
-                    let error_msg = format!("WebView2 script execution failed: {result:?}");
-                    *container = Some(Err(error_msg));
-                }
-
-                Ok(())
-            },
-        ));
-
-        // Convert script to PCWSTR
-        let script_wide = script
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect::<Vec<u16>>();
-        let script_pcwstr = windows::core::PCWSTR::from_raw(script_wide.as_ptr());
-
-        // Execute the script
-        unsafe { webview2.ExecuteScript(script_pcwstr, &handler) }.map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to call ExecuteScript on WebView2: {e}"))
-        })?;
-
-        // Wait for completion with timeout
-        let timeout = Duration::from_secs(10);
-        let start_time = Instant::now();
-
-        loop {
-            // Check if we have a result
-            {
-                let container = result_container.lock().unwrap();
-                if let Some(ref result) = *container {
-                    match result {
-                        Ok(script_result) => {
-                            debug!("WebView2 script completed successfully: {}", script_result);
-                            return Ok(Some(script_result.clone()));
-                        }
-                        Err(error_msg) => {
-                            debug!("WebView2 script failed: {}", error_msg);
-                            return Err(AutomationError::PlatformError(error_msg.clone()));
-                        }
-                    }
-                }
-            }
-
-            // Check timeout
-            if start_time.elapsed() > timeout {
-                return Err(AutomationError::PlatformError(
-                    "WebView2 script execution timeout".to_string(),
-                ));
-            }
-
-            // Wait a bit before checking again
-            std::thread::sleep(Duration::from_millis(10));
-
-            // Process Windows messages to allow the callback to execute
-            unsafe {
-                let mut msg = std::mem::zeroed();
-                while windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
-                    &mut msg,
-                    None,
-                    0,
-                    0,
-                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
-                )
-                .as_bool()
-                {
-                    windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
-                }
             }
         }
     }
 }
+
+

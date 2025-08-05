@@ -13,7 +13,7 @@ use uiautomation::UIElement;
 use windows::Win32::Foundation::{COLORREF, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
     CreateFontW, CreatePen, DeleteObject, DrawTextW, GetDC, GetStockObject, Rectangle, ReleaseDC,
-    SelectObject, SetBkMode, SetTextColor, DT_CENTER, DT_SINGLELINE, DT_VCENTER, HGDIOBJ,
+    SelectObject, SetBkMode, SetTextColor, DT_SINGLELINE, HGDIOBJ,
     NULL_BRUSH, PS_SOLID, TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
@@ -70,16 +70,16 @@ pub fn highlight(
         x, y, width, height, scale_factor
     );
 
-    // Prepare text overlay data
+    // Prepare text overlay data (no truncation for better readability)
     let text_data = text.map(|t| {
-        let truncated = if t.len() > 10 {
-            format!("{}...", &t[..7])
+        let display_text = if t.len() > 30 {
+            format!("{}...", &t[..27]) // Allow longer text (30 chars max)
         } else {
             t.to_string()
         };
         let font_style = font_style.unwrap_or_default();
         let position = text_position.unwrap_or(TextPosition::Top);
-        (truncated, font_style, position)
+        (display_text, font_style, position)
     });
 
     // Create atomic bool for controlling the highlight thread
@@ -197,7 +197,7 @@ fn draw_text_overlay(
         unsafe {
             // Calculate text position with better spacing and sizing for visibility
             let (text_x, text_y, text_width, text_height) = match position {
-                TextPosition::Top => (x, y - 60, width.max(200), 50),
+                TextPosition::Top => (x, y - 35, width.max(250), 40), // Increased width for longer text
                 TextPosition::TopRight => (x + width + 15, y - 60, 200, 50),
                 TextPosition::Right => (x + width + 15, y + height / 2 - 25, 200, 50),
                 TextPosition::BottomRight => (x + width + 15, y + height + 15, 200, 50),
@@ -252,18 +252,18 @@ fn draw_text_overlay(
             wide_text.push(0);
 
             let mut text_rect = RECT {
-                left: text_x + 10,
-                top: text_y + 10,
-                right: text_x + text_width - 10,
-                bottom: text_y + text_height - 10,
+                left: text_x + 5,
+                top: text_y + 5,
+                right: text_x + text_width - 5,
+                bottom: text_y + text_height - 5,
             };
 
-            // Draw text with better flags
+            // Draw text with top-left alignment 
             let result = DrawTextW(
                 hdc,
                 &mut wide_text,
                 &mut text_rect,
-                DT_CENTER | DT_SINGLELINE | DT_VCENTER,
+                DT_SINGLELINE, // Left-aligned, top-aligned text
             );
 
             debug!("DrawTextW result: {}", result);

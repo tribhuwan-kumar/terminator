@@ -33,6 +33,7 @@ blake3 = "1.5.0"
 name = "terminator"
 path = "src/lib.rs"
 
+
 [target.'cfg(target_os = "linux")'.dependencies]
 atspi = { version = "0.26.3", features = [
     "tokio",
@@ -106,3 +107,4 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 warp = "0.3.7"
 tiny_http = "0.12.0"
 urlencoding = "2.1.3"
+

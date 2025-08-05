@@ -4,6 +4,7 @@
 //! the Windows UI Automation API through the uiautomation crate.
 
 pub mod applications;
+pub mod cdp_client;
 pub mod element;
 pub mod engine;
 pub mod highlighting;

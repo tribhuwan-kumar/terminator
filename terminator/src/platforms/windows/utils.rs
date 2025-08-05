@@ -1,6 +1,7 @@
 //! Utility functions and type conversions for Windows platform
 
 use super::types::ThreadSafeWinUIElement;
+use super::webview2::WebView2Handler;
 use crate::{AutomationError, UIElement};
 use std::sync::Arc;
 use uiautomation::controls::ControlType;
@@ -83,7 +84,10 @@ pub fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, A
 /// Converts a raw uiautomation::UIElement to a terminator UIElement
 pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIElement) -> UIElement {
     let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-    UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
+    UIElement::new(Box::new(WindowsUIElement { 
+        element: arc_ele,
+        webview2_handler: WebView2Handler::new(),
+    }))
 }
 
 /// Helper function to create UIAutomation instance with proper COM initialization
