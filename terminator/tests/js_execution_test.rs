@@ -1,6 +1,6 @@
 use std::time::Duration;
 use terminator::{Browser, Desktop};
-use tracing::{debug, info};
+use tracing::info;
 
 #[tokio::test]
 async fn test_js_execution_basic() -> Result<(), Box<dyn std::error::Error>> {
@@ -41,7 +41,7 @@ async fn test_js_execution_basic() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(e) => {
             info!("  💥 ERROR: Script execution failed: {}", e);
-            panic!("JavaScript execution failed: {}", e);
+            panic!("JavaScript execution failed: {e}");
         }
     }
 
@@ -112,7 +112,7 @@ async fn test_html_content_extraction() -> Result<(), Box<dyn std::error::Error>
         }
         Err(e) => {
             info!("  💥 ERROR: HTML extraction failed: {}", e);
-            panic!("HTML extraction failed: {}", e);
+            panic!("HTML extraction failed: {e}");
         }
     }
 

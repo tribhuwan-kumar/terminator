@@ -61,8 +61,7 @@ pub fn highlight(
     // Validate coordinates
     if width <= 0 || height <= 0 {
         return Err(AutomationError::PlatformError(format!(
-            "Invalid element dimensions: width={}, height={}",
-            width, height
+            "Invalid element dimensions: width={width}, height={height}"
         )));
     }
 

@@ -14,7 +14,7 @@ use uiautomation::types::{TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 
 // Windows API imports
-use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
+use windows::core::{HRESULT, HSTRING, PCWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE, HWND};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,

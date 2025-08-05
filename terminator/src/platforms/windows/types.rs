@@ -2,7 +2,6 @@
 
 use crate::AutomationError;
 use std::sync::Arc;
-use uiautomation::UIAutomation;
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 
 /// RAII wrapper for Windows HANDLE that ensures proper cleanup

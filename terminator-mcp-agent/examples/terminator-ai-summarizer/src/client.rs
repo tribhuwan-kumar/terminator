@@ -40,7 +40,7 @@ pub async fn get_mcp_tool_result(
         tool_name, &result
     );
 
-    if let Some(first_content) = result.content.get(0) {
+    if let Some(first_content) = result.content.first() {
         match &first_content.raw {
             rmcp::model::RawContent::Text(raw_text_content) => {
                 let parsed_json: serde_json::Value = serde_json::from_str(&raw_text_content.text)?;

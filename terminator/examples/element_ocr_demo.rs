@@ -44,7 +44,7 @@ async fn main() -> Result<(), AutomationError> {
             println!("   📏 Length: {} characters", ocr_text.len());
         }
         Err(e) => {
-            println!("   ❌ OCR failed: {}", e);
+            println!("   ❌ OCR failed: {e}");
         }
     }
 
@@ -56,7 +56,7 @@ async fn main() -> Result<(), AutomationError> {
             println!("   📏 Length: {} characters", native_text.len());
         }
         Err(e) => {
-            println!("   ❌ Native text failed: {}", e);
+            println!("   ❌ Native text failed: {e}");
         }
     }
 
@@ -74,11 +74,11 @@ async fn main() -> Result<(), AutomationError> {
                 }
             }
             Err(e) => {
-                println!("   ❌ Title OCR failed: {}", e);
+                println!("   ❌ Title OCR failed: {e}");
             }
         },
         Err(e) => {
-            println!("   ❌ Could not find title bar: {}", e);
+            println!("   ❌ Could not find title bar: {e}");
         }
     }
 
@@ -102,16 +102,16 @@ async fn main() -> Result<(), AutomationError> {
                         .collect();
 
                     if !found_items.is_empty() {
-                        println!("   🎯 Detected menu items: {:?}", found_items);
+                        println!("   🎯 Detected menu items: {found_items:?}");
                     }
                 }
                 Err(e) => {
-                    println!("   ❌ Menu OCR failed: {}", e);
+                    println!("   ❌ Menu OCR failed: {e}");
                 }
             }
         }
         Err(e) => {
-            println!("   ❌ Could not find menu bar: {}", e);
+            println!("   ❌ Could not find menu bar: {e}");
         }
     }
 
@@ -128,8 +128,8 @@ async fn main() -> Result<(), AutomationError> {
     let _capture_result = text_area.capture();
     let capture_duration = start.elapsed();
 
-    println!("   ⏱️  Capture only: {:?}", capture_duration);
-    println!("   ⏱️  OCR (capture + recognition): {:?}", ocr_duration);
+    println!("   ⏱️  Capture only: {capture_duration:?}");
+    println!("   ⏱️  OCR (capture + recognition): {ocr_duration:?}");
     println!("   📊 OCR overhead: {:?}", ocr_duration - capture_duration);
 
     // Clean up

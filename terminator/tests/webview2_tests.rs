@@ -9,7 +9,7 @@
 #[cfg(target_os = "windows")]
 mod windows_webview2_tests {
     use std::time::Duration;
-    use terminator::{AutomationError, Desktop};
+    use terminator::Desktop;
     use tracing::info;
     use tracing_subscriber::FmtSubscriber;
 
@@ -134,7 +134,7 @@ mod windows_webview2_tests {
                 || class_name.contains("WebView2")
                 || class_name.contains("Edge_WebView2");
 
-            assert!(is_webview2, "Should detect {} as WebView2", class_name);
+            assert!(is_webview2, "Should detect {class_name} as WebView2");
         }
 
         // Test non-WebView2 classes
@@ -144,7 +144,7 @@ mod windows_webview2_tests {
                 || class_name.contains("WebView2")
                 || class_name.contains("Edge_WebView2");
 
-            assert!(!is_webview2, "Should not detect {} as WebView2", class_name);
+            assert!(!is_webview2, "Should not detect {class_name} as WebView2");
         }
     }
 

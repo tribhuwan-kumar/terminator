@@ -2353,7 +2353,7 @@ impl WindowsUIElement {
                     };
                     *container = Some(Ok(script_result));
                 } else {
-                    let error_msg = format!("WebView2 script execution failed: {:?}", result);
+                    let error_msg = format!("WebView2 script execution failed: {result:?}");
                     *container = Some(Err(error_msg));
                 }
 
@@ -2371,8 +2371,7 @@ impl WindowsUIElement {
         // Execute the script
         unsafe { webview2.ExecuteScript(script_pcwstr, &handler) }.map_err(|e| {
             AutomationError::PlatformError(format!(
-                "Failed to call ExecuteScript on WebView2: {}",
-                e
+                "Failed to call ExecuteScript on WebView2: {e}"
             ))
         })?;
 

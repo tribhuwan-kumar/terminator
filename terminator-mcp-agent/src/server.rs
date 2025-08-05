@@ -301,10 +301,7 @@ impl DesktopWrapper {
 
                 tokio::spawn(async move {
                     let tree = if include_tree && app_pid > 0 {
-                        match desktop.get_window_tree(app_pid, None, config) {
-                            Ok(tree_data) => Some(tree_data),
-                            Err(_) => None,
-                        }
+                        desktop.get_window_tree(app_pid, None, config).ok()
                     } else {
                         None
                     };

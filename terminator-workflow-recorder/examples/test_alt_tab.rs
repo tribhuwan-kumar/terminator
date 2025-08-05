@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             match &event {
                 terminator_workflow_recorder::WorkflowEvent::Hotkey(hotkey_event) => {
-                    if hotkey_event.action.as_ref().map(|a| a.as_str()) == Some("Switch Window") {
+                    if hotkey_event.action.as_deref() == Some("Switch Window") {
                         println!(
                             "🔥 HOTKEY {}: Alt+Tab detected! ({})",
                             event_count, hotkey_event.combination
@@ -111,10 +111,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .unwrap_or(&"(unknown)".to_string()),
                         app_switch_event.to_application
                     );
-                    println!("     └─ Method: {}", method_icon);
+                    println!("     └─ Method: {method_icon}");
 
                     if let Some(dwell_time) = app_switch_event.dwell_time_ms {
-                        println!("     └─ Previous app duration: {}ms", dwell_time);
+                        println!("     └─ Previous app duration: {dwell_time}ms");
                     }
 
                     if app_switch_event.switch_method
@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         println!("     └─ ℹ️  Switch not attributed to Alt+Tab (may be timeout or different method)");
                     }
-                    println!("");
+                    println!();
                 }
                 _ => {
                     // Ignore other events for this focused test

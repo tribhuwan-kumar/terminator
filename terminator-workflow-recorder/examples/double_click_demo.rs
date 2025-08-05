@@ -3,7 +3,7 @@ use terminator_workflow_recorder::{
     MouseEventType, WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig,
 };
 use tokio::time::timeout;
-use tracing::{error, info};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

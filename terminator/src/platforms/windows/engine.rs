@@ -1,7 +1,6 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
 use crate::element::UIElementImpl;
-use crate::platforms::windows::applications::launch_legacy_app;
 use crate::platforms::windows::tree_builder::{
     build_ui_node_tree_configurable, TreeBuildingConfig, TreeBuildingContext,
 };
@@ -10,17 +9,14 @@ use crate::platforms::windows::utils::{
     create_ui_automation_with_com_init, map_generic_role_to_win_roles, string_to_ui_property,
 };
 use crate::platforms::windows::{
-    applications, generate_element_id, highlighting, FontStyle, HighlightHandle, TextPosition,
+    applications, generate_element_id,
     WindowsUIElement,
 };
 use crate::platforms::AccessibilityEngine;
-use crate::{AutomationError, Locator, Selector, UIElement, UIElementAttributes};
-use crate::{ClickResult, ScreenshotResult};
+use crate::{AutomationError, Selector, UIElement};
+use crate::ScreenshotResult;
 use image::DynamicImage;
 use image::{ImageBuffer, Rgba};
-use serde_json::Value;
-use std::collections::HashMap;
-use std::fmt::Debug;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -28,35 +24,24 @@ use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
 use uiautomation::controls::ControlType;
 use uiautomation::filters::{ClassNameFilter, ControlTypeFilter, NameFilter, OrFilter};
-use uiautomation::inputs::Mouse;
-use uiautomation::patterns;
-use uiautomation::types::{Point, TreeScope, UIProperty};
+use uiautomation::types::{TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uiautomation::UIAutomation;
 use uni_ocr::{OcrEngine, OcrProvider};
 
 // windows imports
-use windows::core::{Error, HRESULT, HSTRING, PCWSTR};
-use windows::Win32::Foundation::HWND;
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HINSTANCE};
+use windows::core::{HRESULT, HSTRING, PCWSTR};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+    CoInitializeEx, COINIT_MULTITHREADED,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
-use windows::Win32::System::ProcessStatus::GetModuleBaseNameW;
-use windows::Win32::System::Registry::HKEY;
-use windows::Win32::System::Threading::GetProcessId;
-use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
-use windows::Win32::UI::Shell::{
-    ApplicationActivationManager, IApplicationActivationManager, ShellExecuteExW, ShellExecuteW,
-    ACTIVATEOPTIONS, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
-};
+use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 // WebView2 types
-use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2;
 
 // For now, let's disable the WebView2 handler to get the project compiling
 // The WebView2 functionality can be re-implemented later with proper version compatibility
@@ -1281,9 +1266,9 @@ impl AccessibilityEngine for WindowsEngine {
                     AutomationError::ElementNotFound(format!("Failed to get elements: {e}"))
                 })?;
 
-                return Ok(UIElement::new(Box::new(WindowsUIElement {
+                Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(element)),
-                })));
+                })))
             }
             Selector::Filter(_filter) => Err(AutomationError::UnsupportedOperation(
                 "`Filter` selector not supported".to_string(),
