@@ -344,6 +344,36 @@ pub struct NavigateBrowserArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ExecuteBrowserScriptArgs {
+    #[schemars(
+        description = "A string selector to locate the browser element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
+    #[schemars(description = "The JavaScript code to execute in the browser console")]
+    pub script: String,
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
+    #[schemars(
+        description = "Whether to include full UI tree in the response. Defaults to false."
+    )]
+    pub include_tree: Option<bool>,
+    #[schemars(
+        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
+    )]
+    pub include_detailed_attributes: Option<bool>,
+    #[schemars(description = "Optional timeout in milliseconds for the action")]
+    pub timeout_ms: Option<u64>,
+    #[schemars(description = "Number of times to retry this step on failure.")]
+    pub retries: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct OpenApplicationArgs {
     #[schemars(description = "Name of the application to open")]
     pub app_name: String,

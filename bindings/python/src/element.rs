@@ -585,19 +585,29 @@ impl UIElement {
             .map_err(automation_error_to_pyerr)
     }
 
-    #[pyo3(name = "execute_script", text_signature = "($self, script)")]
-    /// Execute JavaScript in web browser elements.
-    /// Returns the result of script execution, or None if not a web element.
+    #[pyo3(name = "execute_browser_script", text_signature = "($self, script)")]
+    /// Execute JavaScript in web browser using dev tools console.
+    /// Returns the result of script execution.
     ///
     /// Args:
     ///     script (str): The JavaScript code to execute.
     ///
     /// Returns:
-    ///     Optional[str]: The result of script execution, if available.
-    pub fn execute_script(&self, script: &str) -> PyResult<Option<String>> {
-        self.inner
-            .execute_script(script)
-            .map_err(automation_error_to_pyerr)
+    ///     str: The result of script execution.
+    pub fn execute_browser_script<'py>(
+        &self,
+        py: Python<'py>,
+        script: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let inner = self.inner.clone();
+        let script = script.to_string();
+
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            inner
+                .execute_browser_script(&script)
+                .await
+                .map_err(automation_error_to_pyerr)
+        })
     }
 
     #[pyo3(name = "url", text_signature = "($self)")]
@@ -607,18 +617,6 @@ impl UIElement {
     ///     Optional[str]: The URL, if available.
     pub fn url(&self) -> Option<String> {
         self.inner.url()
-    }
-
-    #[pyo3(name = "get_html_content", text_signature = "($self)")]
-    /// Get HTML content from web browser elements.
-    /// Returns the HTML content as a string, or None if not a web element.
-    ///
-    /// Returns:
-    ///     Optional[str]: The HTML content, if available.
-    pub fn get_html_content(&self) -> PyResult<Option<String>> {
-        self.inner
-            .get_html_content()
-            .map_err(automation_error_to_pyerr)
     }
 
     #[pyo3(name = "get_range_value", text_signature = "($self)")]

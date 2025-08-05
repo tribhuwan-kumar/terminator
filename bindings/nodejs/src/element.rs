@@ -502,22 +502,16 @@ impl Element {
         self.inner.set_toggled(state).map_err(map_error)
     }
 
-    /// Execute JavaScript in web browser elements.
-    /// Returns the result of the script execution as a string, or null if not a web element.
+    /// Execute JavaScript in web browser using dev tools console.
+    /// Returns the result of the script execution as a string.
     ///
     /// @param {string} script - The JavaScript code to execute.
-    /// @returns {string | null} The result of script execution, if available.
+    /// @returns {Promise<string>} The result of script execution.
     #[napi]
-    pub fn execute_script(&self, script: String) -> napi::Result<Option<String>> {
-        self.inner.execute_script(&script).map_err(map_error)
-    }
-
-    /// Get HTML content from web browser elements.
-    /// Returns the HTML content as a string, or null if not a web element.
-    ///
-    /// @returns {string | null} The HTML content, if available.
-    #[napi]
-    pub fn get_html_content(&self) -> napi::Result<Option<String>> {
-        self.inner.get_html_content().map_err(map_error)
+    pub async fn execute_browser_script(&self, script: String) -> napi::Result<String> {
+        self.inner
+            .execute_browser_script(&script)
+            .await
+            .map_err(map_error)
     }
 }

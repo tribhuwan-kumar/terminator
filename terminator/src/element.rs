@@ -426,18 +426,6 @@ pub trait UIElementImpl: Send + Sync + Debug {
     // New method to get the URL if the element is in a browser window
     fn url(&self) -> Option<String>;
 
-    // New method to get HTML content from web browser elements
-    fn get_html_content(&self) -> Result<Option<String>, AutomationError> {
-        // Default implementation returns None (not a web element)
-        Ok(None)
-    }
-
-    // New method to execute JavaScript in web browser elements
-    fn execute_script(&self, _script: &str) -> Result<Option<String>, AutomationError> {
-        // Default implementation returns None (not a web element)
-        Ok(None)
-    }
-
     // New high-level input functions
     fn select_option(&self, option_name: &str) -> Result<(), AutomationError>;
     fn list_options(&self) -> Result<Vec<String>, AutomationError>;
@@ -872,48 +860,6 @@ impl UIElement {
         self.inner.url()
     }
 
-    /// Execute JavaScript in web browser elements (returns None if not a web element)
-    ///
-    /// # Examples
-    /// ```rust
-    /// use terminator::Desktop;
-    ///
-    /// # async fn example() -> Result<(), terminator::AutomationError> {
-    /// let desktop = Desktop::new(false, false)?;
-    /// let browser = desktop.open_url("https://example.com", None)?;
-    /// let document = browser.locator("role:Document").first(None).await?;
-    ///
-    /// if let Some(title) = document.execute_script("document.title")? {
-    ///     println!("Page title: {}", title);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn execute_script(&self, script: &str) -> Result<Option<String>, AutomationError> {
-        self.inner.execute_script(script)
-    }
-
-    /// Get HTML content from web browser elements (returns None if not a web element)
-    ///
-    /// # Examples
-    /// ```rust
-    /// use terminator::Desktop;
-    ///
-    /// # async fn example() -> Result<(), terminator::AutomationError> {
-    /// let desktop = Desktop::new(false, false)?;
-    /// let browser = desktop.open_url("https://example.com", None)?;
-    /// let document = browser.locator("role:Document").first(None).await?;
-    ///
-    /// if let Some(html) = document.get_html_content()? {
-    ///     println!("Page HTML: {}", html);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn get_html_content(&self) -> Result<Option<String>, AutomationError> {
-        self.inner.get_html_content()
-    }
-
     /// Selects an option in a dropdown or combobox by its visible text.
     pub fn select_option(&self, option_name: &str) -> Result<(), AutomationError> {
         self.inner.select_option(option_name)
@@ -1013,21 +959,6 @@ impl UIElement {
     /// serialized to JSON, stored in files, or transmitted over networks.
     pub fn to_serializable(&self) -> SerializableUIElement {
         SerializableUIElement::from(self)
-    }
-
-    /// Explore this element and its direct children
-    /// // mark deprecated
-    #[deprecated(since = "0.3.5")]
-    pub fn explore(&self) -> Result<ExploreResponse, AutomationError> {
-        let mut children = Vec::new();
-        for child in self.children()? {
-            children.push(ExploredElementDetail::from_element(&child, self.id())?);
-        }
-
-        Ok(ExploreResponse {
-            parent: self.clone(),
-            children,
-        })
     }
 
     /// Sets the transparency of the window.

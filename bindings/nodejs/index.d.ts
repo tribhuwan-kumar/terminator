@@ -548,20 +548,14 @@ export declare class Element {
    */
   setToggled(state: boolean): void
   /**
-   * Execute JavaScript in web browser elements.
-   * Returns the result of the script execution as a string, or null if not a web element.
+   * Execute JavaScript in web browser using dev tools console.
+   * Returns the result of the script execution as a string.
    *
    * @param {string} script - The JavaScript code to execute.
-   * @returns {string | null} The result of script execution, if available.
+   * @returns {Promise<string>} The result of script execution.
    */
-  executeScript(script: string): string | null
-  /**
-   * Get HTML content from web browser elements.
-   * Returns the HTML content as a string, or null if not a web element.
-   *
-   * @returns {string | null} The HTML content, if available.
-   */
-  getHtmlContent(): string | null
+  executeBrowserScript(script: string): Promise<string>
+
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {

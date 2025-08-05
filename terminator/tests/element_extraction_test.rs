@@ -111,9 +111,12 @@ async fn test_element_text_extraction() -> Result<(), Box<dyn std::error::Error>
     // Test 4: Use JavaScript to extract element content (if available)
     info!("🧪 Test 4: Extract content using JavaScript");
     match document
-        .execute_script("document.body.innerText || document.body.textContent || 'No text found'")
+        .execute_browser_script(
+            "document.body.innerText || document.body.textContent || 'No text found'",
+        )
+        .await
     {
-        Ok(Some(body_text)) => {
+        Ok(body_text) => {
             let preview = if body_text.len() > 200 {
                 format!("{}...", &body_text[..200])
             } else {
@@ -121,34 +124,34 @@ async fn test_element_text_extraction() -> Result<(), Box<dyn std::error::Error>
             };
             info!("  ✅ SUCCESS: Body text via JS: '{}'", preview);
         }
-        Ok(None) => {
-            info!("  ❌ JavaScript execution returned None");
-        }
         Err(e) => {
-            info!("  💥 JavaScript execution failed: {}", e);
+            info!("  💥 Browser script execution failed: {}", e);
         }
     }
 
-    // Test 5: Try to extract HTML content
-    info!("🧪 Test 5: Extract HTML content");
-    match document.get_html_content() {
-        Ok(Some(html)) => {
+    // Test 5: Try to extract HTML content using browser script
+    info!("🧪 Test 5: Extract HTML content using browser script");
+    match document
+        .execute_browser_script("document.documentElement.outerHTML")
+        .await
+    {
+        Ok(html) => {
             let preview = if html.len() > 300 {
                 format!("{}...", &html[..300])
             } else {
                 html
             };
             info!(
-                "  ✅ SUCCESS: HTML content extracted ({} chars): '{}'",
+                "  ✅ SUCCESS: HTML content extracted via browser script ({} chars): '{}'",
                 preview.len(),
                 preview
             );
         }
-        Ok(None) => {
-            info!("  ❌ HTML content extraction returned None");
-        }
         Err(e) => {
-            info!("  💥 HTML content extraction failed: {}", e);
+            info!(
+                "  💥 HTML content extraction via browser script failed: {}",
+                e
+            );
         }
     }
 

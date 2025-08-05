@@ -2,7 +2,7 @@
 //!
 //! This demonstrates the new simplified approach:
 //! 1. Open browser to Dataiku page  
-//! 2. Call element.execute_script() with JavaScript
+//! 2. Call element.execute_browser_script() with JavaScript
 //! 3. Get the result directly - no complex setup needed!
 //!
 //! The script execution:
@@ -151,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n✨ Example completed!");
     println!("\n🔧 Key benefits of this approach:");
-    println!("  ✅ Single function: element.execute_script()");
+    println!("  ✅ Single function: element.execute_browser_script()");
     println!("  ✅ No remote debugging port setup needed");
     println!("  ✅ Works with any JavaScript - you write the extraction logic");
     println!("  ✅ Direct keyboard automation - reliable and simple");

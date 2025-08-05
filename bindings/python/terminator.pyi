@@ -789,16 +789,16 @@ class UIElement:
         Returns:
             None
         """
-    def execute_script(self, script:builtins.str) -> typing.Optional[builtins.str]:
+    async def execute_browser_script(self, script:builtins.str) -> builtins.str:
         r"""
-        Execute JavaScript in web browser elements.
-        Returns the result of script execution, or None if not a web element.
+        Execute JavaScript in web browser using dev tools console.
+        Returns the result of script execution.
         
         Args:
             script (str): The JavaScript code to execute.
         
         Returns:
-            Optional[str]: The result of script execution, if available.
+            str: The result of script execution.
         """
     def url(self) -> typing.Optional[builtins.str]:
         r"""
@@ -807,14 +807,7 @@ class UIElement:
         Returns:
             Optional[str]: The URL, if available.
         """
-    def get_html_content(self) -> typing.Optional[builtins.str]:
-        r"""
-        Get HTML content from web browser elements.
-        Returns the HTML content as a string, or None if not a web element.
-        
-        Returns:
-            Optional[str]: The HTML content, if available.
-        """
+
     def get_range_value(self) -> builtins.float:
         r"""
         Gets the current value from a range-based control like a slider or progress bar.

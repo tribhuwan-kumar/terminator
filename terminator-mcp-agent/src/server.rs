@@ -7,13 +7,13 @@ pub use crate::utils::DesktopWrapper;
 use crate::utils::WaitForOutputParserArgs;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, CloseElementArgs, DelayArgs,
-    ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs, GetFocusedWindowTreeArgs,
-    GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, ImportWorkflowSequenceArgs,
-    LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
-    OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs,
-    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    SetValueArgs, SetZoomArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
-    ZoomArgs,
+    ExecuteBrowserScriptArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
+    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs,
+    ImportWorkflowSequenceArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
+    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
+    RunJavascriptArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs,
+    SetToggledArgs, SetValueArgs, SetZoomArgs, TypeIntoElementArgs, ValidateElementArgs,
+    WaitForElementArgs, ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -2849,6 +2849,15 @@ impl DesktopWrapper {
                     )),
                 }
             }
+            "execute_browser_script" => {
+                match serde_json::from_value::<ExecuteBrowserScriptArgs>(arguments.clone()) {
+                    Ok(args) => self.execute_browser_script(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for execute_browser_script",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
             "open_application" => {
                 match serde_json::from_value::<OpenApplicationArgs>(arguments.clone()) {
                     Ok(args) => self.open_application(Parameters(args)).await,
@@ -3518,6 +3527,64 @@ impl DesktopWrapper {
             "Unsupported JavaScript engine",
             Some(json!({"error": "Unsupported JavaScript engine"})),
         ))
+    }
+
+    #[tool(
+        description = "Execute JavaScript in a browser using dev tools console. Opens dev tools, switches to console, runs the script, and returns the result. Works with any browser that supports dev tools (Chrome, Edge, Firefox)."
+    )]
+    async fn execute_browser_script(
+        &self,
+        Parameters(args): Parameters<ExecuteBrowserScriptArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        use serde_json::json;
+
+        let script_clone = args.script.clone();
+        let ((_, script_result), successful_selector) =
+            crate::utils::find_and_execute_with_retry_with_fallback(
+                &self.desktop,
+                &args.selector,
+                args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
+                args.timeout_ms,
+                args.retries,
+                |el| {
+                    let script = script_clone.clone();
+                    async move { el.execute_browser_script(&script).await }
+                },
+            )
+            .await
+            .map_err(|e| {
+                McpError::internal_error(
+                    "Failed to execute browser script",
+                    Some(json!({
+                        "selector": args.selector,
+                        "script": args.script,
+                        "alternative_selectors": args.alternative_selectors,
+                        "fallback_selectors": args.fallback_selectors,
+                        "error": e.to_string()
+                    })),
+                )
+            })?;
+
+        let mut result_json = json!({
+            "action": "execute_browser_script",
+            "status": "success",
+            "selector": successful_selector,
+            "script": args.script,
+            "result": script_result,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+
+        // Always attach tree for better context
+        maybe_attach_tree(
+            &self.desktop,
+            args.include_tree.unwrap_or(false),
+            args.include_detailed_attributes,
+            None, // Don't filter by process since this could apply to any browser
+            &mut result_json,
+        );
+
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 }
 

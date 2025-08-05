@@ -4,7 +4,7 @@ use tokio::time::sleep;
 use tracing::info;
 
 /// Simple test for the new browser script execution approach
-/// Opens a browser and tests the execute_script function
+/// Opens a browser and tests the execute_browser_script function
 #[tokio::test]
 async fn test_simple_browser_script_execution(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
