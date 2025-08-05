@@ -4,7 +4,7 @@ use super::types::{FontStyle, HighlightHandle, TextPosition, ThreadSafeWinUIElem
 use super::utils::{create_ui_automation_with_com_init, generate_element_id};
 use crate::element::UIElementImpl;
 use crate::platforms::windows::applications::get_application_by_pid;
-use crate::platforms::windows::{highlighting, webview2::WebView2Handler, WindowsEngine};
+use crate::platforms::windows::{highlighting, WindowsEngine};
 use crate::{
     AutomationError, ClickResult, Locator, ScreenshotResult, Selector, UIElement,
     UIElementAttributes,
@@ -20,7 +20,6 @@ use uiautomation::patterns;
 use uiautomation::types::{Point, TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uiautomation::UIAutomation;
-
 
 trait ScrollFallback {
     fn scroll_with_fallback(&self, direction: &str, amount: f64) -> Result<(), AutomationError>;
@@ -75,7 +74,20 @@ const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
 pub struct WindowsUIElement {
     pub(crate) element: ThreadSafeWinUIElement,
-    pub(crate) webview2_handler: WebView2Handler,
+}
+
+impl WindowsUIElement {
+    /// Get the raw UI element for direct automation
+    pub fn get_raw_element(&self) -> &uiautomation::UIElement {
+        &self.element.0
+    }
+
+    /// Create a new WindowsUIElement from a raw uiautomation element
+    pub fn new(element: uiautomation::UIElement) -> Self {
+        Self {
+            element: ThreadSafeWinUIElement(std::sync::Arc::new(element)),
+        }
+    }
 }
 
 impl Debug for WindowsUIElement {
@@ -215,7 +227,6 @@ impl UIElementImpl for WindowsUIElement {
             .map(|ele| {
                 UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(ele)),
-                    webview2_handler: WebView2Handler::new(),
                 }))
             })
             .collect())
@@ -239,7 +250,6 @@ impl UIElementImpl for WindowsUIElement {
             Ok(parent_element) => {
                 let par_ele = UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(parent_element)),
-                    webview2_handler: WebView2Handler::new(),
                 }));
                 Ok(Some(par_ele))
             }
@@ -770,7 +780,6 @@ impl UIElementImpl for WindowsUIElement {
 
         let self_element = UIElement::new(Box::new(WindowsUIElement {
             element: self.element.clone(),
-            webview2_handler: WebView2Handler::new(),
         }));
 
         Ok(Locator::new(std::sync::Arc::new(automation), selector).within(self_element))
@@ -779,7 +788,6 @@ impl UIElementImpl for WindowsUIElement {
     fn clone_box(&self) -> Box<dyn UIElementImpl> {
         Box::new(WindowsUIElement {
             element: self.element.clone(),
-            webview2_handler: WebView2Handler::new(),
         })
     }
 
@@ -1034,7 +1042,6 @@ impl UIElementImpl for WindowsUIElement {
                         // Found the window
                         let window_ui_element = WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
-                            webview2_handler: WebView2Handler::new(),
                         };
                         return Ok(Some(UIElement::new(Box::new(window_ui_element))));
                     }
@@ -1370,27 +1377,6 @@ impl UIElementImpl for WindowsUIElement {
         }
 
         Ok(())
-    }
-
-    /// Execute JavaScript in WebView2 controls (if this element is part of one)
-    fn execute_script(&self, _script: &str) -> Result<Option<String>, AutomationError> {
-        // LEGACY: Complex WebView2 COM approach (disabled for safety)
-        debug!("⚠️  Legacy execute_script called - use execute_script_cdp() for lightweight approach");
-        
-        // For now, return None and recommend the async CDP approach
-        Ok(None)
-    }
-
-    /// Override the default get_html_content to use WebView2 when available
-    fn get_html_content(&self) -> Result<Option<String>, AutomationError> {
-        // Try WebView2 first for accurate HTML
-        if let Some(html) = self.execute_script("document.documentElement.outerHTML")? {
-            return Ok(Some(html));
-        }
-
-        // Fallback to text extraction
-        let text_content = self.get_text(10)?;
-        Ok(Some(text_content))
     }
 
     fn url(&self) -> Option<String> {
@@ -1926,33 +1912,5 @@ impl UIElementImpl for WindowsUIElement {
 }
 
 impl WindowsUIElement {
-    /// LIGHTWEIGHT: Execute JavaScript using Chrome DevTools Protocol (RECOMMENDED)
-    pub async fn execute_script_cdp(&self, script: &str) -> Result<Option<String>, AutomationError> {
-        use super::cdp_client::CdpClient;
-        
-        debug!("🚀 LIGHTWEIGHT: CDP script execution: {}", script);
-        
-        let cdp = CdpClient::edge();
-        
-        // Check if browser available
-        if !cdp.is_available().await {
-            debug!("❌ No browser with CDP. Launch with: msedge.exe --remote-debugging-port=9222");
-            return Ok(None);
-        }
-        
-        // Execute on any available tab
-        match cdp.execute_on_page("", script).await {
-            Ok(result) => {
-                let result_str = result.as_str().unwrap_or("").to_string();
-                debug!("✅ CDP script success: {}", result_str);
-                Ok(Some(result_str))
-            }
-            Err(e) => {
-                debug!("❌ CDP script failed: {}", e);
-                Ok(None)
-            }
-        }
-    }
+    // No more CDP stuff - using direct browser automation now
 }
-
-

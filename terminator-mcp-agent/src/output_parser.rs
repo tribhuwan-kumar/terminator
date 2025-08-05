@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_javascript_parser() {
-        let ui_tree = json!({
+        json!({
             "children": [
                 {
                     "attributes": {

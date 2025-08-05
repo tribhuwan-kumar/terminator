@@ -87,9 +87,6 @@ uiautomation = { version = "0.22.0", features = [
 sysinfo = "0.34.2"
 regex = { workspace = true }
 reqwest = { version = "0.12.5", features = ["json", "blocking", "rustls-tls"] }
-# WebView2 support for HTML extraction
-webview2-com = "0.38.0"
-
 
 [[example]]
 name = "benchmark_example"

@@ -13,8 +13,8 @@ use uiautomation::UIElement;
 use windows::Win32::Foundation::{COLORREF, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
     CreateFontW, CreatePen, DeleteObject, DrawTextW, GetDC, GetStockObject, Rectangle, ReleaseDC,
-    SelectObject, SetBkMode, SetTextColor, DT_SINGLELINE, HGDIOBJ,
-    NULL_BRUSH, PS_SOLID, TRANSPARENT,
+    SelectObject, SetBkMode, SetTextColor, DT_SINGLELINE, HGDIOBJ, NULL_BRUSH, PS_SOLID,
+    TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
@@ -258,7 +258,7 @@ fn draw_text_overlay(
                 bottom: text_y + text_height - 5,
             };
 
-            // Draw text with top-left alignment 
+            // Draw text with top-left alignment
             let result = DrawTextW(
                 hdc,
                 &mut wide_text,

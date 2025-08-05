@@ -5,7 +5,7 @@ use crate::platforms::windows::tree_builder::{
     build_ui_node_tree_configurable, TreeBuildingConfig, TreeBuildingContext,
 };
 use crate::platforms::windows::types::ThreadSafeWinUIElement;
-use crate::platforms::windows::webview2::WebView2Handler;
+
 use crate::platforms::windows::utils::{
     create_ui_automation_with_com_init, map_generic_role_to_win_roles, string_to_ui_property,
 };
@@ -36,13 +36,6 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 };
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-
-// WebView2 types
-
-// For now, let's disable the WebView2 handler to get the project compiling
-// The WebView2 functionality can be re-implemented later with proper version compatibility
-
-// WebView2 imports for HTML extraction - temporarily disabled for compilation
 
 // Define a default timeout duration
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -315,10 +308,7 @@ impl AccessibilityEngine for WindowsEngine {
     fn get_root_element(&self) -> UIElement {
         let root = self.automation.0.get_root_element().unwrap();
         let arc_root = ThreadSafeWinUIElement(Arc::new(root));
-        UIElement::new(Box::new(WindowsUIElement { 
-            element: arc_root,
-            webview2_handler: WebView2Handler::new(),
-        }))
+        UIElement::new(Box::new(WindowsUIElement { element: arc_root }))
     }
 
     fn get_element_by_id(&self, id: i32) -> Result<UIElement, AutomationError> {
@@ -335,7 +325,6 @@ impl AccessibilityEngine for WindowsEngine {
 
         Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_ele,
-            webview2_handler: WebView2Handler::new(),
         })))
     }
 
@@ -349,7 +338,6 @@ impl AccessibilityEngine for WindowsEngine {
 
         Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_element,
-            webview2_handler: WebView2Handler::new(),
         })))
     }
 
@@ -417,10 +405,7 @@ impl AccessibilityEngine for WindowsEngine {
             .into_iter()
             .map(|ele| {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-                UIElement::new(Box::new(WindowsUIElement { 
-                    element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
-                }))
+                UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
             })
             .collect();
 
@@ -508,7 +493,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect())
@@ -555,7 +539,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect();
@@ -583,7 +566,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect())
@@ -619,7 +601,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect())
@@ -679,7 +660,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect();
@@ -727,10 +707,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .into_iter()
                     .map(|ele| {
                         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-                        UIElement::new(Box::new(WindowsUIElement { 
-                    element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
-                }))
+                        UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
                     })
                     .collect())
             }
@@ -821,7 +798,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect())
@@ -852,7 +828,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect())
@@ -886,7 +861,6 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
-                            webview2_handler: WebView2Handler::new(),
                         }))
                     })
                     .collect())
@@ -1095,7 +1069,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             }
             Selector::Id(id) => {
@@ -1138,7 +1111,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             }
             Selector::Name(name) => {
@@ -1162,7 +1134,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             }
             Selector::Text(text) => {
@@ -1196,7 +1167,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             }
             Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
@@ -1245,7 +1215,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             }
             Selector::Attributes(attributes) => {
@@ -1286,10 +1255,9 @@ impl AccessibilityEngine for WindowsEngine {
                     AutomationError::ElementNotFound(format!("Failed to get elements: {e}"))
                 })?;
 
-                        Ok(UIElement::new(Box::new(WindowsUIElement {
-            element: ThreadSafeWinUIElement(Arc::new(element)),
-            webview2_handler: WebView2Handler::new(),
-        })))
+                Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: ThreadSafeWinUIElement(Arc::new(element)),
+                })))
             }
             Selector::Filter(_filter) => Err(AutomationError::UnsupportedOperation(
                 "`Filter` selector not supported".to_string(),
@@ -1384,7 +1352,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             }
             Selector::Visible(visibility) => {
@@ -1408,10 +1375,9 @@ impl AccessibilityEngine for WindowsEngine {
                 let element = matcher.find_first().map_err(|e| {
                     AutomationError::ElementNotFound(format!("Visible: '{visibility}', Err: {e}"))
                 })?;
-                        Ok(UIElement::new(Box::new(WindowsUIElement {
-            element: ThreadSafeWinUIElement(Arc::new(element)),
-            webview2_handler: WebView2Handler::new(),
-        })))
+                Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: ThreadSafeWinUIElement(Arc::new(element)),
+                })))
             }
             Selector::LocalizedRole(localized_role) => {
                 debug!("searching element by localized role: {}", localized_role);
@@ -1437,7 +1403,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             }
             Selector::Nth(_) => Err(AutomationError::InvalidSelector(
@@ -1714,7 +1679,6 @@ impl AccessibilityEngine for WindowsEngine {
                         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                         return Ok(UIElement::new(Box::new(WindowsUIElement {
                             element: arc_ele,
-                            webview2_handler: WebView2Handler::new(),
                         })));
                     }
                     Err(_) => {
@@ -1759,10 +1723,7 @@ impl AccessibilityEngine for WindowsEngine {
                             );
                             let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                             let app =
-                                UIElement::new(Box::new(WindowsUIElement { 
-                    element: arc_ele,
-                    webview2_handler: WebView2Handler::new(),
-                }));
+                                UIElement::new(Box::new(WindowsUIElement { element: arc_ele }));
                             info!(
                                 "Found default browser '{}': {}",
                                 browser_name,
@@ -1933,7 +1894,6 @@ impl AccessibilityEngine for WindowsEngine {
                             let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                             return Ok(UIElement::new(Box::new(WindowsUIElement {
                                 element: arc_ele,
-                                webview2_handler: WebView2Handler::new(),
                             })));
                         }
                         Err(e) => {
@@ -2451,7 +2411,6 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_focused_element = ThreadSafeWinUIElement(Arc::new(focused_element_raw));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_focused_element,
-                    webview2_handler: WebView2Handler::new(),
                 })))
             } else {
                 // If no tab found, fall back to the main window
@@ -2471,7 +2430,6 @@ impl AccessibilityEngine for WindowsEngine {
                             ThreadSafeWinUIElement(Arc::new(focused_element_raw));
                         Ok(UIElement::new(Box::new(WindowsUIElement {
                             element: arc_focused_element,
-                            webview2_handler: WebView2Handler::new(),
                         })))
                     }
                 }
@@ -2522,7 +2480,6 @@ impl AccessibilityEngine for WindowsEngine {
                     if control_type == ControlType::Window || control_type == ControlType::Pane {
                         let window_ui_element = WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
-                            webview2_handler: WebView2Handler::new(),
                         };
                         return Ok(UIElement::new(Box::new(window_ui_element)));
                     }
@@ -2711,7 +2668,6 @@ impl AccessibilityEngine for WindowsEngine {
         // Wrap the raw OS element into our UIElement
         let window_element_wrapper = UIElement::new(Box::new(WindowsUIElement {
             element: ThreadSafeWinUIElement(Arc::new(selected_window)),
-            webview2_handler: WebView2Handler::new(),
         }));
 
         // Build the UI tree with configurable performance optimizations

@@ -8,6 +8,7 @@ use std::fmt;
 use std::sync::Arc;
 use tracing::{debug, error, instrument};
 
+pub mod browser_script;
 pub mod element;
 pub mod errors;
 pub mod locator;

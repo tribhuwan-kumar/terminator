@@ -1093,6 +1093,12 @@ impl UIElement {
         }
         build(self, 0, max_depth)
     }
+
+    /// Execute JavaScript in the browser using dev tools console
+    /// Opens dev tools with F12, switches to console, runs script, extracts result
+    pub async fn execute_browser_script(&self, script: &str) -> Result<String, AutomationError> {
+        crate::browser_script::execute_script(self, script).await
+    }
 }
 
 impl PartialEq for UIElement {

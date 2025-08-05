@@ -455,6 +455,9 @@ async fn test_export_workflow_sequence() -> Result<()> {
         panic!("Unexpected response format");
     }
 
+    // delete the file
+    std::fs::remove_file("test_workflow.yaml").unwrap_or_default();
+
     service.cancel().await?;
     Ok(())
 }
@@ -514,6 +517,9 @@ async fn test_export_workflow_sequence_minimal() -> Result<()> {
     } else {
         panic!("Unexpected response format");
     }
+
+    // delete the file
+    std::fs::remove_file("minimal_test_workflow.yaml").unwrap_or_default();
 
     service.cancel().await?;
     Ok(())

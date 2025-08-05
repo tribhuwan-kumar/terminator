@@ -4,7 +4,6 @@
 //! the Windows UI Automation API through the uiautomation crate.
 
 pub mod applications;
-pub mod cdp_client;
 pub mod element;
 pub mod engine;
 pub mod highlighting;
@@ -12,7 +11,6 @@ pub mod input;
 pub mod tree_builder;
 pub mod types;
 pub mod utils;
-pub mod webview2;
 
 // Re-export the main types that external code needs
 pub use element::WindowsUIElement;
