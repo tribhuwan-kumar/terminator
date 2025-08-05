@@ -23,9 +23,7 @@ tokio = { version = "1", features = [
     "full",
 ] }
 anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-rand = "0.8"
-base64 = "0.22"
+
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d61ebd6e8385cbc4aa105d4e25774fc1a59c", features = [
     "transport-child-process",
     "client",
@@ -34,10 +32,9 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d6
 ] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-async-trait.workspace = true
-tempfile.workspace = true
+
 
 dotenvy = "0.15.7"
 reqwest = { version = "0.12.22", features = ["json", "rustls-tls"] }
-futures-util = "0.3.31"
+
 anthropic-sdk = "0.1.5"
