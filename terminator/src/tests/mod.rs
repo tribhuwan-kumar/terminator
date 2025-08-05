@@ -15,6 +15,8 @@ mod selector_tests;
 mod test_serialization;
 #[cfg(all(test, target_os = "windows"))]
 mod webview2_script_tests;
+#[cfg(all(test, target_os = "windows"))]
+mod dataiku_form_test;
 
 // Initialize tracing for tests
 pub fn init_tracing() {
