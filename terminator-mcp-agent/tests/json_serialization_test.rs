@@ -46,16 +46,15 @@ fn test_extract_content_json_fix() {
     // Serialize and check for excessive escaping
     let json_string =
         serde_json::to_string_pretty(&extracted_content).expect("Failed to stringify");
-    println!("Fixed extraction result:\n{}", json_string);
+    println!("Fixed extraction result:\n{json_string}");
 
     let backslash_count = json_string.matches('\\').count();
-    println!("Backslash count: {}", backslash_count);
+    println!("Backslash count: {backslash_count}");
 
     // Should have minimal escaping now
     assert!(
         backslash_count < 10,
-        "Backslash count should be minimal: {}",
-        backslash_count
+        "Backslash count should be minimal: {backslash_count}"
     );
 
     // Verify the extracted content matches the original
@@ -110,20 +109,19 @@ fn test_json_double_serialization_issue() {
     // Print the result to see the excessive escaping
     let json_string =
         serde_json::to_string_pretty(&extracted_content).expect("Failed to stringify");
-    println!("Double serialized result:\n{}", json_string);
+    println!("Double serialized result:\n{json_string}");
 
     // The issue: Check if the element info is excessively escaped
     let content_str = json_string;
 
     // Count backslashes - there should be way too many
     let backslash_count = content_str.matches('\\').count();
-    println!("Backslash count: {}", backslash_count);
+    println!("Backslash count: {backslash_count}");
 
     // This should fail initially, showing the issue exists
     assert!(
         backslash_count > 50,
-        "Should have many backslashes to demonstrate the issue: {}",
-        backslash_count
+        "Should have many backslashes to demonstrate the issue: {backslash_count}"
     );
 }
 
@@ -145,15 +143,14 @@ fn test_correct_serialization_approach() {
 
     // Instead of serializing the Content object, we should work with the raw JSON
     let json_string = serde_json::to_string_pretty(&result_json).expect("Failed to stringify");
-    println!("Correct serialization:\n{}", json_string);
+    println!("Correct serialization:\n{json_string}");
 
     let backslash_count = json_string.matches('\\').count();
-    println!("Backslash count: {}", backslash_count);
+    println!("Backslash count: {backslash_count}");
 
     // This should pass - minimal escaping
     assert!(
         backslash_count < 10,
-        "Backslash count should be minimal: {}",
-        backslash_count
+        "Backslash count should be minimal: {backslash_count}"
     );
 }

@@ -465,7 +465,7 @@ impl WindowsRecorder {
                                 Self::detect_hotkey(&hotkey_patterns, &active_keys)
                             {
                                 // Check if this is Alt+Tab specifically
-                                if hotkey.action.as_ref().map(|a| a.as_str())
+                                if hotkey.action.as_deref()
                                     == Some("Switch Window")
                                 {
                                     // Mark Alt+Tab as pressed for application switch attribution

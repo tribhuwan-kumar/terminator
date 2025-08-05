@@ -357,7 +357,7 @@ async fn test_alt_tab_rapid_switching() {
 
     // Perform 5 rapid Alt+Tab presses
     for i in 1..=5 {
-        println!("   Rapid Alt+Tab #{}", i);
+        println!("   Rapid Alt+Tab #{i}");
         let _ = calculator.press_key("{Alt}{Tab}");
         tokio::time::sleep(Duration::from_millis(800)).await; // Rapid but not too fast
     }
@@ -374,7 +374,7 @@ async fn test_alt_tab_rapid_switching() {
                 ..
             }) if action == "Switch Window" => {
                 hotkey_count += 1;
-                println!("   ⌨️ Alt+Tab hotkey #{}", hotkey_count);
+                println!("   ⌨️ Alt+Tab hotkey #{hotkey_count}");
             }
             WorkflowEvent::ApplicationSwitch(switch) => {
                 switch_count += 1;
@@ -413,11 +413,10 @@ async fn test_alt_tab_rapid_switching() {
 
     // Analysis
     println!("\n📈 Rapid Switching Test Results:");
-    println!("   • Alt+Tab hotkeys detected: {}", hotkey_count);
-    println!("   • Application switches detected: {}", switch_count);
+    println!("   • Alt+Tab hotkeys detected: {hotkey_count}");
+    println!("   • Application switches detected: {switch_count}");
     println!(
-        "   • Switches attributed to Alt+Tab: {}",
-        alt_tab_attributed_count
+        "   • Switches attributed to Alt+Tab: {alt_tab_attributed_count}"
     );
     println!(
         "   • Attribution rate: {:.1}%",
@@ -431,18 +430,15 @@ async fn test_alt_tab_rapid_switching() {
     // Validation
     assert!(
         hotkey_count >= 3,
-        "Expected at least 3 Alt+Tab hotkeys, got {}",
-        hotkey_count
+        "Expected at least 3 Alt+Tab hotkeys, got {hotkey_count}"
     );
     assert!(
         switch_count >= 2,
-        "Expected at least 2 app switches, got {}",
-        switch_count
+        "Expected at least 2 app switches, got {switch_count}"
     );
     assert!(
         alt_tab_attributed_count >= 1,
-        "Expected at least 1 Alt+Tab attribution, got {}",
-        alt_tab_attributed_count
+        "Expected at least 1 Alt+Tab attribution, got {alt_tab_attributed_count}"
     );
 
     println!("✅ Rapid switching stress test PASSED!");

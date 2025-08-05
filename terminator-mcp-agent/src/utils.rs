@@ -1,3 +1,4 @@
+use crate::mcp_types::{FontStyle, TextPosition};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -282,6 +283,14 @@ pub struct HighlightElementArgs {
     pub color: Option<u32>,
     #[schemars(description = "Duration in milliseconds (optional, default 1000ms)")]
     pub duration_ms: Option<u64>,
+    #[schemars(
+        description = "Optional text to display as overlay. Text will be truncated to 10 characters."
+    )]
+    pub text: Option<String>,
+    #[schemars(description = "Position of text overlay relative to the highlighted element")]
+    pub text_position: Option<TextPosition>,
+    #[schemars(description = "Font styling options for text overlay")]
+    pub font_style: Option<FontStyle>,
     #[schemars(description = "Optional timeout in milliseconds")]
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]

@@ -547,6 +547,21 @@ export declare class Element {
    * @returns {void}
    */
   setToggled(state: boolean): void
+  /**
+   * Execute JavaScript in web browser elements.
+   * Returns the result of the script execution as a string, or null if not a web element.
+   *
+   * @param {string} script - The JavaScript code to execute.
+   * @returns {string | null} The result of script execution, if available.
+   */
+  executeScript(script: string): string | null
+  /**
+   * Get HTML content from web browser elements.
+   * Returns the HTML content as a string, or null if not a web element.
+   *
+   * @returns {string | null} The HTML content, if available.
+   */
+  getHtmlContent(): string | null
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {

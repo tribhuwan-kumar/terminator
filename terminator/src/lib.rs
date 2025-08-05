@@ -15,12 +15,14 @@ pub mod platforms;
 pub mod selector;
 #[cfg(test)]
 mod tests;
+pub mod types;
 pub mod utils;
 
 pub use element::{SerializableUIElement, UIElement, UIElementAttributes};
 pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
+pub use types::{FontStyle, HighlightHandle, TextPosition};
 
 /// Recommend to use any of these: ["Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi"]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

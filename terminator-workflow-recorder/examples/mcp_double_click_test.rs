@@ -4,7 +4,7 @@ use terminator_workflow_recorder::{
 };
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
-use tracing::{info, warn};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match recorder.start().await {
         Ok(_) => println!("✅ Recorder started successfully!"),
         Err(e) => {
-            println!("❌ Failed to start recorder: {}", e);
+            println!("❌ Failed to start recorder: {e}");
             return Err(e.into());
         }
     }
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while start_time.elapsed() < Duration::from_secs(15) {
             match timeout(Duration::from_millis(200), event_stream.next()).await {
                 Ok(Some(event)) => {
-                    println!("📨 Event received: {:?}", event);
+                    println!("📨 Event received: {event:?}");
                     events.push(event.clone());
 
                     if let WorkflowEvent::Mouse(mouse_event) = &event {
@@ -135,7 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match recorder.stop().await {
         Ok(_) => println!("✅ Recorder stopped successfully"),
         Err(e) => {
-            println!("⚠️ Error stopping recorder: {}", e);
+            println!("⚠️ Error stopping recorder: {e}");
         }
     }
 
@@ -146,8 +146,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Print comprehensive results
     println!("📊 TEST RESULTS:");
     println!("   Total events captured: {}", events.len());
-    println!("   Double clicks detected: {}", double_click_count);
-    println!("   Single click events: {}", single_click_count);
+    println!("   Double clicks detected: {double_click_count}");
+    println!("   Single click events: {single_click_count}");
 
     // Print detailed event log
     if !events.is_empty() {
@@ -168,8 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if double_click_count > 0 {
         println!("✅ SUCCESS: Double click detection is working correctly!");
         println!(
-            "   {} double click(s) were successfully detected and recorded",
-            double_click_count
+            "   {double_click_count} double click(s) were successfully detected and recorded"
         );
     } else {
         println!("⚠️  NO DOUBLE CLICKS DETECTED");

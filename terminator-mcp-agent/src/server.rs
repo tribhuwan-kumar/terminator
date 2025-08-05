@@ -302,10 +302,7 @@ impl DesktopWrapper {
 
                 tokio::spawn(async move {
                     let tree = if include_tree && app_pid > 0 {
-                        match desktop.get_window_tree(app_pid, None, config) {
-                            Ok(tree_data) => Some(tree_data),
-                            Err(_) => None,
-                        }
+                        desktop.get_window_tree(app_pid, None, config).ok()
                     } else {
                         None
                     };
@@ -925,7 +922,33 @@ impl DesktopWrapper {
         let duration = args.duration_ms.map(std::time::Duration::from_millis);
         let color = args.color;
 
-        let action = |element: UIElement| async move { element.highlight(color, duration) };
+        let text = args.text.as_deref();
+
+        #[cfg(target_os = "windows")]
+        let text_position = args.text_position.clone().map(|pos| pos.into());
+        #[cfg(not(target_os = "windows"))]
+        let text_position = None;
+
+        #[cfg(target_os = "windows")]
+        let font_style = args.font_style.clone().map(|style| style.into());
+        #[cfg(not(target_os = "windows"))]
+        let font_style = None;
+
+        let action = {
+            move |element: UIElement| {
+                let color = color;
+                let duration = duration;
+                let text_position = text_position;
+                let font_style = font_style.clone();
+                async move {
+                    let _handle =
+                        element.highlight(color, duration, text, text_position, font_style)?;
+                    // Note: We let the handle go out of scope so it auto-closes when function ends
+                    // Return a unit type since highlighting doesn't need to return data like click results
+                    Ok(())
+                }
+            }
+        };
 
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(

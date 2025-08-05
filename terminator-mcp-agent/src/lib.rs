@@ -1,5 +1,6 @@
 pub mod expression_eval;
 pub mod helpers;
+pub mod mcp_types;
 pub mod output_parser;
 pub mod prompt;
 pub mod scripting_engine;

@@ -1,4 +1,4 @@
-use terminator::{AutomationError, Desktop, UIElement};
+use terminator::{AutomationError, Desktop};
 
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
@@ -14,7 +14,7 @@ async fn main() -> Result<(), AutomationError> {
         .first(None)
         .await?;
     let plan_info_text = plan_info.text(100)?;
-    println!("Plan info text: {}", plan_info_text);
+    println!("Plan info text: {plan_info_text}");
 
     // let tree = opened_app.to_serializable_tree(5);
     // let flat_tree = tree.children.iter().flatten().collect::<Vec<_>>();

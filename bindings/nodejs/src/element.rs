@@ -5,7 +5,7 @@ use terminator::{
     UIElement as TerminatorUIElement, UIElementAttributes as TerminatorUIElementAttributes,
 };
 
-use crate::{map_error, Bounds, ClickResult, Locator, ScreenshotResult, UIElementAttributes};
+use crate::{map_error, Bounds, ClickResult, FontStyle, HighlightHandle, Locator, ScreenshotResult, TextPosition, UIElementAttributes};
 
 use crate::Selector;
 use napi::bindgen_prelude::Either;
@@ -355,15 +355,48 @@ impl Element {
             .map_err(map_error)
     }
 
-    /// Highlights the element with a colored border.
+    /// Highlights the element with a colored border and optional text overlay.
     ///
     /// @param {number} [color] - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
     /// @param {number} [durationMs] - Optional duration in milliseconds.
-    /// @returns {void}
+    /// @param {string} [text] - Optional text to display. Text will be truncated to 10 characters.
+    /// @param {TextPosition} [textPosition] - Optional position for the text overlay (default: Top)
+    /// @param {FontStyle} [fontStyle] - Optional font styling for the text
+    /// @returns {HighlightHandle} Handle that can be used to close the highlight early
     #[napi]
-    pub fn highlight(&self, color: Option<u32>, duration_ms: Option<f64>) -> napi::Result<()> {
+    pub fn highlight(
+        &self, 
+        color: Option<u32>, 
+        duration_ms: Option<f64>,
+        text: Option<String>,
+        text_position: Option<TextPosition>,
+        font_style: Option<FontStyle>,
+    ) -> napi::Result<HighlightHandle> {
         let duration = duration_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
-        self.inner.highlight(color, duration).map_err(map_error)
+        
+        #[cfg(target_os = "windows")]
+        {
+            let rust_text_position = text_position.map(|pos| pos.into());
+            let rust_font_style = font_style.map(|style| style.into());
+            
+            let handle = self.inner
+                .highlight(
+                    color, 
+                    duration, 
+                    text.as_deref(), 
+                    rust_text_position, 
+                    rust_font_style
+                )
+                .map_err(map_error)?;
+            
+            Ok(HighlightHandle::new(handle))
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (color, duration, text, text_position, font_style);
+            Ok(HighlightHandle::new_dummy())
+        }
     }
 
     /// Capture a screenshot of this element.
@@ -463,5 +496,24 @@ impl Element {
     #[napi]
     pub fn set_toggled(&self, state: bool) -> napi::Result<()> {
         self.inner.set_toggled(state).map_err(map_error)
+    }
+
+    /// Execute JavaScript in web browser elements.
+    /// Returns the result of the script execution as a string, or null if not a web element.
+    ///
+    /// @param {string} script - The JavaScript code to execute.
+    /// @returns {string | null} The result of script execution, if available.
+    #[napi]
+    pub fn execute_script(&self, script: String) -> napi::Result<Option<String>> {
+        self.inner.execute_script(&script).map_err(map_error)
+    }
+
+    /// Get HTML content from web browser elements.
+    /// Returns the HTML content as a string, or null if not a web element.
+    ///
+    /// @returns {string | null} The HTML content, if available.
+    #[napi]
+    pub fn get_html_content(&self) -> napi::Result<Option<String>> {
+        self.inner.get_html_content().map_err(map_error)
     }
 }

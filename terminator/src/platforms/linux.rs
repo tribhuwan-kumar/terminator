@@ -2529,7 +2529,10 @@ impl UIElementImpl for LinuxUIElement {
         &self,
         _color: Option<u32>,
         _duration: Option<std::time::Duration>,
-    ) -> Result<(), AutomationError> {
+        _text: Option<&str>,
+        _text_position: Option<crate::TextPosition>,
+        _font_style: Option<crate::FontStyle>,
+    ) -> Result<crate::HighlightHandle, AutomationError> {
         Err(AutomationError::UnsupportedPlatform(
             "Linux implementation is not yet available".to_string(),
         ))

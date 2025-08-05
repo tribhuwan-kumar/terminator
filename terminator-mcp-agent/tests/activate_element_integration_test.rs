@@ -14,7 +14,7 @@ async fn test_activate_element_verification_structure() {
         .with_max_level(Level::DEBUG)
         .try_init();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     // Test 1: Test with any element to check verification structure
     println!("🔍 Testing activate_element verification structure...");
@@ -24,6 +24,7 @@ async fn test_activate_element_verification_structure() {
         timeout_ms: Some(2000),
         include_tree: Some(false),
         retries: Some(0),
+        include_detailed_attributes: Some(false),
     };
 
     match server
@@ -57,6 +58,7 @@ async fn test_activate_element_verification_structure() {
         timeout_ms: Some(5000),
         include_tree: Some(false),
         retries: Some(1),
+        include_detailed_attributes: Some(false),
     };
 
     match server
@@ -89,9 +91,9 @@ async fn test_activate_element_verification_structure() {
             let target_pid = verification["target_pid"].as_u64().unwrap_or(0);
 
             println!("✅ Verification results:");
-            println!("   - Activation verified: {}", activation_verified);
-            println!("   - Verification method: {}", verification_method);
-            println!("   - Target PID: {}", target_pid);
+            println!("   - Activation verified: {activation_verified}");
+            println!("   - Verification method: {verification_method}");
+            println!("   - Target PID: {target_pid}");
 
             // Assert basic verification structure requirements
             assert_eq!(verification_method, "process_id_comparison");
@@ -139,7 +141,7 @@ async fn test_activate_element_verification_structure() {
             println!("✅ All verification structure tests passed!");
         }
         Err(e) => {
-            println!("⚠️ Desktop activation failed: {:?}", e);
+            println!("⚠️ Desktop activation failed: {e:?}");
             println!(
                 "This is acceptable - the important thing is that we tested the error path above"
             );
@@ -153,7 +155,7 @@ async fn test_activate_element_verification_timing() {
         .with_max_level(Level::DEBUG)
         .try_init();
 
-    let server = DesktopWrapper::new().await.unwrap();
+    let server = DesktopWrapper::new().unwrap();
 
     println!("⏱️ Testing activation verification timing...");
 
@@ -166,6 +168,7 @@ async fn test_activate_element_verification_timing() {
         timeout_ms: Some(3000),
         include_tree: Some(false),
         retries: Some(0),
+        include_detailed_attributes: Some(false),
     };
 
     match server.activate_element(Parameters(activate_args)).await {
@@ -176,28 +179,25 @@ async fn test_activate_element_verification_timing() {
             // Verification should include the 500ms delay we added
             assert!(
                 elapsed >= Duration::from_millis(500),
-                "Test should take at least 500ms due to verification delay, took: {:?}",
-                elapsed
+                "Test should take at least 500ms due to verification delay, took: {elapsed:?}"
             );
 
             // But shouldn't take too long
             assert!(
                 elapsed < Duration::from_millis(10000),
-                "Test shouldn't take more than 10 seconds, took: {:?}",
-                elapsed
+                "Test shouldn't take more than 10 seconds, took: {elapsed:?}"
             );
 
             // Verify structure exists
             assert!(activate_result_json.get("verification").is_some());
 
-            println!("✅ Timing test passed - took {:?}", elapsed);
+            println!("✅ Timing test passed - took {elapsed:?}");
         }
         Err(_) => {
             // If element is not found, there should be no verification delay
             let elapsed = start_time.elapsed();
             println!(
-                "⚠️ Element not found as expected, completed quickly in {:?}",
-                elapsed
+                "⚠️ Element not found as expected, completed quickly in {elapsed:?}"
             );
             // No assertion needed here - fast failure is actually good
         }

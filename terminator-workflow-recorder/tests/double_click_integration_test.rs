@@ -1,10 +1,5 @@
 use std::time::Duration;
-use terminator_workflow_recorder::{
-    MouseEventType, WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig,
-};
-use tokio::time::timeout;
-use tokio_stream::StreamExt;
-use tracing::{debug, info};
+use tracing::info;
 
 async fn perform_double_click_test() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("🎯 Attempting to perform double click using Terminator SDK...");
