@@ -5,7 +5,10 @@ use terminator::{
     UIElement as TerminatorUIElement, UIElementAttributes as TerminatorUIElementAttributes,
 };
 
-use crate::{map_error, Bounds, ClickResult, FontStyle, HighlightHandle, Locator, ScreenshotResult, TextPosition, UIElementAttributes};
+use crate::{
+    map_error, Bounds, ClickResult, FontStyle, HighlightHandle, Locator, ScreenshotResult,
+    TextPosition, UIElementAttributes,
+};
 
 use crate::Selector;
 use napi::bindgen_prelude::Either;
@@ -365,33 +368,34 @@ impl Element {
     /// @returns {HighlightHandle} Handle that can be used to close the highlight early
     #[napi]
     pub fn highlight(
-        &self, 
-        color: Option<u32>, 
+        &self,
+        color: Option<u32>,
         duration_ms: Option<f64>,
         text: Option<String>,
         text_position: Option<TextPosition>,
         font_style: Option<FontStyle>,
     ) -> napi::Result<HighlightHandle> {
         let duration = duration_ms.map(|ms| std::time::Duration::from_millis(ms as u64));
-        
+
         #[cfg(target_os = "windows")]
         {
             let rust_text_position = text_position.map(|pos| pos.into());
             let rust_font_style = font_style.map(|style| style.into());
-            
-            let handle = self.inner
+
+            let handle = self
+                .inner
                 .highlight(
-                    color, 
-                    duration, 
-                    text.as_deref(), 
-                    rust_text_position, 
-                    rust_font_style
+                    color,
+                    duration,
+                    text.as_deref(),
+                    rust_text_position,
+                    rust_font_style,
                 )
                 .map_err(map_error)?;
-            
+
             Ok(HighlightHandle::new(handle))
         }
-        
+
         #[cfg(not(target_os = "windows"))]
         {
             let _ = (color, duration, text, text_position, font_style);

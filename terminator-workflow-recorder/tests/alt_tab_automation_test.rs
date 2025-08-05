@@ -415,9 +415,7 @@ async fn test_alt_tab_rapid_switching() {
     println!("\n📈 Rapid Switching Test Results:");
     println!("   • Alt+Tab hotkeys detected: {hotkey_count}");
     println!("   • Application switches detected: {switch_count}");
-    println!(
-        "   • Switches attributed to Alt+Tab: {alt_tab_attributed_count}"
-    );
+    println!("   • Switches attributed to Alt+Tab: {alt_tab_attributed_count}");
     println!(
         "   • Attribution rate: {:.1}%",
         if switch_count > 0 {

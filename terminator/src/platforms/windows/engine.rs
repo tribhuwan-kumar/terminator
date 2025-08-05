@@ -8,13 +8,10 @@ use crate::platforms::windows::types::ThreadSafeWinUIElement;
 use crate::platforms::windows::utils::{
     create_ui_automation_with_com_init, map_generic_role_to_win_roles, string_to_ui_property,
 };
-use crate::platforms::windows::{
-    applications, generate_element_id,
-    WindowsUIElement,
-};
+use crate::platforms::windows::{applications, generate_element_id, WindowsUIElement};
 use crate::platforms::AccessibilityEngine;
-use crate::{AutomationError, Selector, UIElement};
 use crate::ScreenshotResult;
+use crate::{AutomationError, Selector, UIElement};
 use image::DynamicImage;
 use image::{ImageBuffer, Rgba};
 use std::sync::Arc;
@@ -32,9 +29,7 @@ use uni_ocr::{OcrEngine, OcrProvider};
 // windows imports
 use windows::core::{HRESULT, HSTRING, PCWSTR};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::Win32::System::Com::{
-    CoInitializeEx, COINIT_MULTITHREADED,
-};
+use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };

@@ -1,6 +1,6 @@
 //! Utility functions and type conversions for Windows platform
 
-use super::types::{ThreadSafeWinUIElement};
+use super::types::ThreadSafeWinUIElement;
 use crate::{AutomationError, UIElement};
 use std::sync::Arc;
 use uiautomation::controls::ControlType;
@@ -13,9 +13,7 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 pub use super::element::WindowsUIElement;
 
 /// Generate a stable element ID based on element properties
-pub fn generate_element_id(
-    element: &uiautomation::UIElement,
-) -> Result<usize, AutomationError> {
+pub fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, AutomationError> {
     // Attempt to get stable properties first
     let automation_id = element
         .get_automation_id()

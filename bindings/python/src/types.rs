@@ -229,47 +229,65 @@ pub struct TextPosition {
 impl TextPosition {
     #[classmethod]
     pub fn top(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "Top".to_string() }
+        TextPosition {
+            position: "Top".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn top_right(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "TopRight".to_string() }
+        TextPosition {
+            position: "TopRight".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn right(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "Right".to_string() }
+        TextPosition {
+            position: "Right".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn bottom_right(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "BottomRight".to_string() }
+        TextPosition {
+            position: "BottomRight".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn bottom(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "Bottom".to_string() }
+        TextPosition {
+            position: "Bottom".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn bottom_left(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "BottomLeft".to_string() }
+        TextPosition {
+            position: "BottomLeft".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn left(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "Left".to_string() }
+        TextPosition {
+            position: "Left".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn top_left(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "TopLeft".to_string() }
+        TextPosition {
+            position: "TopLeft".to_string(),
+        }
     }
-    
+
     #[classmethod]
     pub fn inside(_cls: &Bound<'_, pyo3::types::PyType>) -> Self {
-        TextPosition { position: "Inside".to_string() }
+        TextPosition {
+            position: "Inside".to_string(),
+        }
     }
 
     fn __repr__(&self) -> PyResult<String> {
@@ -637,5 +655,3 @@ impl TreeBuildConfig {
             .map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()))
     }
 }
-
-

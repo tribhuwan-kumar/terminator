@@ -167,9 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Validate results
     if double_click_count > 0 {
         println!("✅ SUCCESS: Double click detection is working correctly!");
-        println!(
-            "   {double_click_count} double click(s) were successfully detected and recorded"
-        );
+        println!("   {double_click_count} double click(s) were successfully detected and recorded");
     } else {
         println!("⚠️  NO DOUBLE CLICKS DETECTED");
         println!("   This could mean:");

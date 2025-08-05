@@ -2342,7 +2342,7 @@ impl WindowsUIElement {
 
                 if result.is_ok() {
                     // Convert PWSTR to String
-                    let s = unsafe { json_result.to_string() };
+                    let s = json_result.to_string();
                     let script_result = if s.starts_with('"') && s.ends_with('"') && s.len() > 1 {
                         // Remove quotes from string results
                         s[1..s.len() - 1]
@@ -2370,9 +2370,7 @@ impl WindowsUIElement {
 
         // Execute the script
         unsafe { webview2.ExecuteScript(script_pcwstr, &handler) }.map_err(|e| {
-            AutomationError::PlatformError(format!(
-                "Failed to call ExecuteScript on WebView2: {e}"
-            ))
+            AutomationError::PlatformError(format!("Failed to call ExecuteScript on WebView2: {e}"))
         })?;
 
         // Wait for completion with timeout
@@ -2424,6 +2422,4 @@ impl WindowsUIElement {
             }
         }
     }
-
-
 }

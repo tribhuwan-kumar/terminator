@@ -1,5 +1,7 @@
 use crate::exceptions::automation_error_to_pyerr;
-use crate::types::{Bounds, ClickResult, FontStyle, HighlightHandle, TextPosition, UIElementAttributes};
+use crate::types::{
+    Bounds, ClickResult, FontStyle, HighlightHandle, TextPosition, UIElementAttributes,
+};
 use ::terminator_core::element::UIElement as TerminatorUIElement;
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio as pyo3_tokio;
@@ -458,28 +460,28 @@ impl UIElement {
     /// Returns:
     ///     HighlightHandle: Handle that can be used to close the highlight early
     pub fn highlight(
-        &self, 
-        color: Option<u32>, 
-        duration_ms: Option<u64>, 
+        &self,
+        color: Option<u32>,
+        duration_ms: Option<u64>,
         text: Option<String>,
         text_position: Option<TextPosition>,
-        font_style: Option<FontStyle>
+        font_style: Option<FontStyle>,
     ) -> PyResult<HighlightHandle> {
         let duration = duration_ms.map(std::time::Duration::from_millis);
         let rust_text_position = text_position.map(|pos| pos.into());
         let rust_font_style = font_style.map(|style| style.into());
-        
+
         let handle = self
             .inner
             .highlight(
-                color, 
-                duration, 
-                text.as_deref(), 
-                rust_text_position, 
-                rust_font_style
+                color,
+                duration,
+                text.as_deref(),
+                rust_text_position,
+                rust_font_style,
             )
             .map_err(automation_error_to_pyerr)?;
-        
+
         Ok(HighlightHandle::new(handle))
     }
 

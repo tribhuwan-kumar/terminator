@@ -465,9 +465,7 @@ impl WindowsRecorder {
                                 Self::detect_hotkey(&hotkey_patterns, &active_keys)
                             {
                                 // Check if this is Alt+Tab specifically
-                                if hotkey.action.as_deref()
-                                    == Some("Switch Window")
-                                {
+                                if hotkey.action.as_deref() == Some("Switch Window") {
                                     // Mark Alt+Tab as pressed for application switch attribution
                                     if let Ok(mut tracker) = alt_tab_tracker.try_lock() {
                                         tracker.mark_alt_tab_pressed();

@@ -196,9 +196,7 @@ async fn test_activate_element_verification_timing() {
         Err(_) => {
             // If element is not found, there should be no verification delay
             let elapsed = start_time.elapsed();
-            println!(
-                "⚠️ Element not found as expected, completed quickly in {elapsed:?}"
-            );
+            println!("⚠️ Element not found as expected, completed quickly in {elapsed:?}");
             // No assertion needed here - fast failure is actually good
         }
     }
