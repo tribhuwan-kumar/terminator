@@ -218,7 +218,7 @@ pub struct FontStyle {
 
 #[napi]
 pub struct HighlightHandle {
-    inner: Option<terminator::platforms::windows::HighlightHandle>,
+    inner: Option<terminator::HighlightHandle>,
 }
 
 #[napi]
@@ -232,7 +232,7 @@ impl HighlightHandle {
 }
 
 impl HighlightHandle {
-    pub fn new(handle: terminator::platforms::windows::HighlightHandle) -> Self {
+    pub fn new(handle: terminator::HighlightHandle) -> Self {
         Self {
             inner: Some(handle),
         }
@@ -243,25 +243,25 @@ impl HighlightHandle {
     }
 }
 
-impl From<TextPosition> for terminator::platforms::windows::TextPosition {
+impl From<TextPosition> for terminator::TextPosition {
     fn from(pos: TextPosition) -> Self {
         match pos {
-            TextPosition::Top => terminator::platforms::windows::TextPosition::Top,
-            TextPosition::TopRight => terminator::platforms::windows::TextPosition::TopRight,
-            TextPosition::Right => terminator::platforms::windows::TextPosition::Right,
-            TextPosition::BottomRight => terminator::platforms::windows::TextPosition::BottomRight,
-            TextPosition::Bottom => terminator::platforms::windows::TextPosition::Bottom,
-            TextPosition::BottomLeft => terminator::platforms::windows::TextPosition::BottomLeft,
-            TextPosition::Left => terminator::platforms::windows::TextPosition::Left,
-            TextPosition::TopLeft => terminator::platforms::windows::TextPosition::TopLeft,
-            TextPosition::Inside => terminator::platforms::windows::TextPosition::Inside,
+            TextPosition::Top => terminator::TextPosition::Top,
+            TextPosition::TopRight => terminator::TextPosition::TopRight,
+            TextPosition::Right => terminator::TextPosition::Right,
+            TextPosition::BottomRight => terminator::TextPosition::BottomRight,
+            TextPosition::Bottom => terminator::TextPosition::Bottom,
+            TextPosition::BottomLeft => terminator::TextPosition::BottomLeft,
+            TextPosition::Left => terminator::TextPosition::Left,
+            TextPosition::TopLeft => terminator::TextPosition::TopLeft,
+            TextPosition::Inside => terminator::TextPosition::Inside,
         }
     }
 }
 
-impl From<FontStyle> for terminator::platforms::windows::FontStyle {
+impl From<FontStyle> for terminator::FontStyle {
     fn from(style: FontStyle) -> Self {
-        terminator::platforms::windows::FontStyle {
+        terminator::FontStyle {
             size: style.size,
             bold: style.bold,
             color: style.color,
