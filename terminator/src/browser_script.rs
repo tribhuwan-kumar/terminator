@@ -193,9 +193,7 @@ async fn set_clipboard_content(content: &str) -> Result<(), AutomationError> {
         let output = Command::new("powershell")
             .args(["-command", &format!("Set-Clipboard '{content}'")])
             .output()
-            .map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to set clipboard: {e}"))
-            })?;
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to set clipboard: {e}")))?;
 
         if !output.status.success() {
             let error = String::from_utf8_lossy(&output.stderr);
@@ -353,12 +351,12 @@ mod tests {
 
         match set_clipboard_content(test_content).await {
             Ok(()) => println!("✅ Set clipboard successfully"),
-            Err(e) => println!("❌ Set clipboard error: {}", e),
+            Err(e) => println!("❌ Set clipboard error: {e}"),
         }
 
         match get_clipboard_content().await {
-            Ok(content) => println!("✅ Clipboard content: {}", content),
-            Err(e) => println!("❌ Get clipboard error: {}", e),
+            Ok(content) => println!("✅ Clipboard content: {content}"),
+            Err(e) => println!("❌ Get clipboard error: {e}"),
         }
     }
 }

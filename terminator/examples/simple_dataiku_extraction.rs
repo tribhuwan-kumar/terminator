@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Target Dataiku page
     let target_url = "https://pages.dataiku.com/guide-to-ai-agents";
 
-    println!("🌐 Opening Dataiku page: {}", target_url);
+    println!("🌐 Opening Dataiku page: {target_url}");
 
     // Open browser
     let browser_element = desktop.open_url(target_url, Some(Browser::Edge))?;
@@ -43,8 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🔍 Example 1: Getting page title");
     let title_script = "document.title";
     match browser_element.execute_browser_script(title_script).await {
-        Ok(title) => println!("📄 Page title: {}", title),
-        Err(e) => println!("❌ Error: {}", e),
+        Ok(title) => println!("📄 Page title: {title}"),
+        Err(e) => println!("❌ Error: {e}"),
     }
 
     // Example 2: Get specific element by ID (Dataiku form)
@@ -64,10 +64,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("ℹ️  Form element not found on this page");
             } else {
                 println!("🎉 Found form element!");
-                println!("📊 HTML: {}", html);
+                println!("📊 HTML: {html}");
             }
         }
-        Err(e) => println!("❌ Error: {}", e),
+        Err(e) => println!("❌ Error: {e}"),
     }
 
     // Example 3: Get element by class name
@@ -82,8 +82,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
 
     match browser_element.execute_browser_script(hero_script).await {
-        Ok(result) => println!("📄 Hero banner: {}", result),
-        Err(e) => println!("❌ Error: {}", e),
+        Ok(result) => println!("📄 Hero banner: {result}"),
+        Err(e) => println!("❌ Error: {e}"),
     }
 
     // Example 4: Get comprehensive page analysis
@@ -105,9 +105,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         Ok(analysis) => {
             println!("📊 Page analysis:");
-            println!("{}", analysis);
+            println!("{analysis}");
         }
-        Err(e) => println!("❌ Error: {}", e),
+        Err(e) => println!("❌ Error: {e}"),
     }
 
     // Example 5: Custom element extraction
@@ -144,9 +144,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match browser_element.execute_browser_script(custom_script).await {
         Ok(result) => {
             println!("📋 Custom extraction result:");
-            println!("{}", result);
+            println!("{result}");
         }
-        Err(e) => println!("❌ Error: {}", e),
+        Err(e) => println!("❌ Error: {e}"),
     }
 
     println!("\n✨ Example completed!");

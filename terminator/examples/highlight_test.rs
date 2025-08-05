@@ -46,7 +46,7 @@ async fn main() -> Result<(), AutomationError> {
                 button
             }
             Err(e) => {
-                println!("❌ No buttons found: {}", e);
+                println!("❌ No buttons found: {e}");
                 // Try to find any clickable element
                 match calculator.locator("role:*") {
                     Ok(locator) => match locator.first(None).await {
@@ -59,19 +59,19 @@ async fn main() -> Result<(), AutomationError> {
                             element
                         }
                         Err(e) => {
-                            println!("❌ No clickable elements found: {}", e);
+                            println!("❌ No clickable elements found: {e}");
                             return Ok(());
                         }
                     },
                     Err(e) => {
-                        println!("❌ Failed to create locator: {}", e);
+                        println!("❌ Failed to create locator: {e}");
                         return Ok(());
                     }
                 }
             }
         },
         Err(e) => {
-            println!("❌ Failed to create locator for buttons: {}", e);
+            println!("❌ Failed to create locator for buttons: {e}");
             return Ok(());
         }
     };
@@ -100,7 +100,7 @@ async fn main() -> Result<(), AutomationError> {
             println!("   📝 Top highlight completed");
         }
         Err(e) => {
-            println!("   ❌ Failed to highlight button: {}", e);
+            println!("   ❌ Failed to highlight button: {e}");
         }
     }
 
@@ -129,7 +129,7 @@ async fn main() -> Result<(), AutomationError> {
             println!("   📝 Inside highlight completed");
         }
         Err(e) => {
-            println!("   ❌ Failed to highlight button: {}", e);
+            println!("   ❌ Failed to highlight button: {e}");
         }
     }
 

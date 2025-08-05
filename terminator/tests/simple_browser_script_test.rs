@@ -37,13 +37,13 @@ async fn test_simple_browser_script_execution(
     {
         Ok(title) => {
             println!("✅ Script execution SUCCESS!");
-            println!("📊 Document title: '{}'", title);
+            println!("📊 Document title: '{title}'");
 
             // Verify we got a reasonable result
             assert!(!title.is_empty(), "Title should not be empty");
         }
         Err(e) => {
-            println!("❌ Script execution failed: {}", e);
+            println!("❌ Script execution failed: {e}");
             // Don't fail the test - the dev tools automation might not work in CI
             println!(
                 "ℹ️  This is expected if dev tools automation doesn't work in the test environment"
@@ -58,10 +58,10 @@ async fn test_simple_browser_script_execution(
     {
         Ok(url) => {
             println!("✅ URL script execution SUCCESS!");
-            println!("📊 Page URL: '{}'", url);
+            println!("📊 Page URL: '{url}'");
         }
         Err(e) => {
-            println!("ℹ️  URL script execution failed: {}", e);
+            println!("ℹ️  URL script execution failed: {e}");
         }
     }
 
@@ -69,10 +69,10 @@ async fn test_simple_browser_script_execution(
     match browser_element.execute_browser_script("2 + 2").await {
         Ok(result) => {
             println!("✅ Calculation script execution SUCCESS!");
-            println!("📊 Result: '{}'", result);
+            println!("📊 Result: '{result}'");
         }
         Err(e) => {
-            println!("ℹ️  Calculation script execution failed: {}", e);
+            println!("ℹ️  Calculation script execution failed: {e}");
         }
     }
 
@@ -122,7 +122,7 @@ async fn test_clipboard_functionality() {
 
         // Test PowerShell clipboard access
         let output = Command::new("powershell")
-            .args(&["-command", "echo 'test' | Set-Clipboard; Get-Clipboard"])
+            .args(["-command", "echo 'test' | Set-Clipboard; Get-Clipboard"])
             .output();
 
         match output {
@@ -131,10 +131,7 @@ async fn test_clipboard_functionality() {
                 println!("✅ Clipboard test result: {}", content.trim());
             }
             Err(e) => {
-                println!(
-                    "ℹ️  Clipboard test failed (expected in some environments): {}",
-                    e
-                );
+                println!("ℹ️  Clipboard test failed (expected in some environments): {e}");
             }
         }
     }

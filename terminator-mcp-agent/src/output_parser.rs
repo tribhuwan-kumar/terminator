@@ -256,10 +256,6 @@ mod tests {
 
     #[test]
     fn test_empty_results() {
-        let ui_tree = json!({
-            "children": []
-        });
-
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: None,
             javascript_code: r#"
@@ -286,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_step_id_lookup() {
-        let ui_tree = json!({
+        json!({
             "children": [
                 {
                     "attributes": {
@@ -365,7 +361,7 @@ mod tests {
             .to_string(),
         };
 
-        let ui_tree = json!({
+        json!({
             "children": [
                 {
                     "attributes": {

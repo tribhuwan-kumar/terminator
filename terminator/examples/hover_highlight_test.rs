@@ -1,5 +1,5 @@
 use std::time::Duration;
-use terminator::{AutomationError, Desktop, FontStyle, HighlightHandle, TextPosition};
+use terminator::{AutomationError, Desktop, FontStyle, TextPosition};
 use tokio::time::sleep;
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
@@ -87,14 +87,14 @@ async fn main() -> Result<(), AutomationError> {
                                         element.name().unwrap_or("Element".to_string());
 
                                     if let Ok(handle) = element.highlight(
-                                        Some(0x0000FF),                        // Red border (BGR format)
-                                        None,                                  // No auto-close
-                                        Some(&format!("🎯 {}", element_name)), // Text with element name
+                                        Some(0x0000FF),                      // Red border (BGR format)
+                                        None,                                // No auto-close
+                                        Some(&format!("🎯 {element_name}")), // Text with element name
                                         Some(TextPosition::Top), // Position above element
                                         Some(font_style.clone()), // Custom font style
                                     ) {
                                         last_highlight_handle = Some(handle);
-                                        println!("   📍 Highlighting: {}", element_name);
+                                        println!("   📍 Highlighting: {element_name}");
                                     }
                                 }
 

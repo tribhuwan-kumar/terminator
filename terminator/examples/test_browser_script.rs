@@ -1,5 +1,4 @@
 use terminator::Desktop;
-use tokio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,10 +12,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for app in apps {
         let name = app.name().unwrap_or("Unknown".to_string());
-        println!("  📱 App: {}", name);
+        println!("  📱 App: {name}");
 
         if name.contains("Chrome") || name.contains("Edge") || name.contains("Firefox") {
-            println!("🎯 Found browser: {}", name);
+            println!("🎯 Found browser: {name}");
 
             // Get the main window
             if let Some(window) = app.window()? {
@@ -24,15 +23,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Test simple JavaScript
                 let script = "document.getElementsByClassName('container-fluid body-container')[0].innerText";
-                println!("⚡ Executing: {}", script);
+                println!("⚡ Executing: {script}");
 
                 match window.execute_browser_script(script).await {
                     Ok(result) => {
-                        println!("✅ SUCCESS! Result: {}", result);
+                        println!("✅ SUCCESS! Result: {result}");
                         return Ok(());
                     }
                     Err(e) => {
-                        println!("❌ FAILED: {}", e);
+                        println!("❌ FAILED: {e}");
                     }
                 }
             }
