@@ -1,5 +1,5 @@
 use crate::exceptions::automation_error_to_pyerr;
-use crate::types::{Bounds, ClickResult, UIElementAttributes};
+use crate::types::{Bounds, ClickResult, FontStyle, HighlightHandle, TextPosition, UIElementAttributes};
 use ::terminator_core::element::UIElement as TerminatorUIElement;
 use pyo3::prelude::*;
 use pyo3_async_runtimes::tokio as pyo3_tokio;
@@ -444,23 +444,43 @@ impl UIElement {
         self.inner.process_id().map_err(automation_error_to_pyerr)
     }
 
-    #[pyo3(name = "highlight", signature = (color=None, duration_ms=None))]
-    #[pyo3(text_signature = "($self, color, duration_ms)")]
-    /// Highlights the element with a colored border.
+    #[pyo3(name = "highlight", signature = (color=None, duration_ms=None, text=None, text_position=None, font_style=None))]
+    #[pyo3(text_signature = "($self, color, duration_ms, text, text_position, font_style)")]
+    /// Highlights the element with a colored border and optional text overlay.
     ///
     /// Args:
     ///     color (Optional[int]): BGR color code (32-bit integer). Default: 0x0000FF (red)
     ///     duration_ms (Optional[int]): Duration in milliseconds.
+    ///     text (Optional[str]): Optional text to display. Text will be truncated to 10 characters.
+    ///     text_position (Optional[TextPosition]): Optional position for the text overlay (default: Top)
+    ///     font_style (Optional[FontStyle]): Optional font styling for the text
     ///
     /// Returns:
-    ///     None
-    pub fn highlight(&self, color: Option<u32>, duration_ms: Option<u64>) -> PyResult<()> {
+    ///     HighlightHandle: Handle that can be used to close the highlight early
+    pub fn highlight(
+        &self, 
+        color: Option<u32>, 
+        duration_ms: Option<u64>, 
+        text: Option<String>,
+        text_position: Option<TextPosition>,
+        font_style: Option<FontStyle>
+    ) -> PyResult<HighlightHandle> {
         let duration = duration_ms.map(std::time::Duration::from_millis);
-        let _handle = self
+        let rust_text_position = text_position.map(|pos| pos.into());
+        let rust_font_style = font_style.map(|style| style.into());
+        
+        let handle = self
             .inner
-            .highlight(color, duration, None, None, None)
+            .highlight(
+                color, 
+                duration, 
+                text.as_deref(), 
+                rust_text_position, 
+                rust_font_style
+            )
             .map_err(automation_error_to_pyerr)?;
-        Ok(())
+        
+        Ok(HighlightHandle::new(handle))
     }
 
     #[pyo3(name = "capture", text_signature = "($self)")]
