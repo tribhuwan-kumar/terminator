@@ -191,17 +191,16 @@ async fn set_clipboard_content(content: &str) -> Result<(), AutomationError> {
     #[cfg(target_os = "windows")]
     {
         let output = Command::new("powershell")
-            .args(&["-command", &format!("Set-Clipboard '{}'", content)])
+            .args(["-command", &format!("Set-Clipboard '{content}'")])
             .output()
             .map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to set clipboard: {}", e))
+                AutomationError::PlatformError(format!("Failed to set clipboard: {e}"))
             })?;
 
         if !output.status.success() {
             let error = String::from_utf8_lossy(&output.stderr);
             return Err(AutomationError::PlatformError(format!(
-                "PowerShell set clipboard error: {}",
-                error
+                "PowerShell set clipboard error: {error}"
             )));
         }
     }
@@ -268,10 +267,10 @@ async fn get_clipboard_content() -> Result<String, AutomationError> {
     #[cfg(target_os = "windows")]
     {
         let output = Command::new("powershell")
-            .args(&["-command", "Get-Clipboard"])
+            .args(["-command", "Get-Clipboard"])
             .output()
             .map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to run PowerShell: {}", e))
+                AutomationError::PlatformError(format!("Failed to run PowerShell: {e}"))
             })?;
 
         if output.status.success() {
@@ -281,8 +280,7 @@ async fn get_clipboard_content() -> Result<String, AutomationError> {
         } else {
             let error = String::from_utf8_lossy(&output.stderr);
             Err(AutomationError::PlatformError(format!(
-                "PowerShell error: {}",
-                error
+                "PowerShell error: {error}"
             )))
         }
     }
