@@ -2426,16 +2426,5 @@ impl WindowsUIElement {
         }
     }
 
-    /// Find title element within the document
-    fn find_title_element(
-        &self,
-        _webview_element: &Arc<uiautomation::UIElement>,
-    ) -> Result<String, AutomationError> {
-        // This would traverse the element tree looking for title-like elements
-        // For now, just return a placeholder
-        debug!("Title element search not yet implemented");
-        Err(AutomationError::ElementNotFound(
-            "Title element not found".to_string(),
-        ))
-    }
+
 }

@@ -405,9 +405,9 @@ pub trait UIElementImpl: Send + Sync + Debug {
         color: Option<u32>,
         duration: Option<std::time::Duration>,
         text: Option<&str>,
-        text_position: Option<crate::platforms::windows::TextPosition>,
-        font_style: Option<crate::platforms::windows::FontStyle>,
-    ) -> Result<crate::platforms::windows::HighlightHandle, AutomationError>;
+        text_position: Option<crate::TextPosition>,
+        font_style: Option<crate::FontStyle>,
+    ) -> Result<crate::HighlightHandle, AutomationError>;
 
     /// Sets the transparency of the window.
     /// The percentage value ranges from 0 (completely transparent) to 100 (completely opaque).
@@ -782,9 +782,9 @@ impl UIElement {
         color: Option<u32>,
         duration: Option<std::time::Duration>,
         text: Option<&str>,
-        text_position: Option<crate::platforms::windows::TextPosition>,
-        font_style: Option<crate::platforms::windows::FontStyle>,
-    ) -> Result<crate::platforms::windows::HighlightHandle, AutomationError> {
+        text_position: Option<crate::TextPosition>,
+        font_style: Option<crate::FontStyle>,
+    ) -> Result<crate::HighlightHandle, AutomationError> {
         self.inner
             .highlight(color, duration, text, text_position, font_style)
     }
@@ -800,9 +800,9 @@ impl UIElement {
         color: Option<u32>,
         duration: Option<std::time::Duration>,
         _text: Option<&str>,
-        _text_position: Option<crate::platforms::windows::TextPosition>,
-        _font_style: Option<crate::platforms::windows::FontStyle>,
-    ) -> Result<crate::platforms::windows::HighlightHandle, AutomationError> {
+        _text_position: Option<crate::TextPosition>,
+        _font_style: Option<crate::FontStyle>,
+    ) -> Result<crate::HighlightHandle, AutomationError> {
         // For non-Windows platforms, ignore text parameters and create dummy handle
         self.inner.highlight(color, duration, None, None, None)
     }
