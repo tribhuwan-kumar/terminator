@@ -2131,6 +2131,12 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::{SequenceItem, ToolCall, ToolGroup};
 
+        info!("📋 execute_sequence called");
+        info!("📋 args.output_parser is_some: {}", args.output_parser.is_some());
+        if let Some(ref parser) = args.output_parser {
+            info!("📋 Raw output_parser from args: {}", serde_json::to_string_pretty(parser).unwrap_or_else(|_| "Failed to serialize".to_string()));
+        }
+
         let stop_on_error = args.stop_on_error.unwrap_or(true);
         let include_detailed = args.include_detailed_results.unwrap_or(true);
 
@@ -2585,28 +2591,39 @@ impl DesktopWrapper {
         });
 
         if let Some(parser_def) = args.output_parser.as_ref() {
+            info!("📋 Output parser found, executing...");
+            info!("📋 Parser definition: {}", serde_json::to_string_pretty(parser_def).unwrap_or_else(|_| "Failed to serialize".to_string()));
+            
             // Apply variable substitution to the output_parser field
             let mut parser_json = parser_def.clone();
             substitute_variables(&mut parser_json, &execution_context);
+            
+            info!("📋 Parser definition after variable substitution: {}", serde_json::to_string_pretty(&parser_json).unwrap_or_else(|_| "Failed to serialize".to_string()));
 
             match output_parser::run_output_parser(&parser_json, &summary).await {
                 Ok(Some(parsed_data)) => {
+                    info!("📋 Output parser executed successfully, parsed data: {}", serde_json::to_string_pretty(&parsed_data).unwrap_or_else(|_| "Failed to serialize".to_string()));
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parsed_output".to_string(), parsed_data);
                     }
                 }
                 Ok(None) => {
+                    info!("📋 Output parser executed but returned no data (UI tree not found)");
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parsed_output".to_string(), json!({}));
                     }
                     // UI tree not found, which is not an error, just means nothing to parse.
                 }
                 Err(e) => {
+                    error!("📋 Output parser execution failed: {}", e);
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parser_error".to_string(), json!(e.to_string()));
                     }
                 }
             }
+        } else {
+            info!("📋 No output parser defined in workflow args");
+            info!("📋 args.output_parser is None - checking if this is expected");
         }
 
         let mut maybe_base64_image: Option<String> = None;
