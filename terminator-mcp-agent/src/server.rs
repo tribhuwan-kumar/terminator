@@ -2131,12 +2131,6 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use crate::utils::{SequenceItem, ToolCall, ToolGroup};
 
-        info!("📋 execute_sequence called");
-        info!("📋 args.output_parser is_some: {}", args.output_parser.is_some());
-        if let Some(ref parser) = args.output_parser {
-            info!("📋 Raw output_parser from args: {}", serde_json::to_string_pretty(parser).unwrap_or_else(|_| "Failed to serialize".to_string()));
-        }
-
         let stop_on_error = args.stop_on_error.unwrap_or(true);
         let include_detailed = args.include_detailed_results.unwrap_or(true);
 
@@ -2591,39 +2585,28 @@ impl DesktopWrapper {
         });
 
         if let Some(parser_def) = args.output_parser.as_ref() {
-            info!("📋 Output parser found, executing...");
-            info!("📋 Parser definition: {}", serde_json::to_string_pretty(parser_def).unwrap_or_else(|_| "Failed to serialize".to_string()));
-            
             // Apply variable substitution to the output_parser field
             let mut parser_json = parser_def.clone();
             substitute_variables(&mut parser_json, &execution_context);
-            
-            info!("📋 Parser definition after variable substitution: {}", serde_json::to_string_pretty(&parser_json).unwrap_or_else(|_| "Failed to serialize".to_string()));
 
             match output_parser::run_output_parser(&parser_json, &summary).await {
                 Ok(Some(parsed_data)) => {
-                    info!("📋 Output parser executed successfully, parsed data: {}", serde_json::to_string_pretty(&parsed_data).unwrap_or_else(|_| "Failed to serialize".to_string()));
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parsed_output".to_string(), parsed_data);
                     }
                 }
                 Ok(None) => {
-                    info!("📋 Output parser executed but returned no data (UI tree not found)");
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parsed_output".to_string(), json!({}));
                     }
                     // UI tree not found, which is not an error, just means nothing to parse.
                 }
                 Err(e) => {
-                    error!("📋 Output parser execution failed: {}", e);
                     if let Some(obj) = summary.as_object_mut() {
                         obj.insert("parser_error".to_string(), json!(e.to_string()));
                     }
                 }
             }
-        } else {
-            info!("📋 No output parser defined in workflow args");
-            info!("📋 args.output_parser is None - checking if this is expected");
         }
 
         let mut maybe_base64_image: Option<String> = None;
@@ -3498,52 +3481,13 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use serde_json::json;
 
-        let engine = args.engine.clone().unwrap_or_else(|| "nodejs".to_string());
-
-        if engine == "boa" {
-            let self_clone = self.clone();
-
-            // Create a tool dispatcher closure that calls our dispatch_tool method
-            let tool_dispatcher = move |tool_name: String, args_val: serde_json::Value| {
-                let self_clone = self_clone.clone();
-                async move {
-                    match self_clone.dispatch_tool(&tool_name, &args_val).await {
-                        Ok(call_result) => serde_json::to_string(&call_result).map_err(|e| {
-                            McpError::internal_error(
-                                "Failed to serialize tool result",
-                                Some(json!({"error": e.to_string(), "tool": tool_name})),
-                            )
-                        }),
-                        Err(e) => Err(e),
-                    }
-                }
-            };
-
-            // Execute JavaScript using the new terminator_js module
-            let execution_result =
-                scripting_engine::execute_javascript(args.script, tool_dispatcher).await?;
-
-            return Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "run_javascript",
-                "status": "success",
-                "engine": "boa",
-                "result": execution_result
-            }))?]));
-        } else if engine == "nodejs" {
-            let execution_result =
-                scripting_engine::execute_javascript_with_nodejs(args.script).await?;
-            return Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "run_javascript",
-                "status": "success",
-                "engine": "nodejs",
-                "result": execution_result
-            }))?]));
-        }
-
-        Err(McpError::internal_error(
-            "Unsupported JavaScript engine",
-            Some(json!({"error": "Unsupported JavaScript engine"})),
-        ))
+        let execution_result =
+            scripting_engine::execute_javascript_with_nodejs(args.script).await?;
+        return Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "run_javascript",
+            "status": "success",
+            "result": execution_result
+        }))?]));
     }
 
     #[tool(

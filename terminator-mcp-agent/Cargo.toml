@@ -38,8 +38,6 @@ tower-http = { version = "0.6", features = ["cors"] }
 terminator-workflow-recorder = { path = "../terminator-workflow-recorder" }
 
 regex = { workspace = true }
-
-boa_engine = "0.20.0"
 tempfile = "3"
 
 reqwest = { version = "0.12.5", features = ["json"] }

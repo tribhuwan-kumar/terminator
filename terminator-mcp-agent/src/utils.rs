@@ -844,10 +844,6 @@ pub struct RunJavascriptArgs {
     #[schemars(description = "JavaScript source code to execute inside the embedded engine.")]
     pub script: String,
     #[schemars(
-        description = "Optional preferred runtime engine ('quickjs' | 'node' | 'bun' | 'deno'). Currently only 'quickjs' is supported and will be used as default."
-    )]
-    pub engine: Option<String>,
-    #[schemars(
         description = "Optional timeout in milliseconds before the script execution is aborted."
     )]
     pub timeout_ms: Option<u64>,

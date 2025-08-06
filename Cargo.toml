@@ -47,7 +47,9 @@ core-foundation = { version = "0.10.0" }
 core-graphics = { version = "0.24.0", features = ["highsierra"] }
 
 # Windows specific dependencies
-sysinfo = "0.34.2"
+sysinfo = "0.36.1   "
+windows = "0.61.3"
+uiautomation = "0.22.0"
 
 # Dev dependencies (can be used by examples or tests across the workspace)
 axum = "0.8.3"
