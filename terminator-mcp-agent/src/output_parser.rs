@@ -103,6 +103,11 @@ fn find_ui_tree_in_results(tool_output: &Value, step_id: Option<&str>) -> Result
                                     if let Some(content) = result_obj.get("content") {
                                         if let Some(content_array) = content.as_array() {
                                             for content_item in content_array {
+                                                // First check if ui_tree is directly in the content item
+                                                if let Some(ui_tree) = content_item.get("ui_tree") {
+                                                    return Some(ui_tree.clone());
+                                                }
+                                                // Then check if it's in parsed text content
                                                 if let Some(text) = content_item.get("text") {
                                                     if let Some(text_str) = text.as_str() {
                                                         if let Ok(parsed_json) =

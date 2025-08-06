@@ -88,6 +88,27 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     // Check if we need to install/reinstall
     let should_install = !node_modules_path.exists();
 
+    // Also check if we should update (check once per day)
+    let should_check_update = if node_modules_path.exists() {
+        // Check the modification time of node_modules/terminator.js
+        match tokio::fs::metadata(&node_modules_path).await {
+            Ok(metadata) => {
+                if let Ok(modified) = metadata.modified() {
+                    // Update if older than 1 day
+                    let age = std::time::SystemTime::now()
+                        .duration_since(modified)
+                        .unwrap_or(std::time::Duration::from_secs(0));
+                    age.as_secs() > 86400 // 24 hours in seconds
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+
     // Check if platform-specific package exists for current platform
     let platform_package_name = if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
         "terminator.js-win32-x64-msvc"
@@ -115,6 +136,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     if should_install {
         info!(
             "[{}] terminator.js not found, installing latest version...",
+            runtime
+        );
+    } else if should_check_update {
+        info!(
+            "[{}] terminator.js is older than 1 day, checking for updates...",
             runtime
         );
     } else if !platform_package_exists {
@@ -173,8 +199,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     let command_args = if should_install || !platform_package_exists {
         // Fresh install or reinstall when platform package missing
         vec!["install"]
-    } else {
+    } else if should_check_update {
         // Update existing packages to latest
+        vec!["update", "terminator.js"]
+    } else {
+        // This shouldn't happen, but default to update
         vec!["update"]
     };
 
@@ -691,11 +720,7 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
     use tokio::process::Command;
 
     info!("[Node.js] Starting JavaScript execution with terminator.js bindings");
-    info!(
-        "[Node.js] Script to execute ({} bytes):\n{}",
-        script.len(),
-        script
-    );
+    info!("[Node.js] Script to execute ({} bytes)", script.len());
 
     // Check if bun is available, fallback to node
     let runtime = if let Some(bun_exe) = find_executable("bun") {
@@ -740,6 +765,7 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
     // 1. Imports terminator.js
     // 2. Executes user script
     // 3. Returns result
+
     let wrapper_script = format!(
         r#"
 const {{ Desktop }} = require('terminator.js');
@@ -789,7 +815,6 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         "[Node.js] Writing wrapper script to: {}",
         script_path.display()
     );
-    info!("[Node.js] Wrapper script content:\n{}", wrapper_script);
 
     tokio::fs::write(&script_path, wrapper_script)
         .await
@@ -827,7 +852,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         // Bun can be executed directly if it's not a batch file
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
-            .arg("main.js")
+            .arg(&unique_filename)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

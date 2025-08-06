@@ -5,7 +5,7 @@
 
 use crate::{AutomationError, Desktop};
 use std::time::Duration;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Execute JavaScript in browser using terminator SDK selectors
 pub async fn execute_script(
@@ -19,36 +19,15 @@ pub async fn execute_script(
     browser_element.focus()?;
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // Step 2: Open dev tools if not already open (F12)
-    info!("⚙️ Opening dev tools (F12)");
-    browser_element.press_key("{F12}")?;
+    // Step 2: Open dev tools if not already open (Ctrl+Shift+J)
+    info!("⚙️ Opening dev tools (Ctrl+Shift+J)");
+    browser_element.press_key("{Ctrl}{Shift}J")?;
     tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    // Step 3: Find Console tab using terminator selector
-    // debug!("🖥️ Finding Console tab using name:Console");
-    // match browser_element.locator("role:document >> name:Console")?.first(None).await {
-    //     Ok(console_tab) => {
-    //         debug!("✅ Found Console tab, clicking it");
-    //         console_tab.click()?;
-    //         tokio::time::sleep(Duration::from_millis(500)).await;
-    //     }
-    //     Err(_) => debug!("⚠️ Console tab not found or already active"),
-    // }
-
-    // Step 4: Clear console using the Clear console button
-    // debug!("🧹 Clearing console using Clear console button");
-    // match browser_element
-    //     .locator("role:document|name:DevTools >> name:Clear console - Ctrl + L")?
-    //     .first(None)
-    //     .await
-    // {
-    //     Ok(clear_button) => {
-    //         debug!("✅ Found clear console button, clicking it");
-    //         clear_button.click()?;
-    //         tokio::time::sleep(Duration::from_millis(500)).await;
-    //     }
-    //     Err(_) => debug!("⚠️ Clear console button not found, proceeding anyway"),
-    // }
+    // Step 4: Clear console using Ctrl + L
+    // info!("🧹 Clearing console using Ctrl + L");
+    // browser_element.press_key("{Ctrl}L")?;
+    // tokio::time::sleep(Duration::from_millis(500)).await;
 
     let desktop = Desktop::new(true, false)?;
 

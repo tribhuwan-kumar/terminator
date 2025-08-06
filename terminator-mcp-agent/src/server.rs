@@ -61,53 +61,6 @@ pub fn extract_content_json(content: &Content) -> Result<serde_json::Value, serd
     Ok(content_value)
 }
 
-// Helper function to validate extracted data against success criteria
-fn is_valid_extraction(extracted_data: &serde_json::Value, criteria: &serde_json::Value) -> bool {
-    // Default validation: check if we have any data
-    if extracted_data.is_null() {
-        return false;
-    }
-
-    // If criteria is provided, validate against it
-    if let Some(min_items) = criteria.get("min_items").and_then(|v| v.as_u64()) {
-        let item_count = extracted_data.as_array().map_or(0, |arr| arr.len());
-        if (item_count as u64) < min_items {
-            return false;
-        }
-    }
-
-    // Check for required fields
-    if let Some(required_fields) = criteria.get("required_fields").and_then(|v| v.as_array()) {
-        if let Some(data_array) = extracted_data.as_array() {
-            if data_array.is_empty() {
-                return false;
-            }
-
-            // Check if at least one item has all required fields
-            let has_required_fields = data_array.iter().any(|item| {
-                if let Some(item_obj) = item.as_object() {
-                    required_fields.iter().all(|field| {
-                        if let Some(field_name) = field.as_str() {
-                            item_obj.contains_key(field_name)
-                                && !item_obj.get(field_name).unwrap().is_null()
-                        } else {
-                            false
-                        }
-                    })
-                } else {
-                    false
-                }
-            });
-
-            if !has_required_fields {
-                return false;
-            }
-        }
-    }
-
-    true
-}
-
 #[tool_router]
 impl DesktopWrapper {
     pub fn new() -> Result<Self, McpError> {
