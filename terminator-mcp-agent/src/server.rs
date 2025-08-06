@@ -19,7 +19,7 @@ use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
-use rmcp::{tool, Error as McpError, ServerHandler};
+use rmcp::{tool, ErrorData as McpError, ServerHandler};
 use rmcp::{tool_handler, tool_router};
 use serde_json::{json, Value};
 use std::future::Future;
@@ -37,28 +37,27 @@ use image::codecs::png::PngEncoder;
 
 /// Extracts JSON data from Content objects without double serialization
 pub fn extract_content_json(content: &Content) -> Result<serde_json::Value, serde_json::Error> {
-    // First serialize the Content to understand its structure
-    let content_value = serde_json::to_value(content)?;
-
-    // Check if it's a JSON content type with a "text" field containing JSON string
-    if let Some(content_obj) = content_value.as_object() {
-        if let Some(content_type) = content_obj.get("type") {
-            if content_type == "text" {
-                if let Some(text_value) = content_obj.get("text") {
-                    if let Some(text_str) = text_value.as_str() {
-                        // Try to parse the text as JSON
-                        if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(text_str)
-                        {
-                            return Ok(parsed_json);
-                        }
-                    }
-                }
+    // Handle the new rmcp 0.4.0 Content structure with Annotated<RawContent>
+    match &content.raw {
+        rmcp::model::RawContent::Text(text_content) => {
+            // Try to parse the text as JSON first
+            if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(&text_content.text) {
+                Ok(parsed_json)
+            } else {
+                // If it's not JSON, return as a text object
+                Ok(json!({"type": "text", "text": text_content.text}))
             }
         }
+        rmcp::model::RawContent::Image(image_content) => Ok(
+            json!({"type": "image", "data": image_content.data, "mime_type": image_content.mime_type}),
+        ),
+        rmcp::model::RawContent::Resource(resource_content) => {
+            Ok(json!({"type": "resource", "resource": resource_content}))
+        }
+        rmcp::model::RawContent::Audio(audio_content) => Ok(
+            json!({"type": "audio", "data": audio_content.data, "mime_type": audio_content.mime_type}),
+        ),
     }
-
-    // Fallback: return the content as-is if it's not a JSON text type
-    Ok(content_value)
 }
 
 #[tool_router]
@@ -2492,19 +2491,22 @@ impl DesktopWrapper {
             Ok(result) => {
                 let mut extracted_content = Vec::new();
 
-                for content in &result.content {
-                    match extract_content_json(content) {
-                        Ok(json_content) => extracted_content.push(json_content),
-                        Err(_) => extracted_content.push(
-                            json!({ "type": "unknown", "data": "Content extraction failed" }),
-                        ),
+                if let Some(content_vec) = &result.content {
+                    for content in content_vec {
+                        match extract_content_json(content) {
+                            Ok(json_content) => extracted_content.push(json_content),
+                            Err(_) => extracted_content.push(
+                                json!({ "type": "unknown", "data": "Content extraction failed" }),
+                            ),
+                        }
                     }
                 }
 
+                let content_count = result.content.as_ref().map(|v| v.len()).unwrap_or(0);
                 let content_summary = if include_detailed {
-                    json!({ "type": "tool_result", "content_count": result.content.len(), "content": extracted_content })
+                    json!({ "type": "tool_result", "content_count": content_count, "content": extracted_content })
                 } else {
-                    json!({ "type": "summary", "content": "Tool executed successfully", "content_count": result.content.len() })
+                    json!({ "type": "summary", "content": "Tool executed successfully", "content_count": content_count })
                 };
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
                 let mut result_json = json!({
@@ -3288,7 +3290,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes arbitrary JavaScript inside an embedded JS engine. The script receives a synchronous helper `callTool(name, argsJsonString)` that can invoke any other MCP tool and return its JSON result. The final value of the script is serialized to JSON and returned as the tool output.  NOTE: This is EXPERIMENTAL and currently uses a sandboxed QuickJS runtime; only standard JavaScript plus the provided helper is available."
+        description = "Executes arbitrary JavaScript inside an embedded JS engine. The final value of the script is serialized to JSON and returned as the tool output. You can provide either inline script code or a path to a JavaScript file. NOTE: This is EXPERIMENTAL and currently uses a sandboxed NodeJS runtime; only standard JavaScript and terminator-js is available."
     )]
     async fn run_javascript(
         &self,
@@ -3296,8 +3298,49 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use serde_json::json;
 
+        // Determine the script source - either inline or from file
+        let script_content = match (args.script, args.script_file_path) {
+            (Some(script), None) => {
+                // Inline script provided
+                script
+            }
+            (None, Some(file_path)) => {
+                // File path provided - read the file
+                match std::fs::read_to_string(&file_path) {
+                    Ok(content) => content,
+                    Err(e) => {
+                        return Err(McpError::internal_error(
+                            format!("Failed to read JavaScript file: {file_path}"),
+                            Some(json!({
+                                "file_path": file_path,
+                                "error": e.to_string()
+                            })),
+                        ));
+                    }
+                }
+            }
+            (Some(_), Some(_)) => {
+                return Err(McpError::invalid_params(
+                    "Cannot provide both 'script' and 'script_file_path'. Please provide only one.",
+                    Some(json!({
+                        "provided_script": true,
+                        "provided_script_file_path": true
+                    })),
+                ));
+            }
+            (None, None) => {
+                return Err(McpError::invalid_params(
+                    "Must provide either 'script' (inline JavaScript) or 'script_file_path' (path to JavaScript file).",
+                    Some(json!({
+                        "provided_script": false,
+                        "provided_script_file_path": false
+                    }))
+                ));
+            }
+        };
+
         let execution_result =
-            scripting_engine::execute_javascript_with_nodejs(args.script).await?;
+            scripting_engine::execute_javascript_with_nodejs(script_content).await?;
         return Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "run_javascript",
             "status": "success",

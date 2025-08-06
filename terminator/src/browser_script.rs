@@ -5,7 +5,7 @@
 
 use crate::{AutomationError, Desktop};
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::info;
 
 /// Execute JavaScript in browser using terminator SDK selectors
 pub async fn execute_script(

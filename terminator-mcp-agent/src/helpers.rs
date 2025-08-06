@@ -1,7 +1,7 @@
 use crate::expression_eval;
 use crate::utils::ToolCall;
 use regex::Regex;
-use rmcp::Error as McpError;
+use rmcp::ErrorData as McpError;
 use serde_json::{json, Value};
 use std::time::Duration;
 use terminator::{Desktop, Selector, UIElement}; // NEW: import expression evaluator

@@ -11,8 +11,12 @@ pub struct OutputParserDefinition {
     pub ui_tree_source_step_id: Option<String>,
     /// JavaScript code that processes the tree and returns results
     /// The code receives a 'tree' variable containing the UI tree
-    /// and should return an array of objects
-    pub javascript_code: String,
+    /// and should return an array of objects.
+    /// Either this or javascript_file_path must be provided.
+    pub javascript_code: Option<String>,
+    /// Path to a JavaScript file containing the parser code.
+    /// Either this or javascript_code must be provided.
+    pub javascript_file_path: Option<String>,
 }
 
 /// The main entry point for parsing tool output.
@@ -27,6 +31,30 @@ pub async fn run_output_parser(
                 e
             )
         })?;
+
+    // Determine the JavaScript source - either inline or from file
+    let user_javascript_code = match (parser_def.javascript_code, parser_def.javascript_file_path) {
+        (Some(code), None) => {
+            // Inline JavaScript provided
+            code
+        }
+        (None, Some(file_path)) => {
+            // File path provided - read the file
+            std::fs::read_to_string(&file_path).map_err(|e| {
+                anyhow::anyhow!("Failed to read JavaScript file '{}': {}", file_path, e)
+            })?
+        }
+        (Some(_), Some(_)) => {
+            return Err(anyhow::anyhow!(
+                "Cannot provide both 'javascript_code' and 'javascript_file_path'. Please provide only one."
+            ));
+        }
+        (None, None) => {
+            return Err(anyhow::anyhow!(
+                "Must provide either 'javascript_code' (inline JavaScript) or 'javascript_file_path' (path to JavaScript file)."
+            ));
+        }
+    };
 
     let ui_tree =
         find_ui_tree_in_results(tool_output, parser_def.ui_tree_source_step_id.as_deref())?;
@@ -50,7 +78,7 @@ pub async fn run_output_parser(
                     .map_err(|e| anyhow::anyhow!("Failed to serialize tree: {}", e))?,
                 serde_json::to_string(tool_output)
                     .map_err(|e| anyhow::anyhow!("Failed to serialize tool output: {}", e))?,
-                parser_def.javascript_code
+                user_javascript_code
             )
         }
         None => {
@@ -69,7 +97,7 @@ pub async fn run_output_parser(
                 "#,
                 serde_json::to_string(tool_output)
                     .map_err(|e| anyhow::anyhow!("Failed to serialize tool output: {}", e))?,
-                parser_def.javascript_code
+                user_javascript_code
             )
         }
     };
@@ -228,7 +256,8 @@ mod tests {
 
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: None,
-            javascript_code: r#"
+            javascript_code: Some(
+                r#"
                 const results = [];
 
                 function findElementsRecursively(element) {
@@ -251,7 +280,9 @@ mod tests {
                 findElementsRecursively(tree);
                 return results;
             "#
-            .to_string(),
+                .to_string(),
+            ),
+            javascript_file_path: None,
         };
         // Note: This test would require an async runtime to execute JavaScript
         // For now, we'll just verify the parser definition structure is correct
@@ -263,7 +294,8 @@ mod tests {
     fn test_empty_results() {
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: None,
-            javascript_code: r#"
+            javascript_code: Some(
+                r#"
                 const results = [];
                 
                 function findElementsRecursively(element) {
@@ -277,7 +309,9 @@ mod tests {
                 findElementsRecursively(tree);
                 return results;
             "#
-            .to_string(),
+                .to_string(),
+            ),
+            javascript_file_path: None,
         };
 
         // Verify parser definition structure
@@ -301,7 +335,8 @@ mod tests {
 
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: Some("test_step".to_string()),
-            javascript_code: r#"
+            javascript_code: Some(
+                r#"
                 const results = [];
                 
                 function findElementsRecursively(element) {
@@ -323,7 +358,9 @@ mod tests {
                 findElementsRecursively(tree);
                 return results;
             "#
-            .to_string(),
+                .to_string(),
+            ),
+            javascript_file_path: None,
         };
 
         // Verify parser definition structure
@@ -339,7 +376,8 @@ mod tests {
     fn test_attribute_value_filtering() {
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: None,
-            javascript_code: r#"
+            javascript_code: Some(
+                r#"
                 const results = [];
                 
                 function findElementsRecursively(element) {
@@ -363,7 +401,9 @@ mod tests {
                 findElementsRecursively(tree);
                 return results;
             "#
-            .to_string(),
+                .to_string(),
+            ),
+            javascript_file_path: None,
         };
 
         json!({
@@ -409,6 +449,6 @@ mod tests {
             parser_def.ui_tree_source_step_id,
             Some("capture_tree".to_string())
         );
-        assert_eq!(parser_def.javascript_code, "return [];");
+        assert_eq!(parser_def.javascript_code, Some("return [];".to_string()));
     }
 }

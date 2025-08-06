@@ -841,8 +841,14 @@ pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), Validati
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RunJavascriptArgs {
-    #[schemars(description = "JavaScript source code to execute inside the embedded engine.")]
-    pub script: String,
+    #[schemars(
+        description = "JavaScript source code to execute inside the embedded engine. Either this or script_file_path must be provided."
+    )]
+    pub script: Option<String>,
+    #[schemars(
+        description = "Path to a JavaScript file to execute. Either this or script must be provided."
+    )]
+    pub script_file_path: Option<String>,
     #[schemars(
         description = "Optional timeout in milliseconds before the script execution is aborted."
     )]

@@ -1,4 +1,4 @@
-use rmcp::Error as McpError;
+use rmcp::ErrorData as McpError;
 use serde_json::json;
 use tracing::{error, info, warn};
 
@@ -934,9 +934,6 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                                 ));
                             }
                             break;
-                        } else {
-                            // Regular console output
-                            info!("[Node.js output] {}", line);
                         }
                     }
                     Ok(None) => {
