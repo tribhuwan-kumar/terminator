@@ -3,7 +3,7 @@ use rmcp::Error as McpError;
 use serde_json::json;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 // Simple thread-safe queue for tool calls
 type ToolCall = (String, serde_json::Value, String); // (tool_name, args, response_id)
@@ -125,7 +125,7 @@ where
                 )
             })?;
 
-        debug!("[JavaScript] Tool queues initialized, ready to execute script");
+        info!("[JavaScript] Tool queues initialized, ready to execute script");
 
         let call_tool_fn = NativeFunction::from_fn_ptr(|_, args, _| {
             let tool_name = args
@@ -268,7 +268,7 @@ where
     let tool_handler = {
         let tool_dispatcher = tool_dispatcher.clone();
         tokio::spawn(async move {
-            debug!("[JavaScript->Rust] Tool handler started, polling queue for tool calls...");
+            info!("[JavaScript->Rust] Tool handler started, polling queue for tool calls...");
 
             loop {
                 // Check for tool calls in queue
@@ -279,14 +279,14 @@ where
                 };
 
                 if let Some((tool_name, args_val, response_id)) = tool_call {
-                    debug!(
+                    info!(
                         "[JavaScript->Rust] Processing tool call: '{}' with ID: {}",
                         tool_name, response_id
                     );
 
                     let result_json = match tool_dispatcher(tool_name.clone(), args_val).await {
                         Ok(result_json) => {
-                            debug!(
+                            info!(
                                 "[JavaScript->Rust] Tool '{}' executed successfully, result length: {}",
                                 tool_name,
                                 result_json.len()
@@ -306,7 +306,7 @@ where
                     if let Some(responses) = RESPONSE_MAP.get() {
                         if let Ok(mut resp_map) = responses.lock() {
                             resp_map.insert(response_id.clone(), result_json);
-                            debug!(
+                            info!(
                                 "[JavaScript->Rust] Response stored for tool '{}' with ID: {}",
                                 tool_name, response_id
                             );
@@ -765,11 +765,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stdout_line = stdout_reader.next_line() => {
                                         match stdout_line {
                                             Ok(Some(line)) => {
-                                                debug!("[{}] npm stdout: {}", runtime, line);
+                                                info!("[{}] npm stdout: {}", runtime, line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                debug!("[{}] npm stdout stream ended", runtime);
+                                                info!("[{}] npm stdout stream ended", runtime);
                                             }
                                             Err(e) => {
                                                 error!("[{}] Error reading npm stdout: {}", runtime, e);
@@ -781,11 +781,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stderr_line = stderr_reader.next_line() => {
                                         match stderr_line {
                                             Ok(Some(line)) => {
-                                                debug!("[{}] npm stderr: {}", runtime, line);
+                                                info!("[{}] npm stderr: {}", runtime, line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                debug!("[{}] npm stderr stream ended", runtime);
+                                                info!("[{}] npm stderr stream ended", runtime);
                                             }
                                             Err(e) => {
                                                 error!("[{}] Error reading npm stderr: {}", runtime, e);
@@ -797,17 +797,17 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
                                         match child.try_wait() {
                                             Ok(Some(status)) => {
-                                                debug!("[{}] npm process completed with status: {:?}", runtime, status);
+                                                info!("[{}] npm process completed with status: {:?}", runtime, status);
 
                                                 // Read any remaining output
                                                 while let Ok(Some(line)) = stdout_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        debug!("[{}] npm stdout (final): {}", runtime, line);
+                                                        info!("[{}] npm stdout (final): {}", runtime, line);
                                                     }
                                                 }
                                                 while let Ok(Some(line)) = stderr_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        debug!("[{}] npm stderr (final): {}", runtime, line);
+                                                        info!("[{}] npm stderr (final): {}", runtime, line);
                                                     }
                                                 }
 
@@ -1050,7 +1050,7 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
     use tokio::process::Command;
 
     info!("[Node.js] Starting JavaScript execution with terminator.js bindings");
-    debug!(
+    info!(
         "[Node.js] Script to execute ({} bytes):\n{}",
         script.len(),
         script
@@ -1148,7 +1148,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         "[Node.js] Writing wrapper script to: {}",
         script_path.display()
     );
-    debug!("[Node.js] Wrapper script content:\n{}", wrapper_script);
+    info!("[Node.js] Wrapper script content:\n{}", wrapper_script);
 
     tokio::fs::write(&script_path, wrapper_script)
         .await
@@ -1238,12 +1238,12 @@ console.log('[Node.js Wrapper] Starting user script execution...');
             stdout_line = stdout.next_line() => {
                 match stdout_line {
                     Ok(Some(line)) => {
-                        debug!("[Node.js stdout] {}", line);
+                        info!("[Node.js stdout] {}", line);
                         if line.starts_with("__RESULT__") && line.ends_with("__END__") {
                             // Parse final result
                             let result_json = line.replace("__RESULT__", "").replace("__END__", "");
                             info!("[Node.js] Received result, parsing JSON ({} bytes)...", result_json.len());
-                            debug!("[Node.js] Result JSON: {}", result_json);
+                            info!("[Node.js] Result JSON: {}", result_json);
 
                             match serde_json::from_str(&result_json) {
                                 Ok(parsed_result) => {
@@ -1253,7 +1253,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                                 }
                                 Err(e) => {
                                     error!("[Node.js] Failed to parse result JSON: {}", e);
-                                    debug!("[Node.js] Invalid JSON was: {}", result_json);
+                                    info!("[Node.js] Invalid JSON was: {}", result_json);
                                 }
                             }
                         } else if line.starts_with("__ERROR__") && line.ends_with("__END__") {
@@ -1290,7 +1290,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                         stderr_output.push(line);
                     }
                     Ok(None) => {
-                        debug!("[Node.js] stderr stream ended");
+                        info!("[Node.js] stderr stream ended");
                     }
                     Err(e) => {
                         error!("[Node.js] Error reading stderr: {}", e);

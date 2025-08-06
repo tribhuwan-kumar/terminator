@@ -16,7 +16,7 @@ use std::{
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uiautomation::types::Point;
 use uiautomation::UIAutomation;
 use windows::Win32::Foundation::{LPARAM, WPARAM};
@@ -121,7 +121,7 @@ impl WindowsRecorder {
         event_tx: broadcast::Sender<WorkflowEvent>,
     ) -> Result<Self> {
         info!("Initializing comprehensive Windows recorder");
-        debug!("Recorder config: {:?}", config);
+        info!("Recorder config: {:?}", config);
 
         let last_mouse_pos = Arc::new(Mutex::new(None));
         let stop_indicator = Arc::new(AtomicBool::new(false));
@@ -197,7 +197,7 @@ impl WindowsRecorder {
                         let actual_switch_method =
                             if let Ok(mut tracker) = alt_tab_tracker.try_lock() {
                                 if tracker.consume_pending_alt_tab() {
-                                    debug!("🔥 Application switch attributed to Alt+Tab!");
+                                    info!("🔥 Application switch attributed to Alt+Tab!");
                                     ApplicationSwitchMethod::AltTab
                                 } else {
                                     default_switch_method
@@ -238,9 +238,9 @@ impl WindowsRecorder {
                             if let Err(e) =
                                 event_tx.send(WorkflowEvent::ApplicationSwitch(switch_event))
                             {
-                                debug!("Failed to send application switch event: {}", e);
+                                info!("Failed to send application switch event: {}", e);
                             } else {
-                                debug!(
+                                info!(
                                     "✅ Application switch event sent: {} -> {} (method: {:?})",
                                     current
                                         .as_ref()
@@ -439,7 +439,7 @@ impl WindowsRecorder {
                                         let request =
                                             UIAInputRequest::KeyPressForCompletion { key_code };
                                         if uia_event_tx.send(request).is_err() {
-                                            debug!("Failed to send key press completion request to UIA thread");
+                                            info!("Failed to send key press completion request to UIA thread");
                                         }
                                     }
                                 }
@@ -450,7 +450,7 @@ impl WindowsRecorder {
                         if key_code == 0x0D || key_code == 0x20 {
                             let request = UIAInputRequest::ActivationKeyPress { key_code };
                             if uia_event_tx.send(request).is_err() {
-                                debug!("Failed to send activation key press request to UIA thread");
+                                info!("Failed to send activation key press request to UIA thread");
                             }
                         }
 
@@ -469,7 +469,7 @@ impl WindowsRecorder {
                                     // Mark Alt+Tab as pressed for application switch attribution
                                     if let Ok(mut tracker) = alt_tab_tracker.try_lock() {
                                         tracker.mark_alt_tab_pressed();
-                                        debug!("🔥 Alt+Tab detected - marking for application switch attribution");
+                                        info!("🔥 Alt+Tab detected - marking for application switch attribution");
                                     }
                                 }
 
@@ -765,7 +765,7 @@ impl WindowsRecorder {
             if let Ok(initial_content) = clipboard.get_text() {
                 let initial_hash = Self::calculate_hash(&initial_content);
                 *last_hash.lock().unwrap() = Some(initial_hash);
-                debug!("Initialized clipboard monitoring with existing content hash");
+                info!("Initialized clipboard monitoring with existing content hash");
             }
 
             while !stop_indicator.load(Ordering::SeqCst) {
@@ -851,7 +851,7 @@ impl WindowsRecorder {
             Ok(Some(element)) => Some(element),
             Ok(None) => None,
             Err(_) => {
-                debug!(
+                info!(
                     "UIA call to get focused element timed out after {}ms.",
                     timeout_ms
                 );
@@ -1008,7 +1008,7 @@ impl WindowsRecorder {
                     if let Some(element) = ui_element {
                         let element_name = element.name_or_empty();
                         let element_role = element.role().to_lowercase();
-                        debug!(
+                        info!(
                             "Focus event received for element: '{}', role: '{}'",
                             element_name, element_role
                         );
@@ -1035,7 +1035,7 @@ impl WindowsRecorder {
                                 &app_switch_ignore_window_titles,
                                 &app_switch_ignore_applications,
                             ) {
-                                debug!(
+                                info!(
                                     "Ignoring focus change event for app switch check: {}",
                                     app_switch_element_name
                                 );
@@ -1098,7 +1098,7 @@ impl WindowsRecorder {
                 unsafe {
                     CoUninitialize();
                 }
-                debug!("COM uninitialized");
+                info!("COM uninitialized");
             }
         });
 
@@ -1121,7 +1121,7 @@ impl WindowsRecorder {
                     }
                     0 => {
                         // WM_QUIT received
-                        debug!("WM_QUIT received in UI Automation message pump");
+                        info!("WM_QUIT received in UI Automation message pump");
                         break;
                     }
                     _ => {
@@ -1131,7 +1131,7 @@ impl WindowsRecorder {
 
                         // Check for quit message
                         if msg.message == WM_QUIT {
-                            debug!("WM_QUIT message processed");
+                            info!("WM_QUIT message processed");
                             break;
                         }
                     }
@@ -1191,7 +1191,7 @@ impl WindowsRecorder {
 
     /// Stop recording
     pub fn stop(&self) -> Result<()> {
-        debug!("Stopping comprehensive Windows recorder...");
+        info!("Stopping comprehensive Windows recorder...");
         self.stop_indicator.store(true, Ordering::SeqCst);
 
         // Signal the UI Automation thread to stop by posting a quit message
@@ -1199,7 +1199,7 @@ impl WindowsRecorder {
             unsafe {
                 let result = PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
                 if result.is_ok() {
-                    debug!(
+                    info!(
                         "Posted WM_QUIT message to UI Automation thread {}",
                         thread_id
                     );
@@ -1403,7 +1403,7 @@ impl WindowsRecorder {
                     .cloned()
             };
 
-            debug!(
+            info!(
                 "Checking browser navigation for app: '{}', matched browser keyword: {:?}",
                 app_name, matched_browser_keyword
             );
@@ -1451,7 +1451,7 @@ impl WindowsRecorder {
                         }
                     };
 
-                    debug!(
+                    info!(
                         "Browser navigation detected - URL: '{}', Title: '{}'",
                         new_url, new_title
                     );
@@ -1462,7 +1462,7 @@ impl WindowsRecorder {
                         != tracker_guard.current_url.clone().unwrap_or_default()
                         || new_title != tracker_guard.current_title.clone().unwrap_or_default();
 
-                    debug!(
+                    info!(
                         "Is switch: {}, current_url: {:?}, current_title: {:?}",
                         is_switch, tracker_guard.current_url, tracker_guard.current_title
                     );
@@ -1490,23 +1490,23 @@ impl WindowsRecorder {
                             )),
                         };
 
-                        debug!("Sending browser navigation event: {:?}", nav_event);
+                        info!("Sending browser navigation event: {:?}", nav_event);
 
                         if event_tx
                             .send(WorkflowEvent::BrowserTabNavigation(nav_event))
                             .is_ok()
                         {
-                            debug!("✅ Browser navigation event sent successfully");
+                            info!("✅ Browser navigation event sent successfully");
                             tracker_guard.current_browser = Some(browser_display_name);
                             tracker_guard.current_url = Some(new_url);
                             tracker_guard.current_title = Some(new_title);
                             tracker_guard.last_navigation_time = now;
                         } else {
-                            debug!("❌ Failed to send browser navigation event");
+                            info!("❌ Failed to send browser navigation event");
                         }
                     }
                 } else {
-                    debug!(
+                    info!(
                         "No URL information found for browser element: '{}'",
                         element.name_or_empty()
                     );
@@ -1532,7 +1532,7 @@ impl WindowsRecorder {
         // Try to find the currently focused element first
         if let Some(focused_element) = Self::get_focused_ui_element_with_timeout(config, 200) {
             if Self::is_text_input_element(&focused_element) {
-                debug!(
+                info!(
                     "🎯 Found focused text input element: '{}'",
                     focused_element.name_or_empty()
                 );
@@ -1540,7 +1540,7 @@ impl WindowsRecorder {
             }
         }
 
-        debug!("❌ Could not find any recent text input elements using focused element approach");
+        info!("❌ Could not find any recent text input elements using focused element approach");
         None
     }
 
@@ -1580,7 +1580,7 @@ impl WindowsRecorder {
         let mut tracker = match current_text_input.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                debug!("❌ Could not lock text input tracker for transition");
+                info!("❌ Could not lock text input tracker for transition");
                 return;
             }
         };
@@ -1608,7 +1608,7 @@ impl WindowsRecorder {
         // If we're focusing on a potential autocomplete element, preserve the existing tracker
         if is_potential_autocomplete_element && tracker.is_some() {
             if let Some(element) = new_element {
-                debug!(
+                info!(
                     "🔽 Focus moved to potential autocomplete element: '{}' (role: '{}') - PRESERVING text input tracker",
                     element.name_or_empty(), element.role()
                 );
@@ -1628,7 +1628,7 @@ impl WindowsRecorder {
             };
 
             if should_remove_tracker {
-                debug!(
+                info!(
                     "🔄 Leaving text input field: '{}' (reason: {})",
                     element_name, trigger_reason
                 );
@@ -1638,24 +1638,24 @@ impl WindowsRecorder {
 
                 // Check if we should emit a completion event
                 if existing_tracker.should_emit_completion(trigger_reason) {
-                    debug!("✅ Should emit completion event for {}", trigger_reason);
+                    info!("✅ Should emit completion event for {}", trigger_reason);
                     if let Some(text_event) = existing_tracker.get_completion_event(None) {
-                        debug!(
+                        info!(
                             "🔥 Emitting text input completion event: '{}' (reason: {})",
                             text_event.text_value, trigger_reason
                         );
                         if let Err(e) = event_tx.send(WorkflowEvent::TextInputCompleted(text_event))
                         {
-                            debug!("Failed to send text input completed event: {}", e);
+                            info!("Failed to send text input completed event: {}", e);
                         }
                     } else {
-                        debug!("❌ get_completion_event returned None");
+                        info!("❌ get_completion_event returned None");
                     }
                 } else {
-                    debug!("❌ Should NOT emit completion event for {}", trigger_reason);
+                    info!("❌ Should NOT emit completion event for {}", trigger_reason);
                 }
             } else {
-                debug!(
+                info!(
                     "🔽 Staying in text input context: '{}' (reason: {})",
                     element_name, trigger_reason
                 );
@@ -1666,30 +1666,30 @@ impl WindowsRecorder {
         if let Some(element) = new_element {
             let element_name = element.name_or_empty();
             let element_role = element.role();
-            debug!(
+            info!(
                 "🔍 Checking new element: '{}' (role: '{}') for text input",
                 element_name, element_role
             );
 
             if Self::is_text_input_element(element) && tracker.is_none() {
-                debug!(
+                info!(
                     "✅ New element is a text input field, starting tracking (reason: {})",
                     trigger_reason
                 );
                 // Store the new text input element with current time
                 *tracker = Some(TextInputTracker::new(element.clone()));
-                debug!(
+                info!(
                     "🎯 Started tracking text input: '{}' ({})",
                     element_name, element_role
                 );
             } else if !Self::is_text_input_element(element) && !is_potential_autocomplete_element {
-                debug!(
+                info!(
                     "❌ New element is NOT a text input field: '{}' ({})",
                     element_name, element_role
                 );
             }
         } else {
-            debug!("🔍 New element is None (no focus)");
+            info!("🔍 New element is None (no focus)");
         }
     }
 
@@ -1733,7 +1733,7 @@ impl WindowsRecorder {
                 },
             };
 
-            debug!(
+            info!(
                 "🖱️🖱️ Double click detected: button={:?}, position=({}, {})",
                 button, position.x, position.y
             );
@@ -1749,7 +1749,7 @@ impl WindowsRecorder {
 
         // Debug: Log what UI element we captured at mouse down
         if let Some(ref element) = ui_element {
-            debug!(
+            info!(
                 "Mouse down captured element: name='{}', role='{}', position=({}, {})",
                 element.name_or_empty(),
                 element.role(),
@@ -1757,7 +1757,7 @@ impl WindowsRecorder {
                 position.y
             );
         } else {
-            debug!(
+            info!(
                 "Mouse down: No UI element captured at position ({}, {})",
                 position.x, position.y
             );
@@ -1770,20 +1770,20 @@ impl WindowsRecorder {
                 let element_name = element.name_or_empty();
 
                 // Debug: Log all mouse clicks on elements for debugging
-                debug!(
+                info!(
                     "🖱️ Mouse click on element: '{}' (role: '{}') - checking if text input...",
                     element_name, element_role
                 );
 
                 // Check if this is a click on a text input element and start tracking
                 let is_text_input = Self::is_text_input_element(element);
-                debug!(
+                info!(
                     "🔍 is_text_input_element('{}', '{}') = {}",
                     element_name, element_role, is_text_input
                 );
 
                 if config.record_text_input_completion && is_text_input {
-                    debug!(
+                    info!(
                         "🎯 Detected mouse click on text input element: '{}' (role: '{}') - STARTING TRACKING",
                         element_name, element_role
                     );
@@ -1812,7 +1812,7 @@ impl WindowsRecorder {
                     || element_name.to_lowercase().contains("dropdown"); // Common autocomplete patterns
 
                 // Debug logging for suggestion detection
-                debug!(
+                info!(
                     "🔍 Checking suggestion click: element='{}', role='{}', is_suggestion={}, config_enabled={}",
                     element_name,
                     element_role,
@@ -1821,18 +1821,18 @@ impl WindowsRecorder {
                 );
 
                 if is_suggestion_click && config.record_text_input_completion {
-                    debug!(
+                    info!(
                         "🎯 Detected potential autocomplete/suggestion click: '{}' (role: '{}') - SUGGESTION SELECTED",
                         element_name, element_role
                     );
 
                     // Check if we have an active text input tracker that might be affected
                     if let Ok(mut tracker) = current_text_input.try_lock() {
-                        debug!(
+                        info!(
                             "🔒 Successfully locked text input tracker, checking for active tracker..."
                         );
                         if let Some(ref mut text_input) = tracker.as_mut() {
-                            debug!(
+                            info!(
                                 "✅ Found active text input tracker for element: '{}'",
                                 text_input.element.name_or_empty()
                             );
@@ -1840,7 +1840,7 @@ impl WindowsRecorder {
                             text_input.has_typing_activity = true;
                             text_input.keystroke_count += 1; // Count suggestion click as one interaction
 
-                            debug!(
+                            info!(
                                 "📝 Marking text input as having suggestion selection activity (total keystrokes: {})",
                                 text_input.keystroke_count
                             );
@@ -1869,37 +1869,37 @@ impl WindowsRecorder {
                                     )),
                                 };
 
-                                debug!(
+                                info!(
                                     "🔥 Emitting text input completion for suggestion click: '{}'",
                                     text_event.text_value
                                 );
                                 if let Err(e) =
                                     event_tx.send(WorkflowEvent::TextInputCompleted(text_event))
                                 {
-                                    debug!("Failed to send text input completion event: {}", e);
+                                    info!("Failed to send text input completion event: {}", e);
                                 } else {
-                                    debug!("✅ Text input completion event sent successfully for suggestion");
+                                    info!("✅ Text input completion event sent successfully for suggestion");
                                 }
 
                                 // Reset tracker after emitting - clear but keep the element for potential continued typing
                                 let element_for_continuation = text_input.element.clone();
                                 *tracker = Some(TextInputTracker::new(element_for_continuation));
-                                debug!("🔄 Reset text input tracker after suggestion completion but keep tracking the same element");
+                                info!("🔄 Reset text input tracker after suggestion completion but keep tracking the same element");
                             } else {
-                                debug!("❌ Should not emit completion for suggestion click");
+                                info!("❌ Should not emit completion for suggestion click");
                             }
                         } else {
-                            debug!(
+                            info!(
                                 "⚠️ Suggestion click detected but no active text input tracker found"
                             );
-                            debug!(
+                            info!(
                                 "💡 Attempting to create temporary tracker for suggestion completion..."
                             );
 
                             // Try to find the text input element that was recently active
                             // Look for text input elements on the page
                             if let Some(text_element) = Self::find_recent_text_input(config) {
-                                debug!(
+                                info!(
                                     "🔍 Found recent text input element: '{}'",
                                     text_element.name_or_empty()
                                 );
@@ -1927,27 +1927,27 @@ impl WindowsRecorder {
                                     )),
                                 };
 
-                                debug!(
+                                info!(
                                     "🔥 Emitting text input completion from temp tracker: '{}'",
                                     text_event.text_value
                                 );
                                 if let Err(e) =
                                     event_tx.send(WorkflowEvent::TextInputCompleted(text_event))
                                 {
-                                    debug!("Failed to send temp tracker completion event: {}", e);
+                                    info!("Failed to send temp tracker completion event: {}", e);
                                 } else {
-                                    debug!("✅ Temp tracker completion event sent successfully");
+                                    info!("✅ Temp tracker completion event sent successfully");
                                 }
 
                                 // Create new tracker for potential continued typing
                                 *tracker = Some(TextInputTracker::new(text_element));
-                                debug!("🔄 Created new tracker after temp completion");
+                                info!("🔄 Created new tracker after temp completion");
                             } else {
-                                debug!("❌ Could not find recent text input element for suggestion completion");
+                                info!("❌ Could not find recent text input element for suggestion completion");
                             }
                         }
                     } else {
-                        debug!("❌ Could not lock text input tracker for suggestion click");
+                        info!("❌ Could not lock text input tracker for suggestion click");
                     }
                 }
 
@@ -1961,7 +1961,7 @@ impl WindowsRecorder {
                     || element_role.contains("togglebutton");
 
                 if is_clickable {
-                    debug!(
+                    info!(
                         "🖱️ Mouse click on clickable element: '{}' (role: '{}')",
                         element_name, element_role
                     );
@@ -1990,9 +1990,9 @@ impl WindowsRecorder {
                     };
 
                     if let Err(e) = event_tx.send(WorkflowEvent::ButtonClick(button_event)) {
-                        debug!("Failed to send button click event: {}", e);
+                        info!("Failed to send button click event: {}", e);
                     } else {
-                        debug!("✅ Button click event sent successfully");
+                        info!("✅ Button click event sent successfully");
                     }
                 }
             }
@@ -2076,7 +2076,7 @@ impl WindowsRecorder {
             Ok(Some(element)) => Some(element),
             Ok(None) => None,
             Err(_) => {
-                debug!(
+                info!(
                     "UIA call to get element from point timed out after {}ms.",
                     timeout_ms
                 );
@@ -2143,7 +2143,7 @@ impl WindowsRecorder {
                 || element_role.contains("radiobutton")
                 || element_role.contains("togglebutton")
             {
-                debug!(
+                info!(
                     "✅ Detected clickable element on activation key press: '{}' (role: '{}')",
                     element_name, element_role
                 );
@@ -2175,7 +2175,7 @@ impl WindowsRecorder {
                 };
 
                 if let Err(e) = event_tx.send(WorkflowEvent::ButtonClick(button_event)) {
-                    debug!(
+                    info!(
                         "Failed to send button click event from key press for '{}': {}",
                         element_name, e
                     );

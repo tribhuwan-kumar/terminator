@@ -3,9 +3,9 @@
 //! Uses terminator SDK selectors for cross-platform browser automation.
 //! Finds console tab and prompt using proper selectors, runs JavaScript, extracts results.
 
-use crate::AutomationError;
+use crate::{AutomationError, Desktop};
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::info;
 
 /// Execute JavaScript in browser using terminator SDK selectors
 pub async fn execute_script(
@@ -15,169 +15,194 @@ pub async fn execute_script(
     info!("🚀 Executing JavaScript using terminator SDK: {}", script);
 
     // Step 1: Focus the browser window
-    debug!("🎯 Focusing browser window");
-    browser_element.click()?;
+    info!("🎯 Focusing browser window");
+    browser_element.focus()?;
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Step 2: Open dev tools if not already open (F12)
-    debug!("⚙️ Opening dev tools (F12)");
+    info!("⚙️ Opening dev tools (F12)");
     browser_element.press_key("{F12}")?;
     tokio::time::sleep(Duration::from_millis(2000)).await;
 
     // Step 3: Find Console tab using terminator selector
-    debug!("🖥️ Finding Console tab using name:Console");
-    match browser_element.locator("name:Console")?.first(None).await {
-        Ok(console_tab) => {
-            debug!("✅ Found Console tab, clicking it");
-            console_tab.click()?;
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        Err(_) => debug!("⚠️ Console tab not found or already active"),
-    }
+    // debug!("🖥️ Finding Console tab using name:Console");
+    // match browser_element.locator("role:document >> name:Console")?.first(None).await {
+    //     Ok(console_tab) => {
+    //         debug!("✅ Found Console tab, clicking it");
+    //         console_tab.click()?;
+    //         tokio::time::sleep(Duration::from_millis(500)).await;
+    //     }
+    //     Err(_) => debug!("⚠️ Console tab not found or already active"),
+    // }
 
     // Step 4: Clear console using the Clear console button
-    debug!("🧹 Clearing console using Clear console button");
-    match browser_element
-        .locator("name:Clear console - Ctrl + L")?
-        .first(None)
-        .await
-    {
-        Ok(clear_button) => {
-            debug!("✅ Found clear console button, clicking it");
-            clear_button.click()?;
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        Err(_) => debug!("⚠️ Clear console button not found, proceeding anyway"),
-    }
+    // debug!("🧹 Clearing console using Clear console button");
+    // match browser_element
+    //     .locator("role:document|name:DevTools >> name:Clear console - Ctrl + L")?
+    //     .first(None)
+    //     .await
+    // {
+    //     Ok(clear_button) => {
+    //         debug!("✅ Found clear console button, clicking it");
+    //         clear_button.click()?;
+    //         tokio::time::sleep(Duration::from_millis(500)).await;
+    //     }
+    //     Err(_) => debug!("⚠️ Clear console button not found, proceeding anyway"),
+    // }
+
+    let desktop = Desktop::new(true, false)?;
 
     // Step 5: Find console prompt using terminator selector
-    debug!("🔍 Finding console prompt using name:Console prompt");
-    let console_prompt = browser_element
-        .locator("name:Console prompt")?
+    info!("🔍 Finding console prompt using name:Console prompt");
+    let console_prompt = desktop
+        .locator("role:document|name:DevTools >> name:Console prompt")
         .first(None)
         .await?;
 
-    debug!("⌨️ Typing JavaScript into console prompt");
+    info!("⌨️ Typing JavaScript into console prompt");
     console_prompt.type_text(script, true)?;
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Step 6: Execute the script (Enter)
-    debug!("🚀 Executing script with Enter");
+    info!("🚀 Executing script with Enter");
     console_prompt.press_key("{ENTER}")?;
     tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    // Step 7: Get result from console messages area
-    debug!("📄 Getting result from console messages");
-    let result = match browser_element
-        .locator("nativeid:console-messages")?
-        .first(None)
-        .await
-    {
-        Ok(console_messages) => {
-            debug!("✅ Found console messages area");
-
-            // Look for Text elements in the console messages - the result will be in the last one
-            match console_messages.locator("role:Text")?.all(None, None).await {
-                Ok(text_elements) => {
-                    debug!("📋 Found {} text elements in console", text_elements.len());
-
-                    // Find the result by looking at element names (where the result is stored)
-                    let mut result_text = String::new();
-                    for element in text_elements.iter().rev().take(10) {
-                        // Check last 10 elements
-                        // Try name first (where console results are stored)
-                        if let Some(name) = element.name() {
-                            debug!("🔍 Text element name: '{}'", name);
-                            let trimmed = name.trim();
-
-                            // Look for our JavaScript result - skip input elements and errors
-                            if !trimmed.is_empty()
-                                && !trimmed.contains("6sense")
-                                && !trimmed.contains("Hit MAX_ITERATIONS")
-                                && !trimmed.contains("Form Element:")
-                                && !trimmed.contains("Failed to load")
-                                && !trimmed.contains("Access to XMLHttpRequest")
-                                && trimmed != "document"
-                                && trimmed != "."
-                                && trimmed != "title"
-                                && trimmed != script.trim()
-                            {
-                                // Not the input line
-                                result_text = trimmed.to_string();
-                                debug!("✅ Found result in name: '{}'", result_text);
-                                break;
-                            }
-                        }
-
-                        // Fallback to text content
-                        if result_text.is_empty() {
-                            if let Ok(text) = element.text(100) {
-                                debug!("🔍 Text element text: '{}'", text);
-                                let trimmed = text.trim();
-
-                                if !trimmed.is_empty()
-                                    && trimmed != "document"
-                                    && trimmed != "."
-                                    && trimmed != "title"
-                                    && !trimmed.starts_with("document.title")
-                                {
-                                    result_text = trimmed.to_string();
-                                    debug!("✅ Found result in text: '{}'", result_text);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if result_text.is_empty() {
-                        debug!("⚠️ No result text found, trying full text extraction");
-                        console_messages.text(100).unwrap_or_default()
-                    } else {
-                        result_text
-                    }
-                }
-                Err(_) => {
-                    debug!("⚠️ Couldn't get text elements, using full text");
-                    console_messages.text(100).unwrap_or_default()
-                }
-            }
+    // Step 7: Get result from console messages area using improved approach
+    info!("📄 Getting result from console messages");
+    let result = match get_console_result_from_ui(&desktop).await {
+        Ok(text) => {
+            info!(
+                "✅ Found console result from UI tree: {}",
+                &text[..text.len().min(100)]
+            );
+            text
         }
         Err(_) => {
-            debug!("⚠️ Couldn't find console messages, trying clipboard approach");
+            info!("⚠️ Couldn't find console result in UI, trying clipboard approach");
             get_console_result_via_clipboard(&console_prompt).await?
         }
     };
 
     // Step 8: Close dev tools
-    debug!("🚪 Closing dev tools");
+    info!("🚪 Closing dev tools");
     browser_element.press_key("{F12}")?;
 
-    debug!("✅ Script execution completed: {}", result);
+    info!("✅ Script execution completed: {}", result);
     Ok(result)
+}
+
+/// Primary method: get console result from UI tree
+async fn get_console_result_from_ui(desktop: &Desktop) -> Result<String, AutomationError> {
+    info!("🔍 Getting console result from UI tree");
+
+    // Wait a bit for the result to appear
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
+    // Try to get the console result text directly first
+    if let Ok(text_elements) = desktop
+        .locator("role:document|name:DevTools >> role:text")
+        .all(None, None)
+        .await
+    {
+        for element in text_elements.iter().rev().take(10) {
+            if let Some(text) = element.name() {
+                let trimmed = text.trim();
+                // Look for text elements that look like console output (quoted strings with content)
+                if (trimmed.starts_with("'") && trimmed.ends_with("'") && trimmed.len() > 10)
+                    || (trimmed.starts_with("\"") && trimmed.ends_with("\"") && trimmed.len() > 10)
+                {
+                    info!("🎯 Found console result in text elements");
+                    // Remove the surrounding quotes
+                    let cleaned = trimmed
+                        .trim_start_matches(['\'', '"'])
+                        .trim_end_matches(['\'', '"']);
+                    return Ok(cleaned.to_string());
+                }
+            }
+        }
+    }
+
+    // Fallback: Get all group elements in the console area
+    let console_groups = desktop
+        .locator("role:document|name:DevTools >> role:group")
+        .all(None, None)
+        .await?;
+
+    if console_groups.is_empty() {
+        return Err(AutomationError::ElementNotFound(
+            "No console groups found".to_string(),
+        ));
+    }
+
+    info!(
+        "🔍 Found {} console groups, analyzing...",
+        console_groups.len()
+    );
+
+    // Look for the console result - it's typically in one of the last few groups
+    // We look backward from the end to find the first group with meaningful content
+    for (i, group) in console_groups.iter().rev().take(8).enumerate() {
+        if let Some(text) = group.name() {
+            let trimmed = text.trim();
+            info!(
+                "🔍 Group -{}: {} chars: {}",
+                i + 1,
+                trimmed.len(),
+                &trimmed[..trimmed.len().min(50)]
+            );
+
+            // Skip empty, whitespace-only, or very short text
+            if !trimmed.is_empty() && trimmed.len() > 10 {
+                // Skip groups that are just navigation elements or the command itself
+                if !trimmed.contains("messages in console")
+                    && !trimmed.contains("Clear console")
+                    && !trimmed.contains("Filter")
+                    && !trimmed.contains("document.getElementById")  // Skip the command line
+                    && !trimmed.contains("function")  // Skip function definitions
+                    && !trimmed.contains("undefined")  // Skip undefined results
+                    && trimmed.len() > 20
+                // Must have substantial content
+                {
+                    info!("🎯 Found console result in UI tree");
+                    return Ok(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    Err(AutomationError::ElementNotFound(
+        "No meaningful console result found in UI tree".to_string(),
+    ))
 }
 
 /// Fallback method: get console result via clipboard
 async fn get_console_result_via_clipboard(
     console_prompt: &crate::UIElement,
 ) -> Result<String, AutomationError> {
-    debug!("📋 Getting console result via clipboard");
+    info!("📋 Getting console result via clipboard");
 
     // Clear clipboard first
     let _ = set_clipboard_content("").await;
 
-    // Navigate to the last console output and copy it
-    console_prompt.press_key("^{END}")?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // Navigate to the last console output using multiple down arrows instead of Ctrl+End
+    info!("🏃 Moving to bottom of console using arrow keys");
+    for _ in 0..10 {
+        console_prompt.press_key("{DOWN}")?;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 
-    // Go up to the result line
+    // Go up TWO lines to get the result (skip the empty line and get the actual result)
+    console_prompt.press_key("{UP}")?;
+    tokio::time::sleep(Duration::from_millis(100)).await;
     console_prompt.press_key("{UP}")?;
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Select the line and copy
-    console_prompt.press_key("^a")?;
+    console_prompt.press_key("{Ctrl}a")?;
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    console_prompt.press_key("^c")?;
+    console_prompt.press_key("{Ctrl}c")?;
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     // Get clipboard content
@@ -273,7 +298,7 @@ async fn get_clipboard_content() -> Result<String, AutomationError> {
 
         if output.status.success() {
             let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            debug!("📋 Clipboard content: {}", content);
+            info!("📋 Clipboard content: {}", content);
             Ok(content)
         } else {
             let error = String::from_utf8_lossy(&output.stderr);
@@ -291,7 +316,7 @@ async fn get_clipboard_content() -> Result<String, AutomationError> {
 
         if output.status.success() {
             let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            debug!("📋 Clipboard content: {}", content);
+            info!("📋 Clipboard content: {}", content);
             Ok(content)
         } else {
             let error = String::from_utf8_lossy(&output.stderr);
@@ -311,7 +336,7 @@ async fn get_clipboard_content() -> Result<String, AutomationError> {
         {
             if output.status.success() {
                 let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                debug!("📋 Clipboard content (xclip): {}", content);
+                info!("📋 Clipboard content (xclip): {}", content);
                 return Ok(content);
             }
         }
@@ -328,7 +353,7 @@ async fn get_clipboard_content() -> Result<String, AutomationError> {
 
         if output.status.success() {
             let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            debug!("📋 Clipboard content (xsel): {}", content);
+            info!("📋 Clipboard content (xsel): {}", content);
             Ok(content)
         } else {
             let error = String::from_utf8_lossy(&output.stderr);

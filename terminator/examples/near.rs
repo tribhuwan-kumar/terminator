@@ -6,15 +6,32 @@ async fn main() -> Result<(), AutomationError> {
 
     let desktop = Desktop::new(true, false)?;
 
-    let opened_app = desktop.focused_element()?;
+    // let opened_app = desktop.focused_element()?;
 
-    // plan-info automation id
-    let plan_info = opened_app
-        .locator("AutomationId:plan-info")?
+    // let console_panel = desktop
+    //     .locator("name:Console panel")
+    //     .first(Some(Duration::from_millis(1000)))
+    //     .await?;
+    // // let console_panel_text = console_panel.text(100)?;
+    // println!("Console panel text: {:?}", console_panel.name());
+
+    // Get all groups in DevTools and manually get the -2 element
+    let all_groups = desktop
+        .locator("role:document >> role:Text >> nth=-6")
         .first(None)
         .await?;
-    let plan_info_text = plan_info.text(100)?;
-    println!("Plan info text: {plan_info_text}");
+    println!("All groups: {:?}", all_groups.name());
+
+    // plan_info.type_text("document.getElementById('plan-info').innerText", true)?;
+    // plan_info.press_key("{ENTER}")?;
+    // tokio::time::sleep(Duration::from_millis(2000)).await;
+    // // get the text of the last element in the console messages area
+    // let console_messages = desktop
+    //     .locator("role:document|name:DevTools >> role:text >> nth=-1")
+    //     .first(None)
+    //     .await?;
+    // let text = console_messages.text(100)?;
+    // println!("Text: {text}");
 
     // let tree = opened_app.to_serializable_tree(5);
     // let flat_tree = tree.children.iter().flatten().collect::<Vec<_>>();
