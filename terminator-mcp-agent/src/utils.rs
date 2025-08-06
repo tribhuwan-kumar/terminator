@@ -1208,26 +1208,3 @@ pub struct RecordWorkflowArgs {
     /// Sets the recording to a low-energy mode to reduce system load, which can help prevent lag on less powerful machines.
     pub low_energy_mode: Option<bool>,
 }
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct WaitForOutputParserArgs {
-    /// The output parser configuration to run on each UI tree poll
-    #[schemars(
-        description = "The output parser configuration. **Must be an object** with required fields: uiTreeJsonPath, itemContainerDefinition, fieldsToExtract."
-    )]
-    pub output_parser: serde_json::Value,
-    /// Optional selector to scope the UI tree to a specific element. If not provided, uses focused window.
-    pub selector: Option<String>,
-    /// Maximum time to wait in milliseconds (default: 10000)
-    pub timeout_ms: Option<u64>,
-    /// Time between polls in milliseconds (default: 1000)
-    pub poll_interval_ms: Option<u64>,
-    /// Success criteria to validate extracted data
-    pub success_criteria: Option<serde_json::Value>,
-    /// Whether to include full UI tree in the response (default: false)
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-}
