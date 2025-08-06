@@ -4,7 +4,6 @@ use crate::output_parser;
 use crate::scripting_engine;
 use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
-use crate::utils::WaitForOutputParserArgs;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, CloseElementArgs, DelayArgs,
     ExecuteBrowserScriptArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
