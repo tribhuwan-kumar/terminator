@@ -41,6 +41,78 @@ pub fn find_executable(name: &str) -> Option<String> {
     Some(name.to_string())
 }
 
+/// Log the installed terminator.js version and platform package version (if present)
+async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &str) {
+    let main_pkg_path = script_dir
+        .join("node_modules")
+        .join("terminator.js")
+        .join("package.json");
+
+    let main_version = match tokio::fs::read_to_string(&main_pkg_path).await {
+        Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(pkg) => pkg
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            Err(_) => None,
+        },
+        Err(_) => None,
+    };
+
+    // Determine platform-specific package name (same logic as installer)
+    let platform_package_name: Option<&'static str> =
+        if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
+            Some("terminator.js-win32-x64-msvc")
+        } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "windows") {
+            Some("terminator.js-win32-arm64-msvc")
+        } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "macos") {
+            Some("terminator.js-darwin-x64")
+        } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "macos") {
+            Some("terminator.js-darwin-arm64")
+        } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
+            Some("terminator.js-linux-x64-gnu")
+        } else {
+            None
+        };
+
+    let platform_version = if let Some(pkg_name) = platform_package_name {
+        let platform_pkg_path = script_dir
+            .join("node_modules")
+            .join(pkg_name)
+            .join("package.json");
+        match tokio::fs::read_to_string(&platform_pkg_path).await {
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(pkg) => pkg
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    match (main_version, platform_package_name, platform_version) {
+        (Some(mv), Some(ppn), Some(pv)) => {
+            info!(
+                "[{}] Using terminator.js version {} (platform package {}@{})",
+                log_prefix, mv, ppn, pv
+            );
+        }
+        (Some(mv), _, _) => {
+            info!("[{}] Using terminator.js version {}", log_prefix, mv);
+        }
+        _ => {
+            info!(
+                "[{}] Could not determine terminator.js version (package.json not found)",
+                log_prefix
+            );
+        }
+    }
+}
+
 /// Ensure terminator.js is installed in a persistent directory and return the script directory
 async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
     info!("[{}] Checking if terminator.js is installed...", runtime);
@@ -761,6 +833,9 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
     let script_dir = ensure_terminator_js_installed(runtime).await?;
     info!("[Node.js] Script directory: {}", script_dir.display());
 
+    // Log which terminator.js version is in use
+    log_terminator_js_version(&script_dir, "Node.js").await;
+
     // Create a wrapper script that:
     // 1. Imports terminator.js
     // 2. Executes user script
@@ -1190,6 +1265,8 @@ pub async fn execute_javascript_with_local_bindings(
                 ));
             } else {
                 info!("[Node.js Local] Local bindings installed successfully");
+                // Log which terminator.js version is in use for local bindings
+                log_terminator_js_version(&script_dir, "Node.js Local").await;
             }
         }
         Err(e) => {
