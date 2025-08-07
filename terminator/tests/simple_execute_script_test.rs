@@ -24,5 +24,18 @@ async fn test_simple_script() -> Result<(), AutomationError> {
     info!("✅ Got result: {}", result);
     assert_eq!(result.trim(), "4");
 
+    // Test a longer-running script (5 seconds)
+    info!("📝 Testing longer script with delay");
+    let long_script = r#"
+        (function() {
+            const start = Date.now();
+            while(Date.now() - start < 5000) {} // Wait 5 seconds
+            return 'Completed after 5 seconds';
+        })()
+    "#;
+    let long_result = browser.execute_browser_script(long_script).await?;
+    info!("✅ Got long result: {}", long_result);
+    assert!(long_result.contains("Completed"));
+
     Ok(())
 }
