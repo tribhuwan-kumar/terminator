@@ -18,6 +18,7 @@ pub mod selector;
 mod tests;
 pub mod types;
 pub mod utils;
+pub mod extension_bridge;
 
 pub use element::{SerializableUIElement, UIElement, UIElementAttributes};
 pub use errors::AutomationError;
