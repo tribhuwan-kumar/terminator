@@ -36,77 +36,89 @@ pub async fn execute_script(
 
     // Spawn server task
     let _server_handle = tokio::spawn(async move {
-        info!("🔌 Server waiting for connection...");
-        match listener.accept().await {
-            Ok((mut socket, addr)) => {
-                info!("📡 Connection from: {}", addr);
-                let mut buf = vec![0; 65536];
-                match socket.read(&mut buf).await {
-                    Ok(n) => {
-                        let data = String::from_utf8_lossy(&buf[..n]);
-                        info!(
-                            "📨 Received {} bytes, first 500 chars: {}",
-                            n,
-                            &data[..data.len().min(500)]
-                        );
+        loop {
+            // If a result is already set, stop the server loop
+            if result_clone.lock().await.is_some() {
+                break;
+            }
 
-                        // Parse GET request with query params
-                        if data.starts_with("GET ") {
-                            if let Some(line_end) = data.find('\r') {
-                                let request_line = &data[4..line_end];
-                                info!("📦 Request line: {}", request_line);
+            info!("🔌 Server waiting for connection...");
+            let (mut socket, addr) = match listener.accept().await {
+                Ok(ok) => ok,
+                Err(e) => {
+                    info!("❌ Failed to accept connection: {}", e);
+                    continue;
+                }
+            };
 
-                                // Extract query params
-                                if request_line.contains("?heartbeat=") {
-                                    info!("♥ Received heartbeat");
-                                    *heartbeat_clone.lock().await = std::time::Instant::now();
-                                } else if request_line.contains("?result=") {
-                                    if let Some(query_start) = request_line.find("?result=") {
-                                        let result_encoded = &request_line[query_start + 8..];
-                                        let result_end = result_encoded
-                                            .find(' ')
-                                            .unwrap_or(result_encoded.len());
-                                        let result_encoded = &result_encoded[..result_end];
+            info!("📡 Connection from: {}", addr);
+            let mut buf = vec![0; 65536];
+            match socket.read(&mut buf).await {
+                Ok(n) => {
+                    let data = String::from_utf8_lossy(&buf[..n]);
+                    info!(
+                        "📨 Received {} bytes, first 500 chars: {}",
+                        n,
+                        &data[..data.len().min(500)]
+                    );
 
-                                        info!("📦 Encoded result: {}", result_encoded);
+                    // Parse GET request with query params
+                    if data.starts_with("GET ") {
+                        if let Some(line_end) = data.find('\r') {
+                            let request_line = &data[4..line_end];
+                            info!("📦 Request line: {}", request_line);
 
-                                        // Simple URL decode (just handle %20 for spaces and basic chars)
-                                        let decoded = result_encoded
-                                            .replace("%20", " ")
-                                            .replace("%22", "\"")
-                                            .replace("%2C", ",");
-                                        info!("📦 Decoded result: {}", decoded);
-                                        *result_clone.lock().await = Some(decoded.to_string());
-                                    }
-                                } else if request_line.contains("?error=") {
-                                    if let Some(query_start) = request_line.find("?error=") {
-                                        let error_encoded = &request_line[query_start + 7..];
-                                        let error_end =
-                                            error_encoded.find(' ').unwrap_or(error_encoded.len());
-                                        let error_encoded = &error_encoded[..error_end];
+                            // Extract query params
+                            if request_line.contains("?heartbeat=") {
+                                info!("♥ Received heartbeat");
+                                *heartbeat_clone.lock().await = std::time::Instant::now();
+                            } else if request_line.contains("?result=") {
+                                if let Some(query_start) = request_line.find("?result=") {
+                                    let result_encoded = &request_line[query_start + 8..];
+                                    let result_end =
+                                        result_encoded.find(' ').unwrap_or(result_encoded.len());
+                                    let result_encoded = &result_encoded[..result_end];
 
-                                        let decoded = error_encoded
-                                            .replace("%20", " ")
-                                            .replace("%22", "\"")
-                                            .replace("%2C", ",");
-                                        info!("📦 Decoded error: {}", decoded);
-                                        *result_clone.lock().await =
-                                            Some(format!("ERROR: {decoded}"));
-                                    }
+                                    info!("📦 Encoded result: {}", result_encoded);
+
+                                    // Simple URL decode (just handle %20 for spaces and basic chars)
+                                    let decoded = result_encoded
+                                        .replace("%20", " ")
+                                        .replace("%22", "\"")
+                                        .replace("%2C", ",");
+                                    info!("📦 Decoded result: {}", decoded);
+                                    *result_clone.lock().await = Some(decoded.to_string());
+                                }
+                            } else if request_line.contains("?error=") {
+                                if let Some(query_start) = request_line.find("?error=") {
+                                    let error_encoded = &request_line[query_start + 7..];
+                                    let error_end =
+                                        error_encoded.find(' ').unwrap_or(error_encoded.len());
+                                    let error_encoded = &error_encoded[..error_end];
+
+                                    let decoded = error_encoded
+                                        .replace("%20", " ")
+                                        .replace("%22", "\"")
+                                        .replace("%2C", ",");
+                                    info!("📦 Decoded error: {}", decoded);
+                                    *result_clone.lock().await = Some(format!("ERROR: {decoded}"));
                                 }
                             }
                         }
-
-                        // Send HTTP response
-                        let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 2\r\n\r\nOK";
-                        let _ =
-                            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
-                                .await;
                     }
-                    Err(e) => info!("❌ Failed to read from socket: {}", e),
+
+                    // Send HTTP response
+                    let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 2\r\n\r\nOK";
+                    let _ =
+                        tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await;
                 }
+                Err(e) => info!("❌ Failed to read from socket: {}", e),
             }
-            Err(e) => info!("❌ Failed to accept connection: {}", e),
+
+            // If we have received a result, break out of the loop to let the caller proceed
+            if result_clone.lock().await.is_some() {
+                break;
+            }
         }
     });
 
@@ -121,12 +133,40 @@ pub async fn execute_script(
     let wrapped_script = format!(
         r#"
         (async function() {{
-            // Send heartbeat every 15 seconds
+            // Keep image references to avoid GC cancelling requests
+            window.__terminatorImgs = window.__terminatorImgs || [];
+            const __sendPing = (q) => {{
+                try {{
+                    const img = new Image();
+                    window.__terminatorImgs.push(img);
+                    // cache-bust to avoid any caching
+                    img.src = 'http://127.0.0.1:{port}/?'+ q + '&t=' + Date.now();
+                }} catch (e) {{
+                    // best-effort, ignore
+                }}
+            }};
+
+            // Monkey-patch console.log to piggyback heartbeats during long runs
+            (function() {{
+                const __origLog = console.log;
+                let __lastPing = 0;
+                console.log = function(...args) {{
+                    const now = Date.now();
+                    if (now - __lastPing > 3000) {{
+                        try {{ __sendPing('heartbeat=alive'); }} catch (_) {{}}
+                        __lastPing = now;
+                    }}
+                    return __origLog.apply(this, args);
+                }};
+            }})()
+
+            // Immediate heartbeat so Rust knows we started
+            __sendPing('heartbeat=alive');
+            // Heartbeat every 5s (shorter to survive long sync blocks)
             const heartbeatInterval = setInterval(() => {{
-                const img = new Image();
-                img.src = 'http://127.0.0.1:{port}/?heartbeat=alive';
+                __sendPing('heartbeat=alive');
                 console.log('♥ Heartbeat sent');
-            }}, 15000);
+            }}, 5000);
             
             try {{
                 // For async scripts, await the result
@@ -150,15 +190,13 @@ pub async fn execute_script(
                 
                 // Clear heartbeat and send result
                 clearInterval(heartbeatInterval);
-                const img = new Image();
-                img.src = 'http://127.0.0.1:{port}/?result=' + encodeURIComponent(resultStr);
+                __sendPing('result=' + encodeURIComponent(resultStr));
                 console.log('Result:', resultStr);
                 
                 return scriptResult;
             }} catch (e) {{
                 clearInterval(heartbeatInterval);
-                const img = new Image();
-                img.src = 'http://127.0.0.1:{port}/?error=' + encodeURIComponent(e.message);
+                __sendPing('error=' + encodeURIComponent(e && (e.message || String(e))));
                 console.error('Error:', e.message);
                 throw e;
             }}
@@ -166,24 +204,48 @@ pub async fn execute_script(
         "#
     );
 
-    // Step 3: Open dev tools if not already open (Ctrl+Shift+J)
-    info!("⚙️ Opening dev tools (Ctrl+Shift+J)");
-    browser_element.press_key("{Ctrl}{Shift}J")?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // Step 4: Clear console using Ctrl + L
-    // info!("🧹 Clearing console using Ctrl + L");
-    // browser_element.press_key("{Ctrl}L")?;
-    // tokio::time::sleep(Duration::from_millis(500)).await;
-
+    // Step 3: Open dev tools if not already open (retry strategy)
     let desktop = Desktop::new(true, false)?;
+    let mut console_prompt_opt: Option<crate::UIElement> = None;
 
-    // Step 5: Find console prompt using terminator selector
-    info!("🔍 Finding console prompt using name:Console prompt");
-    let console_prompt = desktop
-        .locator("role:document|name:DevTools >> name:Console prompt")
-        .first(None)
-        .await?;
+    for attempt in 1..=3 {
+        info!("⚙️ Opening dev tools (attempt {}): Ctrl+Shift+J", attempt);
+        browser_element.press_key("{Ctrl}{Shift}J")?;
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+
+        match desktop
+            .locator("role:document|name:DevTools >> name:Console prompt")
+            .first(None)
+            .await
+        {
+            Ok(el) => {
+                console_prompt_opt = Some(el);
+                break;
+            }
+            Err(e) => {
+                info!(
+                    "🔁 Console prompt not found after Ctrl+Shift+J (attempt {}): {}",
+                    attempt, e
+                );
+                // Try toggling DevTools with F12 and re-attempt
+                info!("⚙️ Toggling DevTools with F12");
+                browser_element.press_key("{F12}")?;
+                tokio::time::sleep(Duration::from_millis(900)).await;
+            }
+        }
+    }
+
+    let console_prompt = match console_prompt_opt {
+        Some(el) => el,
+        None => {
+            // Final attempt once more with the same trusted selector
+            info!("🔍 Final attempt to locate console prompt");
+            desktop
+                .locator("role:document|name:DevTools >> name:Console prompt")
+                .first(None)
+                .await?
+        }
+    };
 
     info!("⌨️ Typing wrapped JavaScript into console prompt");
     console_prompt.type_text(&wrapped_script, true)?;
@@ -197,7 +259,7 @@ pub async fn execute_script(
     info!("📄 Waiting for result from browser...");
     let mut elapsed_seconds = 0;
     let max_timeout_seconds = 300; // 5 minutes absolute max
-    let heartbeat_timeout_seconds = 35; // Timeout if no heartbeat for 35 seconds (miss 2 heartbeats)
+    let heartbeat_timeout_seconds = 300; // Allow very long blocking sections without heartbeats
 
     loop {
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -223,7 +285,7 @@ pub async fn execute_script(
         // Check heartbeat timeout (35 seconds without heartbeat)
         // Give 15 seconds grace period before checking heartbeats
         let last_hb = *last_heartbeat.lock().await;
-        if elapsed_seconds > 30 && last_hb.elapsed().as_secs() > heartbeat_timeout_seconds as u64 {
+        if elapsed_seconds > 10 && last_hb.elapsed().as_secs() > heartbeat_timeout_seconds as u64 {
             info!(
                 "💔 Heartbeat timeout - no heartbeat for {} seconds",
                 last_hb.elapsed().as_secs()
