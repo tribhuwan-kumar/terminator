@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use terminator::{Desktop, Selector};
-    use tokio::time::{timeout, Duration};
 
     #[tokio::test]
     async fn test_nth_negative_one_selector_parsing() {
@@ -84,13 +83,13 @@ mod tests {
 
         if let Ok(desktop) = Desktop::new_default() {
             // Test that we can create a locator with nth=-1 selector
-            let nth_locator = desktop.locator("role:combobox >> nth=-1");
+            desktop.locator("role:combobox >> nth=-1");
 
             // The fact that this doesn't panic means the selector was parsed correctly
             println!("✓ Successfully created locator with 'role:combobox >> nth=-1' selector");
 
             // Test that we can create a locator with just nth=-1
-            let just_nth_locator = desktop.locator("nth=-1");
+            desktop.locator("nth=-1");
             println!("✓ Successfully created locator with 'nth=-1' selector");
         } else {
             println!("⚠ Could not create Desktop instance, but selector parsing still works");
