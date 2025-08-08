@@ -12,6 +12,12 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 // Re-export WindowsUIElement here since it will be used by other modules
 pub use super::element::WindowsUIElement;
 
+#[derive(Debug)]
+pub struct PathSegment {
+    pub control_type: ControlType,
+    pub index: usize, // 1-based index
+}
+
 /// Generate a stable element ID based on element properties
 pub fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, AutomationError> {
     // Attempt to get stable properties first
@@ -195,4 +201,68 @@ pub(crate) fn string_to_ui_property(key: &str) -> Option<UIProperty> {
         // Unknown properties
         _ => None,
     }
+}
+
+pub(crate) fn parse_path(path: &str) -> Option<Vec<PathSegment>> {
+    let re = regex::Regex::new(r"^([A-Za-z]+)(?:\[(\d+)\])?$").unwrap();
+    let mut segments = Vec::new();
+
+    for part in path.trim_matches('/').split('/') {
+        if part.is_empty() {
+            continue;
+        }
+
+        let caps = re.captures(part)?;
+        let control_str = caps.get(1)?.as_str();
+        let index = caps.get(2).map_or(1, |m| m.as_str().parse().unwrap_or(1)); // if not index, assume one
+
+        let control_type = match control_str {
+            "Window" => ControlType::Window,
+            "Pane" => ControlType::Pane,
+            "Custom" => ControlType::Custom,
+            "Document" => ControlType::Document,
+            "Group" => ControlType::Group,
+            "Table" => ControlType::Table,
+            "DataItem" => ControlType::DataItem,
+            "Hyperlink" => ControlType::Hyperlink,
+            "Edit" => ControlType::Edit,
+            "Button" => ControlType::Button,
+            "CheckBox" => ControlType::CheckBox,
+            "Menu" => ControlType::Menu,
+            "MenuItem" => ControlType::MenuItem,
+            "Text" => ControlType::Text,
+            "Tree" => ControlType::Tree,
+            "TreeItem" => ControlType::TreeItem,
+            "DataGrid" => ControlType::DataGrid,
+            "List" => ControlType::List,
+            "Image" => ControlType::Image,
+            "Title" => ControlType::TitleBar,
+            "ListItem" => ControlType::ListItem,
+            "Combobox" => ControlType::ComboBox,
+            "Tab" => ControlType::Tab,
+            "TabItem" => ControlType::TabItem,
+            "ToolBar" => ControlType::ToolBar,
+            "AppBar" => ControlType::AppBar,
+            "Calendar" => ControlType::Calendar,
+            "ProgressBar" => ControlType::ProgressBar,
+            "RadioButton" => ControlType::RadioButton,
+            "ScrollBar" => ControlType::ScrollBar,
+            "Slider" => ControlType::Slider,
+            "Spinner" => ControlType::Spinner,
+            "StatusBar" => ControlType::StatusBar,
+            "ToolTip" => ControlType::ToolTip,
+            "Thumb" => ControlType::Thumb,
+            "SplitButton" => ControlType::SplitButton,
+            "Header" => ControlType::Header,
+            "HeaderItem" => ControlType::HeaderItem,
+            "TitleBar" => ControlType::TitleBar,
+            "Separator" => ControlType::Separator,
+            "SemanticZoom" => ControlType::SemanticZoom,
+            _ => return None,
+        };
+
+        segments.push(PathSegment { control_type, index });
+    }
+
+    Some(segments)
 }

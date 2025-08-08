@@ -1169,9 +1169,64 @@ impl AccessibilityEngine for WindowsEngine {
                     element: arc_ele,
                 })))
             }
-            Selector::Path(_) => Err(AutomationError::UnsupportedOperation(
-                "`Path` selector not supported".to_string(),
-            )),
+            Selector::Path(path) => {
+                // so this implementation is something like this, it'll get the first node from the root with
+                // the correct index and use that first node as root to get the second node with correct index 
+                // & it does that so on, the node name is the ControlType of the element with the index of it 
+                // `Path` can represent only one element at the time so doesn't need to implement in `find_elements`
+                // the drawback of `Path` is that it'll change after the ui changes
+
+                if path.is_empty() {
+                    return Err(AutomationError::InvalidArgument(
+                        "Path cannot be empty".to_string(),
+                    ));
+                }
+
+                let mut current_element = root_ele.clone(); 
+                let segments = match super::utils::parse_path(path) {
+                    Some(s) => s,
+                    None => {
+                        return Err(AutomationError::PlatformError(format!(
+                            "Failed to parse path, make sure its is in correct format & latest updated with ui: '{path}'",
+                        )));
+                    }
+                };
+
+                // traverse each segment
+                for segment in segments {
+                    let condition = self
+                        .automation
+                        .0
+                        .create_property_condition(
+                            UIProperty::ControlType,
+                            Variant::from(segment.control_type as i32),
+                            None,
+                        )
+                        .unwrap();
+
+                    // avoid using matcher, for no depth limit
+                    // & traverse only Children instead of whole Subtree
+                    let children = current_element
+                        .find_all(TreeScope::Children, &condition).map_err(|e| {
+                            AutomationError::ElementNotFound(format!(
+                            "Failed to find elements from given path: '{path}', Err: {e}"
+                        ))})?;
+
+                    if children.len() < segment.index {
+                        return Err(AutomationError::PlatformError(format!(
+                            "Failed to find {:?}[{}], only {} elements matched",
+                            segment.control_type, segment.index, children.len()
+                        )
+                        ));
+                    }
+                    current_element = Arc::new(children[segment.index - 1].clone()); // cuz 1-based
+                }
+
+                let arc_ele = ThreadSafeWinUIElement(current_element);
+                Ok(UIElement::new(Box::new(WindowsUIElement {
+                    element: arc_ele,
+                })))
+            }
             Selector::NativeId(automation_id) => {
                 // for windows passing `UIProperty::AutomationID` as `NativeId`
                 debug!(
