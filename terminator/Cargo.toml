@@ -39,6 +39,13 @@ name = "terminator"
 path = "src/lib.rs"
 
 
+[features]
+# Define a no-op feature to satisfy objc macros that gate on `cfg(feature = "cargo-clippy")`.
+# Without this, Rust's `unexpected_cfgs` lint warns about unknown feature values during macro expansion.
+default = []
+cargo-clippy = []
+
+
 [target.'cfg(target_os = "linux")'.dependencies]
 atspi = { version = "0.26.3", features = [
     "tokio",
