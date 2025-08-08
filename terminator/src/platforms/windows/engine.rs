@@ -1720,15 +1720,13 @@ impl AccessibilityEngine for WindowsEngine {
                             .to_lowercase();
 
                         // Look for windows with the page title or common browser indicators
-                        if !search_title_norm.is_empty() && name.contains(&search_title_norm) {
-                            Ok(true)
-                        } else if name.contains("chrome")
-                            || name.contains("firefox")
-                            || name.contains("edge")
-                            || name.contains("browser")
-                            || name.contains("mozilla")
-                            || name.contains("safari")
-                        {
+                        let is_title_match =
+                            !search_title_norm.is_empty() && name.contains(&search_title_norm);
+                        let is_browser_keyword =
+                            ["chrome", "firefox", "edge", "browser", "mozilla", "safari"]
+                                .iter()
+                                .any(|kw| name.contains(kw));
+                        if is_title_match || is_browser_keyword {
                             Ok(true)
                         } else {
                             Ok(false)
