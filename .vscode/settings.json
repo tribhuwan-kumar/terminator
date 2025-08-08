@@ -1,31 +1,19 @@
 {
-  "workbench.editor.enablePreview": false,
-  "workbench.editor.enablePreviewFromQuickOpen": false,
-  "workbench.editor.enablePreviewFromCodeNavigation": false,
-  "workbench.editor.openPositioning": "right",
-  "workbench.editor.revealIfOpen": true,
-  "workbench.editor.limit.enabled": false,
-  "workbench.editor.splitInGroupLayout": "horizontal",
-  "workbench.editor.openSideBySideDirection": "right",
-  "workbench.editor.splitSizing": "split",
-  "workbench.editor.focusRecentEditorAfterClose": true,
-  "workbench.editor.restoreViewState": true,
-  "workbench.editorAssociations": {},
-  "workbench.editor.mouseBackForwardToNavigate": false,
-  "window.openFilesInNewWindow": "off",
-  "workbench.editor.showTabs": "multiple",
-  "workbench.editor.tabCloseButton": "right",
-  "workbench.editor.tabSizing": "shrink",
-  "workbench.editor.wrapTabs": true,
-  "workbench.editor.scrollToSwitchTabs": false,
-  "workbench.editor.enablePreviewFromTab": false,
-  "workbench.editor.splitOnDragAndDrop": false,
-  "workbench.editor.closeOnFileDelete": false,
-  "workbench.editor.doubleClickTabToToggleEditorGroupSizes": false,
-  "workbench.editor.centeredLayoutAutoResize": false,
-  "window.openFoldersInNewWindow": "off",
-  "window.restoreWindows": "one",
-  "explorer.openEditors.visible": 0,
-  "workbench.editor.pinnedTabSizing": "normal",
-  "workbench.startupEditor": "none"
+  // Rust-specific settings
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.cargo.allTargets": true,
+  // Auto-format on save
+  "editor.formatOnSave": true,
+  "editor.formatOnType": true,
+  "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+  },
+  // Rust formatting
+  "[rust]": {
+      "editor.defaultFormatter": "rust-lang.rust-analyzer",
+      "editor.formatOnSave": true,
+      "editor.formatOnPaste": true
+  },
 }

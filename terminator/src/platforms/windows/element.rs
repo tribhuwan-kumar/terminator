@@ -85,6 +85,7 @@ impl WindowsUIElement {
     /// Create a new WindowsUIElement from a raw uiautomation element
     pub fn new(element: uiautomation::UIElement) -> Self {
         Self {
+            #[allow(clippy::arc_with_non_send_sync)]
             element: ThreadSafeWinUIElement(std::sync::Arc::new(element)),
         }
     }
@@ -225,6 +226,7 @@ impl UIElementImpl for WindowsUIElement {
         Ok(children
             .into_iter()
             .map(|ele| {
+                #[allow(clippy::arc_with_non_send_sync)]
                 UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(ele)),
                 }))
@@ -248,6 +250,7 @@ impl UIElementImpl for WindowsUIElement {
 
         match walker.get_parent(&self.element.0) {
             Ok(parent_element) => {
+                #[allow(clippy::arc_with_non_send_sync)]
                 let par_ele = UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(parent_element)),
                 }));
@@ -791,6 +794,7 @@ impl UIElementImpl for WindowsUIElement {
         })
     }
 
+    #[allow(clippy::arc_with_non_send_sync)]
     fn scroll(&self, direction: &str, amount: f64) -> Result<(), AutomationError> {
         // 1. Find a scrollable parent (or self)
         let mut scrollable_element: Option<uiautomation::UIElement> = None;
@@ -1030,6 +1034,7 @@ impl UIElementImpl for WindowsUIElement {
         }
     }
 
+    #[allow(clippy::arc_with_non_send_sync)]
     fn window(&self) -> Result<Option<UIElement>, AutomationError> {
         let mut current_element_arc = Arc::clone(&self.element.0); // Start with the current element's Arc<uiautomation::UIElement>
         const MAX_DEPTH: usize = 20; // Safety break for parent traversal

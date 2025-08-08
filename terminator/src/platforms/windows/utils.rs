@@ -19,6 +19,7 @@ pub struct PathSegment {
 }
 
 /// Generate a stable element ID based on element properties
+#[allow(clippy::arc_with_non_send_sync)]
 pub fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, AutomationError> {
     // Attempt to get stable properties first
     let automation_id = element
@@ -87,6 +88,7 @@ pub fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, A
 }
 
 /// Converts a raw uiautomation::UIElement to a terminator UIElement
+#[allow(clippy::arc_with_non_send_sync)]
 pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIElement) -> UIElement {
     let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
     UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))

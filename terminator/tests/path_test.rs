@@ -34,7 +34,7 @@ async fn test_path() -> Result<(), AutomationError> {
             );
         }
         Err(e) => {
-            println!("error: {:?}", e);
+            println!("error: {e:?}");
             return Err(e);
         }
     }

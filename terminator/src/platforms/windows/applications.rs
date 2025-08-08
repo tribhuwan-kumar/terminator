@@ -139,6 +139,7 @@ pub fn get_application_by_name(
             // Try direct window lookup by PID
             if let Ok(ele) = root_ele.find_first(TreeScope::Children, &condition) {
                 debug!("Found application window for PID {}", pid);
+                #[allow(clippy::arc_with_non_send_sync)]
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                 return Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
@@ -223,6 +224,7 @@ pub fn get_application_by_name(
     })?;
 
     debug!("Found window: {}", ele.get_name().unwrap_or_default());
+    #[allow(clippy::arc_with_non_send_sync)]
     let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
     Ok(UIElement::new(Box::new(WindowsUIElement {
         element: arc_ele,
@@ -265,6 +267,7 @@ pub fn get_application_by_pid(
         ))
     })?;
 
+    #[allow(clippy::arc_with_non_send_sync)]
     let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
 
     Ok(UIElement::new(Box::new(WindowsUIElement {
