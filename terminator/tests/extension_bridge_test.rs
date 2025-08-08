@@ -5,6 +5,7 @@ use terminator::extension_bridge::ExtensionBridge;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[tokio::test]
+#[ignore = "won't work in ci cd"]
 async fn extension_bridge_roundtrip() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("info")

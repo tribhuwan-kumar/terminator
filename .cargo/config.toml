@@ -8,3 +8,8 @@ rustflags = ["-C", "target-feature=+crt-static"]
 [build]
 # These settings only apply when sccache is used as RUSTC_WRAPPER
 incremental = true 
+
+[env]
+# Terminator tests only work with 1 thread
+RUST_TEST_THREADS = "1"
+
