@@ -4,6 +4,7 @@
 //! Finds console tab and prompt using proper selectors, runs JavaScript, extracts results.
 
 use crate::{AutomationError, Desktop};
+use std::time::Duration as StdDuration;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
@@ -16,7 +17,19 @@ pub async fn execute_script(
     browser_element: &crate::UIElement,
     script: &str,
 ) -> Result<String, AutomationError> {
-    info!("🚀 Executing JavaScript using local server approach");
+    info!("🚀 Executing JavaScript (trying extension bridge first)");
+
+    // Ensure target browser/tab is active for extension to pick the right one
+    browser_element.focus()?;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // First: try extension bridge (no DevTools, no flags)
+    if let Ok(Some(ext_result)) = crate::extension_bridge::try_eval_via_extension(script, StdDuration::from_secs(60)).await {
+        info!("✅ JS executed via extension bridge");
+        return Ok(ext_result);
+    }
+
+    info!("ℹ️ Falling back to DevTools console injection path");
 
     // Step 1: Start a local server to receive results
     let listener = TcpListener::bind("127.0.0.1:0")
