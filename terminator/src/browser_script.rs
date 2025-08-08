@@ -4,8 +4,8 @@
 //! Finds console tab and prompt using proper selectors, runs JavaScript, extracts results.
 
 use crate::{AutomationError, Desktop};
-use std::time::Duration as StdDuration;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
@@ -19,14 +19,32 @@ pub async fn execute_script(
 ) -> Result<String, AutomationError> {
     info!("🚀 Executing JavaScript (trying extension bridge first)");
 
+    // Log whether an extension client is connected to make behavior transparent
+    if let Some(ext) = crate::extension_bridge::ExtensionBridge::global()
+        .await
+        .into()
+    {
+        let connected = ext.is_client_connected().await;
+        info!("Extension client connected: {}", connected);
+    }
+
     // Ensure target browser/tab is active for extension to pick the right one
     browser_element.focus()?;
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     // First: try extension bridge (no DevTools, no flags)
-    if let Ok(Some(ext_result)) = crate::extension_bridge::try_eval_via_extension(script, StdDuration::from_secs(60)).await {
-        info!("✅ JS executed via extension bridge");
-        return Ok(ext_result);
+    match crate::extension_bridge::try_eval_via_extension(script, StdDuration::from_secs(360)).await
+    {
+        Ok(Some(ext_result)) => {
+            info!("✅ JS executed via extension bridge");
+            return Ok(ext_result);
+        }
+        Ok(None) => {
+            info!("ℹ️ Extension bridge returned None (no client, send failure, or timeout). Falling back to DevTools");
+        }
+        Err(e) => {
+            info!("⚠️ Extension bridge error: {}. Falling back to DevTools", e);
+        }
     }
 
     info!("ℹ️ Falling back to DevTools console injection path");
@@ -75,49 +93,87 @@ pub async fn execute_script(
                         &data[..data.len().min(500)]
                     );
 
-                    // Parse GET request with query params
-                    if data.starts_with("GET ") {
-                        if let Some(line_end) = data.find('\r') {
-                            let request_line = &data[4..line_end];
-                            info!("📦 Request line: {}", request_line);
+                    // Handle CORS preflight explicitly
+                    if data.starts_with("OPTIONS ") {
+                        let response = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, X-Requested-With\r\nAccess-Control-Allow-Private-Network: true\r\nContent-Length: 0\r\n\r\n";
+                        let _ =
+                            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
+                                .await;
+                        continue;
+                    }
 
-                            // Extract query params
-                            if request_line.contains("?heartbeat=") {
-                                info!("♥ Received heartbeat");
-                                *heartbeat_clone.lock().await = std::time::Instant::now();
-                            } else if request_line.contains("?result=") {
-                                if let Some(query_start) = request_line.find("?result=") {
-                                    let result_encoded = &request_line[query_start + 8..];
-                                    let result_end =
-                                        result_encoded.find(' ').unwrap_or(result_encoded.len());
-                                    let result_encoded = &result_encoded[..result_end];
-
-                                    info!("📦 Encoded result: {}", result_encoded);
-
-                                    // Simple URL decode (just handle %20 for spaces and basic chars)
-                                    let decoded = result_encoded
-                                        .replace("%20", " ")
-                                        .replace("%22", "\"")
-                                        .replace("%2C", ",");
-                                    info!("📦 Decoded result: {}", decoded);
-                                    *result_clone.lock().await = Some(decoded.to_string());
-                                }
-                            } else if request_line.contains("?error=") {
-                                if let Some(query_start) = request_line.find("?error=") {
-                                    let error_encoded = &request_line[query_start + 7..];
-                                    let error_end =
-                                        error_encoded.find(' ').unwrap_or(error_encoded.len());
-                                    let error_encoded = &error_encoded[..error_end];
-
-                                    let decoded = error_encoded
-                                        .replace("%20", " ")
-                                        .replace("%22", "\"")
-                                        .replace("%2C", ",");
-                                    info!("📦 Decoded error: {}", decoded);
-                                    *result_clone.lock().await = Some(format!("ERROR: {decoded}"));
-                                }
-                            }
+                    // Handle POST body result (prefer over GET for large payloads)
+                    if data.starts_with("POST ") {
+                        if let Some(hdr_end) = data.find("\r\n\r\n") {
+                            let body = &data[hdr_end + 4..];
+                            info!(
+                                "📦 Received POST body (truncated): {}",
+                                &body[..body.len().min(500)]
+                            );
+                            *result_clone.lock().await = Some(body.to_string());
                         }
+                        // Respond OK for POST
+                        let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 2\r\n\r\nOK";
+                        let _ =
+                            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
+                                .await;
+                        continue;
+                    }
+
+                    // Robust query parsing: scan the entire buffer and do not rely on CRLF
+                    let slice = data.as_ref();
+
+                    if slice.contains("heartbeat=") {
+                        info!("♥ Received heartbeat");
+                        *heartbeat_clone.lock().await = std::time::Instant::now();
+                    }
+
+                    if let Some(start_idx) = slice.find("?result=") {
+                        let value_start = start_idx + "?result=".len();
+                        let tail = &slice[value_start..];
+                        let rel_end = tail.find([' ', '\r', '\n']).unwrap_or(tail.len());
+                        let result_encoded = &tail[..rel_end];
+
+                        info!(
+                            "📦 Encoded result (truncated): {}",
+                            &result_encoded[..result_encoded.len().min(500)]
+                        );
+
+                        // Minimal URL decode sufficient for JSON-like payloads
+                        let decoded = result_encoded
+                            .replace("%0A", "\n")
+                            .replace("%0D", "\r")
+                            .replace("%20", " ")
+                            .replace("%22", "\"")
+                            .replace("%2C", ",")
+                            .replace("%7B", "{")
+                            .replace("%7D", "}")
+                            .replace("%5B", "[")
+                            .replace("%5D", "]")
+                            .replace("%3A", ":")
+                            .replace("%2F", "/")
+                            .replace("%5C", "\\")
+                            .replace("%7C", "|");
+                        info!(
+                            "📦 Decoded result (truncated): {}",
+                            &decoded[..decoded.len().min(500)]
+                        );
+                        *result_clone.lock().await = Some(decoded);
+                    }
+
+                    if let Some(start_idx) = slice.find("?error=") {
+                        let value_start = start_idx + "?error=".len();
+                        let tail = &slice[value_start..];
+                        let rel_end = tail.find([' ', '\r', '\n']).unwrap_or(tail.len());
+                        let error_encoded = &tail[..rel_end];
+                        let decoded = error_encoded
+                            .replace("%0A", "\n")
+                            .replace("%0D", "\r")
+                            .replace("%20", " ")
+                            .replace("%22", "\"")
+                            .replace("%2C", ",");
+                        info!("📦 Decoded error: {}", decoded);
+                        *result_clone.lock().await = Some(format!("ERROR: {decoded}"));
                     }
 
                     // Send HTTP response
@@ -201,9 +257,37 @@ pub async fn execute_script(
                 
                 const resultStr = typeof scriptResult === 'object' ? JSON.stringify(scriptResult) : String(scriptResult);
                 
-                // Clear heartbeat and send result
+                // Clear heartbeat
                 clearInterval(heartbeatInterval);
-                __sendPing('result=' + encodeURIComponent(resultStr));
+
+                // Prefer POST for large payloads
+                let posted = false;
+                try {{
+                    // Try beacon first (typically no preflight)
+                    if (navigator.sendBeacon) {{
+                        posted = navigator.sendBeacon('http://127.0.0.1:{port}/', resultStr);
+                    }}
+                }} catch (_) {{ /* ignore */ }}
+                if (!posted) {{
+                    try {{
+                        await fetch('http://127.0.0.1:{port}/', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'text/plain' }},
+                            body: resultStr,
+                            mode: 'no-cors',
+                            cache: 'no-store',
+                        }});
+                        posted = true;
+                    }} catch (_) {{ /* ignore and fallback */ }}
+                }}
+
+                if (!posted) {{
+                    // As a last resort, expose the result on window for external polling
+                    try {{
+                        window.__terminatorExtractionDone = true;
+                        window.__terminatorResultJson = resultStr;
+                    }} catch (_) {{}}
+                }}
                 console.log('Result:', resultStr);
                 
                 return scriptResult;

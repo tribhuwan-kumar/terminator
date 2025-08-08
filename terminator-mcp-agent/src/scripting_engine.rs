@@ -1,5 +1,6 @@
 use rmcp::ErrorData as McpError;
 use serde_json::json;
+use std::path::PathBuf;
 use tracing::{error, info, warn};
 
 /// Find executable with cross-platform path resolution
@@ -160,8 +161,8 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     // Check if we need to install/reinstall
     let should_install = !node_modules_path.exists();
 
-    // Also check if we should update (check once per day)
-    let should_check_update = if node_modules_path.exists() {
+    // Also check if we should update (check once per day by default)
+    let mut should_check_update = if node_modules_path.exists() {
         // Check the modification time of node_modules/terminator.js
         match tokio::fs::metadata(&node_modules_path).await {
             Ok(metadata) => {
@@ -180,6 +181,19 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     } else {
         false
     };
+
+    // Env override to force updates regardless of age
+    // Set TERMINATOR_JS_UPDATE=always to force update on every run
+    if std::env::var("TERMINATOR_JS_UPDATE")
+        .map(|v| v.eq_ignore_ascii_case("always"))
+        .unwrap_or(false)
+    {
+        info!(
+            "[{}] Forced update enabled via TERMINATOR_JS_UPDATE=always",
+            runtime
+        );
+        should_check_update = true;
+    }
 
     // Check if platform-specific package exists for current platform
     let platform_package_name = if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
@@ -234,7 +248,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                 );
             }
         }
-    } else {
+    } else if !should_check_update {
         info!(
             "[{}] terminator.js and platform package found, using existing installation...",
             runtime
@@ -267,16 +281,27 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         script_dir.display()
     );
 
-    // Install or reinstall terminator.js@latest in the persistent directory
-    let command_args = if should_install || !platform_package_exists {
-        // Fresh install or reinstall when platform package missing
-        vec!["install"]
-    } else if should_check_update {
-        // Update existing packages to latest
-        vec!["update", "terminator.js"]
+    // Install or reinstall terminator.js in the persistent directory
+    // If updating, explicitly install latest for both main and platform packages
+    let platform_pkg_opt: Option<&str> = if !platform_package_name.is_empty() {
+        Some(platform_package_name)
     } else {
-        // This shouldn't happen, but default to update
-        vec!["update"]
+        None
+    };
+
+    let command_args: Vec<String> = if should_install || !platform_package_exists {
+        // Fresh install or reinstall when platform package missing
+        vec!["install".to_string()]
+    } else if should_check_update {
+        // Force upgrade to latest for both packages
+        let mut args = vec!["install".to_string(), "terminator.js@latest".to_string()];
+        if let Some(pp) = platform_pkg_opt {
+            args.push(format!("{pp}@latest"));
+        }
+        args
+    } else {
+        // Default to install to reconcile lock if needed
+        vec!["install".to_string()]
     };
 
     info!(
@@ -305,7 +330,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                 info!("[{}] Spawning bun process...", runtime);
                 let child = match tokio::process::Command::new(&installer_exe)
                     .current_dir(&script_dir)
-                    .args(&command_args)
+                    .args(command_args.iter())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn()
@@ -345,7 +370,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         ]
                         .iter(),
                     );
-                    cmd_args.extend(command_args.iter().copied());
+                    cmd_args.extend(command_args.iter().map(|s| s.as_str()));
                     info!(
                         "[{}] Running npm via cmd.exe: cmd {:?} in directory {}",
                         runtime,
@@ -602,7 +627,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     info!("[{}] Spawning npm process...", runtime);
                     let child = match tokio::process::Command::new(&installer_exe)
                         .current_dir(&script_dir)
-                        .args(&command_args)
+                        .args(command_args.iter())
                         .stdout(std::process::Stdio::piped())
                         .stderr(std::process::Stdio::piped())
                         .spawn()
@@ -681,35 +706,63 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
                                 if let (Some(mv), Some(pv)) = (main_version, platform_version) {
                                     if mv != pv {
-                                        info!("[{}] Version mismatch detected: terminator.js@{} vs {}@{}", runtime, mv, platform_package_name, pv);
-                                        info!("[{}] Upgrading main package to match platform package version...", runtime);
+                                        info!(
+                                            "[{}] Version mismatch detected: terminator.js@{} vs {}@{}",
+                                            runtime, mv, platform_package_name, pv
+                                        );
+                                        info!(
+                                            "[{}] Resolving by upgrading both packages to latest...",
+                                            runtime
+                                        );
 
-                                        // Install specific version of main package to match platform package
-                                        let package_spec = format!("terminator.js@{pv}");
                                         let upgrade_result = if runtime == "bun" {
+                                            // bun: add both at latest
+                                            let args = [
+                                                "add".to_string(),
+                                                "terminator.js@latest".to_string(),
+                                                format!("{platform_package_name}@latest"),
+                                            ];
                                             tokio::process::Command::new(&installer_exe)
                                                 .current_dir(&script_dir)
-                                                .args(["add", &package_spec])
+                                                .args(args.iter())
+                                                .output()
+                                                .await
+                                        } else if cfg!(windows) {
+                                            // npm on Windows via cmd
+                                            tokio::process::Command::new("cmd")
+                                                .current_dir(&script_dir)
+                                                .args([
+                                                    "/c",
+                                                    "npm",
+                                                    "install",
+                                                    "terminator.js@latest",
+                                                    &format!("{platform_package_name}@latest"),
+                                                ])
                                                 .output()
                                                 .await
                                         } else {
-                                            tokio::process::Command::new("cmd")
+                                            // npm direct
+                                            tokio::process::Command::new("npm")
                                                 .current_dir(&script_dir)
-                                                .args(["/c", "npm", "install", &package_spec])
+                                                .args([
+                                                    "install",
+                                                    "terminator.js@latest",
+                                                    &format!("{platform_package_name}@latest"),
+                                                ])
                                                 .output()
                                                 .await
                                         };
 
                                         match upgrade_result {
                                             Ok(out) if out.status.success() => {
-                                                info!("[{}] Successfully upgraded terminator.js to match platform package version {}", runtime, pv);
+                                                info!("[{}] Successfully upgraded terminator.js and platform package to latest", runtime);
                                             }
                                             Ok(out) => {
                                                 let stderr = String::from_utf8_lossy(&out.stderr);
-                                                info!("[{}] Failed to upgrade main package (continuing): {}", runtime, stderr);
+                                                warn!("[{}] Failed to upgrade both packages (continuing): {}", runtime, stderr);
                                             }
                                             Err(e) => {
-                                                info!("[{}] Error upgrading main package (continuing): {}", runtime, e);
+                                                warn!("[{}] Error upgrading both packages (continuing): {}", runtime, e);
                                             }
                                         }
                                     }
@@ -787,6 +840,20 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
 /// Execute JavaScript using Node.js/Bun runtime with terminator.js bindings available
 pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json::Value, McpError> {
+    // Dev override: allow forcing local bindings via env var
+    if std::env::var("TERMINATOR_JS_USE_LOCAL")
+        .map(|v| {
+            matches!(
+                v.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "local"
+            )
+        })
+        .unwrap_or(false)
+    {
+        info!("[Node.js] Using local bindings due to TERMINATOR_JS_USE_LOCAL env var");
+        return execute_javascript_with_local_bindings(script).await;
+    }
+
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
@@ -856,7 +923,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
 (async () => {{
     try {{
         console.log('[Node.js Wrapper] Executing user script...');
-        const result = await (async function() {{
+        const result = await (async () => {{
             {script}
         }})();
         
@@ -1133,19 +1200,66 @@ pub async fn execute_javascript_with_local_bindings(
 
     info!("[Node.js Local] Using runtime: {}", runtime);
 
-    // Get workspace root - assuming we're running from terminator-mcp-agent directory
-    let workspace_root = std::env::current_dir()
-        .map_err(|e| {
-            McpError::internal_error(
-                "Failed to get current directory",
-                Some(json!({"error": e.to_string()})),
-            )
-        })?
-        .parent()
-        .ok_or_else(|| McpError::internal_error("Failed to find workspace root", None))?
-        .to_path_buf();
+    // Resolve local bindings path robustly
+    // 1) Explicit override via env var TERMINATOR_JS_LOCAL_BINDINGS (points directly to bindings/nodejs)
+    // 2) Derive from compile-time crate dir (../bindings/nodejs)
+    // 3) Try CWD/bindings/nodejs
+    // 4) Try parent_of_CWD/bindings/nodejs
+    // 5) Walk up a few ancestors looking for bindings/nodejs
+    let local_bindings_path: PathBuf = {
+        if let Ok(override_path) = std::env::var("TERMINATOR_JS_LOCAL_BINDINGS") {
+            let p = PathBuf::from(override_path);
+            info!(
+                "[Node.js Local] Using TERMINATOR_JS_LOCAL_BINDINGS override: {}",
+                p.display()
+            );
+            p
+        } else {
+            // Candidates to probe
+            let mut candidates: Vec<PathBuf> = Vec::new();
 
-    let local_bindings_path = workspace_root.join("bindings").join("nodejs");
+            // From compile-time crate dir: <workspace>/terminator-mcp-agent => <workspace>/bindings/nodejs
+            let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            if let Some(ws) = crate_dir.parent() {
+                candidates.push(ws.join("bindings").join("nodejs"));
+            }
+
+            // From current dir
+            if let Ok(cwd) = std::env::current_dir() {
+                candidates.push(cwd.join("bindings").join("nodejs"));
+                if let Some(parent) = cwd.parent() {
+                    candidates.push(parent.join("bindings").join("nodejs"));
+                }
+
+                // Walk up to 5 ancestors looking for bindings/nodejs
+                let mut anc = Some(cwd.as_path());
+                for _ in 0..5 {
+                    if let Some(a) = anc {
+                        candidates.push(a.join("bindings").join("nodejs"));
+                        anc = a.parent();
+                    }
+                }
+            }
+
+            // Pick the first existing candidate
+            match candidates
+                .into_iter()
+                .find(|p| std::fs::metadata(p).is_ok())
+            {
+                Some(found) => found,
+                None => {
+                    return Err(McpError::internal_error(
+                        "Local bindings directory not found",
+                        Some(json!({
+                            "hint": "Set TERMINATOR_JS_LOCAL_BINDINGS to the path of bindings/nodejs or run from the repo",
+                            "cwd": std::env::current_dir().ok().map(|p| p.to_string_lossy().to_string()),
+                            "crate_dir": crate_dir.to_string_lossy().to_string(),
+                        })),
+                    ));
+                }
+            }
+        }
+    };
 
     // Verify the local bindings directory exists
     if tokio::fs::metadata(&local_bindings_path).await.is_err() {
@@ -1160,43 +1274,10 @@ pub async fn execute_javascript_with_local_bindings(
         local_bindings_path.display()
     );
 
-    // Build the local bindings if needed
-    info!("[Node.js Local] Building local terminator.js bindings...");
-    let build_result = if cfg!(windows) {
-        Command::new("cmd")
-            .current_dir(&local_bindings_path)
-            .args(["/c", "npm", "run", "build"])
-            .output()
-            .await
-    } else {
-        Command::new("npm")
-            .current_dir(&local_bindings_path)
-            .args(["run", "build"])
-            .output()
-            .await
-    };
+    // Skip building local bindings; expect the user to build manually
+    info!("[Node.js Local] Skipping local bindings build (user-managed)");
 
-    match build_result {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                info!(
-                    "[Node.js Local] Build failed, continuing with existing build: {}",
-                    stderr
-                );
-            } else {
-                info!("[Node.js Local] Local bindings built successfully");
-            }
-        }
-        Err(e) => {
-            info!(
-                "[Node.js Local] Failed to run build command, continuing: {}",
-                e
-            );
-        }
-    }
-
-    // Create isolated test directory for this execution
+    // Create isolated execution directory for this run
     let script_dir = std::env::temp_dir().join(format!(
         "terminator_mcp_local_{}",
         std::time::SystemTime::now()
@@ -1217,96 +1298,43 @@ pub async fn execute_javascript_with_local_bindings(
         script_dir.display()
     );
 
-    // Create package.json that references the local bindings
-    let package_json = format!(
-        r#"{{
-  "name": "terminator-mcp-local-execution",
-  "version": "1.0.0",
-  "dependencies": {{
-    "terminator.js": "file:{}"
-  }}
-}}"#,
-        local_bindings_path.to_string_lossy().replace('\\', "/")
-    );
-
-    let package_json_path = script_dir.join("package.json");
-    tokio::fs::write(&package_json_path, package_json)
-        .await
-        .map_err(|e| {
-            McpError::internal_error(
-                "Failed to write package.json",
-                Some(json!({"error": e.to_string()})),
-            )
-        })?;
-
-    // Install the local bindings
-    info!("[Node.js Local] Installing local terminator.js...");
-    let install_result = if cfg!(windows) {
-        Command::new("cmd")
-            .current_dir(&script_dir)
-            .args(["/c", "npm", "install"])
-            .output()
-            .await
-    } else {
-        Command::new("npm")
-            .current_dir(&script_dir)
-            .args(["install"])
-            .output()
-            .await
-    };
-
-    match install_result {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(McpError::internal_error(
-                    "Failed to install local bindings",
-                    Some(json!({"error": stderr.to_string()})),
-                ));
-            } else {
-                info!("[Node.js Local] Local bindings installed successfully");
-                // Log which terminator.js version is in use for local bindings
-                log_terminator_js_version(&script_dir, "Node.js Local").await;
-            }
-        }
-        Err(e) => {
-            return Err(McpError::internal_error(
-                "Failed to run npm install",
-                Some(json!({"error": e.to_string()})),
-            ));
-        }
-    }
+    // No npm install; require local bindings directly by absolute path
+    info!("[Node.js Local] Using require() with absolute local bindings path (no install)");
 
     // Create a wrapper script that:
     // 1. Imports local terminator.js
     // 2. Executes user script
     // 3. Returns result
+    // Require the bindings index.js explicitly for maximum compatibility (Node/Bun)
+    let bindings_entry_path = local_bindings_path.join("index.js");
+    let bindings_abs_path = bindings_entry_path.to_string_lossy().replace('\\', "\\\\");
     let wrapper_script = format!(
         r#"
-const {{ Desktop }} = require('terminator.js');
+ const {{ Desktop }} = require("{bindings_abs_path}");
 
-// Create global objects
-global.desktop = new Desktop();
-global.log = console.log;
-global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+ // Create global objects
+ global.desktop = new Desktop();
+ global.log = console.log;
+ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Execute user script
-(async () => {{
-    try {{
-        const result = await (async function() {{
-            {script}
-        }})();
-        
-        // Send result back
-        process.stdout.write('__RESULT__' + JSON.stringify(result) + '__END__\n');
-    }} catch (error) {{
-        process.stdout.write('__ERROR__' + JSON.stringify({{
-            message: error.message,
-            stack: error.stack
-        }}) + '__END__\n');
-    }}
-}})();
-"#
+ // Execute user script
+ (async () => {{
+     try {{
+         const result = await (async () => {{
+             {script}
+         }})();
+         
+         // Send result back (normalize undefined to null)
+         const resultToSend = result === undefined ? null : result;
+         process.stdout.write('__RESULT__' + JSON.stringify(resultToSend) + '__END__\n');
+     }} catch (error) {{
+         process.stdout.write('__ERROR__' + JSON.stringify({{
+             message: error.message,
+             stack: error.stack
+         }}) + '__END__\n');
+     }}
+ }})();
+ "#
     );
 
     // Write script to the directory with local bindings
@@ -1418,14 +1446,25 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         )
     })?;
 
-    // Clean up script directory
-    tokio::fs::remove_dir_all(&script_dir).await.ok();
-    info!("[Node.js Local] Cleaned up script directory");
+    // Clean up only on success; keep files on error for debugging
+    if status.success() {
+        tokio::fs::remove_dir_all(&script_dir).await.ok();
+        info!("[Node.js Local] Cleaned up script directory");
+    } else {
+        warn!(
+            "[Node.js Local] Keeping script directory for debugging: {}",
+            script_dir.display()
+        );
+    }
 
     if !status.success() {
         return Err(McpError::internal_error(
             "Node.js process exited with error",
-            Some(json!({"exit_code": status.code()})),
+            Some(json!({
+                "exit_code": status.code(),
+                "script_dir": script_dir.to_string_lossy(),
+                "script_path": script_path.to_string_lossy()
+            })),
         ));
     }
 

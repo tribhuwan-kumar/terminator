@@ -3,13 +3,23 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 use futures_util::{SinkExt, StreamExt};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use tokio::{net::TcpListener, sync::{Mutex, oneshot, mpsc}, task::JoinHandle};
+use tokio::{
+    net::TcpListener,
+    sync::{mpsc, oneshot, Mutex},
+    task::JoinHandle,
+};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use uuid::Uuid;
 
 use crate::AutomationError;
 
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:17373";
+
+// Reduce type complexity for Clippy
+type BridgeResult = Result<serde_json::Value, String>;
+type PendingMap = HashMap<String, oneshot::Sender<BridgeResult>>;
+type Pending = Arc<Mutex<PendingMap>>;
+type Clients = Arc<Mutex<Vec<Client>>>;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EvalRequest {
@@ -23,9 +33,19 @@ struct EvalRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum BridgeIncoming {
-    Hello { r#type: String, from: Option<String> },
-    EvalResult { id: String, ok: bool, result: Option<serde_json::Value>, error: Option<String> },
-    Pong { r#type: String },
+    Hello {
+        r#type: String,
+        from: Option<String>,
+    },
+    EvalResult {
+        id: String,
+        ok: bool,
+        result: Option<serde_json::Value>,
+        error: Option<String>,
+    },
+    Pong {
+        r#type: String,
+    },
 }
 
 struct Client {
@@ -34,15 +54,17 @@ struct Client {
 
 pub struct ExtensionBridge {
     _server_task: JoinHandle<()>,
-    clients: Arc<Mutex<Vec<Client>>>,
-    pending: Arc<Mutex<HashMap<String, oneshot::Sender<Result<serde_json::Value, String>>>>>,
+    clients: Clients,
+    pending: Pending,
 }
 
 static GLOBAL: OnceCell<Arc<ExtensionBridge>> = OnceCell::new();
 
 impl ExtensionBridge {
     pub async fn global() -> Arc<ExtensionBridge> {
-        if let Some(h) = GLOBAL.get() { return h.clone(); }
+        if let Some(h) = GLOBAL.get() {
+            return h.clone();
+        }
         let bridge = ExtensionBridge::start(DEFAULT_WS_ADDR).await;
         let arc = Arc::new(bridge);
         let _ = GLOBAL.set(arc.clone());
@@ -50,8 +72,8 @@ impl ExtensionBridge {
     }
 
     async fn start(addr: &str) -> ExtensionBridge {
-        let clients: Arc<Mutex<Vec<Client>>> = Arc::new(Mutex::new(Vec::new()));
-        let pending: Arc<Mutex<HashMap<String, oneshot::Sender<Result<serde_json::Value, String>>>>> = Arc::new(Mutex::new(HashMap::new()));
+        let clients: Clients = Arc::new(Mutex::new(Vec::new()));
+        let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
 
         let listener = TcpListener::bind(addr).await.expect("failed to bind ws");
         let clients_clone = clients.clone();
@@ -61,18 +83,33 @@ impl ExtensionBridge {
 
         let server_task = tokio::spawn(async move {
             loop {
-                let (stream, _peer) = match listener.accept().await { Ok(v) => v, Err(e) => { tracing::warn!("ws accept error: {}", e); continue; } };
+                let (stream, _peer) = match listener.accept().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("ws accept error: {}", e);
+                        continue;
+                    }
+                };
                 let ws_clients = clients_clone.clone();
                 let ws_pending = pending_clone.clone();
                 tokio::spawn(async move {
-                    let ws_stream = match accept_async(stream).await { Ok(s) => s, Err(e) => { tracing::warn!("ws handshake error: {}", e); return; } };
+                    let ws_stream = match accept_async(stream).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!("ws handshake error: {}", e);
+                            return;
+                        }
+                    };
                     let (mut sink, mut stream) = ws_stream.split();
                     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
 
                     // writer task
                     let writer = tokio::spawn(async move {
                         while let Some(msg) = rx.recv().await {
-                            if let Err(e) = sink.send(msg).await { tracing::warn!("ws send error: {}", e); break; }
+                            if let Err(e) = sink.send(msg).await {
+                                tracing::warn!("ws send error: {}", e);
+                                break;
+                            }
                         }
                     });
 
@@ -83,12 +120,24 @@ impl ExtensionBridge {
 
                     // reader loop
                     while let Some(Ok(msg)) = stream.next().await {
-                        if !msg.is_text() { continue; }
+                        if !msg.is_text() {
+                            continue;
+                        }
                         let txt = msg.into_text().unwrap_or_default();
                         match serde_json::from_str::<BridgeIncoming>(&txt) {
-                            Ok(BridgeIncoming::EvalResult { id, ok, result, error }) => {
+                            Ok(BridgeIncoming::EvalResult {
+                                id,
+                                ok,
+                                result,
+                                error,
+                            }) => {
+                                tracing::info!(id = %id, ok = ok, "Bridge received EvalResult");
                                 if let Some(tx) = ws_pending.lock().await.remove(&id) {
-                                    let _ = tx.send(if ok { Ok(result.unwrap_or(serde_json::Value::Null)) } else { Err(error.unwrap_or_else(|| "unknown error".into())) });
+                                    let _ = tx.send(if ok {
+                                        Ok(result.unwrap_or(serde_json::Value::Null))
+                                    } else {
+                                        Err(error.unwrap_or_else(|| "unknown error".into()))
+                                    });
                                 }
                             }
                             Ok(BridgeIncoming::Hello { .. }) => {
@@ -104,33 +153,50 @@ impl ExtensionBridge {
             }
         });
 
-        ExtensionBridge { _server_task: server_task, clients, pending }
+        ExtensionBridge {
+            _server_task: server_task,
+            clients,
+            pending,
+        }
     }
 
     pub async fn is_client_connected(&self) -> bool {
         !self.clients.lock().await.is_empty()
     }
 
-    pub async fn eval_in_active_tab(&self, code: &str, timeout: Duration) -> Result<Option<String>, AutomationError> {
+    pub async fn eval_in_active_tab(
+        &self,
+        code: &str,
+        timeout: Duration,
+    ) -> Result<Option<String>, AutomationError> {
         if self.clients.lock().await.is_empty() {
+            tracing::info!("ExtensionBridge: no clients connected; skipping extension path");
             return Ok(None);
         }
         let id = Uuid::new_v4().to_string();
-        let (tx, rx) = oneshot::channel::<Result<serde_json::Value, String>>();
+        let (tx, rx) = oneshot::channel::<BridgeResult>();
         self.pending.lock().await.insert(id.clone(), tx);
-        let req = EvalRequest { id: id.clone(), action: "eval".into(), code: code.to_string(), await_promise: true };
-        let payload = serde_json::to_string(&req).map_err(|e| AutomationError::PlatformError(format!("bridge serialize: {e}")))?;
+        let req = EvalRequest {
+            id: id.clone(),
+            action: "eval".into(),
+            code: code.to_string(),
+            await_promise: true,
+        };
+        let payload = serde_json::to_string(&req)
+            .map_err(|e| AutomationError::PlatformError(format!("bridge serialize: {e}")))?;
 
         // send over first client
         let mut ok = false;
         {
             let clients = self.clients.lock().await;
-            if let Some(c) = clients.get(0) {
+            tracing::info!(clients = clients.len(), preview = %payload.chars().take(120).collect::<String>(), "Sending eval to extension");
+            if let Some(c) = clients.first() {
                 ok = c.sender.send(Message::Text(payload)).is_ok();
             }
         }
         if !ok {
             self.pending.lock().await.remove(&id);
+            tracing::warn!("ExtensionBridge: failed to send eval to first client");
             return Ok(None);
         }
 
@@ -140,18 +206,28 @@ impl ExtensionBridge {
                 serde_json::Value::String(s) => s,
                 other => other.to_string(),
             })),
-            Ok(Ok(Err(err))) => Ok(Some(format!("ERROR: {}", err))),
-            Ok(Err(_canceled)) => Ok(None),
+            Ok(Ok(Err(err))) => Ok(Some(format!("ERROR: {err}"))),
+            Ok(Err(_canceled)) => {
+                tracing::warn!("ExtensionBridge: oneshot canceled by receiver");
+                Ok(None)
+            }
             Err(_elapsed) => {
                 // timeout
                 let _ = self.pending.lock().await.remove(&id);
+                tracing::warn!(
+                    "ExtensionBridge: timed out waiting for EvalResult (id={})",
+                    id
+                );
                 Ok(None)
             }
         }
     }
 }
 
-pub async fn try_eval_via_extension(code: &str, timeout: Duration) -> Result<Option<String>, AutomationError> {
+pub async fn try_eval_via_extension(
+    code: &str,
+    timeout: Duration,
+) -> Result<Option<String>, AutomationError> {
     let bridge = ExtensionBridge::global().await;
     bridge.eval_in_active_tab(code, timeout).await
 }
