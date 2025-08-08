@@ -49,8 +49,11 @@ pub struct ConversionResult {
 #[derive(Clone)]
 pub struct McpConverter {
     config: ConversionConfig,
+    #[allow(dead_code)] // TODO: Will be used for future UI pattern analysis
     ui_analyzer: UIPatternAnalyzer,
+    #[allow(dead_code)] // TODO: Will be used for future selector generation
     selector_generator: SelectorGenerator,
+    #[allow(dead_code)] // TODO: Will be used for future sequence optimization
     sequence_optimizer: SequenceOptimizer,
 }
 
@@ -385,6 +388,7 @@ impl McpConverter {
     }
 
     /// Generate primary selector for element clicks - prefers child text when more specific
+    #[allow(dead_code)] // TODO: Will be used for enhanced selector generation
     fn generate_primary_selector(&self, event: &ClickEvent) -> String {
         // Check for desktop context first
         if let Some(metadata) = &event.metadata.ui_element {
@@ -498,6 +502,7 @@ impl McpConverter {
     }
 
     /// Generate activation step for window/application targeting
+    #[allow(dead_code)] // TODO: Will be used for application switching
     fn generate_activation_step(&self, app_name: &str, window_title: &str, window_role: &str) -> McpToolStep {
         let selector = self.generate_activation_selector(app_name, window_title, window_role);
         
@@ -515,6 +520,7 @@ impl McpConverter {
     }
 
     /// Generate activation selector based on app name and window title with actual role
+    #[allow(dead_code)] // TODO: Will be used for application switching
     fn generate_activation_selector(&self, app_name: &str, window_title: &str, window_role: &str) -> String {
         // Desktop-specific activation
         if self.is_desktop_context(app_name, window_title) {
@@ -570,6 +576,7 @@ impl McpConverter {
     }
 
     /// Generate fallback sequences for element clicks
+    #[allow(dead_code)] // TODO: Will be used for robust click fallback strategies
     async fn generate_click_fallbacks(
         &self,
         event: &ClickEvent,
