@@ -3,360 +3,323 @@
 //! Uses terminator SDK selectors for cross-platform browser automation.
 //! Finds console tab and prompt using proper selectors, runs JavaScript, extracts results.
 
-use crate::AutomationError;
+use crate::{AutomationError, Desktop};
+use std::time::Duration as StdDuration;
+use std::sync::Arc;
 use std::time::Duration;
-use tracing::{debug, info};
+use tokio::io::AsyncReadExt;
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
+use tracing::info;
 
-/// Execute JavaScript in browser using terminator SDK selectors
+/// Execute JavaScript in browser using local server for result communication
 pub async fn execute_script(
     browser_element: &crate::UIElement,
     script: &str,
 ) -> Result<String, AutomationError> {
-    info!("🚀 Executing JavaScript using terminator SDK: {}", script);
+    info!("🚀 Executing JavaScript (trying extension bridge first)");
 
-    // Step 1: Focus the browser window
-    debug!("🎯 Focusing browser window");
-    browser_element.click()?;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Ensure target browser/tab is active for extension to pick the right one
+    browser_element.focus()?;
+    tokio::time::sleep(Duration::from_millis(300)).await;
 
-    // Step 2: Open dev tools if not already open (F12)
-    debug!("⚙️ Opening dev tools (F12)");
-    browser_element.press_key("{F12}")?;
-    tokio::time::sleep(Duration::from_millis(2000)).await;
-
-    // Step 3: Find Console tab using terminator selector
-    debug!("🖥️ Finding Console tab using name:Console");
-    match browser_element.locator("name:Console")?.first(None).await {
-        Ok(console_tab) => {
-            debug!("✅ Found Console tab, clicking it");
-            console_tab.click()?;
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        Err(_) => debug!("⚠️ Console tab not found or already active"),
+    // First: try extension bridge (no DevTools, no flags)
+    if let Ok(Some(ext_result)) = crate::extension_bridge::try_eval_via_extension(script, StdDuration::from_secs(60)).await {
+        info!("✅ JS executed via extension bridge");
+        return Ok(ext_result);
     }
 
-    // Step 4: Clear console using the Clear console button
-    debug!("🧹 Clearing console using Clear console button");
-    match browser_element
-        .locator("name:Clear console - Ctrl + L")?
-        .first(None)
+    info!("ℹ️ Falling back to DevTools console injection path");
+
+    // Step 1: Start a local server to receive results
+    let listener = TcpListener::bind("127.0.0.1:0")
         .await
-    {
-        Ok(clear_button) => {
-            debug!("✅ Found clear console button, clicking it");
-            clear_button.click()?;
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        Err(_) => debug!("⚠️ Clear console button not found, proceeding anyway"),
-    }
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to bind server: {e}")))?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| AutomationError::PlatformError(format!("Failed to get port: {e}")))?
+        .port();
 
-    // Step 5: Find console prompt using terminator selector
-    debug!("🔍 Finding console prompt using name:Console prompt");
-    let console_prompt = browser_element
-        .locator("name:Console prompt")?
-        .first(None)
-        .await?;
+    info!("📡 Local server listening on port {}", port);
 
-    debug!("⌨️ Typing JavaScript into console prompt");
-    console_prompt.type_text(script, true)?;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    let result = Arc::new(Mutex::new(None));
+    let result_clone = result.clone();
+    let last_heartbeat = Arc::new(Mutex::new(std::time::Instant::now()));
+    let heartbeat_clone = last_heartbeat.clone();
 
-    // Step 6: Execute the script (Enter)
-    debug!("🚀 Executing script with Enter");
-    console_prompt.press_key("{ENTER}")?;
-    tokio::time::sleep(Duration::from_millis(2000)).await;
+    // Spawn server task
+    let _server_handle = tokio::spawn(async move {
+        loop {
+            // If a result is already set, stop the server loop
+            if result_clone.lock().await.is_some() {
+                break;
+            }
 
-    // Step 7: Get result from console messages area
-    debug!("📄 Getting result from console messages");
-    let result = match browser_element
-        .locator("nativeid:console-messages")?
-        .first(None)
-        .await
-    {
-        Ok(console_messages) => {
-            debug!("✅ Found console messages area");
+            info!("🔌 Server waiting for connection...");
+            let (mut socket, addr) = match listener.accept().await {
+                Ok(ok) => ok,
+                Err(e) => {
+                    info!("❌ Failed to accept connection: {}", e);
+                    continue;
+                }
+            };
 
-            // Look for Text elements in the console messages - the result will be in the last one
-            match console_messages.locator("role:Text")?.all(None, None).await {
-                Ok(text_elements) => {
-                    debug!("📋 Found {} text elements in console", text_elements.len());
+            info!("📡 Connection from: {}", addr);
+            let mut buf = vec![0; 65536];
+            match socket.read(&mut buf).await {
+                Ok(n) => {
+                    let data = String::from_utf8_lossy(&buf[..n]);
+                    info!(
+                        "📨 Received {} bytes, first 500 chars: {}",
+                        n,
+                        &data[..data.len().min(500)]
+                    );
 
-                    // Find the result by looking at element names (where the result is stored)
-                    let mut result_text = String::new();
-                    for element in text_elements.iter().rev().take(10) {
-                        // Check last 10 elements
-                        // Try name first (where console results are stored)
-                        if let Some(name) = element.name() {
-                            debug!("🔍 Text element name: '{}'", name);
-                            let trimmed = name.trim();
+                    // Parse GET request with query params
+                    if data.starts_with("GET ") {
+                        if let Some(line_end) = data.find('\r') {
+                            let request_line = &data[4..line_end];
+                            info!("📦 Request line: {}", request_line);
 
-                            // Look for our JavaScript result - skip input elements and errors
-                            if !trimmed.is_empty()
-                                && !trimmed.contains("6sense")
-                                && !trimmed.contains("Hit MAX_ITERATIONS")
-                                && !trimmed.contains("Form Element:")
-                                && !trimmed.contains("Failed to load")
-                                && !trimmed.contains("Access to XMLHttpRequest")
-                                && trimmed != "document"
-                                && trimmed != "."
-                                && trimmed != "title"
-                                && trimmed != script.trim()
-                            {
-                                // Not the input line
-                                result_text = trimmed.to_string();
-                                debug!("✅ Found result in name: '{}'", result_text);
-                                break;
-                            }
-                        }
+                            // Extract query params
+                            if request_line.contains("?heartbeat=") {
+                                info!("♥ Received heartbeat");
+                                *heartbeat_clone.lock().await = std::time::Instant::now();
+                            } else if request_line.contains("?result=") {
+                                if let Some(query_start) = request_line.find("?result=") {
+                                    let result_encoded = &request_line[query_start + 8..];
+                                    let result_end =
+                                        result_encoded.find(' ').unwrap_or(result_encoded.len());
+                                    let result_encoded = &result_encoded[..result_end];
 
-                        // Fallback to text content
-                        if result_text.is_empty() {
-                            if let Ok(text) = element.text(100) {
-                                debug!("🔍 Text element text: '{}'", text);
-                                let trimmed = text.trim();
+                                    info!("📦 Encoded result: {}", result_encoded);
 
-                                if !trimmed.is_empty()
-                                    && trimmed != "document"
-                                    && trimmed != "."
-                                    && trimmed != "title"
-                                    && !trimmed.starts_with("document.title")
-                                {
-                                    result_text = trimmed.to_string();
-                                    debug!("✅ Found result in text: '{}'", result_text);
-                                    break;
+                                    // Simple URL decode (just handle %20 for spaces and basic chars)
+                                    let decoded = result_encoded
+                                        .replace("%20", " ")
+                                        .replace("%22", "\"")
+                                        .replace("%2C", ",");
+                                    info!("📦 Decoded result: {}", decoded);
+                                    *result_clone.lock().await = Some(decoded.to_string());
+                                }
+                            } else if request_line.contains("?error=") {
+                                if let Some(query_start) = request_line.find("?error=") {
+                                    let error_encoded = &request_line[query_start + 7..];
+                                    let error_end =
+                                        error_encoded.find(' ').unwrap_or(error_encoded.len());
+                                    let error_encoded = &error_encoded[..error_end];
+
+                                    let decoded = error_encoded
+                                        .replace("%20", " ")
+                                        .replace("%22", "\"")
+                                        .replace("%2C", ",");
+                                    info!("📦 Decoded error: {}", decoded);
+                                    *result_clone.lock().await = Some(format!("ERROR: {decoded}"));
                                 }
                             }
                         }
                     }
 
-                    if result_text.is_empty() {
-                        debug!("⚠️ No result text found, trying full text extraction");
-                        console_messages.text(100).unwrap_or_default()
-                    } else {
-                        result_text
-                    }
+                    // Send HTTP response
+                    let response = "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 2\r\n\r\nOK";
+                    let _ =
+                        tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await;
                 }
-                Err(_) => {
-                    debug!("⚠️ Couldn't get text elements, using full text");
-                    console_messages.text(100).unwrap_or_default()
-                }
+                Err(e) => info!("❌ Failed to read from socket: {}", e),
+            }
+
+            // If we have received a result, break out of the loop to let the caller proceed
+            if result_clone.lock().await.is_some() {
+                break;
             }
         }
-        Err(_) => {
-            debug!("⚠️ Couldn't find console messages, trying clipboard approach");
-            get_console_result_via_clipboard(&console_prompt).await?
+    });
+
+    // Wait a moment for server to be ready
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Step 2: Focus browser
+    browser_element.focus()?;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Step 3: Wrap script to send result to our server
+    let wrapped_script = format!(
+        r#"
+        (async function() {{
+            // Keep image references to avoid GC cancelling requests
+            window.__terminatorImgs = window.__terminatorImgs || [];
+            const __sendPing = (q) => {{
+                try {{
+                    const img = new Image();
+                    window.__terminatorImgs.push(img);
+                    // cache-bust to avoid any caching
+                    img.src = 'http://127.0.0.1:{port}/?'+ q + '&t=' + Date.now();
+                }} catch (e) {{
+                    // best-effort, ignore
+                }}
+            }};
+
+            // Monkey-patch console.log to piggyback heartbeats during long runs
+            (function() {{
+                const __origLog = console.log;
+                let __lastPing = 0;
+                console.log = function(...args) {{
+                    const now = Date.now();
+                    if (now - __lastPing > 3000) {{
+                        try {{ __sendPing('heartbeat=alive'); }} catch (_) {{}}
+                        __lastPing = now;
+                    }}
+                    return __origLog.apply(this, args);
+                }};
+            }})()
+
+            // Immediate heartbeat so Rust knows we started
+            __sendPing('heartbeat=alive');
+            // Heartbeat every 5s (shorter to survive long sync blocks)
+            const heartbeatInterval = setInterval(() => {{
+                __sendPing('heartbeat=alive');
+                console.log('♥ Heartbeat sent');
+            }}, 5000);
+            
+            try {{
+                // For async scripts, await the result
+                let scriptResult;
+                const scriptCode = `{script}`;
+                
+                // Check if the script is async or returns a promise
+                try {{
+                    const evalResult = eval(scriptCode);
+                    if (evalResult && typeof evalResult.then === 'function') {{
+                        scriptResult = await evalResult;
+                    }} else {{
+                        scriptResult = evalResult;
+                    }}
+                }} catch (syncError) {{
+                    // If eval fails, it's a sync error
+                    throw syncError;
+                }}
+                
+                const resultStr = typeof scriptResult === 'object' ? JSON.stringify(scriptResult) : String(scriptResult);
+                
+                // Clear heartbeat and send result
+                clearInterval(heartbeatInterval);
+                __sendPing('result=' + encodeURIComponent(resultStr));
+                console.log('Result:', resultStr);
+                
+                return scriptResult;
+            }} catch (e) {{
+                clearInterval(heartbeatInterval);
+                __sendPing('error=' + encodeURIComponent(e && (e.message || String(e))));
+                console.error('Error:', e.message);
+                throw e;
+            }}
+        }})()
+        "#
+    );
+
+    // Step 3: Open dev tools if not already open (retry strategy)
+    let desktop = Desktop::new(true, false)?;
+    let mut console_prompt_opt: Option<crate::UIElement> = None;
+
+    for attempt in 1..=3 {
+        info!("⚙️ Opening dev tools (attempt {}): Ctrl+Shift+J", attempt);
+        browser_element.press_key("{Ctrl}{Shift}J")?;
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+
+        match desktop
+            .locator("role:document|name:DevTools >> name:Console prompt")
+            .first(None)
+            .await
+        {
+            Ok(el) => {
+                console_prompt_opt = Some(el);
+                break;
+            }
+            Err(e) => {
+                info!(
+                    "🔁 Console prompt not found after Ctrl+Shift+J (attempt {}): {}",
+                    attempt, e
+                );
+                // Try toggling DevTools with F12 and re-attempt
+                info!("⚙️ Toggling DevTools with F12");
+                browser_element.press_key("{F12}")?;
+                tokio::time::sleep(Duration::from_millis(900)).await;
+            }
+        }
+    }
+
+    let console_prompt = match console_prompt_opt {
+        Some(el) => el,
+        None => {
+            // Final attempt once more with the same trusted selector
+            info!("🔍 Final attempt to locate console prompt");
+            desktop
+                .locator("role:document|name:DevTools >> name:Console prompt")
+                .first(None)
+                .await?
         }
     };
 
-    // Step 8: Close dev tools
-    debug!("🚪 Closing dev tools");
+    info!("⌨️ Typing wrapped JavaScript into console prompt");
+    console_prompt.type_text(&wrapped_script, true)?;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Step 6: Execute the script (Enter)
+    info!("🚀 Executing script with Enter");
+    console_prompt.press_key("{ENTER}")?;
+
+    // Step 7: Wait for result from server with heartbeat tracking
+    info!("📄 Waiting for result from browser...");
+    let mut elapsed_seconds = 0;
+    let max_timeout_seconds = 300; // 5 minutes absolute max
+    let heartbeat_timeout_seconds = 300; // Allow very long blocking sections without heartbeats
+
+    loop {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        elapsed_seconds += 1; // Each iteration is 0.5 seconds
+
+        if let Some(res) = result.lock().await.as_ref() {
+            let final_result = res.clone();
+
+            // Close dev tools
+            info!("🚪 Closing dev tools");
+            browser_element.press_key("{F12}")?;
+
+            info!("✅ Script execution completed: {}", final_result);
+            return Ok(final_result);
+        }
+
+        // Check absolute timeout (5 minutes)
+        if elapsed_seconds >= max_timeout_seconds * 2 {
+            info!("⏰ Absolute timeout reached (5 minutes)");
+            break;
+        }
+
+        // Check heartbeat timeout (35 seconds without heartbeat)
+        // Give 15 seconds grace period before checking heartbeats
+        let last_hb = *last_heartbeat.lock().await;
+        if elapsed_seconds > 10 && last_hb.elapsed().as_secs() > heartbeat_timeout_seconds as u64 {
+            info!(
+                "💔 Heartbeat timeout - no heartbeat for {} seconds",
+                last_hb.elapsed().as_secs()
+            );
+            break;
+        }
+
+        // Log progress every 10 seconds
+        if elapsed_seconds % 20 == 0 {
+            info!(
+                "⏳ Still waiting... ({} seconds elapsed, last heartbeat: {:.1}s ago)",
+                elapsed_seconds / 2,
+                last_hb.elapsed().as_secs_f32()
+            );
+        }
+    }
+
+    // Timeout - close dev tools and return error
     browser_element.press_key("{F12}")?;
-
-    debug!("✅ Script execution completed: {}", result);
-    Ok(result)
-}
-
-/// Fallback method: get console result via clipboard
-async fn get_console_result_via_clipboard(
-    console_prompt: &crate::UIElement,
-) -> Result<String, AutomationError> {
-    debug!("📋 Getting console result via clipboard");
-
-    // Clear clipboard first
-    let _ = set_clipboard_content("").await;
-
-    // Navigate to the last console output and copy it
-    console_prompt.press_key("^{END}")?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // Go up to the result line
-    console_prompt.press_key("{UP}")?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // Select the line and copy
-    console_prompt.press_key("^a")?;
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    console_prompt.press_key("^c")?;
-    tokio::time::sleep(Duration::from_millis(300)).await;
-
-    // Get clipboard content
-    get_clipboard_content().await
-}
-
-/// Set clipboard content (cross-platform)
-async fn set_clipboard_content(content: &str) -> Result<(), AutomationError> {
-    use std::process::Command;
-
-    #[cfg(target_os = "windows")]
-    {
-        let output = Command::new("powershell")
-            .args(["-command", &format!("Set-Clipboard '{content}'")])
-            .output()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to set clipboard: {e}")))?;
-
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(AutomationError::PlatformError(format!(
-                "PowerShell set clipboard error: {error}"
-            )));
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let output = Command::new("pbcopy").arg(content).output().map_err(|e| {
-            AutomationError::PlatformError(format!("Failed to set clipboard: {}", e))
-        })?;
-
-        if !output.status.success() {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(AutomationError::PlatformError(format!(
-                "pbcopy error: {}",
-                error
-            )));
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Try xclip first, then xsel as fallback
-        let mut success = false;
-
-        if let Ok(output) = Command::new("xclip")
-            .args(&["-selection", "clipboard"])
-            .arg(content)
-            .output()
-        {
-            if output.status.success() {
-                success = true;
-            }
-        }
-
-        if !success {
-            let output = Command::new("xsel")
-                .args(&["--clipboard", "--input"])
-                .arg(content)
-                .output()
-                .map_err(|e| {
-                    AutomationError::PlatformError(format!(
-                        "Failed to set clipboard (xclip/xsel not available): {}",
-                        e
-                    ))
-                })?;
-
-            if !output.status.success() {
-                let error = String::from_utf8_lossy(&output.stderr);
-                return Err(AutomationError::PlatformError(format!(
-                    "xsel error: {}",
-                    error
-                )));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Get content from clipboard (cross-platform)
-async fn get_clipboard_content() -> Result<String, AutomationError> {
-    use std::process::Command;
-
-    #[cfg(target_os = "windows")]
-    {
-        let output = Command::new("powershell")
-            .args(["-command", "Get-Clipboard"])
-            .output()
-            .map_err(|e| {
-                AutomationError::PlatformError(format!("Failed to run PowerShell: {e}"))
-            })?;
-
-        if output.status.success() {
-            let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            debug!("📋 Clipboard content: {}", content);
-            Ok(content)
-        } else {
-            let error = String::from_utf8_lossy(&output.stderr);
-            Err(AutomationError::PlatformError(format!(
-                "PowerShell error: {error}"
-            )))
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let output = Command::new("pbpaste")
-            .output()
-            .map_err(|e| AutomationError::PlatformError(format!("Failed to run pbpaste: {}", e)))?;
-
-        if output.status.success() {
-            let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            debug!("📋 Clipboard content: {}", content);
-            Ok(content)
-        } else {
-            let error = String::from_utf8_lossy(&output.stderr);
-            Err(AutomationError::PlatformError(format!(
-                "pbpaste error: {}",
-                error
-            )))
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Try xclip first, then xsel as fallback
-        if let Ok(output) = Command::new("xclip")
-            .args(&["-selection", "clipboard", "-o"])
-            .output()
-        {
-            if output.status.success() {
-                let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                debug!("📋 Clipboard content (xclip): {}", content);
-                return Ok(content);
-            }
-        }
-
-        let output = Command::new("xsel")
-            .args(&["--clipboard", "--output"])
-            .output()
-            .map_err(|e| {
-                AutomationError::PlatformError(format!(
-                    "Failed to get clipboard (xclip/xsel not available): {}",
-                    e
-                ))
-            })?;
-
-        if output.status.success() {
-            let content = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            debug!("📋 Clipboard content (xsel): {}", content);
-            Ok(content)
-        } else {
-            let error = String::from_utf8_lossy(&output.stderr);
-            Err(AutomationError::PlatformError(format!(
-                "xsel error: {}",
-                error
-            )))
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_clipboard_operations() {
-        // Test clipboard functionality
-        let test_content = "test content";
-
-        match set_clipboard_content(test_content).await {
-            Ok(()) => println!("✅ Set clipboard successfully"),
-            Err(e) => println!("❌ Set clipboard error: {e}"),
-        }
-
-        match get_clipboard_content().await {
-            Ok(content) => println!("✅ Clipboard content: {content}"),
-            Err(e) => println!("❌ Get clipboard error: {e}"),
-        }
-    }
+    Err(AutomationError::Timeout(format!(
+        "Script execution timed out (elapsed: {} seconds)",
+        elapsed_seconds / 2
+    )))
 }

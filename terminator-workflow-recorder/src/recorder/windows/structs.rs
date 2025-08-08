@@ -2,7 +2,7 @@ use crate::events::EventMetadata;
 use rdev::Key;
 use std::time::Instant;
 use terminator::UIElement;
-use tracing::{debug, error};
+use tracing::{error, info};
 
 /// Represents an input event that requires UI Automation processing.
 #[derive(Debug)]
@@ -61,7 +61,7 @@ impl TextInputTracker {
         if Self::is_autocomplete_navigation_key(key_code) {
             self.in_autocomplete_navigation = true;
             self.last_autocomplete_activity = Instant::now();
-            debug!(
+            info!(
                 "🔽 Autocomplete navigation detected: key {} (Arrow/Escape)",
                 key_code
             );
@@ -69,7 +69,7 @@ impl TextInputTracker {
             // Capture current text value before potential autocomplete selection
             if self.text_before_autocomplete.is_none() {
                 self.text_before_autocomplete = Self::get_element_text_value_safe(&self.element);
-                debug!(
+                info!(
                     "📝 Captured text before autocomplete: {:?}",
                     self.text_before_autocomplete
                 );
@@ -117,7 +117,7 @@ impl TextInputTracker {
             let time_since_nav = self.last_autocomplete_activity.elapsed();
             if time_since_nav < std::time::Duration::from_millis(5000) {
                 // 5 second window
-                debug!("🔥 Enter pressed during autocomplete navigation - suggestion selection detected!");
+                info!("🔥 Enter pressed during autocomplete navigation - suggestion selection detected!");
                 self.has_typing_activity = true;
                 self.keystroke_count += 1; // Count as one interaction
                 self.in_autocomplete_navigation = false; // Reset state
@@ -160,7 +160,7 @@ impl TextInputTracker {
     ) -> Option<crate::TextInputCompletedEvent> {
         // Only proceed if we have typing activity
         if !self.has_typing_activity && self.keystroke_count == 0 {
-            debug!("❌ No typing activity or keystrokes");
+            info!("❌ No typing activity or keystrokes");
             return None;
         }
 
@@ -175,7 +175,7 @@ impl TextInputTracker {
 
         // Do not emit an event for empty or whitespace-only text.
         if text_value.trim().is_empty() {
-            debug!("❌ Text value is empty or whitespace-only, not emitting completion event.");
+            info!("❌ Text value is empty or whitespace-only, not emitting completion event.");
             return None;
         }
 
@@ -203,7 +203,7 @@ impl TextInputTracker {
         match element.text(0) {
             Ok(text) => Some(text),
             Err(e) => {
-                debug!(
+                info!(
                     "Could not safely get element text for autocomplete tracking (this is okay): {}",
                     e
                 );

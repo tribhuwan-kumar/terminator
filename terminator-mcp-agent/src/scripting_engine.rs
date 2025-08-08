@@ -1,365 +1,6 @@
-use boa_engine::{Context, JsValue, NativeFunction, Source};
-use rmcp::Error as McpError;
+use rmcp::ErrorData as McpError;
 use serde_json::json;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex, OnceLock};
-use tracing::{debug, error, info, warn};
-
-// Simple thread-safe queue for tool calls
-type ToolCall = (String, serde_json::Value, String); // (tool_name, args, response_id)
-type ToolQueue = Arc<Mutex<VecDeque<ToolCall>>>;
-type ResponseMap = Arc<Mutex<std::collections::HashMap<String, String>>>;
-
-static TOOL_QUEUE: OnceLock<ToolQueue> = OnceLock::new();
-static RESPONSE_MAP: OnceLock<ResponseMap> = OnceLock::new();
-
-/// Enhanced conversion function that can use JavaScript's JSON.stringify
-fn boa_js_to_json_with_context(
-    value: boa_engine::JsValue,
-    context: &mut boa_engine::Context,
-) -> serde_json::Value {
-    use boa_engine::Source;
-
-    // For primitive types, use direct conversion
-    match value {
-        boa_engine::JsValue::Null | boa_engine::JsValue::Undefined => serde_json::Value::Null,
-        boa_engine::JsValue::Boolean(b) => json!(b),
-        boa_engine::JsValue::Integer(i) => json!(i),
-        boa_engine::JsValue::Rational(r) => json!(r),
-        boa_engine::JsValue::String(s) => json!(s.to_std_string_escaped()),
-        boa_engine::JsValue::Symbol(_) => json!("[Symbol]"),
-        boa_engine::JsValue::BigInt(bi) => json!(bi.to_string()),
-        boa_engine::JsValue::Object(_) => {
-            // For objects, try using JSON.stringify
-            // First, set the value to a global variable
-            if context
-                .global_object()
-                .set(
-                    boa_engine::JsString::from("__temp_value"),
-                    value,
-                    false,
-                    context,
-                )
-                .is_ok()
-            {
-                // Then call JSON.stringify on it
-                match context.eval(Source::from_bytes("JSON.stringify(__temp_value)")) {
-                    Ok(stringified) => {
-                        if let Some(json_str) = stringified.as_string() {
-                            // Parse the JSON string back to a serde_json::Value
-                            serde_json::from_str(&json_str.to_std_string_escaped()).unwrap_or_else(
-                                |_| json!({"error": "Failed to parse JSON.stringify result"}),
-                            )
-                        } else {
-                            json!({"error": "JSON.stringify did not return a string"})
-                        }
-                    }
-                    Err(e) => {
-                        json!({"error": format!("JSON.stringify failed: {}", e)})
-                    }
-                }
-            } else {
-                json!({"error": "Failed to set temporary value in context"})
-            }
-        }
-    }
-}
-
-/// Execute JavaScript code with Boa engine and tool call support
-pub async fn execute_javascript<F, Fut>(
-    script: String,
-    tool_dispatcher: F,
-) -> Result<serde_json::Value, McpError>
-where
-    F: Fn(String, serde_json::Value) -> Fut + Send + 'static + Clone,
-    Fut: std::future::Future<Output = Result<String, McpError>> + Send,
-{
-    // Initialize queues only once to prevent spam
-    TOOL_QUEUE.get_or_init(|| Arc::new(Mutex::new(VecDeque::new())));
-    RESPONSE_MAP.get_or_init(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
-
-    let script_src = script.clone();
-
-    // Spawn the JavaScript execution task
-    let js_handle = tokio::task::spawn_blocking(move || -> Result<serde_json::Value, McpError> {
-        // Create JS context
-        let mut ctx = Context::default();
-
-        // Create console.log function (simplified)
-        let log_fn = NativeFunction::from_fn_ptr(|_, args, context| {
-            if let Some(arg) = args.first() {
-                let msg = arg.to_string(context).unwrap_or_default();
-                info!("[JS] {}", msg.to_std_string_escaped());
-            }
-            Ok(JsValue::undefined())
-        });
-
-        // Register log function globally for simplicity
-        ctx.register_global_callable("log".into(), 1, log_fn)
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to register log function",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
-
-        // Create sleep function for blocking sleep in milliseconds
-        let sleep_fn = NativeFunction::from_fn_ptr(|_, args, context| {
-            if let Some(arg) = args.first() {
-                let ms = arg.to_number(context).unwrap_or(0.0);
-                if ms > 0.0 && ms.is_finite() {
-                    let duration = std::time::Duration::from_millis(ms as u64);
-                    std::thread::sleep(duration);
-                    info!("[JS] Sleep for {}ms completed", ms);
-                }
-            }
-            Ok(JsValue::undefined())
-        });
-
-        // Register sleep function globally
-        ctx.register_global_callable("sleep".into(), 1, sleep_fn)
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to register sleep function",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
-
-        debug!("[JavaScript] Tool queues initialized, ready to execute script");
-
-        let call_tool_fn = NativeFunction::from_fn_ptr(|_, args, _| {
-            let tool_name = args
-                .first()
-                .and_then(|v| v.as_string())
-                .map(|s| s.to_std_string_escaped())
-                .unwrap_or_default();
-
-            let args_json_str = args
-                .get(1)
-                .and_then(|v| v.as_string())
-                .map(|s| s.to_std_string_escaped())
-                .unwrap_or_else(|| "{}".to_string());
-
-            let args_val: serde_json::Value =
-                serde_json::from_str(&args_json_str).unwrap_or(json!({}));
-
-            let tool_name_for_logging = tool_name.clone();
-
-            // Generate unique response ID
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let response_id = format!(
-                "{}_{}",
-                tool_name_for_logging,
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            );
-
-            // Add tool call to queue
-            if let Some(queue) = TOOL_QUEUE.get() {
-                match queue.lock() {
-                    Ok(mut q) => {
-                        q.push_back((tool_name, args_val, response_id.clone()));
-                        info!(
-                            "[JavaScript] Queued tool call '{}' with ID: {}",
-                            tool_name_for_logging, response_id
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            "[JavaScript] Failed to lock tool queue for {}: {:?}",
-                            tool_name_for_logging, e
-                        );
-                        return Ok(boa_engine::JsString::from(
-                            json!({"error": "Tool queue lock failed"}).to_string(),
-                        )
-                        .into());
-                    }
-                }
-            } else {
-                error!(
-                    "[JavaScript] Tool queue not initialized for tool: {}",
-                    tool_name_for_logging
-                );
-                return Ok(boa_engine::JsString::from(
-                    json!({"error": "Tool queue not available"}).to_string(),
-                )
-                .into());
-            }
-
-            // Poll for response
-            let start_time = std::time::Instant::now();
-            let timeout = std::time::Duration::from_secs(30);
-
-            while start_time.elapsed() < timeout {
-                if let Some(responses) = RESPONSE_MAP.get() {
-                    if let Ok(resp_map) = responses.lock() {
-                        if let Some(result) = resp_map.get(&response_id) {
-                            info!(
-                                "[JavaScript] Tool '{}' completed successfully",
-                                tool_name_for_logging
-                            );
-                            return Ok(boa_engine::JsString::from(result.clone()).into());
-                        }
-                    }
-                }
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-
-            error!(
-                "[JavaScript] Tool '{}' timed out after 30s",
-                tool_name_for_logging
-            );
-            Ok(
-                boa_engine::JsString::from(json!({"error": "Tool call timed out"}).to_string())
-                    .into(),
-            )
-        });
-
-        ctx.register_global_callable("callTool".into(), 2, call_tool_fn)
-            .map_err(|e| {
-                McpError::internal_error(
-                    "Failed to register callTool function",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
-        // Execute user script
-        info!(
-            "[JavaScript] Starting execution of script ({} bytes)",
-            script_src.len()
-        );
-        let js_value = ctx.eval(Source::from_bytes(&script_src)).map_err(|e| {
-            // Log detailed error information for debugging
-            let error_details = format!("{e:?}");
-            let error_display = format!("{e}");
-
-            error!("[JavaScript] Script execution failed!");
-            error!("[JavaScript] Error details: {}", error_details);
-            error!("[JavaScript] Error display: {}", error_display);
-
-            // Log the script content for debugging (first 500 chars)
-            let script_preview = if script_src.len() > 500 {
-                format!("{}...", &script_src[..500])
-            } else {
-                script_src.clone()
-            };
-            error!("[JavaScript] Failed script content: {}", script_preview);
-
-            McpError::internal_error(
-                "JavaScript evaluation error",
-                Some(json!({
-                    "error": error_display,
-                    "error_details": error_details,
-                    "script_preview": script_preview
-                })),
-            )
-        })?;
-
-        info!("[JavaScript] Script execution completed successfully");
-
-        // Convert to JSON while we still have the context
-        let json_result = boa_js_to_json_with_context(js_value, &mut ctx);
-
-        Ok(json_result)
-    });
-
-    // Handle tool calls from JavaScript using queue polling
-    let tool_handler = {
-        let tool_dispatcher = tool_dispatcher.clone();
-        tokio::spawn(async move {
-            debug!("[JavaScript->Rust] Tool handler started, polling queue for tool calls...");
-
-            loop {
-                // Check for tool calls in queue
-                let tool_call = if let Some(queue) = TOOL_QUEUE.get() {
-                    queue.lock().ok().and_then(|mut q| q.pop_front())
-                } else {
-                    None
-                };
-
-                if let Some((tool_name, args_val, response_id)) = tool_call {
-                    debug!(
-                        "[JavaScript->Rust] Processing tool call: '{}' with ID: {}",
-                        tool_name, response_id
-                    );
-
-                    let result_json = match tool_dispatcher(tool_name.clone(), args_val).await {
-                        Ok(result_json) => {
-                            debug!(
-                                "[JavaScript->Rust] Tool '{}' executed successfully, result length: {}",
-                                tool_name,
-                                result_json.len()
-                            );
-                            result_json
-                        }
-                        Err(e) => {
-                            error!(
-                                "[JavaScript->Rust] Tool '{}' failed with error: {}",
-                                tool_name, e
-                            );
-                            json!({"error": e.to_string()}).to_string()
-                        }
-                    };
-
-                    // Store response in map
-                    if let Some(responses) = RESPONSE_MAP.get() {
-                        if let Ok(mut resp_map) = responses.lock() {
-                            resp_map.insert(response_id.clone(), result_json);
-                            debug!(
-                                "[JavaScript->Rust] Response stored for tool '{}' with ID: {}",
-                                tool_name, response_id
-                            );
-                        } else {
-                            error!(
-                                "[JavaScript->Rust] Failed to lock response map for tool '{}'",
-                                tool_name
-                            );
-                        }
-                    }
-                } else {
-                    // No tool calls, sleep longer to reduce CPU usage and log spam
-                    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                }
-
-                // Note: This loop runs until the task is aborted from the main thread
-            }
-        })
-    };
-
-    // Wait for JavaScript execution to complete
-    let execution_result = js_handle.await.map_err(|e| {
-        error!("[JavaScript] Execution task panicked: {}", e);
-        McpError::internal_error(
-            "JavaScript execution task failed",
-            Some(json!({"error": e.to_string()})),
-        )
-    })??;
-
-    info!("[JavaScript] Execution completed, shutting down tool handler");
-
-    // Abort the tool handler since we don't need it anymore
-    tool_handler.abort();
-
-    // Clean up the queues
-    if let Some(queue) = TOOL_QUEUE.get() {
-        if let Ok(mut q) = queue.lock() {
-            q.clear();
-            info!("[JavaScript] Tool queue cleaned up successfully");
-        }
-    }
-
-    if let Some(responses) = RESPONSE_MAP.get() {
-        if let Ok(mut resp_map) = responses.lock() {
-            resp_map.clear();
-            info!("[JavaScript] Response map cleaned up successfully");
-        }
-    }
-
-    info!("[JavaScript] Tool handler aborted and cleanup complete");
-
-    Ok(execution_result)
-}
+use tracing::{error, info, warn};
 
 /// Find executable with cross-platform path resolution
 pub fn find_executable(name: &str) -> Option<String> {
@@ -398,6 +39,78 @@ pub fn find_executable(name: &str) -> Option<String> {
     // Fallback: try the name as-is (might work on some systems)
     info!("Executable '{}' not found in PATH, using name as-is", name);
     Some(name.to_string())
+}
+
+/// Log the installed terminator.js version and platform package version (if present)
+async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &str) {
+    let main_pkg_path = script_dir
+        .join("node_modules")
+        .join("terminator.js")
+        .join("package.json");
+
+    let main_version = match tokio::fs::read_to_string(&main_pkg_path).await {
+        Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+            Ok(pkg) => pkg
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            Err(_) => None,
+        },
+        Err(_) => None,
+    };
+
+    // Determine platform-specific package name (same logic as installer)
+    let platform_package_name: Option<&'static str> =
+        if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
+            Some("terminator.js-win32-x64-msvc")
+        } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "windows") {
+            Some("terminator.js-win32-arm64-msvc")
+        } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "macos") {
+            Some("terminator.js-darwin-x64")
+        } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "macos") {
+            Some("terminator.js-darwin-arm64")
+        } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
+            Some("terminator.js-linux-x64-gnu")
+        } else {
+            None
+        };
+
+    let platform_version = if let Some(pkg_name) = platform_package_name {
+        let platform_pkg_path = script_dir
+            .join("node_modules")
+            .join(pkg_name)
+            .join("package.json");
+        match tokio::fs::read_to_string(&platform_pkg_path).await {
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(pkg) => pkg
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    match (main_version, platform_package_name, platform_version) {
+        (Some(mv), Some(ppn), Some(pv)) => {
+            info!(
+                "[{}] Using terminator.js version {} (platform package {}@{})",
+                log_prefix, mv, ppn, pv
+            );
+        }
+        (Some(mv), _, _) => {
+            info!("[{}] Using terminator.js version {}", log_prefix, mv);
+        }
+        _ => {
+            info!(
+                "[{}] Could not determine terminator.js version (package.json not found)",
+                log_prefix
+            );
+        }
+    }
 }
 
 /// Ensure terminator.js is installed in a persistent directory and return the script directory
@@ -447,6 +160,27 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     // Check if we need to install/reinstall
     let should_install = !node_modules_path.exists();
 
+    // Also check if we should update (check once per day)
+    let should_check_update = if node_modules_path.exists() {
+        // Check the modification time of node_modules/terminator.js
+        match tokio::fs::metadata(&node_modules_path).await {
+            Ok(metadata) => {
+                if let Ok(modified) = metadata.modified() {
+                    // Update if older than 1 day
+                    let age = std::time::SystemTime::now()
+                        .duration_since(modified)
+                        .unwrap_or(std::time::Duration::from_secs(0));
+                    age.as_secs() > 86400 // 24 hours in seconds
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+
     // Check if platform-specific package exists for current platform
     let platform_package_name = if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
         "terminator.js-win32-x64-msvc"
@@ -474,6 +208,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     if should_install {
         info!(
             "[{}] terminator.js not found, installing latest version...",
+            runtime
+        );
+    } else if should_check_update {
+        info!(
+            "[{}] terminator.js is older than 1 day, checking for updates...",
             runtime
         );
     } else if !platform_package_exists {
@@ -532,8 +271,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     let command_args = if should_install || !platform_package_exists {
         // Fresh install or reinstall when platform package missing
         vec!["install"]
-    } else {
+    } else if should_check_update {
         // Update existing packages to latest
+        vec!["update", "terminator.js"]
+    } else {
+        // This shouldn't happen, but default to update
         vec!["update"]
     };
 
@@ -765,11 +507,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stdout_line = stdout_reader.next_line() => {
                                         match stdout_line {
                                             Ok(Some(line)) => {
-                                                debug!("[{}] npm stdout: {}", runtime, line);
+                                                info!("[{}] npm stdout: {}", runtime, line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                debug!("[{}] npm stdout stream ended", runtime);
+                                                info!("[{}] npm stdout stream ended", runtime);
                                             }
                                             Err(e) => {
                                                 error!("[{}] Error reading npm stdout: {}", runtime, e);
@@ -781,11 +523,11 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stderr_line = stderr_reader.next_line() => {
                                         match stderr_line {
                                             Ok(Some(line)) => {
-                                                debug!("[{}] npm stderr: {}", runtime, line);
+                                                info!("[{}] npm stderr: {}", runtime, line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                debug!("[{}] npm stderr stream ended", runtime);
+                                                info!("[{}] npm stderr stream ended", runtime);
                                             }
                                             Err(e) => {
                                                 error!("[{}] Error reading npm stderr: {}", runtime, e);
@@ -797,17 +539,17 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
                                         match child.try_wait() {
                                             Ok(Some(status)) => {
-                                                debug!("[{}] npm process completed with status: {:?}", runtime, status);
+                                                info!("[{}] npm process completed with status: {:?}", runtime, status);
 
                                                 // Read any remaining output
                                                 while let Ok(Some(line)) = stdout_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        debug!("[{}] npm stdout (final): {}", runtime, line);
+                                                        info!("[{}] npm stdout (final): {}", runtime, line);
                                                     }
                                                 }
                                                 while let Ok(Some(line)) = stderr_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        debug!("[{}] npm stderr (final): {}", runtime, line);
+                                                        info!("[{}] npm stderr (final): {}", runtime, line);
                                                     }
                                                 }
 
@@ -1050,11 +792,7 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
     use tokio::process::Command;
 
     info!("[Node.js] Starting JavaScript execution with terminator.js bindings");
-    debug!(
-        "[Node.js] Script to execute ({} bytes):\n{}",
-        script.len(),
-        script
-    );
+    info!("[Node.js] Script to execute ({} bytes)", script.len());
 
     // Check if bun is available, fallback to node
     let runtime = if let Some(bun_exe) = find_executable("bun") {
@@ -1095,10 +833,14 @@ pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json
     let script_dir = ensure_terminator_js_installed(runtime).await?;
     info!("[Node.js] Script directory: {}", script_dir.display());
 
+    // Log which terminator.js version is in use
+    log_terminator_js_version(&script_dir, "Node.js").await;
+
     // Create a wrapper script that:
     // 1. Imports terminator.js
     // 2. Executes user script
     // 3. Returns result
+
     let wrapper_script = format!(
         r#"
 const {{ Desktop }} = require('terminator.js');
@@ -1148,7 +890,6 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         "[Node.js] Writing wrapper script to: {}",
         script_path.display()
     );
-    debug!("[Node.js] Wrapper script content:\n{}", wrapper_script);
 
     tokio::fs::write(&script_path, wrapper_script)
         .await
@@ -1186,7 +927,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         // Bun can be executed directly if it's not a batch file
         Command::new(&runtime_exe)
             .current_dir(&script_dir)
-            .arg("main.js")
+            .arg(&unique_filename)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1238,12 +979,12 @@ console.log('[Node.js Wrapper] Starting user script execution...');
             stdout_line = stdout.next_line() => {
                 match stdout_line {
                     Ok(Some(line)) => {
-                        debug!("[Node.js stdout] {}", line);
+                        info!("[Node.js stdout] {}", line);
                         if line.starts_with("__RESULT__") && line.ends_with("__END__") {
                             // Parse final result
                             let result_json = line.replace("__RESULT__", "").replace("__END__", "");
                             info!("[Node.js] Received result, parsing JSON ({} bytes)...", result_json.len());
-                            debug!("[Node.js] Result JSON: {}", result_json);
+                            info!("[Node.js] Result JSON: {}", result_json);
 
                             match serde_json::from_str(&result_json) {
                                 Ok(parsed_result) => {
@@ -1253,7 +994,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                                 }
                                 Err(e) => {
                                     error!("[Node.js] Failed to parse result JSON: {}", e);
-                                    debug!("[Node.js] Invalid JSON was: {}", result_json);
+                                    info!("[Node.js] Invalid JSON was: {}", result_json);
                                 }
                             }
                         } else if line.starts_with("__ERROR__") && line.ends_with("__END__") {
@@ -1268,9 +1009,6 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                                 ));
                             }
                             break;
-                        } else {
-                            // Regular console output
-                            info!("[Node.js output] {}", line);
                         }
                     }
                     Ok(None) => {
@@ -1290,7 +1028,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                         stderr_output.push(line);
                     }
                     Ok(None) => {
-                        debug!("[Node.js] stderr stream ended");
+                        info!("[Node.js] stderr stream ended");
                     }
                     Err(e) => {
                         error!("[Node.js] Error reading stderr: {}", e);
@@ -1527,6 +1265,8 @@ pub async fn execute_javascript_with_local_bindings(
                 ));
             } else {
                 info!("[Node.js Local] Local bindings installed successfully");
+                // Log which terminator.js version is in use for local bindings
+                log_terminator_js_version(&script_dir, "Node.js Local").await;
             }
         }
         Err(e) => {

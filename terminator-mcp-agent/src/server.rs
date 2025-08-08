@@ -4,7 +4,6 @@ use crate::output_parser;
 use crate::scripting_engine;
 use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
-use crate::utils::WaitForOutputParserArgs;
 use crate::utils::{
     get_timeout, ActivateElementArgs, ClickElementArgs, CloseElementArgs, DelayArgs,
     ExecuteBrowserScriptArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
@@ -20,7 +19,7 @@ use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
-use rmcp::{tool, Error as McpError, ServerHandler};
+use rmcp::{tool, ErrorData as McpError, ServerHandler};
 use rmcp::{tool_handler, tool_router};
 use serde_json::{json, Value};
 use std::future::Future;
@@ -38,75 +37,27 @@ use image::codecs::png::PngEncoder;
 
 /// Extracts JSON data from Content objects without double serialization
 pub fn extract_content_json(content: &Content) -> Result<serde_json::Value, serde_json::Error> {
-    // First serialize the Content to understand its structure
-    let content_value = serde_json::to_value(content)?;
-
-    // Check if it's a JSON content type with a "text" field containing JSON string
-    if let Some(content_obj) = content_value.as_object() {
-        if let Some(content_type) = content_obj.get("type") {
-            if content_type == "text" {
-                if let Some(text_value) = content_obj.get("text") {
-                    if let Some(text_str) = text_value.as_str() {
-                        // Try to parse the text as JSON
-                        if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(text_str)
-                        {
-                            return Ok(parsed_json);
-                        }
-                    }
-                }
+    // Handle the new rmcp 0.4.0 Content structure with Annotated<RawContent>
+    match &content.raw {
+        rmcp::model::RawContent::Text(text_content) => {
+            // Try to parse the text as JSON first
+            if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(&text_content.text) {
+                Ok(parsed_json)
+            } else {
+                // If it's not JSON, return as a text object
+                Ok(json!({"type": "text", "text": text_content.text}))
             }
         }
-    }
-
-    // Fallback: return the content as-is if it's not a JSON text type
-    Ok(content_value)
-}
-
-// Helper function to validate extracted data against success criteria
-fn is_valid_extraction(extracted_data: &serde_json::Value, criteria: &serde_json::Value) -> bool {
-    // Default validation: check if we have any data
-    if extracted_data.is_null() {
-        return false;
-    }
-
-    // If criteria is provided, validate against it
-    if let Some(min_items) = criteria.get("min_items").and_then(|v| v.as_u64()) {
-        let item_count = extracted_data.as_array().map_or(0, |arr| arr.len());
-        if (item_count as u64) < min_items {
-            return false;
+        rmcp::model::RawContent::Image(image_content) => Ok(
+            json!({"type": "image", "data": image_content.data, "mime_type": image_content.mime_type}),
+        ),
+        rmcp::model::RawContent::Resource(resource_content) => {
+            Ok(json!({"type": "resource", "resource": resource_content}))
         }
+        rmcp::model::RawContent::Audio(audio_content) => Ok(
+            json!({"type": "audio", "data": audio_content.data, "mime_type": audio_content.mime_type}),
+        ),
     }
-
-    // Check for required fields
-    if let Some(required_fields) = criteria.get("required_fields").and_then(|v| v.as_array()) {
-        if let Some(data_array) = extracted_data.as_array() {
-            if data_array.is_empty() {
-                return false;
-            }
-
-            // Check if at least one item has all required fields
-            let has_required_fields = data_array.iter().any(|item| {
-                if let Some(item_obj) = item.as_object() {
-                    required_fields.iter().all(|field| {
-                        if let Some(field_name) = field.as_str() {
-                            item_obj.contains_key(field_name)
-                                && !item_obj.get(field_name).unwrap().is_null()
-                        } else {
-                            false
-                        }
-                    })
-                } else {
-                    false
-                }
-            });
-
-            if !has_required_fields {
-                return false;
-            }
-        }
-    }
-
-    true
 }
 
 #[tool_router]
@@ -1187,135 +1138,6 @@ impl DesktopWrapper {
 
             // Wait a bit before the next poll
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        }
-    }
-
-    #[tool(
-        description = "Waits for output parser to successfully extract data from UI tree, polling until success or timeout. This is useful for waiting for dynamic content to load and be ready for data extraction."
-    )]
-    async fn wait_for_output_parser(
-        &self,
-        Parameters(args): Parameters<WaitForOutputParserArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        let start_time = std::time::Instant::now();
-        let timeout_duration = Duration::from_millis(args.timeout_ms.unwrap_or(10000));
-        let poll_interval = Duration::from_millis(args.poll_interval_ms.unwrap_or(1000));
-
-        info!(
-            "[wait_for_output_parser] Starting with timeout: {:?}, poll_interval: {:?}",
-            timeout_duration, poll_interval
-        );
-
-        loop {
-            // Check timeout
-            if start_time.elapsed() > timeout_duration {
-                return Err(McpError::internal_error(
-                    "Timeout waiting for output parser to extract data",
-                    Some(json!({
-                        "timeout_ms": args.timeout_ms.unwrap_or(10000),
-                        "elapsed_ms": start_time.elapsed().as_millis(),
-                        "poll_interval_ms": args.poll_interval_ms.unwrap_or(1000)
-                    })),
-                ));
-            }
-
-            // Get current UI tree
-            let tree = if let Some(selector) = &args.selector {
-                // Get tree from specific element
-                info!(
-                    "[wait_for_output_parser] Getting UI tree from selector: '{}'",
-                    selector
-                );
-                let locator = self
-                    .desktop
-                    .locator(terminator::Selector::from(selector.as_str()));
-                match locator.wait(Some(Duration::from_millis(500))).await {
-                    Ok(element) => {
-                        let pid = element.process_id().unwrap_or(0);
-                        self.desktop.get_window_tree(pid, None, None).ok()
-                    }
-                    Err(_) => {
-                        info!(
-                            "[wait_for_output_parser] Failed to find element with selector: '{}'",
-                            selector
-                        );
-                        None
-                    }
-                }
-            } else {
-                // Get tree from focused window
-                info!("[wait_for_output_parser] Getting UI tree from focused window");
-                match self.desktop.focused_element() {
-                    Ok(element) => match element.process_id() {
-                        Ok(pid) => self.desktop.get_window_tree(pid, None, None).ok(),
-                        Err(_) => None,
-                    },
-                    Err(_) => None,
-                }
-            };
-
-            if let Some(tree) = tree {
-                // Try to run output parser
-                let tree_json = json!({ "ui_tree": tree });
-
-                match output_parser::run_output_parser(&args.output_parser, &tree_json).await {
-                    Ok(Some(parsed_data)) => {
-                        // Check if we got the expected data
-                        let is_valid = if let Some(criteria) = &args.success_criteria {
-                            is_valid_extraction(&parsed_data, criteria)
-                        } else {
-                            // Default validation: check if we got any data at all
-                            !parsed_data.is_null()
-                                && parsed_data.as_array().is_none_or(|arr| !arr.is_empty())
-                        };
-
-                        if is_valid {
-                            info!(
-                                "[wait_for_output_parser] Successfully extracted data after {}ms",
-                                start_time.elapsed().as_millis()
-                            );
-
-                            let mut result_json = json!({
-                                "action": "wait_for_output_parser",
-                                "status": "success",
-                                "elapsed_ms": start_time.elapsed().as_millis(),
-                                "extracted_data": parsed_data,
-                                "data_item_count": parsed_data.as_array().map_or(0, |arr| arr.len()),
-                                "timestamp": chrono::Utc::now().to_rfc3339()
-                            });
-
-                            // Include tree if requested
-                            if args.include_tree.unwrap_or(false) {
-                                if let Some(obj) = result_json.as_object_mut() {
-                                    obj.insert("ui_tree".to_string(), json!(tree));
-                                }
-                            }
-
-                            return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
-                        } else {
-                            info!(
-                                "[wait_for_output_parser] Parser extracted data but validation failed, continuing to poll..."
-                            );
-                        }
-                    }
-                    Ok(_) => {
-                        info!(
-                            "[wait_for_output_parser] Parser found no data, continuing to poll..."
-                        );
-                    }
-                    Err(e) => {
-                        info!(
-                            "[wait_for_output_parser] Parser error: {}, continuing to poll...",
-                            e
-                        );
-                    }
-                }
-            } else {
-                info!("[wait_for_output_parser] Failed to get UI tree, continuing to poll...");
-            }
-
-            // Wait before next poll
-            tokio::time::sleep(poll_interval).await;
         }
     }
 
@@ -2676,19 +2498,22 @@ impl DesktopWrapper {
             Ok(result) => {
                 let mut extracted_content = Vec::new();
 
-                for content in &result.content {
-                    match extract_content_json(content) {
-                        Ok(json_content) => extracted_content.push(json_content),
-                        Err(_) => extracted_content.push(
-                            json!({ "type": "unknown", "data": "Content extraction failed" }),
-                        ),
+                if let Some(content_vec) = &result.content {
+                    for content in content_vec {
+                        match extract_content_json(content) {
+                            Ok(json_content) => extracted_content.push(json_content),
+                            Err(_) => extracted_content.push(
+                                json!({ "type": "unknown", "data": "Content extraction failed" }),
+                            ),
+                        }
                     }
                 }
 
+                let content_count = result.content.as_ref().map(|v| v.len()).unwrap_or(0);
                 let content_summary = if include_detailed {
-                    json!({ "type": "tool_result", "content_count": result.content.len(), "content": extracted_content })
+                    json!({ "type": "tool_result", "content_count": content_count, "content": extracted_content })
                 } else {
-                    json!({ "type": "summary", "content": "Tool executed successfully", "content_count": result.content.len() })
+                    json!({ "type": "summary", "content": "Tool executed successfully", "content_count": content_count })
                 };
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
                 let mut result_json = json!({
@@ -2829,15 +2654,7 @@ impl DesktopWrapper {
                     )),
                 }
             }
-            "wait_for_output_parser" => {
-                match serde_json::from_value::<WaitForOutputParserArgs>(arguments.clone()) {
-                    Ok(args) => self.wait_for_output_parser(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for wait_for_output_parser",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
+
             "activate_element" => {
                 match serde_json::from_value::<ActivateElementArgs>(arguments.clone()) {
                     Ok(args) => self.activate_element(Parameters(args)).await,
@@ -3480,7 +3297,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes arbitrary JavaScript inside an embedded JS engine. The script receives a synchronous helper `callTool(name, argsJsonString)` that can invoke any other MCP tool and return its JSON result. The final value of the script is serialized to JSON and returned as the tool output.  NOTE: This is EXPERIMENTAL and currently uses a sandboxed QuickJS runtime; only standard JavaScript plus the provided helper is available."
+        description = "Executes arbitrary JavaScript inside an embedded JS engine. The final value of the script is serialized to JSON and returned as the tool output. You can provide either inline script code or a path to a JavaScript file. NOTE: This is EXPERIMENTAL and currently uses a sandboxed NodeJS runtime; only standard JavaScript and terminator-js is available."
     )]
     async fn run_javascript(
         &self,
@@ -3488,52 +3305,54 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         use serde_json::json;
 
-        let engine = args.engine.clone().unwrap_or_else(|| "nodejs".to_string());
-
-        if engine == "boa" {
-            let self_clone = self.clone();
-
-            // Create a tool dispatcher closure that calls our dispatch_tool method
-            let tool_dispatcher = move |tool_name: String, args_val: serde_json::Value| {
-                let self_clone = self_clone.clone();
-                async move {
-                    match self_clone.dispatch_tool(&tool_name, &args_val).await {
-                        Ok(call_result) => serde_json::to_string(&call_result).map_err(|e| {
-                            McpError::internal_error(
-                                "Failed to serialize tool result",
-                                Some(json!({"error": e.to_string(), "tool": tool_name})),
-                            )
-                        }),
-                        Err(e) => Err(e),
+        // Determine the script source - either inline or from file
+        let script_content = match (args.script, args.script_file_path) {
+            (Some(script), None) => {
+                // Inline script provided
+                script
+            }
+            (None, Some(file_path)) => {
+                // File path provided - read the file
+                match std::fs::read_to_string(&file_path) {
+                    Ok(content) => content,
+                    Err(e) => {
+                        return Err(McpError::internal_error(
+                            format!("Failed to read JavaScript file: {file_path}"),
+                            Some(json!({
+                                "file_path": file_path,
+                                "error": e.to_string()
+                            })),
+                        ));
                     }
                 }
-            };
+            }
+            (Some(_), Some(_)) => {
+                return Err(McpError::invalid_params(
+                    "Cannot provide both 'script' and 'script_file_path'. Please provide only one.",
+                    Some(json!({
+                        "provided_script": true,
+                        "provided_script_file_path": true
+                    })),
+                ));
+            }
+            (None, None) => {
+                return Err(McpError::invalid_params(
+                    "Must provide either 'script' (inline JavaScript) or 'script_file_path' (path to JavaScript file).",
+                    Some(json!({
+                        "provided_script": false,
+                        "provided_script_file_path": false
+                    }))
+                ));
+            }
+        };
 
-            // Execute JavaScript using the new terminator_js module
-            let execution_result =
-                scripting_engine::execute_javascript(args.script, tool_dispatcher).await?;
-
-            return Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "run_javascript",
-                "status": "success",
-                "engine": "boa",
-                "result": execution_result
-            }))?]));
-        } else if engine == "nodejs" {
-            let execution_result =
-                scripting_engine::execute_javascript_with_nodejs(args.script).await?;
-            return Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "run_javascript",
-                "status": "success",
-                "engine": "nodejs",
-                "result": execution_result
-            }))?]));
-        }
-
-        Err(McpError::internal_error(
-            "Unsupported JavaScript engine",
-            Some(json!({"error": "Unsupported JavaScript engine"})),
-        ))
+        let execution_result =
+            scripting_engine::execute_javascript_with_nodejs(script_content).await?;
+        return Ok(CallToolResult::success(vec![Content::json(json!({
+            "action": "run_javascript",
+            "status": "success",
+            "result": execution_result
+        }))?]));
     }
 
     #[tool(

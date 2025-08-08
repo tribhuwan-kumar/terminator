@@ -92,6 +92,22 @@ export interface TreeBuildConfig {
   /** Optional batch size for processing elements */
   batchSize?: number
 }
+export const enum TextPosition {
+  Top = 'Top',
+  TopRight = 'TopRight',
+  Right = 'Right',
+  BottomRight = 'BottomRight',
+  Bottom = 'Bottom',
+  BottomLeft = 'BottomLeft',
+  Left = 'Left',
+  TopLeft = 'TopLeft',
+  Inside = 'Inside'
+}
+export interface FontStyle {
+  size: number
+  bold: boolean
+  color: number
+}
 /** Main entry point for desktop automation. */
 export declare class Desktop {
   /**
@@ -480,13 +496,16 @@ export declare class Element {
    */
   window(): Element | null
   /**
-   * Highlights the element with a colored border.
+   * Highlights the element with a colored border and optional text overlay.
    *
    * @param {number} [color] - Optional BGR color code (32-bit integer). Default: 0x0000FF (red)
    * @param {number} [durationMs] - Optional duration in milliseconds.
-   * @returns {void}
+   * @param {string} [text] - Optional text to display. Text will be truncated to 10 characters.
+   * @param {TextPosition} [textPosition] - Optional position for the text overlay (default: Top)
+   * @param {FontStyle} [fontStyle] - Optional font styling for the text
+   * @returns {HighlightHandle} Handle that can be used to close the highlight early
    */
-  highlight(color?: number | undefined | null, durationMs?: number | undefined | null): void
+  highlight(color?: number | undefined | null, durationMs?: number | undefined | null, text?: string | undefined | null, textPosition?: TextPosition | undefined | null, fontStyle?: FontStyle | undefined | null): HighlightHandle
   /**
    * Capture a screenshot of this element.
    *
@@ -555,7 +574,6 @@ export declare class Element {
    * @returns {Promise<string>} The result of script execution.
    */
   executeBrowserScript(script: string): Promise<string>
-
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
@@ -641,4 +659,7 @@ export declare class Selector {
    * This is similar to Playwright's .. syntax.
    */
   static parent(): Selector
+}
+export declare class HighlightHandle {
+  close(): void
 }

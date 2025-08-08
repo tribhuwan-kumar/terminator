@@ -53,13 +53,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    debug!("Comprehensive recorder config: {:?}", config);
+    info!("Comprehensive recorder config: {:?}", config);
 
     // Create the comprehensive workflow recorder
     let mut recorder =
         WorkflowRecorder::new("Comprehensive Workflow Recording".to_string(), config);
 
-    debug!("Starting comprehensive recording...");
+    info!("Starting comprehensive recording...");
     let mut event_stream = recorder.event_stream();
     recorder
         .start()
@@ -185,7 +185,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(ref ui_element) = kb_event.metadata.ui_element {
                             // Highlight the keyboard target element in red
                             // if let Err(e) = ui_element.highlight(Some(0xFF0000), None) {
-                            //     debug!("Error highlighting keyboard target UI element: {:?}", e);
+                            //     info!("Error highlighting keyboard target UI element: {:?}", e);
                             // }
 
                             println!(
@@ -230,7 +230,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(ref ui_element) = selection_event.metadata.ui_element {
                         // Highlight the text selection element in yellow
                         // if let Err(e) = ui_element.highlight(Some(0x00FFFF), None) {
-                        //     debug!("Error highlighting text selection UI element: {:?}", e);
+                        //     info!("Error highlighting text selection UI element: {:?}", e);
                         // }
 
                         println!(
@@ -265,7 +265,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(ref ui_element) = drag_event.metadata.ui_element {
                         // Highlight the drag source/target element in cyan
                         // if let Err(e) = ui_element.highlight(Some(0xFFFF00), None) {
-                        //     debug!("Error highlighting drag/drop UI element: {:?}", e);
+                        //     info!("Error highlighting drag/drop UI element: {:?}", e);
                         // }
 
                         println!(
@@ -316,7 +316,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(ref ui_element) = text_input_event.metadata.ui_element {
                         // Highlight the text input field in purple
                         // if let Err(e) = ui_element.highlight(Some(0xFF00FF), None) {
-                        //     debug!("Error highlighting text input UI element: {:?}", e);
+                        //     info!("Error highlighting text input UI element: {:?}", e);
                         // }
 
                         println!("     └─ App: {} 🎯", ui_element.application_name());
@@ -358,7 +358,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(ref ui_element) = app_switch_event.metadata.ui_element {
                         // Highlight the app switch element in lime green
                         // if let Err(e) = ui_element.highlight(Some(0x00FF80), None) {
-                        //     debug!("Error highlighting app switch UI element: {:?}", e);
+                        //     info!("Error highlighting app switch UI element: {:?}", e);
                         // }
 
                         println!(
@@ -402,7 +402,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(ref ui_element) = mouse_event.metadata.ui_element {
                             // Highlight the clicked element in blue/orange
                             // if let Err(e) = ui_element.highlight(Some(0xFF8000), None) {
-                            //     debug!("Error highlighting clicked UI element: {:?}", e);
+                            //     info!("Error highlighting clicked UI element: {:?}", e);
                             // }
 
                             println!(
@@ -506,7 +506,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(ref ui_element) = tab_nav_event.metadata.ui_element {
                         // Highlight the tab navigation element in aqua/cyan
                         // if let Err(e) = ui_element.highlight(Some(0xFFFF80), None) {
-                        //     debug!("Error highlighting tab navigation UI element: {:?}", e);
+                        //     info!("Error highlighting tab navigation UI element: {:?}", e);
                         // }
 
                         println!(
@@ -528,18 +528,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    debug!("Waiting for Ctrl+C signal...");
+    info!("Waiting for Ctrl+C signal...");
     ctrl_c().await.expect("Failed to wait for Ctrl+C");
 
     info!("🛑 Stop signal received, finalizing recording...");
-    debug!("Sending stop signal to recorder...");
+    info!("Sending stop signal to recorder...");
     recorder.stop().await.expect("Failed to stop recorder");
 
     // Cancel the event display task
     event_display_task.abort();
 
     let output_path = PathBuf::from("comprehensive_workflow_recording.json");
-    debug!("Saving comprehensive recording to {:?}", output_path);
+    info!("Saving comprehensive recording to {:?}", output_path);
     recorder
         .save(&output_path)
         .expect("Failed to save recording");

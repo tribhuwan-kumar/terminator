@@ -21,7 +21,7 @@ tracing = { workspace = true }
 terminator = { workspace = true }
 serde_json = { workspace = true }
 tracing-subscriber = { workspace = true }
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", rev = "b9d7d61ebd6e8385cbc4aa105d4e25774fc1a59c", features = [
+rmcp = { version = "0.4.0", features = [
     "server",
     "client",
     "transport-sse-server",
@@ -38,8 +38,6 @@ tower-http = { version = "0.6", features = ["cors"] }
 terminator-workflow-recorder = { path = "../terminator-workflow-recorder" }
 
 regex = { workspace = true }
-
-boa_engine = "0.20.0"
 tempfile = "3"
 
 reqwest = { version = "0.12.5", features = ["json"] }
