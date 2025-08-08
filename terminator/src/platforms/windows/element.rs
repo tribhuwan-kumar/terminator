@@ -1033,7 +1033,7 @@ impl UIElementImpl for WindowsUIElement {
     fn window(&self) -> Result<Option<UIElement>, AutomationError> {
         let mut current_element_arc = Arc::clone(&self.element.0); // Start with the current element's Arc<uiautomation::UIElement>
         const MAX_DEPTH: usize = 20; // Safety break for parent traversal
-        
+
         // Strategy: Find the FIRST Pane, or fall back to the FIRST Window
         // This prioritizes finding the closest application container (Pane) over system containers (Window)
         let mut first_pane: Option<Arc<uiautomation::UIElement>> = None;
@@ -1096,10 +1096,10 @@ impl UIElementImpl for WindowsUIElement {
                 }
             }
         }
-        
+
         // Return the best candidate we found (prefer first Pane over first Window)
         let chosen_element = first_pane.or(first_window);
-        
+
         if let Some(element) = chosen_element {
             let window_ui_element = WindowsUIElement {
                 element: ThreadSafeWinUIElement(element),

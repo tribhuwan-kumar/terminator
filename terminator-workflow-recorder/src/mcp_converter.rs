@@ -165,26 +165,40 @@ impl McpConverter {
         let window_context = if let Some(metadata) = &event.metadata.ui_element {
             let app_name = metadata.application_name();
             let window_title = metadata.window_title();
-            
+
             // FIX: Use window container role, not clicked element role
-            let window_role = metadata.window()
+            let window_role = metadata
+                .window()
                 .ok()
                 .flatten()
                 .map(|w| w.role())
                 .unwrap_or_else(|| "Window".to_string());
-            
+
             // Use app_name as the source of window context (recorder stores window titles there)
-            let effective_window_title = if !app_name.is_empty() { &app_name } else { &window_title };
-            let effective_app_name = if app_name.contains("Chrome") { "Google Chrome" } 
-                                    else if app_name.contains("Firefox") { "Firefox" }
-                                    else if app_name.contains("Edge") { "Microsoft Edge" }
-                                    else { "Application" };
-            
+            let effective_window_title = if !app_name.is_empty() {
+                &app_name
+            } else {
+                &window_title
+            };
+            let effective_app_name = if app_name.contains("Chrome") {
+                "Google Chrome"
+            } else if app_name.contains("Firefox") {
+                "Firefox"
+            } else if app_name.contains("Edge") {
+                "Microsoft Edge"
+            } else {
+                "Application"
+            };
+
             tracing::info!("🔍 MCP Converter - app: '{}', title: '{}', window_role: '{}', clicked_element_role: '{}'", 
                           effective_app_name, effective_window_title, window_role, metadata.role());
-            
+
             if !effective_window_title.is_empty() && effective_window_title.len() > 3 {
-                Some((effective_app_name.to_string(), effective_window_title.to_string(), window_role.to_string()))
+                Some((
+                    effective_app_name.to_string(),
+                    effective_window_title.to_string(),
+                    window_role.to_string(),
+                ))
             } else {
                 None
             }
@@ -195,14 +209,14 @@ impl McpConverter {
         // NEW: Check if this is a click-away action to dismiss UI elements
         if self.is_click_away_action(event) {
             tracing::info!("🔄 Detected click-away action - converting to Escape key press");
-            
+
             // Generate escape key step instead of click
             let escape_step = self.generate_escape_key_step();
             sequence.push(escape_step);
-            
+
             notes.push(format!("Converted click-away action to Escape key press - detected container click: role='{}', children={}", 
                 event.element_role, event.child_text_content.len()));
-            
+
             tracing::info!("✅ Generated Escape key press for click-away dismissal");
 
             return Ok(ConversionResult {
@@ -228,7 +242,8 @@ impl McpConverter {
 
         // Add note about scoped selector usage
         if window_context.is_some() {
-            notes.push("Generated scoped selector using >> operator for window context".to_string());
+            notes
+                .push("Generated scoped selector using >> operator for window context".to_string());
         }
 
         // Create the click step with 3000ms timeout as requested
@@ -238,13 +253,14 @@ impl McpConverter {
                 "selector": selector,
                 "timeout_ms": 3000
             }),
-            description: format!("Click '{}' element", 
-                if !event.element_text.is_empty() { 
-                    &event.element_text 
-                } else if !event.child_text_content.is_empty() { 
-                    &event.child_text_content[0] 
-                } else { 
-                    &event.element_role 
+            description: format!(
+                "Click '{}' element",
+                if !event.element_text.is_empty() {
+                    &event.element_text
+                } else if !event.child_text_content.is_empty() {
+                    &event.child_text_content[0]
+                } else {
+                    &event.element_role
                 }
             ),
             timeout_ms: Some(3000),
@@ -328,7 +344,7 @@ impl McpConverter {
         // Non-clickable container roles that are typically used for layout, not interaction
         const NON_CLICKABLE_ROLES: &[&str] = &[
             "custom",        // Generic containers
-            "document",      // Page content areas  
+            "document",      // Page content areas
             "group",         // Layout containers
             "main",          // Main content areas
             "section",       // Content sections
@@ -345,19 +361,32 @@ impl McpConverter {
 
         // Generic container names that suggest layout rather than interaction
         const GENERIC_NAMES: &[&str] = &[
-            "home", "main", "content", "container", "page", 
-            "body", "wrapper", "layout", "section", "area",
-            "panel", "view", "canvas", "workspace"
+            "home",
+            "main",
+            "content",
+            "container",
+            "page",
+            "body",
+            "wrapper",
+            "layout",
+            "section",
+            "area",
+            "panel",
+            "view",
+            "canvas",
+            "workspace",
         ];
 
         // Check if role suggests a non-interactive container
-        let is_non_clickable_role = NON_CLICKABLE_ROLES.contains(&event.element_role.to_lowercase().as_str());
-        
+        let is_non_clickable_role =
+            NON_CLICKABLE_ROLES.contains(&event.element_role.to_lowercase().as_str());
+
         // Check if element has many children (strong indicator of layout container)
         let has_many_children = event.child_text_content.len() >= 8;
-        
+
         // Check if element name suggests a generic container
-        let has_generic_name = GENERIC_NAMES.iter()
+        let has_generic_name = GENERIC_NAMES
+            .iter()
             .any(|&name| event.element_text.to_lowercase().contains(name));
 
         // Future enhancement: Check bounds information to detect large containers
@@ -394,11 +423,14 @@ impl McpConverter {
         if let Some(metadata) = &event.metadata.ui_element {
             let app_name = metadata.application_name();
             let window_title = metadata.window_title();
-            
+
             if self.is_desktop_context(&app_name, &window_title) {
                 // Desktop-specific selector generation - prefer child text
                 if !event.child_text_content.is_empty() {
-                    return format!("desktop:{}|{}", event.element_role, event.child_text_content[0]);
+                    return format!(
+                        "desktop:{}|{}",
+                        event.element_role, event.child_text_content[0]
+                    );
                 } else if !event.element_text.is_empty() {
                     return format!("desktop:{}|{}", event.element_role, event.element_text);
                 } else {
@@ -406,12 +438,12 @@ impl McpConverter {
                 }
             }
         }
-        
+
         // Regular application selector generation - trust the deepest element finder's result
         // Since our deepest element finder already performed coordinate checking,
         // we should use the actual clicked element's text, not child text from elements
         // that may not be under the click coordinates.
-        
+
         if !event.element_text.is_empty() {
             // Use the actual clicked element's text
             format!("{}|{}", event.element_role, event.element_text)
@@ -435,12 +467,17 @@ impl McpConverter {
     }
 
     /// Generate scoped selector using >> operator for better targeting
-    fn generate_scoped_selector(&self, event: &ClickEvent, window_context: &Option<(String, String, String)>) -> String {
+    fn generate_scoped_selector(
+        &self,
+        event: &ClickEvent,
+        window_context: &Option<(String, String, String)>,
+    ) -> String {
         // If we have window context, use scoped selector with >> operator
         if let Some((app_name, window_title, window_role)) = window_context {
-            let window_selector = self.generate_window_selector(app_name, window_title, window_role);
+            let window_selector =
+                self.generate_window_selector(app_name, window_title, window_role);
             let element_selector = self.generate_element_selector(event);
-            
+
             // Generate scoped selector: window >> element
             format!("{} >> {}", window_selector, element_selector)
         } else {
@@ -450,23 +487,31 @@ impl McpConverter {
     }
 
     /// Generate window selector for scoped search using actual detected role
-    fn generate_window_selector(&self, app_name: &str, window_title: &str, window_role: &str) -> String {
+    fn generate_window_selector(
+        &self,
+        app_name: &str,
+        window_title: &str,
+        window_role: &str,
+    ) -> String {
         // Desktop-specific window selector
         if self.is_desktop_context(app_name, window_title) {
             return format!("role:{}|name:Desktop", window_role);
         }
-        
+
         // CHROME-SPECIFIC FIX: Override detected role for Chrome applications
         // Chrome applications should use "Pane" selectors even if window() returns "Window"
         let role = if app_name.to_lowercase().contains("chrome") {
-            tracing::info!("🎯 Chrome detected - using role:Pane instead of role:{}", window_role);
+            tracing::info!(
+                "🎯 Chrome detected - using role:Pane instead of role:{}",
+                window_role
+            );
             "Pane"
-        } else if window_role.is_empty() { 
-            "Window" 
-        } else { 
-            window_role 
+        } else if window_role.is_empty() {
+            "Window"
+        } else {
+            window_role
         };
-        
+
         // Extract meaningful title part from window title
         if let Some(title_part) = self.extract_meaningful_title(window_title) {
             format!("role:{}|name:contains:{}", role, title_part)
@@ -476,7 +521,7 @@ impl McpConverter {
                 name if name.contains("chrome") => format!("role:{}|name:contains:Chrome", role),
                 name if name.contains("firefox") => format!("role:{}|name:contains:Firefox", role),
                 name if name.contains("edge") => format!("role:{}|name:contains:Edge", role),
-                _ => format!("role:{}|name:contains:{}", role, app_name)
+                _ => format!("role:{}|name:contains:{}", role, app_name),
             }
         }
     }
@@ -503,9 +548,14 @@ impl McpConverter {
 
     /// Generate activation step for window/application targeting
     #[allow(dead_code)] // TODO: Will be used for application switching
-    fn generate_activation_step(&self, app_name: &str, window_title: &str, window_role: &str) -> McpToolStep {
+    fn generate_activation_step(
+        &self,
+        app_name: &str,
+        window_title: &str,
+        window_role: &str,
+    ) -> McpToolStep {
         let selector = self.generate_activation_selector(app_name, window_title, window_role);
-        
+
         McpToolStep {
             tool_name: "activate_element".to_string(),
             arguments: json!({
@@ -521,15 +571,24 @@ impl McpConverter {
 
     /// Generate activation selector based on app name and window title with actual role
     #[allow(dead_code)] // TODO: Will be used for application switching
-    fn generate_activation_selector(&self, app_name: &str, window_title: &str, window_role: &str) -> String {
+    fn generate_activation_selector(
+        &self,
+        app_name: &str,
+        window_title: &str,
+        window_role: &str,
+    ) -> String {
         // Desktop-specific activation
         if self.is_desktop_context(app_name, window_title) {
             return format!("role:{}|name:Desktop", window_role);
         }
-        
+
         // Use the ACTUAL detected role instead of hardcoding "Window"
-        let role = if window_role.is_empty() { "Window" } else { window_role };
-        
+        let role = if window_role.is_empty() {
+            "Window"
+        } else {
+            window_role
+        };
+
         // Extract meaningful title part from window title
         if let Some(title_part) = self.extract_meaningful_title(window_title) {
             format!("role:{}|name:contains:{}", role, title_part)
@@ -539,7 +598,7 @@ impl McpConverter {
                 name if name.contains("chrome") => format!("role:{}|name:contains:Chrome", role),
                 name if name.contains("firefox") => format!("role:{}|name:contains:Firefox", role),
                 name if name.contains("edge") => format!("role:{}|name:contains:Edge", role),
-                _ => format!("role:{}|name:{}", role, app_name)
+                _ => format!("role:{}|name:{}", role, app_name),
             }
         }
     }
@@ -548,14 +607,15 @@ impl McpConverter {
     fn extract_meaningful_title(&self, full_title: &str) -> Option<String> {
         // Split on common patterns: " - ", " – ", " | "
         let separators = [" - ", " – ", " | "];
-        
+
         for separator in &separators {
             if let Some(title_part) = full_title.split(separator).next() {
                 let trimmed = title_part.trim();
                 // Only use if it's meaningful (more than 3 chars and not generic)
-                if trimmed.len() > 3 
-                    && !trimmed.to_lowercase().contains("new tab") 
-                    && !trimmed.to_lowercase().contains("untitled") {
+                if trimmed.len() > 3
+                    && !trimmed.to_lowercase().contains("new tab")
+                    && !trimmed.to_lowercase().contains("untitled")
+                {
                     return Some(trimmed.to_string());
                 }
             }
@@ -567,12 +627,12 @@ impl McpConverter {
     fn is_desktop_context(&self, app_name: &str, window_title: &str) -> bool {
         let app_lower = app_name.to_lowercase();
         let title_lower = window_title.to_lowercase();
-        
+
         (app_lower.contains("explorer") && title_lower.contains("desktop")) ||
         app_lower.contains("dwm") ||           // Desktop Window Manager
         app_lower.contains("shell") ||         // Windows Shell  
         title_lower == "desktop" ||            // Direct desktop window
-        app_lower.contains("progman")          // Program Manager (desktop)
+        app_lower.contains("progman") // Program Manager (desktop)
     }
 
     /// Generate fallback sequences for element clicks
@@ -607,7 +667,10 @@ impl McpConverter {
                     arguments: json!({
                         "selector": format!("{}|{}", event.element_role, child_text)
                     }),
-                    description: format!("Click {} containing '{}'", event.element_role, child_text),
+                    description: format!(
+                        "Click {} containing '{}'",
+                        event.element_role, child_text
+                    ),
                     timeout_ms: Some(5000),
                     continue_on_error: Some(false),
                     delay_ms: Some(200),

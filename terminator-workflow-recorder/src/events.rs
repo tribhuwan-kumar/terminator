@@ -476,8 +476,6 @@ pub struct RecordedEvent {
     #[serde(skip_serializing_if = "is_empty_string")]
     pub semantic_action: Option<String>,
 
-
-
     /// Alternative MCP sequences as fallback options
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fallback_sequences: Option<Vec<Vec<McpToolStep>>>,

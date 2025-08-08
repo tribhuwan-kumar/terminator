@@ -261,7 +261,10 @@ pub(crate) fn parse_path(path: &str) -> Option<Vec<PathSegment>> {
             _ => return None,
         };
 
-        segments.push(PathSegment { control_type, index });
+        segments.push(PathSegment {
+            control_type,
+            index,
+        });
     }
 
     Some(segments)

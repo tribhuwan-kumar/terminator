@@ -9,7 +9,7 @@ use tracing::{info, warn};
 /// Helper to get the path to the MCP agent binary
 fn get_agent_binary_path() -> PathBuf {
     let mut path = env::current_exe().unwrap();
-    path.pop(); // Remove the test binary name  
+    path.pop(); // Remove the test binary name
     path.pop(); // Remove 'deps'
     path.pop(); // Remove 'debug' or 'release'
     path.push("release"); // Use release build
@@ -22,9 +22,7 @@ fn get_agent_binary_path() -> PathBuf {
 #[tokio::test]
 async fn test_click_first_search() -> Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     info!("🎯 Testing Click First Search Element in I-94 Page");
     info!("==================================================");
@@ -46,7 +44,7 @@ async fn test_click_first_search() -> Result<()> {
 
     // Strategy: Use run_javascript to find elements and click the first one
     info!("🧪 Attempting to click first search element using JavaScript approach");
-    
+
     let js_result = service
         .call_tool(CallToolRequestParam {
             name: "run_javascript".into(),
@@ -128,14 +126,14 @@ async fn test_click_first_search() -> Result<()> {
         let content = &js_result.content[0];
         let json_str = serde_json::to_string(&content)?;
         let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
-        
+
         if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
             // Try to parse the result as JSON
             if let Ok(result) = serde_json::from_str::<serde_json::Value>(text) {
                 if let Some(success) = result.get("success").and_then(|s| s.as_bool()) {
                     if success {
                         info!("🎉 SUCCESS! Clicked the first search element");
-                        
+
                         if let Some(clicked) = result.get("clicked_element") {
                             if let Some(name) = clicked.get("name").and_then(|n| n.as_str()) {
                                 info!("  🎯 Element name: {}", name);
@@ -147,22 +145,25 @@ async fn test_click_first_search() -> Result<()> {
                                 info!("  📋 I-94 Pane: {}", pane);
                             }
                         }
-                        
-                        if let Some(total) = result.get("total_search_elements").and_then(|t| t.as_u64()) {
+
+                        if let Some(total) =
+                            result.get("total_search_elements").and_then(|t| t.as_u64())
+                        {
                             info!("  📊 Total search elements found: {}", total);
                         }
-                        
-                        if let Some(panes) = result.get("i94_panes_found").and_then(|p| p.as_u64()) {
+
+                        if let Some(panes) = result.get("i94_panes_found").and_then(|p| p.as_u64())
+                        {
                             info!("  📋 I-94 panes found: {}", panes);
                         }
-                        
+
                         service.cancel().await?;
                         return Ok(());
                     } else {
                         if let Some(error) = result.get("error").and_then(|e| e.as_str()) {
                             info!("❌ Failed: {}", error);
                         }
-                        
+
                         if let Some(panes) = result.get("panes_found").and_then(|p| p.as_u64()) {
                             info!("  📋 I-94 panes found: {}", panes);
                         }
@@ -177,7 +178,7 @@ async fn test_click_first_search() -> Result<()> {
     info!("");
     info!("💡 Alternative: Try direct MCP click with index selector");
     info!("   (This might not work yet but worth testing)");
-    
+
     // Try the direct MCP approach with an index (this might not be implemented)
     let direct_result = service
         .call_tool(CallToolRequestParam {
@@ -194,7 +195,7 @@ async fn test_click_first_search() -> Result<()> {
         let content = &direct_result.content[0];
         let json_str = serde_json::to_string(&content)?;
         let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
-        
+
         if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
             if text.to_lowercase().contains("success") {
                 info!("🎉 SUCCESS with direct MCP click!");

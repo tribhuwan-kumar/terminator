@@ -1,5 +1,5 @@
 use terminator_workflow_recorder::{
-    events::{ClickEvent, WorkflowEvent, UIElementMetadata},
+    events::{ClickEvent, UIElementMetadata, WorkflowEvent},
     mcp_converter::McpConverter,
 };
 use tracing::info;
@@ -7,9 +7,7 @@ use tracing::info;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     info!("🧪 Testing Chrome-Specific MCP Converter Fix");
     info!("===========================================");
@@ -35,18 +33,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test our Chrome fix
     info!("🔍 Testing Chrome application click conversion...");
-    
+
     let workflow_event = WorkflowEvent::Click(chrome_click);
     let mcp_sequence = converter.convert_to_mcp_sequence(&[workflow_event]).await?;
 
     info!("📊 Generated MCP Sequence:");
     for (i, step) in mcp_sequence.iter().enumerate() {
-        info!("  Step {}: {} with selector: '{}'", 
-              i + 1, 
-              step.tool_name, 
-              step.arguments.get("selector").unwrap_or(&serde_json::Value::String("N/A".to_string()))
+        info!(
+            "  Step {}: {} with selector: '{}'",
+            i + 1,
+            step.tool_name,
+            step.arguments
+                .get("selector")
+                .unwrap_or(&serde_json::Value::String("N/A".to_string()))
         );
-        
+
         // Check if our Chrome fix worked
         if let Some(selector) = step.arguments.get("selector").and_then(|s| s.as_str()) {
             if selector.contains("role:Pane") {
@@ -60,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test a non-Chrome application for comparison
     info!("");
     info!("🔍 Testing non-Chrome application click conversion (for comparison)...");
-    
+
     let notepad_metadata = UIElementMetadata {
         application_name: "Notepad".to_string(),
         window_title: "Untitled - Notepad".to_string(),
@@ -82,12 +83,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("📊 Generated MCP Sequence for Notepad:");
     for (i, step) in notepad_sequence.iter().enumerate() {
-        info!("  Step {}: {} with selector: '{}'", 
-              i + 1, 
-              step.tool_name, 
-              step.arguments.get("selector").unwrap_or(&serde_json::Value::String("N/A".to_string()))
+        info!(
+            "  Step {}: {} with selector: '{}'",
+            i + 1,
+            step.tool_name,
+            step.arguments
+                .get("selector")
+                .unwrap_or(&serde_json::Value::String("N/A".to_string()))
         );
-        
+
         // This should still use Window for non-Chrome apps
         if let Some(selector) = step.arguments.get("selector").and_then(|s| s.as_str()) {
             if selector.contains("role:Window") {

@@ -95,14 +95,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(pos) = click_event.click_position {
                             println!("│   Position: ({}, {})", pos.x, pos.y);
                         }
-                        
+
                         // 🆕 NEW: Display child text content
                         if !click_event.child_text_content.is_empty() {
                             println!("│   Child Texts: [{}]", click_event.child_text_content.join(", "));
                         } else {
                             println!("│   Child Texts: (none)");
                         }
-                        
+
                         if let Some(ref ui_element) = click_event.metadata.ui_element {
                             println!("│   App: {}", ui_element.application_name());
                         }

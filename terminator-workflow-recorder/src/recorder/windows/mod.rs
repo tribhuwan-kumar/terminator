@@ -1,4 +1,4 @@
-﻿use crate::events::{ClickEvent, ButtonInteractionType};
+use crate::events::{ButtonInteractionType, ClickEvent};
 use crate::{
     ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction, ClipboardEvent,
     EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position,
@@ -94,7 +94,7 @@ impl WindowsRecorder {
     /// Collect text content from only direct children (no recursion for deepest element approach)
     fn collect_direct_child_text_content(element: &UIElement) -> Vec<String> {
         let mut child_texts = Vec::new();
-        
+
         // Get only direct children of this element
         if let Ok(children) = element.children() {
             for child in children {
@@ -107,17 +107,20 @@ impl WindowsRecorder {
                 // No recursion - we're already at the deepest element
             }
         }
-        
+
         // Remove duplicates and empty strings
         child_texts.sort();
         child_texts.dedup();
-        child_texts.into_iter().filter(|text| !text.is_empty()).collect()
+        child_texts
+            .into_iter()
+            .filter(|text| !text.is_empty())
+            .collect()
     }
 
     /// Recursively collect text content from all child elements (unlimited depth) - legacy method
     fn collect_child_text_content(element: &UIElement) -> Vec<String> {
         let mut child_texts = Vec::new();
-        
+
         // Get all children of this element
         if let Ok(children) = element.children() {
             for child in children {
@@ -127,17 +130,20 @@ impl WindowsRecorder {
                         child_texts.push(child_name.trim().to_string());
                     }
                 }
-                
+
                 // Recursively collect from deeper levels (unlimited depth)
                 let deeper_texts = Self::collect_child_text_content(&child);
                 child_texts.extend(deeper_texts);
             }
         }
-        
+
         // Remove duplicates and empty strings
         child_texts.sort();
         child_texts.dedup();
-        child_texts.into_iter().filter(|text| !text.is_empty()).collect()
+        child_texts
+            .into_iter()
+            .filter(|text| !text.is_empty())
+            .collect()
     }
 
     /// Creates a UIAutomation instance with the configured threading model for a new thread.
@@ -239,7 +245,7 @@ impl WindowsRecorder {
                         let now = Instant::now();
 
                         // Determine the actual switch method - check for Alt+Tab first
-                        let actual_switch_method = 
+                        let actual_switch_method =
                             if let Ok(mut tracker) = alt_tab_tracker.try_lock() {
                                 if tracker.consume_pending_alt_tab() {
                                     ApplicationSwitchMethod::AltTab
@@ -256,11 +262,13 @@ impl WindowsRecorder {
                             from_process_id: current.as_ref().map(|s| s.process_id),
                             to_process_id: process_id,
                             switch_method: actual_switch_method.clone(),
-                            dwell_time_ms: current.as_ref().map(|s| {
-                                now.duration_since(s.start_time).as_millis() as u64
-                            }),
+                            dwell_time_ms: current
+                                .as_ref()
+                                .map(|s| now.duration_since(s.start_time).as_millis() as u64),
                             switch_count: None,
-                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
+                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                element.clone(),
+                            )),
                         };
 
                         if let Err(e) = event_tx.send(WorkflowEvent::ApplicationSwitch(event)) {
@@ -875,7 +883,9 @@ impl WindowsRecorder {
                     );
                     true
                 } else if hr == windows::Win32::Foundation::RPC_E_CHANGED_MODE {
-                    warn!("ΓÜá∩╕Å  COM apartment already initialized with different threading model");
+                    warn!(
+                        "ΓÜá∩╕Å  COM apartment already initialized with different threading model"
+                    );
                     // This is expected if the main process already initialized COM differently
                     false
                 } else {
@@ -1298,7 +1308,6 @@ impl WindowsRecorder {
         ui_element: &Option<UIElement>,
         config: &WorkflowRecorderConfig,
     ) {
-
         if let Some(element) = ui_element {
             let app_name = element.application_name();
             let app_name_lower = app_name.to_lowercase();
@@ -1478,7 +1487,6 @@ impl WindowsRecorder {
         trigger_reason: &str,
         config: &WorkflowRecorderConfig,
     ) {
-
         let mut tracker = match current_text_input.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
@@ -1554,7 +1562,10 @@ impl WindowsRecorder {
                         debug!("Γ¥î get_completion_event returned None");
                     }
                 } else {
-                    debug!("Γ¥î Should NOT emit completion event for {}", trigger_reason);
+                    debug!(
+                        "Γ¥î Should NOT emit completion event for {}",
+                        trigger_reason
+                    );
                 }
             } else {
                 debug!(
@@ -1855,7 +1866,11 @@ impl WindowsRecorder {
 
                 // Since we now have the deepest element, collect only direct children (not unlimited depth)
                 let child_text_content = Self::collect_direct_child_text_content(element);
-                info!("≡ƒöì DIRECT CHILD TEXT COLLECTION: Found {} child elements: {:?}", child_text_content.len(), child_text_content);
+                info!(
+                    "≡ƒöì DIRECT CHILD TEXT COLLECTION: Found {} child elements: {:?}",
+                    child_text_content.len(),
+                    child_text_content
+                );
 
                 let click_event = ClickEvent {
                     element_text: element_name,
@@ -1869,9 +1884,7 @@ impl WindowsRecorder {
                         Some(element_desc)
                     },
                     child_text_content,
-                    metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                        element.clone(),
-                    )),
+                    metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
                 };
 
                 if let Err(e) = event_tx.send(WorkflowEvent::Click(click_event)) {
@@ -1953,7 +1966,7 @@ impl WindowsRecorder {
                 let point = Point::new(position.x, position.y);
                 let element = automation.element_from_point(point).ok()?;
                 let terminator_element = convert_uiautomation_element_to_terminator(element);
-                
+
                 // Find the deepest element that contains our click point
                 Self::find_deepest_element_at_coordinates(&terminator_element, position)
             })();
@@ -1974,7 +1987,10 @@ impl WindowsRecorder {
     }
 
     /// Recursively traverse down the UI hierarchy to find the deepest element containing the coordinates.
-    fn find_deepest_element_at_coordinates(element: &UIElement, position: Position) -> Option<UIElement> {
+    fn find_deepest_element_at_coordinates(
+        element: &UIElement,
+        position: Position,
+    ) -> Option<UIElement> {
         debug!(
             "≡ƒöì Checking element '{}' (role: {}) for coordinates ({}, {})",
             element.name().unwrap_or_default(),
@@ -1991,8 +2007,11 @@ impl WindowsRecorder {
             );
 
             // If current element doesn't contain our point, return None
-            if !(bounds.0 <= position.x as f64 && position.x as f64 <= bounds.0 + bounds.2 &&
-                 bounds.1 <= position.y as f64 && position.y as f64 <= bounds.1 + bounds.3) {
+            if !(bounds.0 <= position.x as f64
+                && position.x as f64 <= bounds.0 + bounds.2
+                && bounds.1 <= position.y as f64
+                && position.y as f64 <= bounds.1 + bounds.3)
+            {
                 debug!("   Γ¥î Point is outside element bounds");
                 return None;
             }
@@ -2003,9 +2022,11 @@ impl WindowsRecorder {
         // Try to find a deeper child that contains our point
         if let Ok(children) = element.children() {
             debug!("   Checking {} children for deeper matches", children.len());
-            
+
             for child in children {
-                if let Some(deeper_element) = Self::find_deepest_element_at_coordinates(&child, position) {
+                if let Some(deeper_element) =
+                    Self::find_deepest_element_at_coordinates(&child, position)
+                {
                     debug!(
                         "   Γ£à Found deeper element: '{}' (role: {})",
                         deeper_element.name().unwrap_or_default(),
@@ -2131,7 +2152,11 @@ impl WindowsRecorder {
 
                 // Collect child text content with unlimited depth traversal
                 let child_text_content = Self::collect_child_text_content(&element);
-                info!("≡ƒöì CHILD TEXT COLLECTION (key press): Found {} child elements: {:?}", child_text_content.len(), child_text_content);
+                info!(
+                    "≡ƒöì CHILD TEXT COLLECTION (key press): Found {} child elements: {:?}",
+                    child_text_content.len(),
+                    child_text_content
+                );
 
                 let click_event = ClickEvent {
                     element_text: element_name.clone(),

@@ -1171,8 +1171,8 @@ impl AccessibilityEngine for WindowsEngine {
             }
             Selector::Path(path) => {
                 // so this implementation is something like this, it'll get the first node from the root with
-                // the correct index and use that first node as root to get the second node with correct index 
-                // & it does that so on, the node name is the ControlType of the element with the index of it 
+                // the correct index and use that first node as root to get the second node with correct index
+                // & it does that so on, the node name is the ControlType of the element with the index of it
                 // `Path` can represent only one element at the time so doesn't need to implement in `find_elements`
                 // the drawback of `Path` is that it'll change after the ui changes
 
@@ -1182,7 +1182,7 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                let mut current_element = root_ele.clone(); 
+                let mut current_element = root_ele.clone();
                 let segments = match super::utils::parse_path(path) {
                     Some(s) => s,
                     None => {
@@ -1207,19 +1207,23 @@ impl AccessibilityEngine for WindowsEngine {
                     // avoid using matcher, for no depth limit
                     // & traverse only Children instead of whole Subtree
                     let children = current_element
-                        .find_all(TreeScope::Children, &condition).map_err(|e| {
+                        .find_all(TreeScope::Children, &condition)
+                        .map_err(|e| {
                             AutomationError::ElementNotFound(format!(
-                            "Failed to find elements from given path: '{path}', Err: {e}"
-                        ))})?;
+                                "Failed to find elements from given path: '{path}', Err: {e}"
+                            ))
+                        })?;
 
                     if children.len() < segment.index {
                         return Err(AutomationError::PlatformError(format!(
                             "Failed to find {:?}[{}], only {} elements matched",
-                            segment.control_type, segment.index, children.len()
-                        )
-                        ));
+                            segment.control_type,
+                            segment.index,
+                            children.len()
+                        )));
                     }
-                    current_element = Arc::new(children[segment.index - 1].clone()); // cuz 1-based
+                    current_element = Arc::new(children[segment.index - 1].clone());
+                    // cuz 1-based
                 }
 
                 let arc_ele = ThreadSafeWinUIElement(current_element);

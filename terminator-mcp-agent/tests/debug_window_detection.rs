@@ -9,7 +9,7 @@ use tracing::{info, warn};
 /// Helper to get the path to the MCP agent binary
 fn get_agent_binary_path() -> PathBuf {
     let mut path = env::current_exe().unwrap();
-    path.pop(); // Remove the test binary name  
+    path.pop(); // Remove the test binary name
     path.pop(); // Remove 'deps'
     path.pop(); // Remove 'debug' or 'release'
     path.push("release"); // Use release build
@@ -22,9 +22,7 @@ fn get_agent_binary_path() -> PathBuf {
 #[tokio::test]
 async fn debug_window_detection() -> Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     info!("🔍 Debugging Window Detection");
     info!("============================");
@@ -58,12 +56,16 @@ async fn debug_window_detection() -> Result<()> {
         let content = &apps_result.content[0];
         let json_str = serde_json::to_string(&content)?;
         let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
-        
+
         if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
             info!("📱 Available applications:");
             // Look for Chrome/Browser apps
             for line in text.lines() {
-                if line.contains("Chrome") || line.contains("Firefox") || line.contains("Edge") || line.contains("I-94") {
+                if line.contains("Chrome")
+                    || line.contains("Firefox")
+                    || line.contains("Edge")
+                    || line.contains("I-94")
+                {
                     info!("   🌐 {}", line);
                 }
             }
@@ -72,18 +74,18 @@ async fn debug_window_detection() -> Result<()> {
 
     info!("");
     info!("🔍 Step 2: Testing different selector variations...");
-    
+
     let test_selectors = vec![
         "role:Window|name:contains:I-94/I-95 Website >> role:text|name:Search",
         "role:Window|name:contains:I-94",
-        "role:Window|name:contains:Chrome", 
+        "role:Window|name:contains:Chrome",
         "role:Window|name:contains:Google Chrome",
         "text:Search",
     ];
 
     for (i, selector) in test_selectors.iter().enumerate() {
         info!("🧪 Test {}: '{}'", i + 1, selector);
-        
+
         let result = service
             .call_tool(CallToolRequestParam {
                 name: "validate_element".into(),
@@ -93,14 +95,14 @@ async fn debug_window_detection() -> Result<()> {
                 })),
             })
             .await;
-            
+
         match result {
             Ok(response) => {
                 if !response.content.is_empty() {
                     let content = &response.content[0];
                     let json_str = serde_json::to_string(&content)?;
                     let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
-                    
+
                     if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
                         if text.contains("success") || text.contains("found") {
                             info!("   ✅ FOUND: {}", text);
@@ -118,7 +120,7 @@ async fn debug_window_detection() -> Result<()> {
 
     info!("");
     info!("🎯 Step 3: Let's get the window tree for Chrome to see the actual structure...");
-    
+
     // Try to get window tree for Chrome
     let tree_result = service
         .call_tool(CallToolRequestParam {
@@ -129,17 +131,21 @@ async fn debug_window_detection() -> Result<()> {
             })),
         })
         .await;
-        
+
     match tree_result {
         Ok(response) => {
             if !response.content.is_empty() {
                 let content = &response.content[0];
                 let json_str = serde_json::to_string(&content)?;
                 let parsed: serde_json::Value = serde_json::from_str(&json_str)?;
-                
+
                 if let Some(text) = parsed.get("text").and_then(|t| t.as_str()) {
                     info!("🌳 Chrome window tree (first 1000 chars):");
-                    let preview = if text.len() > 1000 { &text[..1000] } else { text };
+                    let preview = if text.len() > 1000 {
+                        &text[..1000]
+                    } else {
+                        text
+                    };
                     info!("{}", preview);
                     if text.len() > 1000 {
                         info!("... (truncated)");

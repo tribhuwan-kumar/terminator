@@ -1,6 +1,6 @@
 use std::time::Duration;
-use tracing::{info, Level};
 use terminator::{platforms, AutomationError, Selector};
+use tracing::{info, Level};
 
 #[tokio::test]
 async fn test_path() -> Result<(), AutomationError> {
@@ -12,7 +12,10 @@ async fn test_path() -> Result<(), AutomationError> {
     let timeout_ms = DEFAULT_FIND_TIMEOUT;
 
     // replace with updated selector from your own ui tree
-    let sel = Selector::Path("/Window[3]/Custom[8]/Pane/Document/Group[2]/Group[1]/Group[3]/Document[1]/Button[5]".to_string());
+    let sel = Selector::Path(
+        "/Window[3]/Custom[8]/Pane/Document/Group[2]/Group[1]/Group[3]/Document[1]/Button[5]"
+            .to_string(),
+    );
 
     let engine = platforms::create_engine(false, false)?;
     let root = engine.get_root_element();
@@ -26,7 +29,8 @@ async fn test_path() -> Result<(), AutomationError> {
             assert!(element.name().is_some(), "expected name for ui element");
             info!(
                 "found element '{:?}' in time '{:?}'",
-                element.name().unwrap(), elapsed
+                element.name().unwrap(),
+                elapsed
             );
         }
         Err(e) => {
