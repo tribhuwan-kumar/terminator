@@ -28,7 +28,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 use terminator::{Browser, Desktop, Selector, UIElement};
-use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
+use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -2028,13 +2028,7 @@ impl DesktopWrapper {
                     )
                 })?;
 
-                let config = if args.low_energy_mode.unwrap_or(false) {
-                    // This uses a config optimized for performance, which importantly disables
-                    // text input completion tracking, a feature the user found caused lag. [[memory:523310]]
-                    PerformanceMode::low_energy_config()
-                } else {
-                    WorkflowRecorderConfig::default()
-                };
+                let config = WorkflowRecorderConfig::default();
 
                 let mut recorder = WorkflowRecorder::new(workflow_name.clone(), config);
                 recorder.start().await.map_err(|e| {
@@ -2106,14 +2100,27 @@ impl DesktopWrapper {
 
                 let file_content = std::fs::read_to_string(&file_path).unwrap_or_default();
 
-                Ok(CallToolResult::success(vec![Content::json(json!({
+                // Generate MCP-ready workflow sequence
+                let mcp_workflow = {
+                    let workflow = recorder.workflow.lock().unwrap();
+                    workflow.generate_mcp_workflow()
+                };
+
+                let mut response = json!({
                     "action": "record_workflow",
                     "status": "stopped",
                     "workflow_name": workflow_name,
                     "message": "Recording stopped and workflow saved.",
                     "file_path": file_path,
                     "file_content": file_content
-                }))?]))
+                });
+
+                // Add MCP workflow if available
+                if let Some(mcp_workflow) = mcp_workflow {
+                    response["mcp_workflow"] = mcp_workflow;
+                }
+
+                Ok(CallToolResult::success(vec![Content::json(response)?]))
             }
             _ => Err(McpError::invalid_params(
                 "Invalid action. Must be 'start' or 'stop'.",

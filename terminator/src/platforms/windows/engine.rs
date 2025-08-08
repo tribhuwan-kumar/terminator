@@ -1324,11 +1324,19 @@ impl AccessibilityEngine for WindowsEngine {
                 }
 
                 // After the chain, we expect exactly one element for find_element.
+                // If multiple elements are found, take the first one (useful for click actions)
                 if current_results.len() == 1 {
                     Ok(current_results.remove(0))
+                } else if current_results.len() > 1 {
+                    debug!(
+                        "Selector chain `{:?}` resolved to {} elements, using the first one.",
+                        selectors,
+                        current_results.len()
+                    );
+                    Ok(current_results.remove(0)) // Take the first element
                 } else {
                     Err(AutomationError::ElementNotFound(format!(
-                        "Selector chain `{:?}` resolved to {} elements, but expected 1.",
+                        "Selector chain `{:?}` resolved to {} elements, but expected at least 1.",
                         selectors,
                         current_results.len(),
                     )))

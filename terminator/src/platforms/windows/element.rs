@@ -1033,17 +1033,31 @@ impl UIElementImpl for WindowsUIElement {
     fn window(&self) -> Result<Option<UIElement>, AutomationError> {
         let mut current_element_arc = Arc::clone(&self.element.0); // Start with the current element's Arc<uiautomation::UIElement>
         const MAX_DEPTH: usize = 20; // Safety break for parent traversal
+        
+        // Strategy: Find the FIRST Pane, or fall back to the FIRST Window
+        // This prioritizes finding the closest application container (Pane) over system containers (Window)
+        let mut first_pane: Option<Arc<uiautomation::UIElement>> = None;
+        let mut first_window: Option<Arc<uiautomation::UIElement>> = None;
 
         for i in 0..MAX_DEPTH {
             // Check current element's control type
             match current_element_arc.get_control_type() {
                 Ok(control_type) => {
-                    if control_type == ControlType::Window {
-                        // Found the window
-                        let window_ui_element = WindowsUIElement {
-                            element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
-                        };
-                        return Ok(Some(UIElement::new(Box::new(window_ui_element))));
+                    match control_type {
+                        ControlType::Pane => {
+                            if first_pane.is_none() {
+                                first_pane = Some(Arc::clone(&current_element_arc));
+                                // Found a Pane - this is what we want for Chrome, stop here
+                                break;
+                            }
+                        }
+                        ControlType::Window => {
+                            if first_window.is_none() {
+                                first_window = Some(Arc::clone(&current_element_arc));
+                                // Don't break - keep looking for a Pane
+                            }
+                        }
+                        _ => {} // Continue traversing for other control types
                     }
                 }
                 Err(e) => {
@@ -1082,8 +1096,19 @@ impl UIElementImpl for WindowsUIElement {
                 }
             }
         }
-        // If loop finishes, no element with ControlType::Window was found.
-        Ok(None)
+        
+        // Return the best candidate we found (prefer first Pane over first Window)
+        let chosen_element = first_pane.or(first_window);
+        
+        if let Some(element) = chosen_element {
+            let window_ui_element = WindowsUIElement {
+                element: ThreadSafeWinUIElement(element),
+            };
+            Ok(Some(UIElement::new(Box::new(window_ui_element))))
+        } else {
+            // If loop finishes, no element with ControlType::Window or Pane was found.
+            Ok(None)
+        }
     }
 
     fn highlight(

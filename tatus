@@ -1,0 +1,11 @@
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mindex 23be54a..f2c051d 100644[m
+[1m--- a/.gitignore[m
+[1m+++ b/.gitignore[m
+[36m@@ -22,3 +22,6 @@[m [mdist/[m
+ .env [m
+ [m
+ /workflows/[m
+[32m+[m
+[32m+[m[32m# Terminator workflow recorder debug files[m
+[32m+[m[32mterminator-workflow-recorder/*.txt[m

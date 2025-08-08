@@ -1,8 +1,8 @@
-use crate::events::{ButtonClickEvent, ButtonInteractionType};
+use crate::events::{ClickEvent, ButtonInteractionType};
 use crate::{
-    ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction,
-    ClipboardEvent, EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent,
-    MouseEventType, Position, Result, WorkflowEvent, WorkflowRecorderConfig,
+    ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction, ClipboardEvent,
+    EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position,
+    Result, WorkflowEvent, WorkflowRecorderConfig,
 };
 use arboard::Clipboard;
 use rdev::{Button, EventType};
@@ -91,6 +91,55 @@ impl WindowsRecorder {
             .as_millis() as u64
     }
 
+    /// Collect text content from only direct children (no recursion for deepest element approach)
+    fn collect_direct_child_text_content(element: &UIElement) -> Vec<String> {
+        let mut child_texts = Vec::new();
+        
+        // Get only direct children of this element
+        if let Ok(children) = element.children() {
+            for child in children {
+                // Collect the child's own text/name
+                if let Some(child_name) = child.name() {
+                    if !child_name.trim().is_empty() {
+                        child_texts.push(child_name.trim().to_string());
+                    }
+                }
+                // No recursion - we're already at the deepest element
+            }
+        }
+        
+        // Remove duplicates and empty strings
+        child_texts.sort();
+        child_texts.dedup();
+        child_texts.into_iter().filter(|text| !text.is_empty()).collect()
+    }
+
+    /// Recursively collect text content from all child elements (unlimited depth) - legacy method
+    fn collect_child_text_content(element: &UIElement) -> Vec<String> {
+        let mut child_texts = Vec::new();
+        
+        // Get all children of this element
+        if let Ok(children) = element.children() {
+            for child in children {
+                // Collect the child's own text/name
+                if let Some(child_name) = child.name() {
+                    if !child_name.trim().is_empty() {
+                        child_texts.push(child_name.trim().to_string());
+                    }
+                }
+                
+                // Recursively collect from deeper levels (unlimited depth)
+                let deeper_texts = Self::collect_child_text_content(&child);
+                child_texts.extend(deeper_texts);
+            }
+        }
+        
+        // Remove duplicates and empty strings
+        child_texts.sort();
+        child_texts.dedup();
+        child_texts.into_iter().filter(|text| !text.is_empty()).collect()
+    }
+
     /// Creates a UIAutomation instance with the configured threading model for a new thread.
     fn create_configured_automation_instance(
         config: &WorkflowRecorderConfig,
@@ -173,95 +222,7 @@ impl WindowsRecorder {
         config: &WorkflowRecorderConfig,
         alt_tab_tracker: &Arc<Mutex<AltTabTracker>>,
     ) {
-        if !config.record_application_switches {
-            return;
-        }
-
-        if let Some(element) = new_element {
-            let app_name = element.application_name();
-            if let Ok(process_id) = element.process_id() {
-                if !app_name.is_empty() {
-                    let mut current = current_app.lock().unwrap();
-
-                    // Check if this is a new application
-                    let is_switch = if let Some(ref current_state) = *current {
-                        current_state.process_id != process_id || current_state.name != app_name
-                    } else {
-                        true // First app detection
-                    };
-
-                    if is_switch {
-                        let now = Instant::now();
-
-                        // Determine the actual switch method - check for Alt+Tab first
-                        let actual_switch_method =
-                            if let Ok(mut tracker) = alt_tab_tracker.try_lock() {
-                                if tracker.consume_pending_alt_tab() {
-                                    debug!("🔥 Application switch attributed to Alt+Tab!");
-                                    ApplicationSwitchMethod::AltTab
-                                } else {
-                                    default_switch_method
-                                }
-                            } else {
-                                default_switch_method
-                            };
-
-                        // Calculate dwell time for previous app
-                        let dwell_time = if let Some(ref current_state) = *current {
-                            let duration = now.duration_since(current_state.start_time);
-                            if duration.as_millis()
-                                >= config.app_switch_dwell_time_threshold_ms as u128
-                            {
-                                Some(duration.as_millis() as u64)
-                            } else {
-                                None // Too short, probably just UI noise
-                            }
-                        } else {
-                            None
-                        };
-
-                        // Only emit if we have meaningful dwell time or this is first app
-                        if dwell_time.is_some() || current.is_none() {
-                            let switch_event = ApplicationSwitchEvent {
-                                from_application: current.as_ref().map(|s| s.name.clone()),
-                                to_application: app_name.clone(),
-                                from_process_id: current.as_ref().map(|s| s.process_id),
-                                to_process_id: process_id,
-                                switch_method: actual_switch_method.clone(),
-                                dwell_time_ms: dwell_time,
-                                switch_count: None, // TODO: Track Alt+Tab cycles
-                                metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                                    element.clone(),
-                                )),
-                            };
-
-                            if let Err(e) =
-                                event_tx.send(WorkflowEvent::ApplicationSwitch(switch_event))
-                            {
-                                debug!("Failed to send application switch event: {}", e);
-                            } else {
-                                debug!(
-                                    "✅ Application switch event sent: {} -> {} (method: {:?})",
-                                    current
-                                        .as_ref()
-                                        .map(|s| s.name.as_str())
-                                        .unwrap_or("(none)"),
-                                    app_name,
-                                    actual_switch_method
-                                );
-                            }
-                        }
-
-                        // Update current application state
-                        *current = Some(ApplicationState {
-                            name: app_name,
-                            process_id,
-                            start_time: now,
-                        });
-                    }
-                }
-            }
-        }
+        // Application switches are no longer recorded in simplified version
     }
 
     /// Initialize common hotkey patterns
@@ -411,7 +372,6 @@ impl WindowsRecorder {
         thread::spawn(move || {
             let track_modifiers = config.track_modifier_states;
             let record_hotkeys = config.record_hotkeys;
-            let mouse_move_throttle = config.mouse_move_throttle_ms;
             let capture_ui_elements_rdev = config.capture_ui_elements;
 
             let mut active_keys: HashMap<u32, bool> = HashMap::new();
@@ -426,25 +386,7 @@ impl WindowsRecorder {
                         let key_code = key_to_u32(&key);
                         active_keys.insert(key_code, true);
 
-                        // Track keystrokes for text input completion
-                        if config.record_text_input_completion {
-                            if let Ok(mut tracker) = current_text_input.try_lock() {
-                                if let Some(ref mut text_input) = tracker.as_mut() {
-                                    text_input.add_keystroke(key_code);
-                                    // Don't log here to avoid spam
-
-                                    // Check for completion trigger keys (Enter, Tab)
-                                    if key_code == 0x0D || key_code == 0x09 {
-                                        // Offload the blocking work to the UIA thread
-                                        let request =
-                                            UIAInputRequest::KeyPressForCompletion { key_code };
-                                        if uia_event_tx.send(request).is_err() {
-                                            debug!("Failed to send key press completion request to UIA thread");
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // Text input completion is no longer tracked in simplified version
 
                         // If Enter or Space is pressed, treat it as a potential activation
                         if key_code == 0x0D || key_code == 0x20 {
@@ -634,45 +576,10 @@ impl WindowsRecorder {
                         }
                     }
                     EventType::MouseMove { x, y } => {
+                        // Update mouse position for other events but don't record move events
                         let x = x as i32;
                         let y = y as i32;
                         *last_mouse_pos.lock().unwrap() = Some((x, y));
-
-                        let now = Instant::now();
-                        let should_record = {
-                            let mut last_time = last_mouse_move_time.lock().unwrap();
-                            if now.duration_since(*last_time).as_millis()
-                                >= mouse_move_throttle as u128
-                            {
-                                *last_time = now;
-                                true
-                            } else {
-                                false
-                            }
-                        };
-
-                        if should_record {
-                            let position = Position { x, y };
-
-                            let mouse_event = MouseEvent {
-                                event_type: MouseEventType::Move,
-                                button: MouseButton::Left,
-                                position,
-                                scroll_delta: None,
-                                drag_start: None,
-                                metadata: EventMetadata {
-                                    ui_element: None,
-                                    timestamp: Some(Self::capture_timestamp()),
-                                },
-                            };
-                            Self::send_filtered_event_static(
-                                &event_tx,
-                                &config,
-                                &performance_last_event_time,
-                                &performance_events_counter,
-                                WorkflowEvent::Mouse(mouse_event),
-                            );
-                        }
                     }
                     EventType::Wheel { delta_x, delta_y } => {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
@@ -1303,75 +1210,16 @@ impl WindowsRecorder {
         events_this_second: &Arc<Mutex<(u32, Instant)>>,
         event: WorkflowEvent,
     ) {
-        // Apply rate limiting first
-        if let Some(max_events) = config.effective_max_events_per_second() {
-            let mut counter = events_this_second.lock().unwrap();
-            let now = Instant::now();
+        // No rate limiting or processing delays in simplified version
 
-            // Reset counter if a new second has started
-            if now.duration_since(counter.1).as_secs() >= 1 {
-                counter.0 = 0;
-                counter.1 = now;
-            }
-
-            if counter.0 >= max_events {
-                return; // Rate limit exceeded
-            }
-
-            counter.0 += 1;
-        }
-
-        // Apply processing delay
-        let processing_delay = config.effective_processing_delay_ms();
-        if processing_delay > 0 {
-            let mut last_time = last_event_time.lock().unwrap();
-            let now = Instant::now();
-            if now.duration_since(*last_time).as_millis() < processing_delay as u128 {
-                return; // Filter out if within delay window
-            }
-            *last_time = now;
-        }
-
-        // Apply event-specific filtering
+        // In simplified version, we don't filter mouse events but we do exclude mouse moves entirely
         let should_filter = match &event {
+            // Filter out mouse move events entirely
             WorkflowEvent::Mouse(mouse_event) => {
-                if config.should_filter_mouse_noise() {
-                    matches!(
-                        mouse_event.event_type,
-                        MouseEventType::Move | MouseEventType::Wheel
-                    )
-                } else {
-                    false
-                }
+                matches!(mouse_event.event_type, MouseEventType::Move)
             }
-            WorkflowEvent::Keyboard(keyboard_event) => {
-                if config.should_filter_keyboard_noise() {
-                    // Filter key-down events and non-printable keys
-                    if keyboard_event.is_key_down {
-                        // Keep printable characters (32-126) and common editing keys
-                        !((keyboard_event.key_code >= 32 && keyboard_event.key_code <= 126)
-                            || matches!(
-                                keyboard_event.key_code,
-                                0x08 | // Backspace
-                            0x2E | // Delete
-                            0x20 | // Space
-                            0x0D | // Enter
-                            0x09 // Tab
-                            ))
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-            // Never filter high-value events
-            WorkflowEvent::ApplicationSwitch(_)
-            | WorkflowEvent::ButtonClick(_)
-            | WorkflowEvent::Clipboard(_) => false,
-
-            // Other events can be filtered in LowEnergy mode
-            _ => matches!(config.performance_mode, crate::PerformanceMode::LowEnergy),
+            // Don't filter other events
+            _ => false,
         };
 
         if !should_filter {
@@ -1386,9 +1234,8 @@ impl WindowsRecorder {
         ui_element: &Option<UIElement>,
         config: &WorkflowRecorderConfig,
     ) {
-        if !config.record_browser_tab_navigation {
-            return;
-        }
+        // Browser tab navigation is no longer recorded in simplified version
+        return;
 
         if let Some(element) = ui_element {
             let app_name = element.application_name();
@@ -1551,18 +1398,7 @@ impl WindowsRecorder {
         new_element: &Option<UIElement>,
         config: &WorkflowRecorderConfig,
     ) {
-        if !config.record_text_input_completion {
-            return;
-        }
-
-        // Use centralized text input tracking logic
-        Self::handle_text_input_transition(
-            current_text_input,
-            event_tx,
-            new_element,
-            "focus_change",
-            config,
-        );
+        // Text input completion is no longer recorded in simplified version
     }
 
     /// Centralized text input tracking logic to avoid conflicts between mouse and focus handlers
@@ -1573,9 +1409,8 @@ impl WindowsRecorder {
         trigger_reason: &str,
         config: &WorkflowRecorderConfig,
     ) {
-        if !config.record_text_input_completion {
-            return;
-        }
+        // Text input completion is no longer recorded in simplified version
+        return;
 
         let mut tracker = match current_text_input.try_lock() {
             Ok(guard) => guard,
@@ -1714,7 +1549,8 @@ impl WindowsRecorder {
         };
 
         let ui_element = if config.capture_ui_elements {
-            Self::get_element_from_point_with_timeout(config, *position, 100)
+            // Use deepest element finder for more precise click detection
+            Self::get_deepest_element_from_point_with_timeout(config, *position, 100)
         } else {
             None
         };
@@ -1782,21 +1618,7 @@ impl WindowsRecorder {
                     element_name, element_role, is_text_input
                 );
 
-                if config.record_text_input_completion && is_text_input {
-                    debug!(
-                        "🎯 Detected mouse click on text input element: '{}' (role: '{}') - STARTING TRACKING",
-                        element_name, element_role
-                    );
-
-                    // Use centralized text input tracking logic
-                    Self::handle_text_input_transition(
-                        current_text_input,
-                        event_tx,
-                        &Some(element.clone()),
-                        "mouse_click",
-                        config,
-                    );
-                }
+                // Text input completion is no longer tracked in simplified version
 
                 // Enhanced autocomplete/suggestion detection
                 let is_suggestion_click = element_role.contains("listitem")
@@ -1813,14 +1635,14 @@ impl WindowsRecorder {
 
                 // Debug logging for suggestion detection
                 debug!(
-                    "🔍 Checking suggestion click: element='{}', role='{}', is_suggestion={}, config_enabled={}",
+                    "🔍 Checking suggestion click: element='{}', role='{}', is_suggestion={}, config_enabled=disabled",
                     element_name,
                     element_role,
-                    is_suggestion_click,
-                    config.record_text_input_completion
+                    is_suggestion_click
                 );
 
-                if is_suggestion_click && config.record_text_input_completion {
+                // Text input completion is no longer tracked in simplified version
+                if false {
                     debug!(
                         "🎯 Detected potential autocomplete/suggestion click: '{}' (role: '{}') - SUGGESTION SELECTED",
                         element_name, element_role
@@ -1951,49 +1773,44 @@ impl WindowsRecorder {
                     }
                 }
 
-                let is_clickable = element_role.contains("button")
-                    || element_role.contains("menuitem")
-                    || element_role.contains("listitem")
-                    || element_role.contains("hyperlink")
-                    || element_role.contains("link")
-                    || element_role.contains("checkbox")
-                    || element_role.contains("radiobutton")
-                    || element_role.contains("togglebutton");
+                // Capture ALL clicks universally - no role filtering
+                debug!(
+                    "🖱️ Mouse click on element: '{}' (role: '{}')",
+                    element_name, element_role
+                );
 
-                if is_clickable {
-                    debug!(
-                        "🖱️ Mouse click on clickable element: '{}' (role: '{}')",
-                        element_name, element_role
-                    );
+                let element_desc = element.attributes().description.unwrap_or_default();
+                let interaction_type = Self::determine_button_interaction_type(
+                    &element_name,
+                    &element_desc,
+                    &element_role,
+                );
 
-                    let element_desc = element.attributes().description.unwrap_or_default();
-                    let interaction_type = Self::determine_button_interaction_type(
-                        &element_name,
-                        &element_desc,
-                        &element_role,
-                    );
+                // Since we now have the deepest element, collect only direct children (not unlimited depth)
+                let child_text_content = Self::collect_direct_child_text_content(element);
+                info!("🔍 DIRECT CHILD TEXT COLLECTION: Found {} child elements: {:?}", child_text_content.len(), child_text_content);
 
-                    let button_event = ButtonClickEvent {
-                        button_text: element_name,
-                        interaction_type,
-                        button_role: element_role.clone(),
-                        was_enabled: element.is_enabled().unwrap_or(true),
-                        click_position: Some(*position),
-                        button_description: if element_desc.is_empty() {
-                            None
-                        } else {
-                            Some(element_desc)
-                        },
-                        metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                            element.clone(),
-                        )),
-                    };
-
-                    if let Err(e) = event_tx.send(WorkflowEvent::ButtonClick(button_event)) {
-                        debug!("Failed to send button click event: {}", e);
+                let click_event = ClickEvent {
+                    element_text: element_name,
+                    interaction_type,
+                    element_role: element_role.clone(),
+                    was_enabled: element.is_enabled().unwrap_or(true),
+                    click_position: Some(*position),
+                    element_description: if element_desc.is_empty() {
+                        None
                     } else {
-                        debug!("✅ Button click event sent successfully");
-                    }
+                        Some(element_desc)
+                    },
+                    child_text_content,
+                    metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                        element.clone(),
+                    )),
+                };
+
+                if let Err(e) = event_tx.send(WorkflowEvent::Click(click_event)) {
+                    debug!("Failed to send click event: {}", e);
+                } else {
+                    debug!("✅ Click event sent successfully");
                 }
             }
         }
@@ -2053,7 +1870,95 @@ impl WindowsRecorder {
         );
     }
 
-    /// Get element from a specific point with a hard timeout.
+    /// Find the deepest/most specific element at the given coordinates.
+    /// This drills down through the UI hierarchy to find the smallest element that contains the click point.
+    fn get_deepest_element_from_point_with_timeout(
+        config: &WorkflowRecorderConfig,
+        position: Position,
+        timeout_ms: u64,
+    ) -> Option<UIElement> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let config_clone = config.clone();
+
+        thread::spawn(move || {
+            let result = (|| {
+                let automation = Self::create_configured_automation_instance(&config_clone).ok()?;
+                let point = Point::new(position.x, position.y);
+                let element = automation.element_from_point(point).ok()?;
+                let terminator_element = convert_uiautomation_element_to_terminator(element);
+                
+                // Find the deepest element that contains our click point
+                Self::find_deepest_element_at_coordinates(&terminator_element, position)
+            })();
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+            Ok(Some(element)) => Some(element),
+            Ok(None) => None,
+            Err(_) => {
+                debug!(
+                    "UIA call to get deepest element from point timed out after {}ms.",
+                    timeout_ms
+                );
+                None
+            }
+        }
+    }
+
+    /// Recursively traverse down the UI hierarchy to find the deepest element containing the coordinates.
+    fn find_deepest_element_at_coordinates(element: &UIElement, position: Position) -> Option<UIElement> {
+        debug!(
+            "🔍 Checking element '{}' (role: {}) for coordinates ({}, {})",
+            element.name().unwrap_or_default(),
+            element.role(),
+            position.x,
+            position.y
+        );
+
+        // Check current element bounds
+        if let Ok(bounds) = element.bounds() {
+            debug!(
+                "   Element bounds: ({}, {}, {}, {})",
+                bounds.0, bounds.1, bounds.2, bounds.3
+            );
+
+            // If current element doesn't contain our point, return None
+            if !(bounds.0 <= position.x as f64 && position.x as f64 <= bounds.0 + bounds.2 &&
+                 bounds.1 <= position.y as f64 && position.y as f64 <= bounds.1 + bounds.3) {
+                debug!("   ❌ Point is outside element bounds");
+                return None;
+            }
+        } else {
+            debug!("   ⚠️ Cannot get element bounds");
+        }
+
+        // Try to find a deeper child that contains our point
+        if let Ok(children) = element.children() {
+            debug!("   Checking {} children for deeper matches", children.len());
+            
+            for child in children {
+                if let Some(deeper_element) = Self::find_deepest_element_at_coordinates(&child, position) {
+                    debug!(
+                        "   ✅ Found deeper element: '{}' (role: {})",
+                        deeper_element.name().unwrap_or_default(),
+                        deeper_element.role()
+                    );
+                    return Some(deeper_element);
+                }
+            }
+        }
+
+        // No deeper element found, this is the deepest one
+        debug!(
+            "   🎯 Using this element as deepest: '{}' (role: {})",
+            element.name().unwrap_or_default(),
+            element.role()
+        );
+        Some(element.clone())
+    }
+
+    /// Get element from a specific point with a hard timeout (legacy method for compatibility).
     fn get_element_from_point_with_timeout(
         config: &WorkflowRecorderConfig,
         position: Position,
@@ -2157,26 +2062,31 @@ impl WindowsRecorder {
                 let is_enabled = element.is_enabled().unwrap_or(true);
                 let bounds = element.bounds().unwrap_or_default();
 
-                let button_event = ButtonClickEvent {
-                    button_text: element_name.clone(),
+                // Collect child text content with unlimited depth traversal
+                let child_text_content = Self::collect_child_text_content(&element);
+                info!("🔍 CHILD TEXT COLLECTION (key press): Found {} child elements: {:?}", child_text_content.len(), child_text_content);
+
+                let click_event = ClickEvent {
+                    element_text: element_name.clone(),
                     interaction_type,
-                    button_role: element_role.clone(),
+                    element_role: element_role.clone(),
                     was_enabled: is_enabled,
                     click_position: Some(Position {
                         x: bounds.0 as i32,
                         y: bounds.1 as i32,
                     }),
-                    button_description: if element_desc.is_empty() {
+                    element_description: if element_desc.is_empty() {
                         None
                     } else {
                         Some(element_desc.clone())
                     },
+                    child_text_content,
                     metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
                 };
 
-                if let Err(e) = event_tx.send(WorkflowEvent::ButtonClick(button_event)) {
+                if let Err(e) = event_tx.send(WorkflowEvent::Click(click_event)) {
                     debug!(
-                        "Failed to send button click event from key press for '{}': {}",
+                        "Failed to send click event from key press for '{}': {}",
                         element_name, e
                     );
                 }
