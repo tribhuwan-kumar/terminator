@@ -1211,4 +1211,6 @@ pub struct RecordWorkflowArgs {
     pub workflow_name: Option<String>,
     /// Optional file path to save the workflow. If not provided, a default path will be used.
     pub file_path: Option<String>,
+    /// Sets the recording to a low-energy mode to reduce system load, which can help prevent lag on less powerful machines.
+    pub low_energy_mode: Option<bool>,
 }

@@ -228,6 +228,10 @@ impl WindowsRecorder {
         config: &WorkflowRecorderConfig,
         alt_tab_tracker: &Arc<Mutex<AltTabTracker>>,
     ) {
+        if !config.record_application_switches {
+            return;
+        }
+
         if let Some(element) = new_element {
             let app_name = element.application_name();
             if let Ok(process_id) = element.process_id() {
@@ -256,33 +260,48 @@ impl WindowsRecorder {
                                 default_switch_method
                             };
 
-                        let event = crate::ApplicationSwitchEvent {
-                            from_application: current.as_ref().map(|s| s.name.clone()),
-                            to_application: app_name.clone(),
-                            from_process_id: current.as_ref().map(|s| s.process_id),
-                            to_process_id: process_id,
-                            switch_method: actual_switch_method.clone(),
-                            dwell_time_ms: current
-                                .as_ref()
-                                .map(|s| now.duration_since(s.start_time).as_millis() as u64),
-                            switch_count: None,
-                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                                element.clone(),
-                            )),
+                        // Calculate dwell time for previous app
+                        let dwell_time = if let Some(ref current_state) = *current {
+                            let duration = now.duration_since(current_state.start_time);
+                            if duration.as_millis()
+                                >= config.app_switch_dwell_time_threshold_ms as u128
+                            {
+                                Some(duration.as_millis() as u64)
+                            } else {
+                                None // Too short, probably just UI noise
+                            }
+                        } else {
+                            None
                         };
 
-                        if let Err(e) = event_tx.send(WorkflowEvent::ApplicationSwitch(event)) {
-                            debug!("Failed to send application switch event: {}", e);
-                        } else {
-                            debug!(
-                                "✅ Application switch event sent: {} -> {} (method: {:?})",
-                                current
-                                    .as_ref()
-                                    .map(|s| s.name.as_str())
-                                    .unwrap_or("(none)"),
-                                app_name,
-                                actual_switch_method
-                            );
+                        // Only emit if we have meaningful dwell time or this is first app
+                        if dwell_time.is_some() || current.is_none() {
+                            let event = crate::ApplicationSwitchEvent {
+                                from_application: current.as_ref().map(|s| s.name.clone()),
+                                to_application: app_name.clone(),
+                                from_process_id: current.as_ref().map(|s| s.process_id),
+                                to_process_id: process_id,
+                                switch_method: actual_switch_method.clone(),
+                                dwell_time_ms: dwell_time,
+                                switch_count: None,
+                                metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                    element.clone(),
+                                )),
+                            };
+
+                            if let Err(e) = event_tx.send(WorkflowEvent::ApplicationSwitch(event)) {
+                                debug!("Failed to send application switch event: {}", e);
+                            } else {
+                                debug!(
+                                    "✅ Application switch event sent: {} -> {} (method: {:?})",
+                                    current
+                                        .as_ref()
+                                        .map(|s| s.name.as_str())
+                                        .unwrap_or("(none)"),
+                                    app_name,
+                                    actual_switch_method
+                                );
+                            }
                         }
 
                         // Update current application state
@@ -444,6 +463,7 @@ impl WindowsRecorder {
         thread::spawn(move || {
             let track_modifiers = config.track_modifier_states;
             let record_hotkeys = config.record_hotkeys;
+            let mouse_move_throttle = config.mouse_move_throttle_ms;
             let capture_ui_elements_rdev = config.capture_ui_elements;
 
             let mut active_keys: HashMap<u32, bool> = HashMap::new();
@@ -458,7 +478,25 @@ impl WindowsRecorder {
                         let key_code = key_to_u32(&key);
                         active_keys.insert(key_code, true);
 
-                        // Text input completion is no longer tracked in simplified version
+                        // Track keystrokes for text input completion
+                        if config.record_text_input_completion {
+                            if let Ok(mut tracker) = current_text_input.try_lock() {
+                                if let Some(ref mut text_input) = tracker.as_mut() {
+                                    text_input.add_keystroke(key_code);
+                                    // Don't log here to avoid spam
+
+                                    // Check for completion trigger keys (Enter, Tab)
+                                    if key_code == 0x0D || key_code == 0x09 {
+                                        // Offload the blocking work to the UIA thread
+                                        let request =
+                                            UIAInputRequest::KeyPressForCompletion { key_code };
+                                        if uia_event_tx.send(request).is_err() {
+                                            info!("Failed to send key press completion request to UIA thread");
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         // If Enter or Space is pressed, treat it as a potential activation
                         if key_code == 0x0D || key_code == 0x20 {
@@ -648,10 +686,45 @@ impl WindowsRecorder {
                         }
                     }
                     EventType::MouseMove { x, y } => {
-                        // Update mouse position for other events but don't record move events
                         let x = x as i32;
                         let y = y as i32;
                         *last_mouse_pos.lock().unwrap() = Some((x, y));
+
+                        let now = Instant::now();
+                        let should_record = {
+                            let mut last_time = last_mouse_move_time.lock().unwrap();
+                            if now.duration_since(*last_time).as_millis()
+                                >= mouse_move_throttle as u128
+                            {
+                                *last_time = now;
+                                true
+                            } else {
+                                false
+                            }
+                        };
+
+                        if should_record && config.record_mouse {
+                            let position = Position { x, y };
+
+                            let mouse_event = MouseEvent {
+                                event_type: MouseEventType::Move,
+                                button: MouseButton::Left,
+                                position,
+                                scroll_delta: None,
+                                drag_start: None,
+                                metadata: EventMetadata {
+                                    ui_element: None,
+                                    timestamp: Some(Self::capture_timestamp()),
+                                },
+                            };
+                            Self::send_filtered_event_static(
+                                &event_tx,
+                                &config,
+                                &performance_last_event_time,
+                                &performance_events_counter,
+                                WorkflowEvent::Mouse(mouse_event),
+                            );
+                        }
                     }
                     EventType::Wheel { delta_x, delta_y } => {
                         if let Some((x, y)) = *last_mouse_pos.lock().unwrap() {
@@ -1308,6 +1381,10 @@ impl WindowsRecorder {
         ui_element: &Option<UIElement>,
         config: &WorkflowRecorderConfig,
     ) {
+        if !config.record_browser_tab_navigation {
+            return;
+        }
+
         if let Some(element) = ui_element {
             let app_name = element.application_name();
             let app_name_lower = app_name.to_lowercase();
@@ -1696,7 +1773,14 @@ impl WindowsRecorder {
                     element_name, element_role, is_text_input
                 );
 
-                // Text input completion is no longer tracked in simplified version
+                if config.record_text_input_completion && is_text_input {
+                    info!(
+                        "≡ƒÄ» Detected mouse click on text input element: '{}' (role: '{}') - STARTING TRACKING",
+                        element_name, element_role
+                    );
+                    // Note: Text input tracking logic would need to be restored here
+                    // This was removed in the simplified version
+                }
 
                 // Enhanced autocomplete/suggestion detection
                 let is_suggestion_click = element_role.contains("listitem")

@@ -27,7 +27,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 use terminator::{Browser, Desktop, Selector, UIElement};
-use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
+use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -1850,7 +1850,13 @@ impl DesktopWrapper {
                     )
                 })?;
 
-                let config = WorkflowRecorderConfig::default();
+                let config = if args.low_energy_mode.unwrap_or(false) {
+                    // This uses a config optimized for performance, which importantly disables
+                    // text input completion tracking, a feature the user found caused lag.
+                    PerformanceMode::low_energy_config()
+                } else {
+                    WorkflowRecorderConfig::default()
+                };
 
                 let mut recorder = WorkflowRecorder::new(workflow_name.clone(), config);
                 recorder.start().await.map_err(|e| {
