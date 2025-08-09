@@ -74,8 +74,46 @@ impl ExtensionBridge {
     async fn start(addr: &str) -> ExtensionBridge {
         let clients: Clients = Arc::new(Mutex::new(Vec::new()));
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
+        // Try to bind the websocket listener; avoid panicking if the port is already in use.
+        let listener = match TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                let kind = e.kind();
+                if kind == std::io::ErrorKind::AddrInUse {
+                    tracing::warn!(
+                        %addr,
+                        ?e,
+                        "Port in use, waiting 2 seconds and retrying once..."
+                    );
+                    // Wait a bit for the port to be released
+                    tokio::time::sleep(Duration::from_secs(2)).await;
 
-        let listener = TcpListener::bind(addr).await.expect("failed to bind ws");
+                    // Try one more time
+                    match TcpListener::bind(addr).await {
+                        Ok(l) => l,
+                        Err(e2) => {
+                            tracing::error!(
+                                %addr,
+                                ?e2,
+                                "Failed to bind after retry. Extension bridge will be non-functional."
+                            );
+                            return ExtensionBridge {
+                                _server_task: tokio::spawn(async move {}),
+                                clients,
+                                pending,
+                            };
+                        }
+                    }
+                } else {
+                    tracing::warn!(%addr, ?e, "failed to bind ws");
+                    return ExtensionBridge {
+                        _server_task: tokio::spawn(async move {}),
+                        clients,
+                        pending,
+                    };
+                }
+            }
+        };
         let clients_clone = clients.clone();
         let pending_clone = pending.clone();
         let addr_parsed: SocketAddr = listener.local_addr().expect("addr");
