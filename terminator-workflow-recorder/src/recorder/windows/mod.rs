@@ -1357,16 +1357,75 @@ impl WindowsRecorder {
         events_this_second: &Arc<Mutex<(u32, Instant)>>,
         event: WorkflowEvent,
     ) {
-        // No rate limiting or processing delays in simplified version
+        // Apply rate limiting first
+        if let Some(max_events) = config.effective_max_events_per_second() {
+            let mut counter = events_this_second.lock().unwrap();
+            let now = Instant::now();
 
-        // In simplified version, we don't filter mouse events but we do exclude mouse moves entirely
-        let should_filter = match &event {
-            // Filter out mouse move events entirely
-            WorkflowEvent::Mouse(mouse_event) => {
-                matches!(mouse_event.event_type, MouseEventType::Move)
+            // Reset counter if a new second has started
+            if now.duration_since(counter.1).as_secs() >= 1 {
+                counter.0 = 0;
+                counter.1 = now;
             }
-            // Don't filter other events
-            _ => false,
+
+            if counter.0 >= max_events {
+                return; // Rate limit exceeded
+            }
+
+            counter.0 += 1;
+        }
+
+        // Apply processing delay
+        let processing_delay = config.effective_processing_delay_ms();
+        if processing_delay > 0 {
+            let mut last_time = last_event_time.lock().unwrap();
+            let now = Instant::now();
+            if now.duration_since(*last_time).as_millis() < processing_delay as u128 {
+                return; // Filter out if within delay window
+            }
+            *last_time = now;
+        }
+
+        // Apply event-specific filtering
+        let should_filter = match &event {
+            WorkflowEvent::Mouse(mouse_event) => {
+                if config.should_filter_mouse_noise() {
+                    matches!(
+                        mouse_event.event_type,
+                        MouseEventType::Move | MouseEventType::Wheel
+                    )
+                } else {
+                    false
+                }
+            }
+            WorkflowEvent::Keyboard(keyboard_event) => {
+                if config.should_filter_keyboard_noise() {
+                    // Filter key-down events and non-printable keys
+                    if keyboard_event.is_key_down {
+                        // Keep printable characters (32-126) and common editing keys
+                        !((keyboard_event.key_code >= 32 && keyboard_event.key_code <= 126)
+                            || matches!(
+                                keyboard_event.key_code,
+                                0x08 | // Backspace
+                            0x2E | // Delete
+                            0x20 | // Space
+                            0x0D | // Enter
+                            0x09 // Tab
+                            ))
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            // Never filter high-value events
+            WorkflowEvent::ApplicationSwitch(_)
+            | WorkflowEvent::Click(_)
+            | WorkflowEvent::Clipboard(_) => false,
+
+            // Other events can be filtered in LowEnergy mode
+            _ => matches!(config.performance_mode, crate::PerformanceMode::LowEnergy),
         };
 
         if !should_filter {
@@ -1564,6 +1623,10 @@ impl WindowsRecorder {
         trigger_reason: &str,
         config: &WorkflowRecorderConfig,
     ) {
+        if !config.record_text_input_completion {
+            return;
+        }
+
         let mut tracker = match current_text_input.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
