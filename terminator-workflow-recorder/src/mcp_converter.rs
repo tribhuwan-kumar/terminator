@@ -1,11 +1,8 @@
 use crate::events::{
-    ClickEvent, EnhancedUIElement, InteractionContext, McpToolStep, TextInputCompletedEvent,
-    WorkflowEvent,
+    ClickEvent, EnhancedUIElement, McpToolStep, TextInputCompletedEvent, WorkflowEvent,
 };
 use anyhow::Result;
 use serde_json::json;
-use std::collections::HashMap;
-use terminator::UIElement;
 use tracing::{debug, warn};
 
 /// Configuration for MCP conversion behavior
@@ -49,12 +46,6 @@ pub struct ConversionResult {
 #[derive(Clone)]
 pub struct McpConverter {
     config: ConversionConfig,
-    #[allow(dead_code)] // TODO: Will be used for future UI pattern analysis
-    ui_analyzer: UIPatternAnalyzer,
-    #[allow(dead_code)] // TODO: Will be used for future selector generation
-    selector_generator: SelectorGenerator,
-    #[allow(dead_code)] // TODO: Will be used for future sequence optimization
-    sequence_optimizer: SequenceOptimizer,
 }
 
 impl McpConverter {
@@ -65,12 +56,7 @@ impl McpConverter {
 
     /// Create a new MCP converter with custom configuration
     pub fn with_config(config: ConversionConfig) -> Self {
-        Self {
-            config,
-            ui_analyzer: UIPatternAnalyzer::new(),
-            selector_generator: SelectorGenerator::new(),
-            sequence_optimizer: SequenceOptimizer::new(),
-        }
+        Self { config }
     }
 
     /// Convert a workflow event to MCP sequences
@@ -963,121 +949,5 @@ impl McpConverter {
             }
         }
         format!("role:{}", event.field_type)
-    }
-}
-
-/// Analyzes UI patterns for intelligent conversion
-#[derive(Clone)]
-pub struct UIPatternAnalyzer {
-    known_patterns: HashMap<String, String>,
-}
-
-impl UIPatternAnalyzer {
-    pub fn new() -> Self {
-        let mut known_patterns = HashMap::new();
-        known_patterns.insert("ComboBox".to_string(), "dropdown".to_string());
-        known_patterns.insert("TabItem".to_string(), "dropdown".to_string());
-        known_patterns.insert("MenuItem".to_string(), "menu".to_string());
-        known_patterns.insert("ListItem".to_string(), "autocomplete".to_string());
-        known_patterns.insert("Button".to_string(), "button".to_string());
-
-        Self { known_patterns }
-    }
-
-    /// Analyze UI element to detect interaction pattern
-    pub fn analyze_interaction(
-        &self,
-        element: &UIElement,
-        interaction_type: &str,
-    ) -> InteractionContext {
-        let ui_pattern = self.detect_ui_pattern(element);
-        let interaction_context = self.classify_interaction(element, interaction_type);
-
-        InteractionContext {
-            interaction_type: interaction_context,
-            ui_pattern,
-            state_before: None, // TODO: Implement state capture
-            state_after: None,
-            related_elements: vec![], // TODO: Implement related element detection
-        }
-    }
-
-    fn detect_ui_pattern(&self, element: &UIElement) -> String {
-        self.known_patterns
-            .get(&element.role())
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string())
-    }
-
-    fn classify_interaction(&self, _element: &UIElement, interaction_type: &str) -> String {
-        interaction_type.to_string()
-    }
-}
-
-/// Generates selectors for UI elements
-#[derive(Clone)]
-pub struct SelectorGenerator;
-
-impl SelectorGenerator {
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Generate multiple selector options for an element
-    pub fn generate_selectors(&self, element: &UIElement) -> Vec<String> {
-        let mut selectors = Vec::new();
-
-        // Role + Name selector (most reliable)
-        if let Some(name) = element.name() {
-            if !name.is_empty() {
-                selectors.push(format!("{}|{}", element.role(), name));
-            }
-        }
-
-        // Role + ID selector
-        if let Some(id) = element.id() {
-            if !id.is_empty() {
-                selectors.push(format!("{}#{}", element.role(), id));
-            }
-        }
-
-        // Name-only selector (fallback)
-        if let Some(name) = element.name() {
-            if !name.is_empty() {
-                selectors.push(format!("name:{}", name));
-            }
-        }
-
-        // Text content selector - use text() method correctly
-        if let Ok(text) = element.text(1) {
-            if !text.is_empty() {
-                selectors.push(format!("text:{}", text));
-            }
-        }
-
-        // Role-only selector (last resort)
-        selectors.push(format!("role:{}", element.role()));
-
-        selectors
-    }
-}
-
-/// Optimizes generated sequences for better performance
-#[derive(Clone)]
-pub struct SequenceOptimizer;
-
-impl SequenceOptimizer {
-    pub fn new() -> Self {
-        Self
-    }
-
-    /// Optimize a sequence of MCP tool steps
-    pub fn optimize_sequence(&self, sequence: Vec<McpToolStep>) -> Vec<McpToolStep> {
-        // TODO: Implement optimizations like:
-        // - Removing redundant steps
-        // - Adjusting timeouts based on step complexity
-        // - Optimizing delays between steps
-        // - Merging compatible operations
-        sequence
     }
 }
