@@ -3,7 +3,7 @@ use std::time::Instant;
 use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::signal::ctrl_c;
 use tokio_stream::StreamExt;
-use tracing::{debug, info, Level};
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 // use std::panic::AssertUnwindSafe; // Not used due to async limitation
 
@@ -23,35 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("[LOG] Setting up comprehensive recording configuration");
 
     // Create a comprehensive configuration for maximum workflow capture
-    let config = WorkflowRecorderConfig {
-        // Basic input recording
-        record_mouse: true,
-        record_keyboard: true,
-        capture_ui_elements: true, // PERFORMANCE: Set to false for max speed if you don't need UI context
-
-        // Advanced workflow features
-        record_clipboard: true,
-        record_hotkeys: true,
-
-        // High-level semantic events
-        record_text_input_completion: true, // 🔥 NEW: High-level text input events
-
-        // Configuration tuning
-        max_clipboard_content_length: 2048, // 2KB max for clipboard content
-        track_modifier_states: true,
-        mouse_move_throttle_ms: 100, // PERFORMANCE: Increase throttle to reduce event spam
-        min_drag_distance: 5.0,      // 5 pixels minimum for drag detection
-        enable_multithreading: false,
-        record_browser_tab_navigation: true,
-
-        // performance_mode: PerformanceMode::LowEnergy,
-        // event_processing_delay_ms: Some(100),
-        // max_events_per_second: Some(100),
-        // filter_mouse_noise: true,
-        // filter_keyboard_noise: true,
-        // reduce_ui_element_capture: true,
-        ..Default::default()
-    };
+    let config = WorkflowRecorderConfig { ..Default::default() };
 
     info!("Comprehensive recorder config: {:?}", config);
 
@@ -128,8 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Display different event types with appropriate detail levels
             match &event {
-                terminator_workflow_recorder::WorkflowEvent::ButtonClick(button_event) => {
-                    let interaction_icon = match button_event.interaction_type {
+                terminator_workflow_recorder::WorkflowEvent::Click(click_event) => {
+                    let interaction_icon = match click_event.interaction_type {
                         terminator_workflow_recorder::ButtonInteractionType::Click => "🔘",
                         terminator_workflow_recorder::ButtonInteractionType::Toggle => "🔄",
                         terminator_workflow_recorder::ButtonInteractionType::DropdownToggle => "📋",
@@ -141,21 +113,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "{} BUTTON CLICK {}: \"{}\" ({:?}) (Latency: {:?})",
                         interaction_icon,
                         event_count,
-                        button_event.button_text,
-                        button_event.interaction_type,
+                        click_event.element_text,
+                        click_event.interaction_type,
                         latency
                     );
 
-                    if let Some(position) = button_event.click_position {
+                    if let Some(position) = click_event.click_position {
                         println!("     └─ Position: ({}, {})", position.x, position.y);
                     }
-                    println!("     └─ Role: {}", button_event.button_role);
+                    println!("     └─ Role: {}", click_event.element_role);
 
-                    if let Some(ref description) = button_event.button_description {
+                    if let Some(ref description) = click_event.element_description {
                         println!("     └─ Description: \"{description}\"");
                     }
 
-                    if let Some(ref ui_element) = button_event.metadata.ui_element {
+                    if let Some(ref ui_element) = click_event.metadata.ui_element {
                         println!("     └─ App: {} 🎯", ui_element.application_name());
                     }
 
