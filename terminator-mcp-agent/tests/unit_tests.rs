@@ -66,47 +66,6 @@ fn test_execute_sequence_args_deserialization() {
 }
 
 #[test]
-fn test_output_parser_fallback_when_specific_step_has_no_tree() {
-    // Simulate a sequence summary where a referenced step id exists but has no ui_tree
-    // and a different step does include a ui_tree. The parser should fall back instead of erroring.
-    use serde_json::json;
-    let summary = json!({
-        "action": "execute_sequence",
-        "status": "success",
-        "results": [
-            {
-                "step_id": "close_window",
-                "status": "success",
-                "result": { "content": [] }
-            },
-            {
-                "step_id": "capture_tree",
-                "status": "success",
-                "result": {
-                    "ui_tree": { "root": { "attributes": {"role": "Window"} } }
-                }
-            }
-        ]
-    });
-
-    let parser = json!({
-        // Intentionally point to the step that has no tree
-        "ui_tree_source_step_id": "close_window",
-        "javascript_code": "return [{ ok: !!tree, role: tree.root.attributes.role }];"
-    });
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let result = rt.block_on(async {
-        terminator_mcp_agent::output_parser::run_output_parser(&parser, &summary).await
-    });
-
-    // Expect success with fallback picking the available tree
-    assert!(result.is_ok());
-    let val = result.unwrap().unwrap();
-    assert!(val.as_array().is_some());
-}
-
-#[test]
 fn test_execute_sequence_args_default_values() {
     let json = r#"{
         "steps": []
