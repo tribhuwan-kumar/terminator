@@ -62,7 +62,7 @@ function connect() {
       const { id, code, awaitPromise = true } = msg;
       try {
         const tabId = await getActiveTabId();
-        const result = await evalInTab(tabId, code, awaitPromise);
+        const result = await evalInTab(tabId, code, awaitPromise, id);
         safeSend({ id, ok: true, result });
       } catch (err) {
         safeSend({ id, ok: false, error: String(err && (err.message || err)) });
@@ -106,10 +106,58 @@ async function getActiveTabId() {
   return tab.id;
 }
 
-async function evalInTab(tabId, code, awaitPromise) {
+function formatRemoteObject(obj) {
+  try {
+    if (obj === null || obj === undefined) return null;
+    if (Object.prototype.hasOwnProperty.call(obj, "value")) return obj.value;
+    if (obj.description !== undefined) return obj.description;
+    return obj.type || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function evalInTab(tabId, code, awaitPromise, evalId) {
   await debuggerAttach(tabId);
+  let onEvent = null;
   try {
     await sendCommand(tabId, "Runtime.enable", {});
+    await sendCommand(tabId, "Log.enable", {});
+
+    // Listen for console/log/exception events for this tab while the eval runs
+    onEvent = (source, method, params) => {
+      try {
+        if (!source || source.tabId !== tabId) return;
+        if (method === "Runtime.consoleAPICalled") {
+          const level = params.type || "log";
+          const args = (params.args || []).map((a) => formatRemoteObject(a));
+          const stackTrace = params.stackTrace || null;
+          safeSend({
+            type: "console_event",
+            id: evalId,
+            level,
+            args,
+            stackTrace,
+            ts: params.timestamp || Date.now(),
+          });
+        } else if (method === "Runtime.exceptionThrown") {
+          safeSend({
+            type: "exception_event",
+            id: evalId,
+            details: params.exceptionDetails || params || null,
+          });
+        } else if (method === "Log.entryAdded") {
+          safeSend({
+            type: "log_event",
+            id: evalId,
+            entry: params.entry || params || null,
+          });
+        }
+      } catch (e) {
+        // swallow
+      }
+    };
+    chrome.debugger.onEvent.addListener(onEvent);
     const { result, exceptionDetails } = await sendCommand(
       tabId,
       "Runtime.evaluate",
@@ -157,6 +205,24 @@ async function evalInTab(tabId, code, awaitPromise) {
     // Return JSON-serializable value
     return result?.value;
   } finally {
+    try {
+      // Best-effort: remove onEvent listener and disable domains
+      if (
+        onEvent &&
+        chrome &&
+        chrome.debugger &&
+        chrome.debugger.onEvent &&
+        chrome.debugger.onEvent.removeListener
+      ) {
+        chrome.debugger.onEvent.removeListener(onEvent);
+      }
+      try {
+        await sendCommand(tabId, "Log.disable", {});
+      } catch (_) {}
+      try {
+        await sendCommand(tabId, "Runtime.disable", {});
+      } catch (_) {}
+    } catch (_) {}
     try {
       await debuggerDetach(tabId);
     } catch (_) {}
