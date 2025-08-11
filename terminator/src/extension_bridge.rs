@@ -169,7 +169,34 @@ impl ExtensionBridge {
                                 result,
                                 error,
                             }) => {
-                                tracing::info!(id = %id, ok = ok, "Bridge received EvalResult");
+                                if ok {
+                                    let size =
+                                        result.as_ref().map(|r| r.to_string().len()).unwrap_or(0);
+                                    tracing::info!(id = %id, ok = ok, result_size = size, "Bridge received EvalResult");
+                                } else {
+                                    let err_str =
+                                        error.clone().unwrap_or_else(|| "unknown error".into());
+                                    // Try direct JSON parse first
+                                    if let Ok(val) =
+                                        serde_json::from_str::<serde_json::Value>(&err_str)
+                                    {
+                                        let code =
+                                            val.get("code").and_then(|v| v.as_str()).unwrap_or("");
+                                        let msg = val
+                                            .get("message")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+                                        let details = val
+                                            .get("details")
+                                            .cloned()
+                                            .unwrap_or(serde_json::Value::Null);
+                                        tracing::error!(id = %id, code = code, message = msg, details = %details, raw = %err_str, "Bridge received EvalResult error (structured)");
+                                    } else {
+                                        // Not JSON, just log raw (truncate to avoid log spam)
+                                        let head: String = err_str.chars().take(400).collect();
+                                        tracing::error!(id = %id, error = %head, "Bridge received EvalResult error (raw)");
+                                    }
+                                }
                                 if let Some(tx) = ws_pending.lock().await.remove(&id) {
                                     let _ = tx.send(if ok {
                                         Ok(result.unwrap_or(serde_json::Value::Null))
