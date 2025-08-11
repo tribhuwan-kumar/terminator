@@ -207,8 +207,10 @@ async fn main() -> Result<()> {
                 next.run(req).await
             }
 
-            // Build a sub-router for /mcp that nests the existing service and applies the concurrency gate middleware
-            let mcp_router = Router::new().nest_service("/", service).route_layer(
+            // Build a sub-router for /mcp with the service and concurrency gate middleware
+            // Note: Axum 0.8 doesn't allow nesting at root, so we use fallback_service
+            // and apply middleware as a layer instead of route_layer
+            let mcp_router = Router::new().fallback_service(service).layer(
                 axum::middleware::from_fn_with_state(app_state.clone(), mcp_gate),
             );
 
