@@ -4,6 +4,17 @@ globs:
 alwaysApply: true
 ---
 
+**CRITICAL: Windows Terminal Rules**
+
+**ALWAYS use is_background=true** - Windows terminal commands run in background
+**Use MCP delay tool instead of timeout commands** - Background commands don't pause for timeouts
+**CRITICAL: Always kill/cleanup terminal processes after use:**
+
+- Kill background terminal sessions when task is complete
+- Use `taskkill //F //IM process.exe` (bash syntax with //) to cleanup hanging processes
+- Don't leave orphaned terminal processes running
+- If using multiple terminal sessions, clean them all up
+
 **App Cleanup & Restart (Local Development Mode):**
 
 **PowerShell Version (Recommended for Windows):**
