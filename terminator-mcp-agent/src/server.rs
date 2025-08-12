@@ -1862,6 +1862,94 @@ impl DesktopWrapper {
                 };
 
                 let mut recorder = WorkflowRecorder::new(workflow_name.clone(), config);
+
+                // Start highlighting task if enabled
+                if let Some(ref highlight_config) = args.highlight_mode {
+                    if highlight_config.enabled {
+                        let mut event_stream = recorder.event_stream();
+                        let highlight_cfg = highlight_config.clone();
+
+                        // Spawn a task to highlight elements as events are captured
+                        tokio::spawn(async move {
+                            use futures::StreamExt;
+
+                            while let Some(event) = event_stream.next().await {
+                                // Get the UI element from the event metadata
+                                let ui_element = match &event {
+                                    terminator_workflow_recorder::WorkflowEvent::Click(e) => {
+                                        e.metadata.ui_element.as_ref()
+                                    }
+                                    terminator_workflow_recorder::WorkflowEvent::TextInputCompleted(e) => {
+                                        e.metadata.ui_element.as_ref()
+                                    }
+                                    terminator_workflow_recorder::WorkflowEvent::Keyboard(e) => {
+                                        e.metadata.ui_element.as_ref()
+                                    }
+                                    terminator_workflow_recorder::WorkflowEvent::DragDrop(e) => {
+                                        e.metadata.ui_element.as_ref()
+                                    }
+                                    terminator_workflow_recorder::WorkflowEvent::ApplicationSwitch(e) => {
+                                        e.metadata.ui_element.as_ref()
+                                    }
+                                    terminator_workflow_recorder::WorkflowEvent::BrowserTabNavigation(e) => {
+                                        e.metadata.ui_element.as_ref()
+                                    }
+                                    terminator_workflow_recorder::WorkflowEvent::Mouse(e) => {
+                                        e.metadata.ui_element.as_ref()
+                                    }
+                                    _ => None,
+                                };
+
+                                if let Some(ui_element) = ui_element {
+                                    // Determine the event type label
+                                    let event_label_string;
+                                    let event_label = match &event {
+                                        terminator_workflow_recorder::WorkflowEvent::Click(_) => "CLICK",
+                                        terminator_workflow_recorder::WorkflowEvent::TextInputCompleted(_) => "TYPE",
+                                        terminator_workflow_recorder::WorkflowEvent::Keyboard(e) => {
+                                            // Show the key code for keyboard events
+                                            event_label_string = format!("KEY: {}", e.key_code);
+                                            &event_label_string
+                                        }
+                                        terminator_workflow_recorder::WorkflowEvent::DragDrop(_) => "DRAG",
+                                        terminator_workflow_recorder::WorkflowEvent::ApplicationSwitch(_) => "SWITCH",
+                                        terminator_workflow_recorder::WorkflowEvent::BrowserTabNavigation(_) => "TAB",
+                                        terminator_workflow_recorder::WorkflowEvent::Mouse(e) => {
+                                            match e.button {
+                                                terminator_workflow_recorder::MouseButton::Right => "RCLICK",
+                                                terminator_workflow_recorder::MouseButton::Middle => "MCLICK",
+                                                _ => "MOUSE",
+                                            }
+                                        }
+                                        _ => "EVENT",
+                                    };
+
+                                    // Highlight the element with the configured settings
+                                    let _ = ui_element.highlight(
+                                        highlight_cfg.color,
+                                        highlight_cfg.duration_ms.map(Duration::from_millis),
+                                        if highlight_cfg.show_labels {
+                                            Some(event_label)
+                                        } else {
+                                            None
+                                        },
+                                        #[cfg(target_os = "windows")]
+                                        highlight_cfg.label_position.clone().map(|pos| pos.into()),
+                                        #[cfg(not(target_os = "windows"))]
+                                        None,
+                                        #[cfg(target_os = "windows")]
+                                        highlight_cfg.label_style.clone().map(|style| style.into()),
+                                        #[cfg(not(target_os = "windows"))]
+                                        None,
+                                    );
+                                }
+                            }
+                        });
+
+                        info!("Recording started with visual highlighting enabled");
+                    }
+                }
+
                 recorder.start().await.map_err(|e| {
                     McpError::internal_error(
                         "Failed to start recorder",
@@ -1871,12 +1959,25 @@ impl DesktopWrapper {
 
                 *recorder_guard = Some(recorder);
 
-                Ok(CallToolResult::success(vec![Content::json(json!({
+                let mut response = json!({
                     "action": "record_workflow",
                     "status": "started",
                     "workflow_name": workflow_name,
                     "message": "Recording started. Perform the UI actions you want to record. Call this tool again with action: 'stop' to finish."
-                }))?]))
+                });
+
+                // Add highlighting status to response
+                if let Some(ref highlight_config) = args.highlight_mode {
+                    if highlight_config.enabled {
+                        response["highlighting_enabled"] = json!(true);
+                        response["highlight_color"] =
+                            json!(highlight_config.color.unwrap_or(0x0000FF));
+                        response["highlight_duration_ms"] =
+                            json!(highlight_config.duration_ms.unwrap_or(500));
+                    }
+                }
+
+                Ok(CallToolResult::success(vec![Content::json(response)?]))
             }
             "stop" => {
                 let mut recorder = recorder_guard.take().ok_or_else(|| {
