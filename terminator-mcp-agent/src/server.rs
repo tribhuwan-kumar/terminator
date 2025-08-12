@@ -1855,7 +1855,10 @@ impl DesktopWrapper {
                     // text input completion tracking, a feature the user found caused lag.
                     PerformanceMode::low_energy_config()
                 } else {
-                    WorkflowRecorderConfig::default()
+                    WorkflowRecorderConfig {
+                        filter_mouse_noise: true, // Filter out mouse movements and wheel events
+                        ..WorkflowRecorderConfig::default()
+                    }
                 };
 
                 let mut recorder = WorkflowRecorder::new(workflow_name.clone(), config);
