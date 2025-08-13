@@ -842,7 +842,8 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     use tracing::info;
 
     if args.verbose {
-        std::env::set_var("RUST_LOG", "debug");
+        // Keep rmcp quieter even in verbose mode unless user explicitly overrides
+        std::env::set_var("RUST_LOG", "debug,rmcp=warn");
     }
 
     // Initialize simple logging (only if not already initialized)
@@ -851,7 +852,8 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
         let _ = tracing_subscriber::registry()
             .with(
                 tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| "info".into()),
+                    // Suppress noisy rmcp info logs by default while keeping our own at info
+                    .unwrap_or_else(|_| "info,rmcp=warn".into()),
             )
             .with(tracing_subscriber::fmt::layer())
             .try_init(); // Use try_init instead of init to avoid panics on duplicate initialization

@@ -2186,7 +2186,7 @@ impl DesktopWrapper {
             }
         }
 
-        // Build the execution context. It's a combination of the 'inputs' and 'selectors' from the arguments.
+        // Build the execution context. It's a combination of the 'inputs' and 'selectors'.
         // The context is a simple, flat map of variables that will be used for substitution in tool arguments.
         let mut execution_context_map = serde_json::Map::new();
 
@@ -2240,8 +2240,10 @@ impl DesktopWrapper {
             };
             execution_context_map.insert("selectors".to_string(), selectors_value);
         }
-        let execution_context = serde_json::Value::Object(execution_context_map);
+        // Initialize an internal env bag for dynamic, step-to-step values set at runtime (e.g., via JS)
+        execution_context_map.insert("env".to_string(), json!({}));
 
+        let execution_context = serde_json::Value::Object(execution_context_map.clone());
         info!(
             "Executing sequence with context: {}",
             serde_json::to_string_pretty(&execution_context).unwrap_or_default()
@@ -2339,6 +2341,7 @@ impl DesktopWrapper {
 
             // 1. Evaluate condition, unless it's an 'always' step.
             if let Some(cond_str) = &if_expr {
+                let execution_context = serde_json::Value::Object(execution_context_map.clone());
                 if !is_always_step && !expression_eval::evaluate(cond_str, &execution_context) {
                     info!(
                         "Skipping step {} due to if expression not met: `{}`",
@@ -2362,7 +2365,18 @@ impl DesktopWrapper {
                 let item = &mut sequence_items[current_index];
                 match item {
                     SequenceItem::Tool { tool_call } => {
+                        // Special internal pseudo-tool to set env for subsequent steps
+                        let tool_name_normalized = tool_call
+                            .tool_name
+                            .strip_prefix("mcp_terminator-mcp-agent_")
+                            .unwrap_or(&tool_call.tool_name)
+                            .to_string();
+
+                        // No dedicated "set_env" tool. Use JS outputs to update env when needed.
+
                         // Substitute variables in arguments before execution
+                        let execution_context =
+                            serde_json::Value::Object(execution_context_map.clone());
                         let mut substituted_args = tool_call.arguments.clone();
                         substitute_variables(&mut substituted_args, &execution_context);
 
@@ -2378,6 +2392,47 @@ impl DesktopWrapper {
                             .await;
 
                         final_result = result.clone();
+
+                        // Merge env updates from JS-based steps into the internal context
+                        if (tool_name_normalized == "run_javascript"
+                            || tool_name_normalized == "execute_browser_script")
+                            && final_result["status"] == "success"
+                        {
+                            // Helper to merge updates into the env context map
+                            let mut merge_env_obj = |update_val: &serde_json::Value| {
+                                if let Some(update_map) = update_val.as_object() {
+                                    if let Some(env_value) = execution_context_map.get_mut("env") {
+                                        if let Some(env_map) = env_value.as_object_mut() {
+                                            for (k, v) in update_map.iter() {
+                                                env_map.insert(k.clone(), v.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            };
+
+                            if let Some(content_arr) = final_result
+                                .get("result")
+                                .and_then(|r| r.get("content"))
+                                .and_then(|c| c.as_array())
+                            {
+                                for item in content_arr {
+                                    // Typical run_javascript payload is under item.result
+                                    if let Some(res) = item.get("result") {
+                                        if let Some(v) =
+                                            res.get("set_env").or_else(|| res.get("env"))
+                                        {
+                                            merge_env_obj(v);
+                                        }
+                                    }
+                                    // Also support top-level set_env/env directly on the item
+                                    if let Some(v) = item.get("set_env").or_else(|| item.get("env"))
+                                    {
+                                        merge_env_obj(v);
+                                    }
+                                }
+                            }
+                        }
                         if result["status"] == "success" {
                             break;
                         }
@@ -2418,6 +2473,8 @@ impl DesktopWrapper {
                         for (step_index, step_tool_call) in tool_group.steps.iter_mut().enumerate()
                         {
                             // Substitute variables in arguments before execution
+                            let execution_context =
+                                serde_json::Value::Object(execution_context_map.clone());
                             let mut substituted_args = step_tool_call.arguments.clone();
                             substitute_variables(&mut substituted_args, &execution_context);
 
@@ -2550,6 +2607,7 @@ impl DesktopWrapper {
         if let Some(parser_def) = args.output_parser.as_ref() {
             // Apply variable substitution to the output_parser field
             let mut parser_json = parser_def.clone();
+            let execution_context = serde_json::Value::Object(execution_context_map.clone());
             substitute_variables(&mut parser_json, &execution_context);
 
             match output_parser::run_output_parser(&parser_json, &summary).await {
@@ -3478,9 +3536,23 @@ impl DesktopWrapper {
         Parameters(args): Parameters<ExecuteBrowserScriptArgs>,
     ) -> Result<CallToolResult, McpError> {
         use serde_json::json;
+        let start_instant = std::time::Instant::now();
+        let script_len = args.script.len();
+        let script_preview: String = args.script.chars().take(200).collect();
+        tracing::info!(
+            "[execute_browser_script] start selector='{}' timeout_ms={:?} retries={:?} script_bytes={}",
+            args.selector,
+            args.timeout_ms,
+            args.retries,
+            script_len
+        );
+        tracing::debug!(
+            "[execute_browser_script] script_preview: {}",
+            script_preview
+        );
 
         let script_clone = args.script.clone();
-        let ((_, script_result), successful_selector) =
+        let ((script_result, element), successful_selector) =
             crate::utils::find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3495,6 +3567,13 @@ impl DesktopWrapper {
             )
             .await
             .map_err(|e| {
+                tracing::error!(
+                    "[execute_browser_script] failed selector='{}' alt='{:?}' fallback='{:?}' error={}",
+                    args.selector,
+                    args.alternative_selectors,
+                    args.fallback_selectors,
+                    e
+                );
                 McpError::internal_error(
                     "Failed to execute browser script",
                     Some(json!({
@@ -3506,14 +3585,34 @@ impl DesktopWrapper {
                     })),
                 )
             })?;
+        let elapsed_ms = start_instant.elapsed().as_millis() as u64;
+        tracing::info!(
+            "[execute_browser_script] target resolved selector='{}' role='{}' name='{}' pid={} in {}ms",
+            successful_selector,
+            element.role(),
+            element.name().unwrap_or_default(),
+            element.process_id().unwrap_or(0),
+            elapsed_ms
+        );
+
+        let selectors_tried = get_selectors_tried_all(
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
+        );
 
         let mut result_json = json!({
             "action": "execute_browser_script",
             "status": "success",
             "selector": successful_selector,
+            "selector_used": successful_selector,
+            "selectors_tried": selectors_tried,
+            "element": build_element_info(&element),
             "script": args.script,
             "result": script_result,
             "timestamp": chrono::Utc::now().to_rfc3339(),
+            "duration_ms": elapsed_ms,
+            "script_bytes": script_len,
         });
 
         // Always attach tree for better context

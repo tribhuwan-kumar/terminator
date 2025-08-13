@@ -523,7 +523,9 @@ fn init_logging() {
 
     let _ = tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+            // Default: keep our logs at info, but quiet rmcp's info-level noise
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info,rmcp=warn".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .try_init();
