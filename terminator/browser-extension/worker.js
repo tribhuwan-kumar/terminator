@@ -73,6 +73,29 @@ function connect() {
   };
 }
 
+// Ensure we have an active WS connection on first message from content script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  try {
+    if (!message || message.type !== "terminator_content_handshake") return;
+    log("Received handshake from content script", {
+      tab: sender.tab && sender.tab.id,
+    });
+    // Kick the connector if not already connected; otherwise noop
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      log("WS not open; attempting connect() due to handshake");
+      connect();
+    }
+    sendResponse({ ok: true });
+  } catch (e) {
+    try {
+      sendResponse({ ok: false, error: String(e && (e.message || e)) });
+    } catch (_) {}
+    // swallow
+  }
+  // Keep listener alive for async sendResponse
+  return true;
+});
+
 function scheduleReconnect() {
   if (reconnectTimer) return;
   const delay = currentReconnectDelayMs;
