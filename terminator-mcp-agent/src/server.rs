@@ -1962,7 +1962,7 @@ impl DesktopWrapper {
                     PerformanceMode::low_energy_config()
                 } else {
                     WorkflowRecorderConfig {
-                        filter_mouse_noise: true, // Filter out mouse movements and wheel events
+                        filter_mouse_noise: !args.record_scroll_events.unwrap_or(false), // Filter out mouse movements and wheel events unless scroll recording is enabled
                         ..WorkflowRecorderConfig::default()
                     }
                 };

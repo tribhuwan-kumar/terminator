@@ -87,6 +87,11 @@ impl McpConverter {
             WorkflowEvent::BrowserTabNavigation(nav_event) => {
                 self.convert_browser_navigation(nav_event).await
             }
+            WorkflowEvent::Mouse(mouse_event)
+                if mouse_event.event_type == crate::events::MouseEventType::Wheel =>
+            {
+                self.convert_scroll(mouse_event).await
+            }
             // Add other event types as needed
             _ => {
                 warn!("MCP conversion not implemented for event type: {:?}", event);
@@ -320,6 +325,66 @@ impl McpConverter {
         Ok(ConversionResult {
             primary_sequence: sequence,
             semantic_action: "browser_navigation".to_string(),
+            fallback_sequences: vec![],
+            conversion_notes: notes,
+        })
+    }
+
+    /// Convert scroll event to MCP sequence
+    async fn convert_scroll(&self, event: &crate::events::MouseEvent) -> Result<ConversionResult> {
+        let mut sequence = Vec::new();
+        let mut notes = Vec::new();
+
+        if let Some((_, delta_y)) = event.scroll_delta {
+            // Only handle vertical scroll, ignore horizontal for simplicity
+            let direction = if delta_y > 0 { "down" } else { "up" };
+            let amount = (delta_y.abs() as f64 / 120.0).max(1.0); // 120 = standard wheel notch
+
+            // Generate selector based on captured UI element if available
+            let selector = if let Some(ui_element) = &event.metadata.ui_element {
+                // Try to generate a proper selector from the UI element
+                let element_name = ui_element.name().unwrap_or_default();
+                let element_role = ui_element.role();
+
+                if !element_role.is_empty() {
+                    if !element_name.is_empty() && element_name.len() > 2 {
+                        // Use role and name for more specific targeting
+                        format!("role:{}|name:contains:{}", element_role, element_name)
+                    } else {
+                        // Use just role if no meaningful name
+                        format!("role:{}", element_role)
+                    }
+                } else {
+                    // Fallback to Window if no role available
+                    "role:Window".to_string()
+                }
+            } else {
+                // No UI element captured, use default
+                "role:Window".to_string()
+            };
+
+            sequence.push(McpToolStep {
+                tool_name: "scroll_element".to_string(),
+                arguments: json!({
+                    "selector": selector.clone(),
+                    "direction": direction,
+                    "amount": amount,
+                    "timeout_ms": 2000
+                }),
+                description: format!("Scroll {direction} by {amount:.1} units"),
+                timeout_ms: Some(2000),
+                continue_on_error: Some(true), // Scrolling can be non-critical
+                delay_ms: Some(100),
+            });
+
+            notes.push(format!(
+                "Converted scroll event: {direction} by {amount:.1} on {selector}"
+            ));
+        }
+
+        Ok(ConversionResult {
+            primary_sequence: sequence,
+            semantic_action: "scroll".to_string(),
             fallback_sequences: vec![],
             conversion_notes: notes,
         })
