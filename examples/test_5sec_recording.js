@@ -180,6 +180,7 @@ class Simple5SecRecordingClient {
         action: 'start',
         workflow_name: '5sec_test_recording',
         low_energy_mode: false,
+        record_scroll_events: true,  // Enable scroll event recording
         highlight_mode: {
           enabled: true,
           duration_ms: 500,        // 500ms highlight duration
