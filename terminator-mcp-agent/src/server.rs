@@ -2354,6 +2354,12 @@ impl DesktopWrapper {
             "Executing sequence with context: {}",
             serde_json::to_string_pretty(&execution_context).unwrap_or_default()
         );
+        info!(
+            "Starting execute_sequence: steps={}, stop_on_error={}, include_detailed_results={}",
+            args.steps.len(),
+            stop_on_error,
+            include_detailed
+        );
 
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
@@ -2426,6 +2432,29 @@ impl DesktopWrapper {
             iterations += 1;
 
             let original_step = &args.steps[current_index];
+            if let Some(tool_name) = &original_step.tool_name {
+                info!(
+                    "Step {} BEGIN tool='{}' id='{}' retries={} if_expr={:?} fallback_id={:?}",
+                    current_index,
+                    tool_name,
+                    original_step.id.as_deref().unwrap_or(""),
+                    original_step.retries.unwrap_or(0),
+                    original_step.r#if,
+                    original_step.fallback_id
+                );
+            } else if let Some(group_name) = &original_step.group_name {
+                info!(
+                    "Step {} BEGIN group='{}' id='{}' steps={}",
+                    current_index,
+                    group_name,
+                    original_step.id.as_deref().unwrap_or(""),
+                    original_step
+                        .steps
+                        .as_ref()
+                        .map(|v| v.len())
+                        .unwrap_or(0)
+                );
+            }
             let (if_expr, retries, fallback_id_opt) = (
                 original_step.r#if.clone(),
                 original_step.retries.unwrap_or(0),
@@ -2664,6 +2693,24 @@ impl DesktopWrapper {
 
             // Decide next index based on success or fallback
             let step_succeeded = !step_error_occurred;
+            let step_status_str = if step_succeeded { "success" } else { "failed" };
+            if let Some(tool_name) = &original_step.tool_name {
+                info!(
+                    "Step {} END tool='{}' id='{}' status={}",
+                    current_index,
+                    tool_name,
+                    original_step.id.as_deref().unwrap_or(""),
+                    step_status_str
+                );
+            } else if let Some(group_name) = &original_step.group_name {
+                info!(
+                    "Step {} END group='{}' id='{}' status={}",
+                    current_index,
+                    group_name,
+                    original_step.id.as_deref().unwrap_or(""),
+                    step_status_str
+                );
+            }
 
             if step_succeeded {
                 current_index += 1;
@@ -2699,6 +2746,12 @@ impl DesktopWrapper {
         } else {
             "completed_with_errors"
         };
+        info!(
+            "execute_sequence completed: status={}, executed_tools={}, total_duration_ms={}",
+            final_status,
+            results.len(),
+            total_duration
+        );
 
         let mut summary = json!({
             "action": "execute_sequence",
