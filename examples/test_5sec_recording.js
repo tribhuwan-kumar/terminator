@@ -183,10 +183,10 @@ class Simple5SecRecordingClient {
         record_scroll_events: true,  // Enable scroll event recording
         highlight_mode: {
           enabled: true,
-          duration_ms: 500,        // 500ms highlight duration
-          color: 0x0000FF,         // Red border (BGR format)
+          duration_ms: 2000,       // 2 seconds highlight duration for visibility
+          color: 0x00FF00,         // Bright green border (BGR format)
           show_labels: true,       // Show event type labels
-          label_position: 'Top',   // Labels at top
+          label_position: 'Inside', // Labels inside for better visibility
           label_style: {
             size: 14,
             bold: true,
@@ -202,12 +202,12 @@ class Simple5SecRecordingClient {
         const startData = JSON.parse(startResult[0].text);
         if (startData.highlighting_enabled) {
           console.log('✅ Visual highlighting is ACTIVE');
-          console.log(`   • Color: 0x${startData.highlight_color.toString(16).padStart(6, '0').toUpperCase()} (red border)`);
+          console.log(`   • Color: 0x${startData.highlight_color.toString(16).padStart(6, '0').toUpperCase()} (bright green border)`);
           console.log(`   • Duration: ${startData.highlight_duration_ms}ms per event`);
         }
       }
       
-      console.log('🔴 Look for RED borders with event labels (CLICK, TYPE, etc.) on UI elements');
+      console.log('🟢 Look for BRIGHT GREEN borders with event labels (CLICK, TYPE, etc.) on UI elements');
       console.log('👉 Perform any actions you want to capture...');
       console.log('');
       

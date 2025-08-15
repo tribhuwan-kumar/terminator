@@ -1000,8 +1000,11 @@ impl DesktopWrapper {
                 async move {
                     let _handle =
                         element.highlight(color, duration, text, text_position, font_style)?;
-                    // Note: We let the handle go out of scope so it auto-closes when function ends
-                    // Return a unit type since highlighting doesn't need to return data like click results
+                    // Keep the highlight visible for the requested duration before dropping the handle
+                    let sleep_duration = duration.unwrap_or(std::time::Duration::from_millis(1000));
+                    tracing::info!(target: "mcp.highlight", "KEEP_VISIBLE_MS={}", sleep_duration.as_millis());
+                    tokio::time::sleep(sleep_duration).await;
+                    tracing::info!(target: "mcp.highlight", "DONE_VISIBLE");
                     Ok(())
                 }
             }
@@ -1038,6 +1041,7 @@ impl DesktopWrapper {
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "color": args.color.unwrap_or(0x0000FF),
             "duration_ms": args.duration_ms.unwrap_or(1000),
+            "visibility": { "requested_ms": args.duration_ms.unwrap_or(1000) },
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         maybe_attach_tree(

@@ -10,8 +10,8 @@ await mcp.callTool("record_workflow", {
   workflow_name: "My Workflow",
   highlight_mode: {
     // Optional: Visual feedback during recording
-    enabled: true, // Red borders + event labels on UI elements
-    duration_ms: 500, // Highlight duration per event
+    enabled: true, // Bright green borders + event labels on UI elements
+    duration_ms: 2000, // Highlight duration per event (2 seconds for visibility)
   },
 });
 ```
@@ -23,7 +23,7 @@ await mcp.callTool("record_workflow", {
 - Switch between applications
 - Navigate browser tabs
 
-**With highlighting enabled:** Look for red borders and event labels ("CLICK", "TYPE", etc.) confirming each action is captured.
+**With highlighting enabled:** Look for bright green borders and event labels ("CLICK", "TYPE", etc.) confirming each action is captured.
 
 ### 3. Stop & Get Results
 
@@ -272,10 +272,10 @@ console.log("Conversion notes:", result.mcp_workflow?.conversion_notes);
 ```javascript
 highlight_mode: {
   enabled: true,              // Enable visual highlighting (default: true)
-  duration_ms: 500,           // Highlight duration in ms (default: 500)
-  color: 0x0000FF,           // Border color in BGR format (default: red)
+  duration_ms: 2000,          // Highlight duration in ms (recommended: 2000 for visibility)
+  color: 0x00FF00,           // Border color in BGR format (bright green recommended)
   show_labels: true,         // Show event type labels (default: true)
-  label_position: "Top",     // Label position: Top, Inside, Bottom, etc.
+  label_position: "Inside",  // Label position: Top, Inside, Bottom, etc.
   label_style: {
     size: 14,               // Font size in pixels
     bold: true,             // Bold text
