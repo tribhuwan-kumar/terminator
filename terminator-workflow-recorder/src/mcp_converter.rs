@@ -276,21 +276,37 @@ impl McpConverter {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
 
+        // Generate stable fallback selector for common applications
+        let fallback_selector = self.generate_stable_fallback_selector(&event.to_application);
+
+        let mut arguments = json!({
+            "selector": format!("application|{}", event.to_application),
+            "timeout_ms": 800,
+            "include_tree": false,
+            "include_detailed_attributes": false,
+            "retries": 0
+        });
+
+        // Add fallback selector if we generated one
+        if let Some(fallback) = fallback_selector {
+            arguments["fallback_selectors"] = json!(fallback);
+            notes.push(format!("Added stable fallback selector: {fallback}"));
+        }
+
         sequence.push(McpToolStep {
             tool_name: "activate_element".to_string(),
-            arguments: json!({
-                "selector": format!("application|{}", event.to_application)
-            }),
+            arguments,
             description: format!("Switch to application: {}", event.to_application),
-            timeout_ms: Some(3000),
+            timeout_ms: Some(800),
             continue_on_error: Some(false),
-            delay_ms: Some(1000),
+            delay_ms: Some(150), // Reduced from 1000ms since server already waits 500ms for verification
         });
 
         notes.push(format!(
             "Application switch method: {:?}",
             event.switch_method
         ));
+        notes.push("Optimized for speed: include_tree=false, timeout=800ms, retries=0".to_string());
 
         Ok(ConversionResult {
             primary_sequence: sequence,
@@ -617,6 +633,48 @@ impl McpConverter {
             timeout_ms: Some(2000),
             continue_on_error: Some(false),
             delay_ms: Some(100),
+        }
+    }
+
+    /// Generate stable fallback selector for common applications
+    pub fn generate_stable_fallback_selector(&self, app_name: &str) -> Option<String> {
+        let app_lower = app_name.to_lowercase();
+
+        // Map common applications to stable window selectors
+        if app_lower.contains("chrome") || app_lower.contains("google chrome") {
+            Some("role:Window|name:contains:Google Chrome".to_string())
+        } else if app_lower.contains("firefox") {
+            Some("role:Window|name:contains:Firefox".to_string())
+        } else if app_lower.contains("edge") || app_lower.contains("microsoft edge") {
+            Some("role:Window|name:contains:Microsoft Edge".to_string())
+        } else if app_lower.contains("notepad") {
+            Some("role:Window|name:contains:Notepad".to_string())
+        } else if app_lower.contains("calculator") {
+            Some("role:Window|name:contains:Calculator".to_string())
+        } else if app_lower.contains("cursor") {
+            Some("role:Window|name:contains:Cursor".to_string())
+        } else if app_lower.contains("visual studio code") || app_lower.contains("vscode") {
+            Some("role:Window|name:contains:Visual Studio Code".to_string())
+        } else if app_lower.contains("explorer") || app_lower.contains("file explorer") {
+            Some("role:Window|name:contains:File Explorer".to_string())
+        } else if app_lower.contains("cmd") || app_lower.contains("command prompt") {
+            Some("role:Window|name:contains:Command Prompt".to_string())
+        } else if app_lower.contains("powershell") {
+            Some("role:Window|name:contains:PowerShell".to_string())
+        } else {
+            // For unknown apps, generate a generic window selector using the app name
+            // Strip common suffixes and use contains for flexibility
+            let clean_name = app_name
+                .replace(" - ", " ")
+                .replace(".exe", "")
+                .trim()
+                .to_string();
+
+            if clean_name.len() > 3 {
+                Some(format!("role:Window|name:contains:{clean_name}"))
+            } else {
+                None
+            }
         }
     }
 
@@ -991,14 +1049,15 @@ impl McpConverter {
                 && related
                     .name
                     .as_ref()
-                    .map_or(false, |name| name.contains("expand"))
+                    .is_some_and(|name| name.contains("expand"))
             {
                 return related.suggested_selectors.first().cloned();
             }
             if related.role == "Button"
-                && related.name.as_ref().map_or(false, |name| {
-                    name.contains("dropdown") || name.contains("▼")
-                })
+                && related
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| name.contains("dropdown") || name.contains("▼"))
             {
                 return related.suggested_selectors.first().cloned();
             }
