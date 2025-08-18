@@ -169,10 +169,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let attrs = element.attributes();
 
                             // Element class name (from properties if available)
-                            if let Some(class_name_value) = attrs.properties.get("ClassName") {
-                                if let Some(serde_json::Value::String(class_name)) = class_name_value {
-                                    println!("│   │ Class: '{class_name}'");
-                                }
+                            if let Some(class_name) = attrs
+                                .properties
+                                .get("ClassName")
+                                .and_then(|v| v.as_ref())
+                                .and_then(|v| v.as_str())
+                            {
+                                println!("│   │ Class: '{class_name}'");
                             } else {
                                 println!("│   │ Class: <unknown>");
                             }
@@ -185,14 +188,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             // Element automation ID (from attributes if available)
-                            if let Some(serde_json::Value::String(aid)) = attrs.properties.get("AutomationId") {
+                            if let Some(aid) = attrs
+                                .properties
+                                .get("AutomationId")
+                                .and_then(|v| v.as_ref())
+                                .and_then(|v| v.as_str())
+                            {
                                 println!("│   │ Automation ID: '{aid}'");
                             }
 
                             // 📋 SHOW ALL TEXT-CONTAINING PROPERTIES
                             println!("│   │ ── ALL TEXT PROPERTIES ──");
                             for (key, value) in attrs.properties.iter() {
-                                if let Some(serde_json::Value::String(text_value)) = value {
+                                if let Some(text_value) = value.as_ref().and_then(|v| v.as_str()) {
                                     if !text_value.is_empty() && key != "ClassName" && key != "AutomationId" {
                                         println!("│   │ {key}: '{text_value}'");
                                     }
