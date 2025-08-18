@@ -29,7 +29,7 @@ mod tests {
                     _ => panic!("Second selector should be Nth(-1), got: {:?}", selectors[1]),
                 }
             }
-            _ => panic!("Should parse as Chain selector, got: {:?}", selector),
+            _ => panic!("Should parse as Chain selector, got: {selector:?}"),
         }
     }
 
@@ -48,16 +48,11 @@ mod tests {
             let selector = Selector::from(selector_str);
             match selector {
                 Selector::Nth(index) => {
-                    assert_eq!(
-                        index, expected_index,
-                        "Failed for selector: {}",
-                        selector_str
-                    );
+                    assert_eq!(index, expected_index, "Failed for selector: {selector_str}");
                 }
-                _ => panic!(
-                    "Should parse as Nth selector for '{}', got: {:?}",
-                    selector_str, selector
-                ),
+                _ => {
+                    panic!("Should parse as Nth selector for '{selector_str}', got: {selector:?}",)
+                }
             }
         }
     }

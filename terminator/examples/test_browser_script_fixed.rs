@@ -15,24 +15,24 @@ async fn main() -> Result<(), AutomationError> {
             for window in &windows {
                 if let Some(name) = window.name() {
                     if name.contains("Chrome") {
-                        println!("🌐 Found Chrome window: {}", name);
+                        println!("🌐 Found Chrome window: {name}");
 
                         // Test the browser script with a simple command
                         let test_script = "2 + 2";
-                        println!("🧮 Testing script: {}", test_script);
+                        println!("🧮 Testing script: {test_script}");
 
                         match terminator::browser_script::execute_script(window, test_script).await
                         {
                             Ok(result) => {
-                                println!("✅ Success! Result: {}", result);
+                                println!("✅ Success! Result: {result}");
                                 if result.contains("4") {
                                     println!("🎯 Correct mathematical result!");
                                 } else {
-                                    println!("⚠️ Unexpected result: {}", result);
+                                    println!("⚠️ Unexpected result: {result}");
                                 }
                             }
                             Err(e) => {
-                                println!("❌ Error: {}", e);
+                                println!("❌ Error: {e}");
                             }
                         }
                         break;
@@ -41,7 +41,7 @@ async fn main() -> Result<(), AutomationError> {
             }
         }
         Err(e) => {
-            println!("❌ Failed to find windows: {}", e);
+            println!("❌ Failed to find windows: {e}");
         }
     }
 

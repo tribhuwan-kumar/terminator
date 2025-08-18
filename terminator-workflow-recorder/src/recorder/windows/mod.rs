@@ -31,6 +31,17 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub mod structs;
 use structs::*;
 
+// Bundle related parameters for UIA button press handling to keep function signatures small
+struct ButtonPressContext<'a> {
+    position: &'a Position,
+    config: &'a WorkflowRecorderConfig,
+    current_text_input: &'a Arc<Mutex<Option<TextInputTracker>>>,
+    event_tx: &'a broadcast::Sender<WorkflowEvent>,
+    performance_last_event_time: &'a Arc<Mutex<Instant>>,
+    performance_events_counter: &'a Arc<Mutex<(u32, Instant)>>,
+    double_click_tracker: &'a Arc<Mutex<structs::DoubleClickTracker>>,
+}
+
 /// The Windows-specific recorder
 pub struct WindowsRecorder {
     /// The event sender
@@ -421,16 +432,16 @@ impl WindowsRecorder {
             for event_request in uia_event_rx {
                 match event_request {
                     UIAInputRequest::ButtonPress { button, position } => {
-                        Self::handle_button_press_request(
-                            button,
-                            &position,
-                            &uia_processor_config,
-                            &uia_processor_text_input,
-                            &uia_processor_event_tx,
-                            &uia_processor_last_event_time,
-                            &uia_processor_events_counter,
-                            &uia_processor_double_click_tracker,
-                        );
+                        let ctx = ButtonPressContext {
+                            position: &position,
+                            config: &uia_processor_config,
+                            current_text_input: &uia_processor_text_input,
+                            event_tx: &uia_processor_event_tx,
+                            performance_last_event_time: &uia_processor_last_event_time,
+                            performance_events_counter: &uia_processor_events_counter,
+                            double_click_tracker: &uia_processor_double_click_tracker,
+                        };
+                        Self::handle_button_press_request(button, &ctx);
                     }
                     UIAInputRequest::ButtonRelease { button, position } => {
                         Self::handle_button_release_request(
@@ -1757,27 +1768,18 @@ impl WindowsRecorder {
 
     /// Handles a button press request from the input listener thread.
     /// This function performs the UI Automation calls and is expected to run on a dedicated UIA thread.
-    fn handle_button_press_request(
-        button: MouseButton,
-        position: &Position,
-        config: &WorkflowRecorderConfig,
-        current_text_input: &Arc<Mutex<Option<TextInputTracker>>>,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        performance_last_event_time: &Arc<Mutex<Instant>>,
-        performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
-        double_click_tracker: &Arc<Mutex<structs::DoubleClickTracker>>,
-    ) {
+    fn handle_button_press_request(button: MouseButton, ctx: &ButtonPressContext) {
         // Check for double click first
         let current_time = Instant::now();
-        let is_double_click = if let Ok(mut tracker) = double_click_tracker.try_lock() {
-            tracker.is_double_click(button, *position, current_time)
+        let is_double_click = if let Ok(mut tracker) = ctx.double_click_tracker.try_lock() {
+            tracker.is_double_click(button, *ctx.position, current_time)
         } else {
             false
         };
 
-        let ui_element = if config.capture_ui_elements {
+        let ui_element = if ctx.config.capture_ui_elements {
             // Use deepest element finder for more precise click detection
-            Self::get_deepest_element_from_point_with_timeout(config, *position, 100)
+            Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 100)
         } else {
             None
         };
@@ -1787,7 +1789,7 @@ impl WindowsRecorder {
             let double_click_event = crate::MouseEvent {
                 event_type: crate::MouseEventType::DoubleClick,
                 button,
-                position: *position,
+                position: *ctx.position,
                 scroll_delta: None,
                 drag_start: None,
                 metadata: crate::EventMetadata {
@@ -1798,14 +1800,14 @@ impl WindowsRecorder {
 
             debug!(
                 "≡ƒû▒∩╕Å≡ƒû▒∩╕Å Double click detected: button={:?}, position=({}, {})",
-                button, position.x, position.y
+                button, ctx.position.x, ctx.position.y
             );
 
             Self::send_filtered_event_static(
-                event_tx,
-                config,
-                performance_last_event_time,
-                performance_events_counter,
+                ctx.event_tx,
+                ctx.config,
+                ctx.performance_last_event_time,
+                ctx.performance_events_counter,
                 WorkflowEvent::Mouse(double_click_event),
             );
         }
@@ -1816,13 +1818,13 @@ impl WindowsRecorder {
                 "Mouse down captured element: name='{}', role='{}', position=({}, {})",
                 element.name_or_empty(),
                 element.role(),
-                position.x,
-                position.y
+                ctx.position.x,
+                ctx.position.y
             );
         } else {
             debug!(
                 "Mouse down: No UI element captured at position ({}, {})",
-                position.x, position.y
+                ctx.position.x, ctx.position.y
             );
         }
 
@@ -1845,7 +1847,7 @@ impl WindowsRecorder {
                     element_name, element_role, is_text_input
                 );
 
-                if config.record_text_input_completion && is_text_input {
+                if ctx.config.record_text_input_completion && is_text_input {
                     info!(
                         "≡ƒÄ» Detected mouse click on text input element: '{}' (role: '{}') - STARTING TRACKING",
                         element_name, element_role
@@ -1883,7 +1885,7 @@ impl WindowsRecorder {
                     );
 
                     // Check if we have an active text input tracker that might be affected
-                    if let Ok(mut tracker) = current_text_input.try_lock() {
+                    if let Ok(mut tracker) = ctx.current_text_input.try_lock() {
                         debug!(
                             "≡ƒöÆ Successfully locked text input tracker, checking for active tracker..."
                         );
@@ -1929,8 +1931,9 @@ impl WindowsRecorder {
                                     "≡ƒöÑ Emitting text input completion for suggestion click: '{}'",
                                     text_event.text_value
                                 );
-                                if let Err(e) =
-                                    event_tx.send(WorkflowEvent::TextInputCompleted(text_event))
+                                if let Err(e) = ctx
+                                    .event_tx
+                                    .send(WorkflowEvent::TextInputCompleted(text_event))
                                 {
                                     debug!("Failed to send text input completion event: {}", e);
                                 } else {
@@ -1954,7 +1957,7 @@ impl WindowsRecorder {
 
                             // Try to find the text input element that was recently active
                             // Look for text input elements on the page
-                            if let Some(text_element) = Self::find_recent_text_input(config) {
+                            if let Some(text_element) = Self::find_recent_text_input(ctx.config) {
                                 debug!(
                                     "≡ƒöì Found recent text input element: '{}'",
                                     text_element.name_or_empty()
@@ -1987,8 +1990,9 @@ impl WindowsRecorder {
                                     "≡ƒöÑ Emitting text input completion from temp tracker: '{}'",
                                     text_event.text_value
                                 );
-                                if let Err(e) =
-                                    event_tx.send(WorkflowEvent::TextInputCompleted(text_event))
+                                if let Err(e) = ctx
+                                    .event_tx
+                                    .send(WorkflowEvent::TextInputCompleted(text_event))
                                 {
                                     debug!("Failed to send temp tracker completion event: {}", e);
                                 } else {
@@ -2033,7 +2037,7 @@ impl WindowsRecorder {
                     interaction_type,
                     element_role: element_role.clone(),
                     was_enabled: element.is_enabled().unwrap_or(true),
-                    click_position: Some(*position),
+                    click_position: Some(*ctx.position),
                     element_description: if element_desc.is_empty() {
                         None
                     } else {
@@ -2043,7 +2047,7 @@ impl WindowsRecorder {
                     metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
                 };
 
-                if let Err(e) = event_tx.send(WorkflowEvent::Click(click_event)) {
+                if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
                     debug!("Failed to send click event: {}", e);
                 } else {
                     debug!("Γ£à Click event sent successfully");
@@ -2054,7 +2058,7 @@ impl WindowsRecorder {
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Down,
             button,
-            position: *position,
+            position: *ctx.position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
@@ -2063,10 +2067,10 @@ impl WindowsRecorder {
             },
         };
         Self::send_filtered_event_static(
-            event_tx,
-            config,
-            performance_last_event_time,
-            performance_events_counter,
+            ctx.event_tx,
+            ctx.config,
+            ctx.performance_last_event_time,
+            ctx.performance_events_counter,
             WorkflowEvent::Mouse(mouse_event),
         );
     }

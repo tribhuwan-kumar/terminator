@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use std::time::Duration;
 use terminator::platforms::AccessibilityEngine;
 use terminator::Browser;
@@ -194,6 +195,9 @@ async fn test_url_title_extraction() -> Result<(), AutomationError> {
         "https://github.com",
     ];
 
+    static TITLE_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?is)<title>(.*?)</title>").unwrap());
+
     for url in test_urls {
         info!("Testing title extraction for: {}", url);
 
@@ -217,8 +221,7 @@ async fn test_url_title_extraction() -> Result<(), AutomationError> {
                     AutomationError::PlatformError(format!("Fetched url content is not valid: {e}"))
                 })?;
 
-            let title = regex::Regex::new(r"(?is)<title>(.*?)</title>")
-                .unwrap()
+            let title = TITLE_RE
                 .captures(&html)
                 .and_then(|caps| caps.get(1).map(|m| m.as_str().trim().to_string()))
                 .unwrap_or_default();

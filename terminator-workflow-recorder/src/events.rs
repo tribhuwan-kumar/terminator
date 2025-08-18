@@ -576,7 +576,7 @@ impl RecordedWorkflow {
 
                 // Collect semantic actions for notes
                 if let Some(ref semantic_action) = recorded_event.semantic_action {
-                    conversion_notes.push(format!("{}_{}", semantic_action, step_count));
+                    conversion_notes.push(format!("{semantic_action}_{step_count}"));
                 }
             }
         }

@@ -48,6 +48,12 @@ pub struct McpConverter {
     config: ConversionConfig,
 }
 
+impl Default for McpConverter {
+    fn default() -> Self {
+        Self::with_config(ConversionConfig::default())
+    }
+}
+
 impl McpConverter {
     /// Create a new MCP converter with default configuration
     pub fn new() -> Self {
@@ -330,12 +336,12 @@ impl McpConverter {
                 arguments: json!({
                     "url": url
                 }),
-                description: format!("Navigate to URL: {}", url),
+                description: format!("Navigate to URL: {url}"),
                 timeout_ms: Some(10000),
                 continue_on_error: Some(false),
                 delay_ms: Some(1000),
             });
-            notes.push(format!("Browser navigation to: {}", url));
+            notes.push(format!("Browser navigation to: {url}"));
         }
 
         Ok(ConversionResult {
@@ -365,10 +371,10 @@ impl McpConverter {
                 if !element_role.is_empty() {
                     if !element_name.is_empty() && element_name.len() > 2 {
                         // Use role and name for more specific targeting
-                        format!("role:{}|name:contains:{}", element_role, element_name)
+                        format!("role:{element_role}|name:contains:{element_name}")
                     } else {
                         // Use just role if no meaningful name
-                        format!("role:{}", element_role)
+                        format!("role:{element_role}")
                     }
                 } else {
                     // Fallback to Window if no role available
@@ -546,7 +552,7 @@ impl McpConverter {
             let element_selector = self.generate_element_selector(event);
 
             // Generate scoped selector: window >> element
-            format!("{} >> {}", window_selector, element_selector)
+            format!("{window_selector} >> {element_selector}")
         } else {
             // Fallback to basic selector if no window context
             self.generate_element_selector(event)
@@ -562,7 +568,7 @@ impl McpConverter {
     ) -> String {
         // Desktop-specific window selector
         if self.is_desktop_context(app_name, window_title) {
-            return format!("role:{}|name:Desktop", window_role);
+            return format!("role:{window_role}|name:Desktop");
         }
 
         // CHROME-SPECIFIC FIX: Override detected role for Chrome applications
@@ -581,14 +587,14 @@ impl McpConverter {
 
         // Extract meaningful title part from window title
         if let Some(title_part) = self.extract_meaningful_title(window_title) {
-            format!("role:{}|name:contains:{}", role, title_part)
+            format!("role:{role}|name:contains:{title_part}")
         } else {
             // App name-based window selector for regular applications
             match app_name.to_lowercase().as_str() {
-                name if name.contains("chrome") => format!("role:{}|name:contains:Chrome", role),
-                name if name.contains("firefox") => format!("role:{}|name:contains:Firefox", role),
-                name if name.contains("edge") => format!("role:{}|name:contains:Edge", role),
-                _ => format!("role:{}|name:contains:{}", role, app_name),
+                name if name.contains("chrome") => format!("role:{role}|name:contains:Chrome"),
+                name if name.contains("firefox") => format!("role:{role}|name:contains:Firefox"),
+                name if name.contains("edge") => format!("role:{role}|name:contains:Edge"),
+                _ => format!("role:{role}|name:contains:{app_name}"),
             }
         }
     }
@@ -605,7 +611,7 @@ impl McpConverter {
                 format!("role:{}|name:{}", event.element_role, child_text)
             } else {
                 // Text is too verbose, try text selector
-                format!("text:{}", child_text)
+                format!("text:{child_text}")
             }
         } else {
             // No usable text, use role-only selector
@@ -629,7 +635,7 @@ impl McpConverter {
                 "selector": selector,
                 "timeout_ms": 2000
             }),
-            description: format!("Activate {} window", app_name),
+            description: format!("Activate {app_name} window"),
             timeout_ms: Some(2000),
             continue_on_error: Some(false),
             delay_ms: Some(100),
@@ -688,7 +694,7 @@ impl McpConverter {
     ) -> String {
         // Desktop-specific activation
         if self.is_desktop_context(app_name, window_title) {
-            return format!("role:{}|name:Desktop", window_role);
+            return format!("role:{window_role}|name:Desktop");
         }
 
         // Use the ACTUAL detected role instead of hardcoding "Window"
@@ -700,14 +706,14 @@ impl McpConverter {
 
         // Extract meaningful title part from window title
         if let Some(title_part) = self.extract_meaningful_title(window_title) {
-            format!("role:{}|name:contains:{}", role, title_part)
+            format!("role:{role}|name:contains:{title_part}")
         } else {
             // App name-based activation for regular applications
             match app_name.to_lowercase().as_str() {
-                name if name.contains("chrome") => format!("role:{}|name:contains:Chrome", role),
-                name if name.contains("firefox") => format!("role:{}|name:contains:Firefox", role),
-                name if name.contains("edge") => format!("role:{}|name:contains:Edge", role),
-                _ => format!("role:{}|name:{}", role, app_name),
+                name if name.contains("chrome") => format!("role:{role}|name:contains:Chrome"),
+                name if name.contains("firefox") => format!("role:{role}|name:contains:Firefox"),
+                name if name.contains("edge") => format!("role:{role}|name:contains:Edge"),
+                _ => format!("role:{role}|name:{app_name}"),
             }
         }
     }
@@ -791,7 +797,7 @@ impl McpConverter {
                     arguments: json!({
                         "selector": format!("contains:{}", child_text)
                     }),
-                    description: format!("Click element containing text: {}", child_text),
+                    description: format!("Click element containing text: {child_text}"),
                     timeout_ms: Some(5000),
                     continue_on_error: Some(false),
                     delay_ms: Some(200),
@@ -1016,7 +1022,7 @@ impl McpConverter {
                 "text_to_type": partial_text,
                 "clear_before_typing": true
             }),
-            description: format!("Type '{}' to trigger autocomplete", partial_text),
+            description: format!("Type '{partial_text}' to trigger autocomplete"),
             timeout_ms: Some(3000),
             continue_on_error: Some(false),
             delay_ms: Some(500),

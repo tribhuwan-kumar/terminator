@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("│   App: {}", ui_element.application_name());
                             println!("│   Element Role: {}", ui_element.role());
                             if let Some(name) = ui_element.name() {
-                                println!("│   Element Name: '{}'", name);
+                                println!("│   Element Name: '{name}'");
                             }
                         }
                     }
@@ -112,10 +112,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                          WorkflowEvent::BrowserTabNavigation(nav_event) => {
                          println!("│ 🌐 BROWSER NAVIGATION");
                          if let Some(ref url) = nav_event.to_url {
-                             println!("│   URL: {}", url);
+                             println!("│   URL: {url}");
                          }
                          if let Some(ref title) = nav_event.to_title {
-                             println!("│   Title: {}", title);
+                             println!("│   Title: {title}");
                          }
                          println!("│   Action: {:?}", nav_event.action);
                      }
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             );
 
                             if let Some(ch) = kb_event.character {
-                                println!("│ ⌨️  KEYBOARD: {}{}", modifiers, ch);
+                                println!("│ ⌨️  KEYBOARD: {modifiers}{ch}");
                             } else {
                                 println!("│ ⌨️  KEYBOARD: {}Key({})", modifiers, kb_event.key_code);
                             }
@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Element name
                             let name = element.name().unwrap_or_default();
                             if !name.is_empty() {
-                                println!("│   │ Name: '{}'", name);
+                                println!("│   │ Name: '{name}'");
                             } else {
                                 println!("│   │ Name: <empty>");
                             }
@@ -160,7 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Element role/control type
                             let role = element.role();
                             if !role.is_empty() {
-                                println!("│   │ Role/Type: '{}'", role);
+                                println!("│   │ Role/Type: '{role}'");
                             } else {
                                 println!("│   │ Role/Type: <unknown>");
                             }
@@ -171,7 +171,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Element class name (from properties if available)
                             if let Some(class_name_value) = attrs.properties.get("ClassName") {
                                 if let Some(serde_json::Value::String(class_name)) = class_name_value {
-                                    println!("│   │ Class: '{}'", class_name);
+                                    println!("│   │ Class: '{class_name}'");
                                 }
                             } else {
                                 println!("│   │ Class: <unknown>");
@@ -180,15 +180,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Element description
                             if let Some(description) = &attrs.description {
                                 if !description.is_empty() {
-                                    println!("│   │ Description: '{}'", description);
+                                    println!("│   │ Description: '{description}'");
                                 }
                             }
 
                             // Element automation ID (from attributes if available)
-                            if let Some(automation_id_value) = attrs.properties.get("AutomationId") {
-                                if let Some(serde_json::Value::String(aid)) = automation_id_value {
-                                    println!("│   │ Automation ID: '{}'", aid);
-                                }
+                            if let Some(serde_json::Value::String(aid)) = attrs.properties.get("AutomationId") {
+                                println!("│   │ Automation ID: '{aid}'");
                             }
 
                             // 📋 SHOW ALL TEXT-CONTAINING PROPERTIES
@@ -196,7 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             for (key, value) in attrs.properties.iter() {
                                 if let Some(serde_json::Value::String(text_value)) = value {
                                     if !text_value.is_empty() && key != "ClassName" && key != "AutomationId" {
-                                        println!("│   │ {}: '{}'", key, text_value);
+                                        println!("│   │ {key}: '{text_value}'");
                                     }
                                 }
                             }
@@ -204,19 +202,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Check for additional properties that might contain search text
                             if let Some(Some(serde_json::Value::String(localized_type))) = attrs.properties.get("LocalizedControlType") {
                                 if !localized_type.is_empty() {
-                                    println!("│   │ LocalizedControlType: '{}'", localized_type);
+                                    println!("│   │ LocalizedControlType: '{localized_type}'");
                                 }
                             }
 
                             if let Some(Some(serde_json::Value::String(access_key))) = attrs.properties.get("AccessKey") {
                                 if !access_key.is_empty() {
-                                    println!("│   │ AccessKey: '{}'", access_key);
+                                    println!("│   │ AccessKey: '{access_key}'");
                                 }
                             }
 
                             // Element enabled state
                             if let Ok(is_enabled) = element.is_enabled() {
-                                println!("│   │ Enabled: {}", is_enabled);
+                                println!("│   │ Enabled: {is_enabled}");
                             }
 
                             // Element bounds
@@ -234,7 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 || role.contains("radiobutton")
                                 || role.contains("togglebutton");
 
-                            println!("│   │ Clickable (current logic): {}", is_clickable_by_current_logic);
+                            println!("│   │ Clickable (current logic): {is_clickable_by_current_logic}");
 
                             // Show if this element would be detected as clickable with expanded rules
                             let is_clickable_expanded = is_clickable_by_current_logic
@@ -255,7 +253,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     _ => {
-                        println!("│ 📋 OTHER: {:?}", event);
+                        println!("│ 📋 OTHER: {event:?}");
                     }
                 }
 
@@ -268,7 +266,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if result.primary_sequence.is_empty() {
                             println!("No sequence generated");
                         } else {
-                            println!("");
+                            println!();
                             println!("│   Action: {}", result.semantic_action);
                             println!("│   Steps: {}", result.primary_sequence.len());
 
@@ -276,10 +274,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("│   {}. {} -> {}", i+1, step.tool_name, step.description);
                                 println!("│      Args: {}", step.arguments);
                                 if let Some(timeout) = step.timeout_ms {
-                                    println!("│      Timeout: {}ms", timeout);
+                                    println!("│      Timeout: {timeout}ms");
                                 }
                                 if let Some(delay) = step.delay_ms {
-                                    println!("│      Delay: {}ms", delay);
+                                    println!("│      Delay: {delay}ms");
                                 }
                             }
 
@@ -293,12 +291,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Err(e) => {
-                        println!("❌ Failed: {}", e);
+                        println!("❌ Failed: {e}");
                     }
                 }
 
                 println!("└─────────────────────────────────────────────");
-                println!("");
+                println!();
             }
 
             _ = ctrl_c() => {

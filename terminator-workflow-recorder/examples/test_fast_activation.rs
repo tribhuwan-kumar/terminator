@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     let result = converter.convert_event(&workflow_event, None).await?;
     let conversion_duration = start.elapsed();
 
-    println!("✅ Conversion completed in {:?}", conversion_duration);
+    println!("✅ Conversion completed in {conversion_duration:?}");
     println!();
 
     // Display the generated sequence
@@ -43,10 +43,10 @@ async fn main() -> anyhow::Result<()> {
             serde_json::to_string_pretty(&step.arguments)?
         );
         if let Some(timeout) = step.timeout_ms {
-            println!("    Timeout: {}ms", timeout);
+            println!("    Timeout: {timeout}ms");
         }
         if let Some(delay) = step.delay_ms {
-            println!("    Delay: {}ms", delay);
+            println!("    Delay: {delay}ms");
         }
         println!();
     }
@@ -54,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
     // Display conversion notes
     println!("📝 Conversion notes:");
     for note in result.conversion_notes {
-        println!("  • {}", note);
+        println!("  • {note}");
     }
     println!();
 
@@ -78,8 +78,8 @@ async fn main() -> anyhow::Result<()> {
     for app in test_apps {
         let fallback = converter.generate_stable_fallback_selector(app);
         match fallback {
-            Some(selector) => println!("  {} → {}", app, selector),
-            None => println!("  {} → (no fallback)", app),
+            Some(selector) => println!("  {app} → {selector}"),
+            None => println!("  {app} → (no fallback)"),
         }
     }
 
