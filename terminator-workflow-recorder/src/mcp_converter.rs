@@ -248,7 +248,9 @@ impl McpConverter {
             tool_name: "click_element".to_string(),
             arguments: json!({
                 "selector": selector,
-                "timeout_ms": 3000
+                "timeout_ms": 3000,
+                "include_tree": false,
+                "include_detailed_attributes": false
             }),
             description: format!(
                 "Click '{}' element",
