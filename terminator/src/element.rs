@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Debug;
-use tracing::{instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use super::{ClickResult, Locator};
 
@@ -910,6 +910,142 @@ impl UIElement {
     }
 
     // Convenience methods to reduce verbosity with optional properties
+
+    /// Scrolls until the element is visible within its window viewport.
+    ///
+    /// Strategy:
+    /// - If already visible, returns immediately.
+    /// - Otherwise, estimates direction based on the element vs window bounds and
+    ///   issues small scroll steps using the existing `scroll` implementation
+    ///   (which finds a scrollable ancestor and uses UIScrollPattern or key fallbacks).
+    /// - Re-checks visibility and bounds after each step and stops when visible
+    ///   or when the maximum number of steps is reached.
+    pub fn scroll_into_view(&self) -> Result<(), AutomationError> {
+        // Configuration tuned for reliability without over-scrolling
+        const MAX_STEPS: usize = 24; // up to ~24 directional adjustments
+        const STEP_AMOUNT: f64 = 1.0; // single unit: LargeIncrement/Decrement or PageUp/Down fallback
+
+        // Helper: check whether element intersects window bounds (best-effort viewport proxy)
+        fn intersects(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> bool {
+            let (ax, ay, aw, ah) = a;
+            let (bx, by, bw, bh) = b;
+            let a_right = ax + aw;
+            let a_bottom = ay + ah;
+            let b_right = bx + bw;
+            let b_bottom = by + bh;
+            ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
+        }
+
+        // Initial snapshot for diagnostics
+        let init_visible = self.is_visible().unwrap_or(false);
+        let init_bounds = self.bounds().ok();
+        let window_bounds = self.window().ok().flatten().and_then(|w| w.bounds().ok());
+
+        debug!(
+            "scroll_into_view:start visible={:?} elem_bounds={:?} window_bounds={:?}",
+            init_visible, init_bounds, window_bounds
+        );
+
+        // Fast path
+        if init_visible {
+            return Ok(());
+        }
+
+        // Iteratively adjust
+        let mut steps_taken: usize = 0;
+        loop {
+            // Refresh visibility and geometry each iteration
+            let visible = self.is_visible().unwrap_or(false);
+            let elem_bounds = match self.bounds() {
+                Ok(b) => b,
+                Err(e) => {
+                    warn!("scroll_into_view:failed_to_get_bounds error={}", e);
+                    return Err(e);
+                }
+            };
+
+            // If visible and, when available, intersecting the window area, we are done
+            if visible {
+                if let Some(wb) = window_bounds {
+                    if intersects(elem_bounds, wb) {
+                        info!(
+                            "scroll_into_view:done steps_taken={} final_bounds={:?}",
+                            steps_taken, elem_bounds
+                        );
+                        return Ok(());
+                    }
+                } else {
+                    info!(
+                        "scroll_into_view:done (no window bounds) steps_taken={} final_bounds={:?}",
+                        steps_taken, elem_bounds
+                    );
+                    return Ok(());
+                }
+            }
+
+            // Determine scroll directions based on position relative to window bounds (if available)
+            let mut vertical_dir: Option<&'static str> = None;
+            let mut horizontal_dir: Option<&'static str> = None;
+
+            if let Some((wx, wy, ww, wh)) = window_bounds {
+                let (ex, ey, ew, eh) = elem_bounds;
+                // Vertical
+                if ey + eh <= wy {
+                    // Element is above the viewport -> scroll up
+                    vertical_dir = Some("up");
+                } else if ey >= wy + wh {
+                    // Element is below the viewport -> scroll down
+                    vertical_dir = Some("down");
+                }
+                // Horizontal (best effort)
+                if ex + ew <= wx {
+                    horizontal_dir = Some("left");
+                } else if ex >= wx + ww {
+                    horizontal_dir = Some("right");
+                }
+            } else {
+                // Without window bounds, attempt a sensible default sequence
+                // Try down first (common case), then up; we alternate if no progress.
+                vertical_dir = Some(if steps_taken % 2 == 0 { "down" } else { "up" });
+            }
+
+            // Perform one vertical step if needed
+            if let Some(dir) = vertical_dir {
+                debug!(
+                    "scroll_into_view:vertical_step dir={} step={} amount={}",
+                    dir,
+                    steps_taken + 1,
+                    STEP_AMOUNT
+                );
+                // Ignore individual step errors and continue to try alternate axes
+                let _ = self.scroll(dir, STEP_AMOUNT);
+                steps_taken += 1;
+            }
+
+            // Perform one horizontal step if needed (after vertical)
+            if let Some(dir) = horizontal_dir {
+                debug!(
+                    "scroll_into_view:horizontal_step dir={} step={} amount={}",
+                    dir,
+                    steps_taken + 1,
+                    STEP_AMOUNT
+                );
+                let _ = self.scroll(dir, STEP_AMOUNT);
+                steps_taken += 1;
+            }
+
+            // Safety cap
+            if steps_taken >= MAX_STEPS {
+                return Err(AutomationError::Timeout(format!(
+                    "scroll_into_view: exceeded max steps ({}). elem_bounds={:?} window_bounds={:?}",
+                    MAX_STEPS, elem_bounds, window_bounds
+                )));
+            }
+
+            // Small delay to allow the UI to update between scrolls
+            std::thread::sleep(std::time::Duration::from_millis(60));
+        }
+    }
 
     /// Get element ID or empty string if not available
     pub fn id_or_empty(&self) -> String {

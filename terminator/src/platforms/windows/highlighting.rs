@@ -1,7 +1,9 @@
 //! Element highlighting functionality for Windows
 
 use super::types::{FontStyle, HighlightHandle, TextPosition};
+use crate::platforms::windows::utils::convert_uiautomation_element_to_terminator;
 use crate::AutomationError;
+use crate::UIElement as TerminatorElement;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -34,6 +36,16 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 const OVERLAY_CLASS_NAME: PCWSTR = w!("TerminatorHighlightOverlay");
 
+fn rects_intersect(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> bool {
+    let (ax, ay, aw, ah) = a;
+    let (bx, by, bw, bh) = b;
+    let ar = ax + aw;
+    let ab = ay + ah;
+    let br = bx + bw;
+    let bb = by + bh;
+    ax < br && ar > bx && ay < bb && ab > by
+}
+
 /// Implementation of element highlighting for Windows UI elements
 pub fn highlight(
     element: Arc<UIElement>,
@@ -43,7 +55,31 @@ pub fn highlight(
     text_position: Option<TextPosition>,
     font_style: Option<FontStyle>,
 ) -> Result<HighlightHandle, AutomationError> {
-    // Get the element's bounding rectangle (without focusing to avoid changing cursor position)
+    // Best-effort: ensure element is in view before computing bounds
+    // Wrap UIA element into our cross-platform UIElement and use the helper
+    let wrapped: TerminatorElement =
+        convert_uiautomation_element_to_terminator(element.as_ref().clone());
+    // Determine if element intersects window viewport; if not, try to scroll it into view
+    let mut need_scroll = false;
+    if let Ok((ex, ey, ew, eh)) = wrapped.bounds() {
+        if let Ok(Some(win)) = wrapped.window() {
+            if let Ok((wx, wy, ww, wh)) = win.bounds() {
+                let e_box = (ex as i32, ey as i32, ew as i32, eh as i32);
+                let w_box = (wx as i32, wy as i32, ww as i32, wh as i32);
+                if !rects_intersect(e_box, w_box) {
+                    need_scroll = true;
+                }
+            }
+        }
+    } else if !wrapped.is_visible().unwrap_or(true) {
+        need_scroll = true;
+    }
+    if need_scroll {
+        info!("highlight: element outside viewport; attempting scroll_into_view()");
+        let _ = wrapped.scroll_into_view();
+    }
+
+    // Get the (possibly updated) element bounding rectangle
     let rect = element.get_bounding_rectangle().map_err(|e| {
         AutomationError::PlatformError(format!("Failed to get element bounds: {e}"))
     })?;
