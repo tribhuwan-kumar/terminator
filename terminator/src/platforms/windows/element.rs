@@ -279,68 +279,109 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn click(&self) -> Result<ClickResult, AutomationError> {
+        // Pre-snapshot (cheap, no tree):
+        let pre_window_title = self
+            .window()
+            .ok()
+            .flatten()
+            .map(|w| w.name_or_empty())
+            .unwrap_or_default();
+        let pre_bounds = self.bounds().ok();
+        let pre_enabled = self.is_enabled().unwrap_or(false);
+        let pre_visible = self.is_visible().unwrap_or(false);
+        let pre_focused = self.is_focused().unwrap_or(false);
+
         self.element.0.try_focus();
         debug!("attempting to click element: {:?}", self.element.0);
 
-        let click_result = self.element.0.click();
+        // Decide click path and execute it
+        let method: String;
+        let mut coordinates: Option<(f64, f64)> = None;
+        let path_used: String;
 
-        if click_result.is_ok() {
-            return Ok(ClickResult {
-                method: "Single Click".to_string(),
-                coordinates: None,
-                details: "Clicked by Mouse".to_string(),
-            });
-        }
-        // First try using the standard clickable point
-        let click_result = self
-            .element
-            .0
-            .get_clickable_point()
-            .and_then(|maybe_point| {
-                if let Some(point) = maybe_point {
-                    debug!("using clickable point: {:?}", point);
-                    let mouse = Mouse::default();
-                    mouse.click(point).map(|_| ClickResult {
-                        method: "Single Click (Clickable Point)".to_string(),
-                        coordinates: Some((point.get_x() as f64, point.get_y() as f64)),
-                        details: "Clicked by Mouse using element's clickable point".to_string(),
-                    })
-                } else {
-                    Err(
-                        AutomationError::PlatformError("No clickable point found".to_string())
-                            .to_string()
-                            .into(),
-                    )
-                }
-            });
-
-        // If first method fails, try using the bounding rectangle
-        if click_result.is_err() {
-            debug!("clickable point unavailable, falling back to bounding rectangle");
-            if let Ok(rect) = self.element.0.get_bounding_rectangle() {
-                println!("bounding rectangle: {rect:?}");
-                // Calculate center point of the element
-                let center_x = rect.get_left() + rect.get_width() / 2;
-                let center_y = rect.get_top() + rect.get_height() / 2;
-
-                let point = Point::new(center_x, center_y);
-                let mouse = Mouse::default();
-
-                debug!("clicking at center point: ({}, {})", center_x, center_y);
-                mouse
-                    .click(point)
-                    .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-
-                return Ok(ClickResult {
-                    method: "Single Click (Fallback)".to_string(),
-                    coordinates: Some((center_x as f64, center_y as f64)),
-                    details: "Clicked by Mouse using element's center coordinates".to_string(),
+        // 1) Try native/UIA click
+        if self.element.0.click().is_ok() {
+            method = "Single Click".to_string();
+            path_used = "Native".to_string();
+        } else {
+            // 2) Try clickable point
+            let clickable_attempt = self
+                .element
+                .0
+                .get_clickable_point()
+                .and_then(|maybe_point| {
+                    if let Some(point) = maybe_point {
+                        debug!("using clickable point: {:?}", point);
+                        let mouse = Mouse::default();
+                        mouse.click(point).map(|_| (point.get_x(), point.get_y()))
+                    } else {
+                        Err(
+                            AutomationError::PlatformError("No clickable point found".to_string())
+                                .to_string()
+                                .into(),
+                        )
+                    }
                 });
+
+            if let Ok((x, y)) = clickable_attempt {
+                method = "Single Click (Clickable Point)".to_string();
+                coordinates = Some((x as f64, y as f64));
+                path_used = "ClickablePoint".to_string();
+            } else {
+                // 3) Fallback to center-of-bounds
+                debug!("clickable point unavailable, falling back to bounding rectangle");
+                if let Ok(rect) = self.element.0.get_bounding_rectangle() {
+                    println!("bounding rectangle: {rect:?}");
+                    let center_x = rect.get_left() + rect.get_width() / 2;
+                    let center_y = rect.get_top() + rect.get_height() / 2;
+                    let point = Point::new(center_x, center_y);
+                    let mouse = Mouse::default();
+                    debug!("clicking at center point: ({}, {})", center_x, center_y);
+                    mouse
+                        .click(point)
+                        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+                    method = "Single Click (Fallback)".to_string();
+                    coordinates = Some((center_x as f64, center_y as f64));
+                    path_used = "CenterFallback".to_string();
+                } else {
+                    return Err(AutomationError::PlatformError(
+                        "Failed to determine bounding rectangle for fallback click".to_string(),
+                    ));
+                }
             }
         }
 
-        // Return the result of the first attempt or propagate the error
-        click_result.map_err(|e| AutomationError::PlatformError(e.to_string()))
+        // Brief stabilization delay and post-snapshot (still cheap)
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let post_window_title = self
+            .window()
+            .ok()
+            .flatten()
+            .map(|w| w.name_or_empty())
+            .unwrap_or_default();
+        let post_bounds = self.bounds().ok();
+        let post_enabled = self.is_enabled().unwrap_or(false);
+        let post_visible = self.is_visible().unwrap_or(false);
+        let post_focused = self.is_focused().unwrap_or(false);
+
+        // Derived signals
+        let window_title_changed = pre_window_title != post_window_title;
+        let target_focus_changed = pre_focused != post_focused;
+        let bounds_changed = match (pre_bounds, post_bounds) {
+            (Some(a), Some(b)) => a != b,
+            _ => false,
+        };
+
+        // Encode structured facts in details (keep type stable)
+        let details = format!(
+            "path={path_used}; pre_title='{pre_window_title}'; post_title='{post_window_title}'; pre_enabled={pre_enabled}; post_enabled={post_enabled}; pre_visible={pre_visible}; post_visible={post_visible}; pre_focused={pre_focused}; post_focused={post_focused}; window_title_changed={window_title_changed}; target_focus_changed={target_focus_changed}; bounds_changed={bounds_changed}; pre_bounds={pre_bounds:?}; post_bounds={post_bounds:?}"
+        );
+
+        Ok(ClickResult {
+            method,
+            coordinates,
+            details,
+        })
     }
 
     fn double_click(&self) -> Result<ClickResult, AutomationError> {

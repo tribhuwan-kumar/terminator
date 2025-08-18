@@ -602,7 +602,7 @@ impl DesktopWrapper {
             }
         };
 
-        let ((_, element), successful_selector) =
+        let ((click_result, element), successful_selector) =
             crate::utils::find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -629,6 +629,11 @@ impl DesktopWrapper {
             "action": "click",
             "status": "success",
             "selector_used": successful_selector,
+            "click_result": {
+                "method": click_result.method,
+                "coordinates": click_result.coordinates,
+                "details": click_result.details,
+            },
             "element": {
                 "role": element.role(),
                 "name": element.name(),
@@ -656,10 +661,26 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<PressKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
+        tracing::info!(
+            "[press_key] Called with selector: '{}', key: '{}'",
+            args.selector,
+            args.key
+        );
+
         let key_to_press = args.key.clone();
-        let action = move |element: UIElement| {
-            let key_to_press = key_to_press.clone();
-            async move { element.press_key(&key_to_press) }
+        let action = {
+            let highlight_config = args.highlight_before_action.clone();
+            move |element: UIElement| {
+                let key_to_press = key_to_press.clone();
+                let highlight_config = highlight_config.clone();
+                async move {
+                    // Apply highlighting before action if configured
+                    Self::apply_highlight_before_action(&element, highlight_config.as_ref(), "key");
+
+                    // Execute the key press action
+                    element.press_key(&key_to_press)
+                }
+            }
         };
 
         let ((_result, element), successful_selector) =
