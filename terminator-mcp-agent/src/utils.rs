@@ -197,7 +197,9 @@ pub struct PressKeyArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
-    #[schemars(description = "Optional highlighting configuration to visually indicate the target element before pressing keys")]
+    #[schemars(
+        description = "Optional highlighting configuration to visually indicate the target element before pressing keys"
+    )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
 }
 
@@ -564,6 +566,10 @@ pub struct ScrollElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Optional highlighting configuration to visually indicate the target element before scrolling"
+    )]
+    pub highlight_before_action: Option<ActionHighlightConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
