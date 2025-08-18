@@ -529,6 +529,46 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         tracing::info!("[click_element] Called with selector: '{}'", args.selector);
 
+        let action = {
+            let highlight_config = args.highlight_before_action.clone();
+            move |element: UIElement| {
+                let highlight_config = highlight_config.clone();
+                async move {
+                    // Fire highlight before action if configured
+                    if let Some(ref config) = highlight_config {
+                        if config.enabled {
+                            let duration = config.duration_ms.map(std::time::Duration::from_millis);
+                            let color = config.color;
+                            let text = config.text.as_deref();
+
+                            #[cfg(target_os = "windows")]
+                            let text_position = config.text_position.clone().map(|pos| pos.into());
+                            #[cfg(not(target_os = "windows"))]
+                            let text_position = None;
+
+                            #[cfg(target_os = "windows")]
+                            let font_style = config.font_style.clone().map(|style| style.into());
+                            #[cfg(not(target_os = "windows"))]
+                            let font_style = None;
+
+                            tracing::info!(target: "mcp.click_highlight", "HIGHLIGHT_BEFORE_CLICK duration={:?}", duration);
+                            let _highlight_handle = element.highlight(
+                                color,
+                                duration,
+                                text,
+                                text_position,
+                                font_style,
+                            )?;
+                            // Don't await - let highlight run concurrently with click
+                        }
+                    }
+
+                    // Immediately execute the click action
+                    element.click()
+                }
+            }
+        };
+
         let ((_, element), successful_selector) =
             crate::utils::find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -537,7 +577,7 @@ impl DesktopWrapper {
                 args.fallback_selectors.as_deref(),
                 args.timeout_ms,
                 args.retries,
-                |el| async move { el.click() },
+                action,
             )
             .await
             .map_err(|e| {

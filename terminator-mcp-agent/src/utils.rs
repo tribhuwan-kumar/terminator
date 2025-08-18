@@ -131,6 +131,10 @@ pub struct ClickElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Optional highlighting configuration to visually indicate the target element before clicking"
+    )]
+    pub highlight_before_action: Option<ActionHighlightConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -1219,6 +1223,40 @@ pub struct HighlightConfig {
     pub label_position: Option<TextPosition>,
     /// Font style for event type labels
     pub label_style: Option<FontStyle>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ActionHighlightConfig {
+    /// Enable visual highlighting before action execution
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Duration in milliseconds for the highlight (default: 500ms)
+    pub duration_ms: Option<u64>,
+    /// Border color in BGR format (default: 0x00FF00 - green)
+    pub color: Option<u32>,
+    /// Optional text to display as overlay
+    pub text: Option<String>,
+    /// Position of text overlay relative to highlighted element
+    pub text_position: Option<TextPosition>,
+    /// Font style for text overlay
+    pub font_style: Option<FontStyle>,
+}
+
+impl Default for ActionHighlightConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            duration_ms: Some(500),
+            color: Some(0x00FF00), // Green in BGR for actions
+            text: None,
+            text_position: Some(TextPosition::Top),
+            font_style: Some(FontStyle {
+                size: 12,
+                bold: true,
+                color: 0xFFFFFF, // White text
+            }),
+        }
+    }
 }
 
 fn default_true() -> bool {
