@@ -5,14 +5,14 @@ use crate::scripting_engine;
 use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
-    get_timeout, ActivateElementArgs, ClickElementArgs, CloseElementArgs, DelayArgs,
-    ExecuteBrowserScriptArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs, GetApplicationsArgs,
-    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs,
-    ImportWorkflowSequenceArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
-    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
-    RunJavascriptArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs,
-    SetToggledArgs, SetValueArgs, SetZoomArgs, TypeIntoElementArgs, ValidateElementArgs,
-    WaitForElementArgs, ZoomArgs,
+    get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
+    DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs,
+    GetApplicationsArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs,
+    HighlightElementArgs, ImportWorkflowSequenceArgs, LocatorArgs, MaximizeWindowArgs,
+    MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
+    RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs, ScrollElementArgs, SelectOptionArgs,
+    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
@@ -401,6 +401,44 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
+    /// Helper function to apply highlighting before an action if configured
+    fn apply_highlight_before_action(
+        element: &UIElement,
+        highlight_config: Option<&ActionHighlightConfig>,
+        action_name: &str,
+    ) {
+        if let Some(config) = highlight_config {
+            if config.enabled {
+                let duration = config.duration_ms.map(std::time::Duration::from_millis);
+                let color = config.color;
+                let text = config.text.as_deref();
+
+                #[cfg(target_os = "windows")]
+                let text_position = config.text_position.clone().map(|pos| pos.into());
+                #[cfg(not(target_os = "windows"))]
+                let text_position = None;
+
+                #[cfg(target_os = "windows")]
+                let font_style = config.font_style.clone().map(|style| style.into());
+                #[cfg(not(target_os = "windows"))]
+                let font_style = None;
+
+                tracing::info!(
+                    "HIGHLIGHT_BEFORE_{} duration={:?}",
+                    action_name.to_uppercase(),
+                    duration
+                );
+                if let Ok(_highlight_handle) =
+                    element.highlight(color, duration, text, text_position, font_style)
+                {
+                    // Highlight applied successfully - runs concurrently with action
+                } else {
+                    tracing::warn!("Failed to apply highlighting before {} action", action_name);
+                }
+            }
+        }
+    }
+
     #[tool(
         description = "Types text into a UI element with smart clipboard optimization and verification. Much faster than press key. This action requires the application to be focused and may change the UI."
     )]
@@ -422,34 +460,12 @@ impl DesktopWrapper {
                 let text_to_type = text_to_type.clone();
                 let highlight_config = highlight_config.clone();
                 async move {
-                    // Fire highlight before action if configured
-                    if let Some(ref config) = highlight_config {
-                        if config.enabled {
-                            let duration = config.duration_ms.map(std::time::Duration::from_millis);
-                            let color = config.color;
-                            let text = config.text.as_deref();
-
-                            #[cfg(target_os = "windows")]
-                            let text_position = config.text_position.clone().map(|pos| pos.into());
-                            #[cfg(not(target_os = "windows"))]
-                            let text_position = None;
-
-                            #[cfg(target_os = "windows")]
-                            let font_style = config.font_style.clone().map(|style| style.into());
-                            #[cfg(not(target_os = "windows"))]
-                            let font_style = None;
-
-                            tracing::info!(target: "mcp.type_highlight", "HIGHLIGHT_BEFORE_TYPE duration={:?}", duration);
-                            let _highlight_handle = element.highlight(
-                                color,
-                                duration,
-                                text,
-                                text_position,
-                                font_style,
-                            )?;
-                            // Don't await - let highlight run concurrently with typing
-                        }
-                    }
+                    // Apply highlighting before action if configured
+                    Self::apply_highlight_before_action(
+                        &element,
+                        highlight_config.as_ref(),
+                        "type",
+                    );
 
                     // Execute the typing action
                     if should_clear {
@@ -573,34 +589,12 @@ impl DesktopWrapper {
             move |element: UIElement| {
                 let highlight_config = highlight_config.clone();
                 async move {
-                    // Fire highlight before action if configured
-                    if let Some(ref config) = highlight_config {
-                        if config.enabled {
-                            let duration = config.duration_ms.map(std::time::Duration::from_millis);
-                            let color = config.color;
-                            let text = config.text.as_deref();
-
-                            #[cfg(target_os = "windows")]
-                            let text_position = config.text_position.clone().map(|pos| pos.into());
-                            #[cfg(not(target_os = "windows"))]
-                            let text_position = None;
-
-                            #[cfg(target_os = "windows")]
-                            let font_style = config.font_style.clone().map(|style| style.into());
-                            #[cfg(not(target_os = "windows"))]
-                            let font_style = None;
-
-                            tracing::info!(target: "mcp.click_highlight", "HIGHLIGHT_BEFORE_CLICK duration={:?}", duration);
-                            let _highlight_handle = element.highlight(
-                                color,
-                                duration,
-                                text,
-                                text_position,
-                                font_style,
-                            )?;
-                            // Don't await - let highlight run concurrently with click
-                        }
-                    }
+                    // Apply highlighting before action if configured
+                    Self::apply_highlight_before_action(
+                        &element,
+                        highlight_config.as_ref(),
+                        "click",
+                    );
 
                     // Immediately execute the click action
                     element.click()
