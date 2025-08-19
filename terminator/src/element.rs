@@ -1037,8 +1037,7 @@ impl UIElement {
             // Safety cap
             if steps_taken >= MAX_STEPS {
                 return Err(AutomationError::Timeout(format!(
-                    "scroll_into_view: exceeded max steps ({}). elem_bounds={:?} window_bounds={:?}",
-                    MAX_STEPS, elem_bounds, window_bounds
+                    "scroll_into_view: exceeded max steps ({MAX_STEPS}). elem_bounds={elem_bounds:?} window_bounds={window_bounds:?}"
                 )));
             }
 
