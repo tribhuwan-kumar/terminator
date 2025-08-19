@@ -16,6 +16,14 @@ use tracing_subscriber::EnvFilter;
 pub struct EmptyArgs {}
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct StopHighlightingArgs {
+    #[schemars(
+        description = "Optional specific highlight ID to stop. If omitted, stops all active highlights."
+    )]
+    pub highlight_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DelayArgs {
     #[schemars(description = "Number of milliseconds to delay")]
     pub delay_ms: u64,
@@ -41,6 +49,8 @@ pub struct DesktopWrapper {
     pub tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
     #[serde(skip)]
     pub recorder: Arc<Mutex<Option<terminator_workflow_recorder::WorkflowRecorder>>>,
+    #[serde(skip)]
+    pub active_highlights: Arc<Mutex<Vec<terminator::HighlightHandle>>>,
 }
 
 impl Default for DesktopWrapper {
@@ -312,6 +322,10 @@ pub struct HighlightElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include detailed element info in the response. Defaults to false for speed."
+    )]
+    pub include_element_info: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

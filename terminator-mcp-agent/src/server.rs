@@ -14,6 +14,7 @@ use crate::utils::{
     SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
     TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
+use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
@@ -195,6 +196,7 @@ impl DesktopWrapper {
             desktop: Arc::new(desktop),
             tool_router: Self::tool_router(),
             recorder: Arc::new(Mutex::new(None)),
+            active_highlights: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -1111,29 +1113,32 @@ impl DesktopWrapper {
         let action = {
             move |element: UIElement| {
                 let color = color;
-                let duration = duration;
-                let text_position = text_position;
-                let font_style = font_style.clone();
+                let local_duration = duration;
+                let local_text_position = text_position;
+                let local_font_style = font_style.clone();
                 async move {
-                    let _handle =
-                        element.highlight(color, duration, text, text_position, font_style)?;
-                    // Keep the highlight visible for the requested duration before dropping the handle
-                    let sleep_duration = duration.unwrap_or(std::time::Duration::from_millis(1000));
-                    tracing::info!(target: "mcp.highlight", "KEEP_VISIBLE_MS={}", sleep_duration.as_millis());
-                    tokio::time::sleep(sleep_duration).await;
-                    tracing::info!(target: "mcp.highlight", "DONE_VISIBLE");
-                    Ok(())
+                    let handle = element.highlight(
+                        color,
+                        local_duration,
+                        text,
+                        local_text_position,
+                        local_font_style,
+                    )?;
+                    Ok(handle)
                 }
             }
         };
 
-        let ((_result, element), successful_selector) =
+        // Use a shorter default timeout for highlight to avoid long waits
+        let effective_timeout_ms = args.timeout_ms.or(Some(1000));
+
+        let ((handle, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
                 args.alternative_selectors.as_deref(),
                 args.fallback_selectors.as_deref(),
-                args.timeout_ms,
+                effective_timeout_ms,
                 args.retries,
                 action,
             )
@@ -1148,12 +1153,23 @@ impl DesktopWrapper {
                 )),
             }?;
 
-        let element_info = build_element_info(&element);
+        // Register handle and schedule cleanup
+        {
+            let mut list = self.active_highlights.lock().await;
+            list.push(handle);
+        }
+        let active_highlights_clone = self.active_highlights.clone();
+        let expire_after = args.duration_ms.unwrap_or(1000);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(expire_after)).await;
+            let mut list = active_highlights_clone.lock().await;
+            let _ = list.pop();
+        });
 
+        // Build minimal response by default; gate heavy element info behind flag
         let mut result_json = json!({
             "action": "highlight_element",
             "status": "success",
-            "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "color": args.color.unwrap_or(0x0000FF),
@@ -1161,9 +1177,14 @@ impl DesktopWrapper {
             "visibility": { "requested_ms": args.duration_ms.unwrap_or(1000) },
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
+
+        if args.include_element_info.unwrap_or(false) {
+            let element_info = build_element_info(&element);
+            result_json["element"] = element_info;
+        }
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1396,7 +1417,7 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(false),
+            args.include_tree.unwrap_or(true),
             args.include_detailed_attributes,
             ui_element.process_id().ok(),
             &mut result_json,
@@ -2116,11 +2137,10 @@ impl DesktopWrapper {
                     if highlight_config.enabled {
                         let mut event_stream = recorder.event_stream();
                         let highlight_cfg = highlight_config.clone();
+                        let active_highlights = self.active_highlights.clone();
 
                         // Spawn a task to highlight elements as events are captured
                         tokio::spawn(async move {
-                            use futures::StreamExt;
-
                             while let Some(event) = event_stream.next().await {
                                 // Get the UI element from the event metadata
                                 let ui_element = match &event {
@@ -2173,7 +2193,7 @@ impl DesktopWrapper {
                                     };
 
                                     // Highlight the element with the configured settings
-                                    let _ = ui_element.highlight(
+                                    if let Ok(handle) = ui_element.highlight(
                                         highlight_cfg.color,
                                         highlight_cfg.duration_ms.map(Duration::from_millis),
                                         if highlight_cfg.show_labels {
@@ -2189,7 +2209,22 @@ impl DesktopWrapper {
                                         highlight_cfg.label_style.clone().map(|style| style.into()),
                                         #[cfg(not(target_os = "windows"))]
                                         None,
-                                    );
+                                    ) {
+                                        // Track handle and schedule cleanup
+                                        {
+                                            let mut list = active_highlights.lock().await;
+                                            list.push(handle);
+                                        }
+                                        let active_highlights_clone = active_highlights.clone();
+                                        let expire_after = highlight_cfg.duration_ms.unwrap_or(500);
+                                        tokio::spawn(async move {
+                                            tokio::time::sleep(Duration::from_millis(expire_after))
+                                                .await;
+                                            let mut list = active_highlights_clone.lock().await;
+                                            // Natural expiry: drop one handle (LIFO best-effort)
+                                            let _ = list.pop();
+                                        });
+                                    }
                                 }
                             }
                         });
@@ -2307,6 +2342,29 @@ impl DesktopWrapper {
                 Some(json!({ "provided_action": args.action })),
             )),
         }
+    }
+
+    #[tool(
+        description = "Stops active element highlights immediately. If an ID is provided, stops that specific highlight; otherwise stops all."
+    )]
+    async fn stop_highlighting(
+        &self,
+        Parameters(_args): Parameters<crate::utils::StopHighlightingArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        // Current minimal implementation ignores highlight_id and stops all tracked highlights
+        let mut list = self.active_highlights.lock().await;
+        let mut stopped = 0usize;
+        while let Some(handle) = list.pop() {
+            handle.close();
+            stopped += 1;
+        }
+        let response = json!({
+            "action": "stop_highlighting",
+            "status": "success",
+            "highlights_stopped": stopped,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        Ok(CallToolResult::success(vec![Content::json(response)?]))
     }
 
     #[tool(
