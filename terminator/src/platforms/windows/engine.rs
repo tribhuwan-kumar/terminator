@@ -1328,78 +1328,55 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                // Start with all elements matching the first selector in the chain.
-                let mut current_results = self.find_elements(&selectors[0], root, timeout, None)?;
+                // For find_element with chain, we want to find FIRST element at each step
+                // This is much faster than finding ALL elements and then picking first
+                debug!(
+                    "Processing chain selector in find_element mode (optimized single-element search)"
+                );
 
-                // Sequentially apply the rest of the selectors.
+                // Find the FIRST element matching the first selector (not ALL)
+                let mut current_element = self.find_element(&selectors[0], root, timeout)?;
+
+                // Sequentially apply the rest of the selectors, finding FIRST match each time
                 for (i, selector) in selectors.iter().skip(1).enumerate() {
-                    if current_results.is_empty() {
-                        // If at any point we have no results, the chain is broken.
-                        return Err(AutomationError::ElementNotFound(format!(
-                            "Selector chain broke at step {}: '{:?}' found no elements from the previous step's results.",
-                            i + 1,
-                            selector
-                        )));
-                    }
+                    debug!(
+                        "Chain step {}: searching for {:?} within element",
+                        i + 1,
+                        selector
+                    );
 
-                    if let Selector::Nth(index) = selector {
-                        let mut i = *index;
-                        let len = current_results.len();
-
-                        if i < 0 {
-                            // Handle negative index
-                            i += len as i32;
-                        }
-
-                        if i >= 0 && (i as usize) < len {
-                            // Filter down to the single element at the specified index.
-                            let selected = current_results.remove(i as usize);
-                            current_results = vec![selected];
-                        } else {
-                            // Index out of bounds, no elements match.
-                            current_results.clear();
-                        }
+                    // Special handling for Nth selector
+                    if let Selector::Nth(_index) = selector {
+                        // Nth selector in a chain doesn't make sense for find_element
+                        // since we're already working with a single element at each step.
+                        // This would be like saying "find the first matching Pane, then get the Nth child"
+                        // which is ambiguous. The user should use find_elements if they want Nth behavior.
+                        return Err(AutomationError::InvalidArgument(
+                            "Nth selector in chain is not supported for find_element. Use find_elements for indexed access.".to_string()
+                        ));
                     } else {
-                        // For other selectors, find all children that match from the current set of results.
-                        let mut next_results = Vec::new();
-                        for element_root in &current_results {
-                            // Use a shorter timeout for sub-queries to avoid long delays on non-existent elements mid-chain.
-                            let sub_timeout = Some(Duration::from_millis(1000));
-                            match self.find_elements(
-                                selector,
-                                Some(element_root),
-                                sub_timeout,
-                                None, // Default depth for sub-queries
-                            ) {
-                                Ok(elements) => next_results.extend(elements),
-                                Err(AutomationError::ElementNotFound(_)) => {
-                                    // It's okay if one branch of the search finds nothing, continue with others.
-                                }
-                                Err(e) => return Err(e), // Propagate other critical errors.
+                        // For other selectors, find the FIRST child that matches
+                        // Use a shorter timeout for sub-queries to avoid long delays
+                        let sub_timeout = Some(Duration::from_millis(1000));
+
+                        match self.find_element(selector, Some(&current_element), sub_timeout) {
+                            Ok(element) => {
+                                current_element = element;
+                            }
+                            Err(e) => {
+                                return Err(AutomationError::ElementNotFound(format!(
+                                    "Selector chain broke at step {}: '{:?}' found no element within the previous result. Error: {}",
+                                    i + 1,
+                                    selector,
+                                    e
+                                )));
                             }
                         }
-                        current_results = next_results;
                     }
                 }
 
-                // After the chain, we expect exactly one element for find_element.
-                // If multiple elements are found, take the first one (useful for click actions)
-                if current_results.len() == 1 {
-                    Ok(current_results.remove(0))
-                } else if current_results.len() > 1 {
-                    debug!(
-                        "Selector chain `{:?}` resolved to {} elements, using the first one.",
-                        selectors,
-                        current_results.len()
-                    );
-                    Ok(current_results.remove(0)) // Take the first element
-                } else {
-                    Err(AutomationError::ElementNotFound(format!(
-                        "Selector chain `{:?}` resolved to {} elements, but expected at least 1.",
-                        selectors,
-                        current_results.len(),
-                    )))
-                }
+                // Return the final element in the chain
+                Ok(current_element)
             }
             Selector::ClassName(classname) => {
                 debug!("searching element by class name: {}", classname);
