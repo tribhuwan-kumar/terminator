@@ -923,7 +923,7 @@ impl UIElement {
     pub fn scroll_into_view(&self) -> Result<(), AutomationError> {
         // Configuration tuned for reliability without over-scrolling
         const MAX_STEPS: usize = 24; // up to ~24 directional adjustments
-        const STEP_AMOUNT: f64 = 1.0; // single unit: LargeIncrement/Decrement or PageUp/Down fallback
+        const STEP_AMOUNT: f64 = 0.5; // Reduced from 1.0 to avoid over-scrolling - uses smaller increments
 
         // Helper: check whether element intersects window bounds (best-effort viewport proxy)
         fn intersects(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> bool {

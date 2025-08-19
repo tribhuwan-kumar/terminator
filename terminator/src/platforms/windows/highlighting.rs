@@ -135,6 +135,88 @@ pub fn highlight(
                 // info!("highlight: scroll_into_view failed: {e}");
             } else {
                 // info!("highlight: scroll_into_view succeeded");
+
+                // After initial scroll, verify element position and adjust if needed
+                std::thread::sleep(Duration::from_millis(50)); // Let initial scroll settle
+
+                if let Ok((_ex, ey, _ew, eh)) = wrapped.bounds() {
+                    // info!("highlight: after scroll_into_view, element at y={ey}");
+
+                    // Define optimal viewport zones (assuming typical 1080p screen)
+                    const VIEWPORT_TOP_EDGE: f64 = 100.0; // Too close to top
+                    const VIEWPORT_OPTIMAL_BOTTOM: f64 = 700.0; // Good zone ends here
+                    const VIEWPORT_BOTTOM_EDGE: f64 = 900.0; // Too close to bottom
+
+                    // Check if we have window bounds for more accurate positioning
+                    let mut needs_adjustment = false;
+                    let mut adjustment_direction: Option<&str> = None;
+
+                    if let Ok(Some(window)) = wrapped.window() {
+                        if let Ok((_wx, wy, _ww, wh)) = window.bounds() {
+                            // We have window bounds - use precise positioning
+                            let element_relative_y = ey - wy;
+                            let element_bottom = element_relative_y + eh;
+
+                            // info!("highlight: element relative_y={element_relative_y}, window_height={wh}");
+
+                            // Check if element is poorly positioned
+                            if element_relative_y < 50.0 {
+                                // Too close to top - scroll up a bit
+                                // info!("highlight: element too close to top ({element_relative_y}px)");
+                                needs_adjustment = true;
+                                adjustment_direction = Some("up");
+                            } else if element_bottom > wh - 50.0 {
+                                // Too close to bottom or cut off - scroll down a bit
+                                // info!("highlight: element too close to bottom or cut off");
+                                needs_adjustment = true;
+                                adjustment_direction = Some("down");
+                            } else if element_relative_y > wh * 0.7 {
+                                // Element is in lower 30% of viewport - not ideal
+                                // info!("highlight: element in lower portion of viewport");
+                                needs_adjustment = true;
+                                adjustment_direction = Some("down");
+                            }
+                        } else {
+                            // No window bounds - use heuristic based on absolute Y position
+                            if ey < VIEWPORT_TOP_EDGE {
+                                // info!("highlight: element at y={ey} < {VIEWPORT_TOP_EDGE}, too high");
+                                needs_adjustment = true;
+                                adjustment_direction = Some("up");
+                            } else if ey > VIEWPORT_BOTTOM_EDGE {
+                                // info!("highlight: element at y={ey} > {VIEWPORT_BOTTOM_EDGE}, too low");
+                                needs_adjustment = true;
+                                adjustment_direction = Some("down");
+                            } else if ey > VIEWPORT_OPTIMAL_BOTTOM {
+                                // Element is lower than optimal but not at edge
+                                // info!("highlight: element at y={ey} lower than optimal");
+                                needs_adjustment = true;
+                                adjustment_direction = Some("down");
+                            }
+                        }
+                    } else {
+                        // No window available - use simple heuristics
+                        if ey < VIEWPORT_TOP_EDGE || ey > VIEWPORT_BOTTOM_EDGE {
+                            needs_adjustment = true;
+                            adjustment_direction =
+                                Some(if ey < VIEWPORT_TOP_EDGE { "up" } else { "down" });
+                        }
+                    }
+
+                    // Perform fine adjustment if needed
+                    if needs_adjustment {
+                        if let Some(direction) = adjustment_direction {
+                            // info!("highlight: performing fine adjustment scroll {direction}");
+                            // Use smaller scroll amount for fine adjustment (0.3 = ~3 lines)
+                            let _ = wrapped.scroll(direction, 0.3);
+                            std::thread::sleep(Duration::from_millis(50));
+
+                            // Check final position
+                            if let Ok((_, _final_y, _, _)) = wrapped.bounds() {
+                                // info!("highlight: final position after adjustment: y={_final_y}");
+                            }
+                        }
+                    }
+                }
             }
         }
     }

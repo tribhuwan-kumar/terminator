@@ -37,20 +37,39 @@ impl ScrollFallback for WindowsUIElement {
             ))
         })?;
 
+        // For small amounts (<=0.5), use arrow keys for finer control
+        // For larger amounts, use page up/down for efficiency
+        let use_arrow_keys = amount <= 0.5;
+
         match direction {
             "up" | "down" => {
-                let times = amount.abs().round().max(1.0) as usize;
-                let key = if direction == "up" {
-                    "{page_up}"
+                if use_arrow_keys {
+                    // Use arrow keys for fine scrolling (3-5 lines typically)
+                    let times = (amount * 6.0).round().max(3.0) as usize; // ~3-5 arrow key presses
+                    let key = if direction == "up" { "{up}" } else { "{down}" };
+                    for _ in 0..times {
+                        self.press_key(key)?;
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
                 } else {
-                    "{page_down}"
-                };
-                for _ in 0..times {
-                    self.press_key(key)?;
+                    // Use page keys for larger scrolls
+                    let times = amount.abs().round().max(1.0) as usize;
+                    let key = if direction == "up" {
+                        "{page_up}"
+                    } else {
+                        "{page_down}"
+                    };
+                    for _ in 0..times {
+                        self.press_key(key)?;
+                    }
                 }
             }
             "left" | "right" => {
-                let times = amount.abs().round().max(1.0) as usize;
+                let times = if use_arrow_keys {
+                    (amount * 6.0).round().max(3.0) as usize
+                } else {
+                    amount.abs().round().max(1.0) as usize
+                };
                 let key = if direction == "left" {
                     "{left}"
                 } else {
@@ -58,6 +77,9 @@ impl ScrollFallback for WindowsUIElement {
                 };
                 for _ in 0..times {
                     self.press_key(key)?;
+                    if use_arrow_keys {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
                 }
             }
             _ => {
@@ -872,22 +894,43 @@ impl UIElementImpl for WindowsUIElement {
         if let Some(target_element) = scrollable_element {
             // 2. Use ScrollPattern to scroll with enhanced direction support
             if let Ok(scroll_pattern) = target_element.get_pattern::<patterns::UIScrollPattern>() {
+                // Map scroll amount to appropriate ScrollAmount enum
+                // For amounts <= 0.5, use SmallIncrement/Decrement for finer control
+                // For amounts > 0.5, use LargeIncrement/Decrement
+                let use_small_scroll = amount <= 0.5;
+
                 let (h_amount, v_amount) =
                     match direction {
                         "up" => (
                             uiautomation::types::ScrollAmount::NoAmount,
-                            uiautomation::types::ScrollAmount::LargeDecrement,
+                            if use_small_scroll {
+                                uiautomation::types::ScrollAmount::SmallDecrement
+                            } else {
+                                uiautomation::types::ScrollAmount::LargeDecrement
+                            },
                         ),
                         "down" => (
                             uiautomation::types::ScrollAmount::NoAmount,
-                            uiautomation::types::ScrollAmount::LargeIncrement,
+                            if use_small_scroll {
+                                uiautomation::types::ScrollAmount::SmallIncrement
+                            } else {
+                                uiautomation::types::ScrollAmount::LargeIncrement
+                            },
                         ),
                         "left" => (
-                            uiautomation::types::ScrollAmount::LargeDecrement,
+                            if use_small_scroll {
+                                uiautomation::types::ScrollAmount::SmallDecrement
+                            } else {
+                                uiautomation::types::ScrollAmount::LargeDecrement
+                            },
                             uiautomation::types::ScrollAmount::NoAmount,
                         ),
                         "right" => (
-                            uiautomation::types::ScrollAmount::LargeIncrement,
+                            if use_small_scroll {
+                                uiautomation::types::ScrollAmount::SmallIncrement
+                            } else {
+                                uiautomation::types::ScrollAmount::LargeIncrement
+                            },
                             uiautomation::types::ScrollAmount::NoAmount,
                         ),
                         _ => return Err(AutomationError::InvalidArgument(
