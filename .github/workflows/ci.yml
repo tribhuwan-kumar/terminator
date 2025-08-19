@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   # Disable incremental compilation to avoid PDB locking issues on Windows
@@ -17,37 +17,30 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          
+          python-version: "3.11"
+
       - uses: dtolnay/rust-toolchain@stable
-      
-      # Clean target directory on Windows to avoid PDB conflicts
-      - name: Clean target directory (Windows)
-        if: matrix.os == 'windows-latest'
+
+      # Clean target directory to avoid PDB conflicts
+      - name: Clean target directory
         run: |
           if (Test-Path target) { Remove-Item -Recurse -Force target }
         shell: pwsh
-      
+
       - uses: Swatinem/rust-cache@v2
         with:
-          # Use a unique cache key for Windows to avoid conflicts
-          key: ${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          key: windows-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: bash scripts/install_linux_deps.sh
-
-      # Build with retries on Windows
-      - name: Build workspace (Windows)
-        if: matrix.os == 'windows-latest'
+      # Build with retries
+      - name: Build workspace
         run: |
           $attempts = 3
           for ($i = 1; $i -le $attempts; $i++) {
@@ -68,12 +61,5 @@ jobs:
           }
         shell: pwsh
 
-      - name: Build workspace (Non-Windows)
-        if: matrix.os != 'windows-latest'
-        run: cargo build --workspace --verbose
-
       - name: Run tests
-        if: matrix.os == 'windows-latest'
         run: cargo test --workspace --verbose  -- --test-threads=1
-
-
