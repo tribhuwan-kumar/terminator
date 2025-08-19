@@ -195,7 +195,7 @@ pub fn highlight(
                         }
                     } else {
                         // No window available - use simple heuristics
-                        if ey < VIEWPORT_TOP_EDGE || ey > VIEWPORT_BOTTOM_EDGE {
+                        if !(VIEWPORT_TOP_EDGE..=VIEWPORT_BOTTOM_EDGE).contains(&ey) {
                             needs_adjustment = true;
                             adjustment_direction =
                                 Some(if ey < VIEWPORT_TOP_EDGE { "up" } else { "down" });
