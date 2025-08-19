@@ -46,6 +46,56 @@ const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
     "arc", "explorer",
 ];
 
+/// Determines if we should use shallow search for application-level containers
+/// Returns true when searching for named Panes/Windows from desktop root
+fn should_use_shallow_search(role: &str, name: &Option<String>, root: Option<&UIElement>) -> bool {
+    // Only optimize when searching from desktop (no root specified)
+    if root.is_some() {
+        return false;
+    }
+
+    // Check if we're searching for a container type (Pane/Window/Application)
+    let is_container = matches!(
+        role.to_lowercase().as_str(),
+        "pane" | "window" | "application"
+    );
+
+    // Must have a name filter - unnamed containers search would return too many results
+    let has_name = name.is_some();
+
+    // Use shallow search for named containers at desktop level
+    // These are typically application windows or browser tabs that are near the root
+    is_container && has_name
+}
+
+/// Calculate appropriate search depth based on selector type and context
+fn calculate_search_depth(
+    role: &str,
+    name: &Option<String>,
+    root: Option<&UIElement>,
+    default_depth: Option<usize>,
+) -> u32 {
+    let should_optimize = should_use_shallow_search(role, name, root);
+    let final_depth = if should_optimize {
+        info!(
+            "🚀 OPTIMIZED: Using shallow search (depth=5) for container: role={}, name={:?}, root_provided={}", 
+            role, name, root.is_some()
+        );
+        5 // Most application containers are within 5 levels of desktop
+    } else {
+        let depth = default_depth.unwrap_or(50) as u32;
+        debug!(
+            "Standard search (depth={}) for: role={}, name={:?}, root_provided={}",
+            depth,
+            role,
+            name,
+            root.is_some()
+        );
+        depth
+    };
+    final_depth
+}
+
 // Helper function to get process name by PID using native Windows API
 pub fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
     unsafe {
@@ -447,17 +497,19 @@ impl AccessibilityEngine for WindowsEngine {
         match selector {
             Selector::Role { role, name } => {
                 let win_control_type = map_generic_role_to_win_roles(role);
+                // Use optimized depth for containers when appropriate
+                let actual_depth = calculate_search_depth(role, name, root, depth);
+
                 debug!(
-                    "searching elements by role: {:?} (from: {}), name_filter: {:?}, depth: {:?}, timeout: {}ms, within: {:?}",
+                    "searching elements by role: {:?} (from: {}), name_filter: {:?}, depth: {:?} (actual: {}), timeout: {}ms, within: {:?}",
                     win_control_type,
                     role,
                     name,
                     depth,
+                    actual_depth,
                     timeout_ms,
                     root_ele.get_name().unwrap_or_default()
                 );
-
-                let actual_depth = depth.unwrap_or(50) as u32;
 
                 let mut matcher_builder = self
                     .automation
@@ -1032,11 +1084,15 @@ impl AccessibilityEngine for WindowsEngine {
         match selector {
             Selector::Role { role, name } => {
                 let win_control_type = map_generic_role_to_win_roles(role);
+                // Use optimized depth for containers when appropriate
+                let actual_depth = calculate_search_depth(role, name, root, None);
+
                 debug!(
-                    "searching element by role: {:?} (from: {}), name_filter: {:?}, timeout: {}ms, within: {:?}",
+                    "searching element by role: {:?} (from: {}), name_filter: {:?}, depth: {}, timeout: {}ms, within: {:?}",
                     win_control_type,
                     role,
                     name,
+                    actual_depth,
                     timeout_ms,
                     root_ele.get_name().unwrap_or_default()
                 );
@@ -1047,7 +1103,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .create_matcher()
                     .from_ref(root_ele)
                     .control_type(win_control_type)
-                    .depth(50) // Default depth for find_element
+                    .depth(actual_depth)
                     .timeout(timeout_ms as u64);
 
                 if let Some(name) = name {
