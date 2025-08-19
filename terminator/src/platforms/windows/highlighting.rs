@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use uiautomation::UIElement;
 // Windows GDI imports
@@ -62,36 +62,104 @@ pub fn highlight(
     // Determine if element intersects window viewport; if not, try to scroll it into view
     let mut need_scroll = false;
     if let Ok((ex, ey, ew, eh)) = wrapped.bounds() {
+        // info!("highlight: element bounds: x={ex}, y={ey}, w={ew}, h={eh}");
+
+        // Try to get window bounds, but if that fails, use heuristics
         if let Ok(Some(win)) = wrapped.window() {
             if let Ok((wx, wy, ww, wh)) = win.bounds() {
+                // info!("highlight: window bounds: x={wx}, y={wy}, w={ww}, h={wh}");
                 let e_box = (ex as i32, ey as i32, ew as i32, eh as i32);
                 let w_box = (wx as i32, wy as i32, ww as i32, wh as i32);
                 if !rects_intersect(e_box, w_box) {
+                    // info!("highlight: element NOT in viewport, need scroll");
+                    need_scroll = true;
+                } else {
+                    // info!("highlight: element IS in viewport, no scroll needed");
+                }
+            } else {
+                // info!("highlight: could not get window bounds, using heuristic");
+                // Heuristic: if element Y > 1080 (typical viewport height), probably needs scroll
+                if ey > 1080.0 {
+                    // info!("highlight: element Y={ey} > 1080, assuming need scroll");
                     need_scroll = true;
                 }
             }
+        } else {
+            // info!("highlight: could not get window, using heuristic");
+            // Heuristic: if element Y > 1080 (typical viewport height), probably needs scroll
+            if ey > 1080.0 {
+                // info!("highlight: element Y={ey} > 1080, assuming need scroll");
+                need_scroll = true;
+            }
         }
     } else if !wrapped.is_visible().unwrap_or(true) {
+        // info!("highlight: element not visible, need scroll");
         need_scroll = true;
     }
     if need_scroll {
-        info!("highlight: element outside viewport; attempting scroll_into_view()");
-        let _ = wrapped.scroll_into_view();
+        // First try focusing the element to allow the application to auto-scroll it into view.
+        // info!("highlight: element outside viewport; attempting focus() to auto-scroll into view");
+        match wrapped.focus() {
+            Ok(()) => {
+                // Re-check visibility/intersection after focus
+                let mut still_offscreen = false;
+                if let Ok((_ex2, ey2, _ew2, _eh2)) = wrapped.bounds() {
+                    // info!("highlight: after focus(), element bounds: x={ex2}, y={ey2}, w={ew2}, h={eh2}");
+                    // Use same heuristic as before
+                    if ey2 > 1080.0 {
+                        // info!("highlight: after focus(), element Y={ey2} still > 1080");
+                        still_offscreen = true;
+                    } else {
+                        // info!("highlight: after focus(), element Y={ey2} now <= 1080, in view!");
+                    }
+                } else if !wrapped.is_visible().unwrap_or(true) {
+                    still_offscreen = true;
+                }
+                if !still_offscreen {
+                    // info!(
+                    //     "highlight: focus() brought element into view; skipping scroll_into_view"
+                    // );
+                    need_scroll = false;
+                } else {
+                    // info!("highlight: focus() did not bring element into view; will attempt scroll_into_view()");
+                }
+            }
+            Err(_e) => {
+                // info!("highlight: focus() failed: {e}; will attempt scroll_into_view()");
+            }
+        }
+
+        if need_scroll {
+            // info!("highlight: element outside viewport; attempting scroll_into_view()");
+            if let Err(_e) = wrapped.scroll_into_view() {
+                // info!("highlight: scroll_into_view failed: {e}");
+            } else {
+                // info!("highlight: scroll_into_view succeeded");
+            }
+        }
     }
 
     // Get the (possibly updated) element bounding rectangle
+    // First check what the wrapped element thinks its bounds are
+    if let Ok((_wx, _wy, _ww, _wh)) = wrapped.bounds() {
+        // info!("highlight: wrapped element final bounds: x={wx}, y={wy}, w={ww}, h={wh}");
+    }
+
+    // Small delay to let any scrolling animation settle
+    std::thread::sleep(Duration::from_millis(100));
+
     let rect = element.get_bounding_rectangle().map_err(|e| {
         AutomationError::PlatformError(format!("Failed to get element bounds: {e}"))
     })?;
 
-    // Debug: Log the rectangle bounds
-    debug!(
-        "Highlighting element at bounds: left={}, top={}, width={}, height={}",
-        rect.get_left(),
-        rect.get_top(),
-        rect.get_width(),
-        rect.get_height()
-    );
+    // Log the rectangle bounds - these are what we'll use for the highlight
+    // info!(
+    //     "highlight: UIAutomation element final bounds for overlay: left={}, top={}, width={}, height={}",
+    //     rect.get_left(),
+    //     rect.get_top(),
+    //     rect.get_width(),
+    //     rect.get_height()
+    // );
 
     // Try to get scale factor from focused window first, fall back to cursor position,
     // but allow disabling via env for debugging
@@ -108,6 +176,7 @@ pub fn highlight(
     let highlight_color = color.unwrap_or(DEFAULT_RED_COLOR);
 
     // Scale the coordinates and dimensions
+    // info!("highlight: applying scale_factor={scale_factor} to coordinates");
     let mut x = (rect.get_left() as f64 * scale_factor) as i32;
     let mut y = (rect.get_top() as f64 * scale_factor) as i32;
     let mut width = (rect.get_width() as f64 * scale_factor) as i32;
@@ -120,10 +189,10 @@ pub fn highlight(
         )));
     }
 
-    debug!(
-        "Scaled highlight coordinates: x={}, y={}, width={}, height={}, scale_factor={}",
-        x, y, width, height, scale_factor
-    );
+    // info!(
+    //     "highlight: scaled coordinates for overlay: x={}, y={}, width={}, height={}",
+    //     x, y, width, height
+    // );
 
     // Validate coordinates against virtual screen bounds; if out-of-bounds, fallback to no-DPI scaling
     let vs_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
@@ -135,10 +204,10 @@ pub fn highlight(
         || x + width > vs_x + vs_w + 100
         || y + height > vs_y + vs_h + 100;
     if out_of_bounds && (scale_factor - 1.0).abs() > f64::EPSILON {
-        info!(
-            "DPI fallback: coords out of virtual screen (vs: {},{} {}x{}). Using unscaled bounds.",
-            vs_x, vs_y, vs_w, vs_h
-        );
+        // info!(
+        //     "DPI fallback: coords out of virtual screen (vs: {},{} {}x{}). Using unscaled bounds.",
+        //     vs_x, vs_y, vs_w, vs_h
+        // );
         x = rect.get_left();
         y = rect.get_top();
         width = rect.get_width();
@@ -170,7 +239,7 @@ pub fn highlight(
         let start_time = Instant::now();
         let duration = duration.unwrap_or(Duration::from_millis(3000)); // Default 3 seconds
 
-        info!("OVERLAY_THREAD_START duration_ms={}", duration.as_millis());
+        // info!("OVERLAY_THREAD_START duration_ms={}", duration.as_millis());
 
         // Compute overlay extents and draw overlay window content
         let mut overlay_x = x;
@@ -246,10 +315,10 @@ pub fn highlight(
         // or when a subsequent highlight replaces it. Avoid explicit DestroyWindow
         // here to reduce flakiness if the caller drops the handle early.
 
-        info!(
-            "OVERLAY_THREAD_DONE elapsed_ms={}",
-            start_time.elapsed().as_millis()
-        );
+        // info!(
+        //     "OVERLAY_THREAD_DONE elapsed_ms={}",
+        //     start_time.elapsed().as_millis()
+        // );
     });
 
     Ok(HighlightHandle {

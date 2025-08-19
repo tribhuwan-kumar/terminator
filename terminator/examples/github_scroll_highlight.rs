@@ -1,16 +1,6 @@
 use std::time::Duration;
 use terminator::{AutomationError, Desktop, FontStyle, TextPosition};
 
-fn rects_intersect(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> bool {
-    let (ax, ay, aw, ah) = a;
-    let (bx, by, bw, bh) = b;
-    let a_right = ax + aw;
-    let a_bottom = ay + ah;
-    let b_right = bx + bw;
-    let b_bottom = by + bh;
-    ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
-}
-
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
     // 1) Open GitHub

@@ -3,6 +3,8 @@ use terminator::{AutomationError, Desktop, FontStyle, TextPosition};
 
 #[tokio::main]
 async fn main() -> Result<(), AutomationError> {
+    // Initialize logging
+    tracing_subscriber::fmt::init();
     // 1) Open Amazon homepage
     let desktop = Desktop::new(false, false)?;
     let app = desktop.open_url("https://www.amazon.com/", None)?;
@@ -44,14 +46,7 @@ async fn main() -> Result<(), AutomationError> {
         println!("Selector: {selector_used}\nElement bounds: <unavailable>");
     }
 
-    // 5) Force scroll into view to ensure the element is visible before highlighting
-    println!("FORCE_SCROLL start");
-    if let Err(e) = element.scroll_into_view() {
-        eprintln!("scroll_into_view failed: {e}");
-    }
-    println!("FORCE_SCROLL done");
-
-    // 6) Highlight (fast jump-based scroll is already attempted in preview, but we've ensured visibility)
+    // 5) Highlight (uses internal pre-scroll if element is offscreen)
     let font_style = FontStyle {
         size: 14,
         bold: true,
