@@ -128,9 +128,9 @@ async fn main() -> Result<(), AutomationError> {
                     window_titles.push(window_title);
                 }
             }
-            Err(e) => {
+            Err(_e) => {
                 #[cfg(debug_assertions)]
-                eprintln!("[DEBUG] Failed to get windows for app '{app_title}': {e}");
+                eprintln!("[DEBUG] Failed to get windows for app '{app_title}': {_e}");
             }
         }
 
