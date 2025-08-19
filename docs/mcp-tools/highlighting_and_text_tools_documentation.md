@@ -23,7 +23,7 @@ Highlights an element with a colored border and optional text overlay for visual
 | `text_position`               | enum    | No       | -          | Position of text relative to element               |
 | `font_style`                  | object  | No       | -          | Font styling options                               |
 | `timeout_ms`                  | number  | No       | -          | Timeout for finding element                        |
-| `include_tree`                | boolean | No       | `true`     | Include UI tree in response                        |
+| `include_tree`                | boolean | No       | `false`    | Include UI tree in response                        |
 | `include_detailed_attributes` | boolean | No       | -          | Include detailed element attributes                |
 | `retries`                     | number  | No       | -          | Number of retries for finding element              |
 

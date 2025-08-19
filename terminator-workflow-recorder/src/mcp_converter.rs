@@ -112,55 +112,7 @@ impl McpConverter {
             }
         }?;
 
-        Ok(self.apply_include_tree_defaults(result))
-    }
-
-    /// Ensure include_tree and include_detailed_attributes are disabled for heavy-response tools
-    fn apply_include_tree_defaults(&self, mut result: ConversionResult) -> ConversionResult {
-        use serde_json::Value as JsonValue;
-
-        // Tools for which we want include_tree=false by default to keep responses light
-        const NO_TREE_TOOLS: &[&str] = &[
-            "type_into_element",
-            "click_element",
-            "validate_element",
-            "capture_element_screenshot",
-            "highlight_element",
-            "wait_for_element",
-            "set_value",
-            "set_range_value",
-            "is_selected",
-            "is_toggled",
-            "set_selected",
-            "set_toggled",
-            "mouse_drag",
-            "close_element",
-            "activate_element",
-            "execute_browser_script",
-        ];
-
-        fn patch_args(args: &mut JsonValue) {
-            if let Some(map) = args.as_object_mut() {
-                map.entry("include_tree").or_insert(json!(false));
-                map.entry("include_detailed_attributes")
-                    .or_insert(json!(false));
-            }
-        }
-
-        for step in result.primary_sequence.iter_mut() {
-            if NO_TREE_TOOLS.contains(&step.tool_name.as_str()) {
-                patch_args(&mut step.arguments);
-            }
-        }
-        for seq in result.fallback_sequences.iter_mut() {
-            for step in seq.iter_mut() {
-                if NO_TREE_TOOLS.contains(&step.tool_name.as_str()) {
-                    patch_args(&mut step.arguments);
-                }
-            }
-        }
-
-        result
+        Ok(result)
     }
 
     /// Convert text input event to MCP sequence
@@ -298,9 +250,7 @@ impl McpConverter {
             tool_name: "click_element".to_string(),
             arguments: json!({
                 "selector": selector,
-                "timeout_ms": 3000,
-                "include_tree": false,
-                "include_detailed_attributes": false
+                "timeout_ms": 3000
             }),
             description: format!(
                 "Click '{}' element",
@@ -340,8 +290,7 @@ impl McpConverter {
         let mut arguments = json!({
             "selector": format!("application|{}", event.to_application),
             "timeout_ms": 800,
-            "include_tree": false,
-            "include_detailed_attributes": false,
+
             "retries": 0
         });
 
@@ -364,7 +313,7 @@ impl McpConverter {
             "Application switch method: {:?}",
             event.switch_method
         ));
-        notes.push("Optimized for speed: include_tree=false, timeout=800ms, retries=0".to_string());
+        notes.push("Optimized for speed: timeout=800ms, retries=0".to_string());
 
         Ok(ConversionResult {
             primary_sequence: sequence,

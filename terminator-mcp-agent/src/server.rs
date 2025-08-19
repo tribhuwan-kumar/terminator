@@ -568,7 +568,7 @@ impl DesktopWrapper {
         // Always attach tree for better context, or if an override is provided
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -670,7 +670,7 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -928,7 +928,7 @@ impl DesktopWrapper {
         // Always attach UI tree for activated elements to help with next actions
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1007,7 +1007,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1053,7 +1053,7 @@ impl DesktopWrapper {
                 });
                 maybe_attach_tree(
                     &self.desktop,
-                    args.include_tree.unwrap_or(true),
+                    args.include_tree.unwrap_or(false),
                     args.include_detailed_attributes,
                     element.process_id().ok(),
                     &mut result_json,
@@ -1417,7 +1417,7 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             ui_element.process_id().ok(),
             &mut result_json,
@@ -1577,7 +1577,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1630,7 +1630,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1680,7 +1680,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1731,7 +1731,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1782,7 +1782,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1833,7 +1833,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1881,7 +1881,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1929,7 +1929,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1977,7 +1977,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -2085,7 +2085,7 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3608,7 +3608,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3655,7 +3655,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3767,7 +3767,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.unwrap_or(true),
+            args.include_tree.unwrap_or(false),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,

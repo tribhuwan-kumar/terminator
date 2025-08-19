@@ -37,15 +37,15 @@ The `press_key` tool sends key presses to UI elements with optional visual highl
 
 ## Parameters
 
-| Parameter                 | Type    | Required | Default | Description                                       |
-| ------------------------- | ------- | -------- | ------- | ------------------------------------------------- |
-| `selector`                | string  | Yes      | -       | Element selector (e.g., `role:Edit\|name:Search`) |
-| `key`                     | string  | Yes      | -       | Key or key combination to press                   |
-| `alternative_selectors`   | string  | No       | -       | Alternative selectors to try in parallel          |
-| `fallback_selectors`      | string  | No       | -       | Fallback selectors if primary fails               |
-| `highlight_before_action` | object  | No       | -       | Visual highlighting configuration                 |
-| `timeout_ms`              | number  | No       | 3000    | Timeout for finding element                       |
-| `include_tree`            | boolean | No       | true    | Include UI tree in response                       |
+| Parameter                 | Type    | Required | Default | Description                                                         |
+| ------------------------- | ------- | -------- | ------- | ------------------------------------------------------------------- |
+| `selector`                | string  | Yes      | -       | Element selector (e.g., `role:Edit\|name:Search`)                   |
+| `key`                     | string  | Yes      | -       | Key or key combination to press                                     |
+| `alternative_selectors`   | string  | No       | -       | Alternative selectors to try in parallel                            |
+| `fallback_selectors`      | string  | No       | -       | Fallback selectors if primary fails                                 |
+| `highlight_before_action` | object  | No       | -       | Visual highlighting configuration                                   |
+| `timeout_ms`              | number  | No       | 3000    | Timeout for finding element                                         |
+| `include_tree`            | boolean | No       | true    | Include UI tree in response (currently always attached by the tool) |
 
 ## Key Format
 

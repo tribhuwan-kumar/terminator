@@ -42,7 +42,7 @@ The `click_element` tool clicks UI elements with optional visual highlighting fo
 | `fallback_selectors`      | string  | No       | -       | Fallback selectors if primary fails                 |
 | `highlight_before_action` | object  | No       | -       | Visual highlighting configuration                   |
 | `timeout_ms`              | number  | No       | 3000    | Timeout for finding element                         |
-| `include_tree`            | boolean | No       | true    | Include UI tree in response                         |
+| `include_tree`            | boolean | No       | false   | Include UI tree in response                         |
 
 ## Highlighting Options
 

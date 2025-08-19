@@ -39,25 +39,25 @@ The `scroll_element` tool scrolls UI elements in specified directions with optio
 
 ## Parameters
 
-| Parameter                 | Type    | Required | Default | Description                                       |
-| ------------------------- | ------- | -------- | ------- | ------------------------------------------------- |
-| `selector`                | string  | Yes      | -       | Element selector (e.g., `role:List\|name:Files`)  |
+| Parameter                 | Type    | Required | Default | Description                                        |
+| ------------------------- | ------- | -------- | ------- | -------------------------------------------------- |
+| `selector`                | string  | Yes      | -       | Element selector (e.g., `role:List\|name:Files`)   |
 | `direction`               | string  | Yes      | -       | Direction to scroll: 'up', 'down', 'left', 'right' |
-| `amount`                  | number  | No       | 3       | Amount to scroll (lines or pages)                |
-| `alternative_selectors`   | string  | No       | -       | Alternative selectors to try in parallel          |
-| `fallback_selectors`      | string  | No       | -       | Fallback selectors if primary fails               |
-| `highlight_before_action` | object  | No       | -       | Visual highlighting configuration                 |
-| `timeout_ms`              | number  | No       | 3000    | Timeout for finding element                       |
-| `include_tree`            | boolean | No       | true    | Include UI tree in response                       |
+| `amount`                  | number  | No       | 3       | Amount to scroll (lines or pages)                  |
+| `alternative_selectors`   | string  | No       | -       | Alternative selectors to try in parallel           |
+| `fallback_selectors`      | string  | No       | -       | Fallback selectors if primary fails                |
+| `highlight_before_action` | object  | No       | -       | Visual highlighting configuration                  |
+| `timeout_ms`              | number  | No       | 3000    | Timeout for finding element                        |
+| `include_tree`            | boolean | No       | false   | Include UI tree in response                        |
 
 ## Scroll Directions
 
-| Direction | Description | Common Use Cases |
-|-----------|-------------|------------------|
-| **`up`** | Scroll upward | Move to previous content, go to top |
-| **`down`** | Scroll downward | Move to next content, go to bottom |
-| **`left`** | Scroll leftward | Navigate wide content, previous columns |
-| **`right`** | Scroll rightward | Navigate wide content, next columns |
+| Direction   | Description      | Common Use Cases                        |
+| ----------- | ---------------- | --------------------------------------- |
+| **`up`**    | Scroll upward    | Move to previous content, go to top     |
+| **`down`**  | Scroll downward  | Move to next content, go to bottom      |
+| **`left`**  | Scroll leftward  | Navigate wide content, previous columns |
+| **`right`** | Scroll rightward | Navigate wide content, next columns     |
 
 ## Highlighting Options
 
@@ -161,21 +161,21 @@ The `scroll_element` tool scrolls UI elements in specified directions with optio
 
 ## Scroll Amount Guidelines
 
-| Amount | Description | Use Cases |
-|--------|-------------|-----------|
-| **1-3** | Small scroll | Fine navigation, single items |
-| **5-10** | Medium scroll | Page sections, multiple items |
-| **15-20** | Large scroll | Full pages, major navigation |
-| **25+** | Bulk scroll | End of document, major jumps |
+| Amount    | Description   | Use Cases                     |
+| --------- | ------------- | ----------------------------- |
+| **1-3**   | Small scroll  | Fine navigation, single items |
+| **5-10**  | Medium scroll | Page sections, multiple items |
+| **15-20** | Large scroll  | Full pages, major navigation  |
+| **25+**   | Bulk scroll   | End of document, major jumps  |
 
 ## Color Recommendations by Direction
 
-| Direction | Suggested Color | BGR Value | Visual Cue |
-|-----------|-----------------|-----------|------------|
-| **Up** | Blue | `0xFF0000` | ↑ Sky/upward |
-| **Down** | Green | `0x00FF00` | ↓ Ground/downward |
-| **Left** | Orange | `0x0080FF` | ← Warning/back |
-| **Right** | Purple | `0xFF00FF` | → Forward/next |
+| Direction | Suggested Color | BGR Value  | Visual Cue        |
+| --------- | --------------- | ---------- | ----------------- |
+| **Up**    | Blue            | `0xFF0000` | ↑ Sky/upward      |
+| **Down**  | Green           | `0x00FF00` | ↓ Ground/downward |
+| **Left**  | Orange          | `0x0080FF` | ← Warning/back    |
+| **Right** | Purple          | `0xFF00FF` | → Forward/next    |
 
 ## Benefits
 

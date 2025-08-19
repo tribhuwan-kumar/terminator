@@ -125,11 +125,86 @@ class NetronlineHighlightTest {
     });
     NetronlineHighlightTest.printContentAsJson(activateContent, 'activate_element');
 
-    // Step 3: Highlight Florida link within the NETR pane (no click)
-    const selector = 'role:Pane|name:contains:NETR Online • Public Records, Search Records, Property Tax, Property Search, Assessor >> role:hyperlink|name:Florida';
-    console.log(`\n🎯 Highlighting selector: ${selector}`);
+    // Step 2.5: Refresh page to dismiss potential modal/popups
+    console.log(`\n🔄 Refreshing page (F5) to dismiss modal if present`);
+    const refreshContent = await this.callTool('press_key_global', {
+      key: 'F5',
+    });
+    NetronlineHighlightTest.printContentAsJson(refreshContent, 'press_key_global');
+    await delay(1000);
+
+    // Step 2.6: Attempt to dismiss blocking JS alert modal repeatedly
+    {
+      const alertSelector = 'Window|publicrecords.netronline.com says';
+      const okSelector = 'Window|publicrecords.netronline.com says >> role:button|name:OK';
+      console.log(`\n🧹 Dismissing alert loop (max 5 tries) on: ${alertSelector}`);
+      for (let i = 1; i <= 5; i++) {
+        try {
+          // Try click OK first (more reliable on JS alerts)
+          const clickOk = await this.callTool('click_element', {
+            selector: okSelector,
+            timeout_ms: 800,
+            include_tree: false,
+          });
+          NetronlineHighlightTest.printContentAsJson(clickOk, `click_element[try ${i}]`);
+        } catch {}
+        await delay(200);
+
+        // Check if alert still present
+        try {
+          const validate = await this.callTool('validate_element', {
+            selector: alertSelector,
+            timeout_ms: 500,
+            include_tree: false,
+          });
+          const present = NetronlineHighlightTest.printContentAsJson(validate, `validate_element[try ${i}]`);
+          if (!present) {
+            console.log(`✅ Alert likely gone after try ${i}`);
+            break;
+          }
+        } catch {
+          console.log(`✅ Alert not found after try ${i}`);
+          break;
+        }
+
+        // As a fallback, press Enter on the alert window
+        try {
+          const pressEnter = await this.callTool('press_key', {
+            selector: alertSelector,
+            key: 'Enter',
+          });
+          NetronlineHighlightTest.printContentAsJson(pressEnter, `press_key[try ${i}]`);
+        } catch {}
+
+        await delay(300);
+      }
+    }
+
+    // Step 2.7: Refresh page after dismissing
+    console.log(`\n🔄 Refreshing page post-dismiss (F5)`);
+    const refreshAfter = await this.callTool('press_key_global', { key: 'F5' });
+    NetronlineHighlightTest.printContentAsJson(refreshAfter, 'press_key_global');
+    await delay(1200);
+
+    // Step 3: Wait for and highlight the Florida link (container-agnostic)
+    const floridaSelector = 'role:hyperlink|name:Florida';
+    console.log(`\n🕒 Waiting for Florida link: ${floridaSelector}`);
+    try {
+      const validate = await this.callTool('validate_element', {
+        selector: floridaSelector,
+        alternative_selectors: 'role:hyperlink|name:contains:Florida,role:listitem|name:Florida >> role:hyperlink',
+        timeout_ms: 8000,
+        include_tree: false,
+      });
+      NetronlineHighlightTest.printContentAsJson(validate, 'validate_element');
+    } catch (e) {
+      console.log('⚠️ Florida link not immediately found; proceeding to highlight with alternatives');
+    }
+
+    console.log(`\n🎯 Highlighting selector: ${floridaSelector}`);
     const highlightContent = await this.callTool('highlight_element', {
-      selector,
+      selector: floridaSelector,
+      alternative_selectors: 'role:hyperlink|name:contains:Florida,role:listitem|name:Florida >> role:hyperlink',
       color: 0x00FF00,        // Bright green border
       duration_ms: 3000,      // 3 seconds
       text: 'Target',         // Overlay text

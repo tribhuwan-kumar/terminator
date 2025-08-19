@@ -47,7 +47,7 @@ The `type_into_element` tool types text into UI elements with smart clipboard op
 | `verify_action`           | boolean | No       | true    | Verify text was typed successfully                |
 | `highlight_before_action` | object  | No       | -       | Visual highlighting configuration                 |
 | `timeout_ms`              | number  | No       | 3000    | Timeout for finding element                       |
-| `include_tree`            | boolean | No       | true    | Include UI tree in response                       |
+| `include_tree`            | boolean | No       | false   | Include UI tree in response                       |
 
 ## Highlighting Options
 
