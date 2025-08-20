@@ -67,6 +67,28 @@ enum TransportMode {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Install panic hook to prevent stdout corruption (used by other MCP servers)
+    std::panic::set_hook(Box::new(|panic_info| {
+        // CRITICAL: Never write to stdout during panic - it corrupts the JSON-RPC stream
+        if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            eprintln!("MCP Server Panic: {}", s);
+        } else {
+            eprintln!("MCP Server Panic occurred");
+        }
+        if let Some(location) = panic_info.location() {
+            eprintln!("Panic location: {}:{}", location.file(), location.line());
+        }
+    }));
+
+    // Fix Windows encoding issues (IBM437 -> UTF-8)
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(&["/c", "chcp", "65001"])
+            .output();
+        eprintln!("Set Windows console to UTF-8 mode");
+    }
+
     init_logging()?;
 
     tracing::info!("Initializing Terminator MCP server...");
@@ -78,10 +100,35 @@ async fn main() -> Result<()> {
     match args.transport {
         TransportMode::Stdio => {
             tracing::info!("Starting stdio transport...");
-            let desktop = server::DesktopWrapper::new()?;
+
+            // Initialize with error recovery (pattern used by other MCP servers)
+            let desktop = match server::DesktopWrapper::new() {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::error!("Failed to initialize desktop wrapper: {}", e);
+                    eprintln!("Fatal: Failed to initialize MCP server: {}", e);
+                    // Exit with code 1 to signal Cursor to potentially restart
+                    std::process::exit(1);
+                }
+            };
+
+            // Serve with better error handling
             let service = desktop.serve(stdio()).await.inspect_err(|e| {
                 tracing::error!("Serving error: {:?}", e);
+                eprintln!("Fatal: stdio communication error: {}", e);
+                // Many successful MCP servers exit cleanly on stdio errors
+                // This signals to Cursor that the server needs to be restarted
+                std::process::exit(1);
             })?;
+
+            // Log periodic stats to help debug disconnections
+            tokio::spawn(async {
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    eprintln!("MCP server still running (stdio mode)");
+                }
+            });
 
             service.waiting().await?;
         }
