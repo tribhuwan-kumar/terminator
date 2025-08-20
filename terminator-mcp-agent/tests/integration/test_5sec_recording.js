@@ -35,6 +35,8 @@ class Simple5SecRecordingClient {
     
     // Find the MCP binary
     const possiblePaths = [
+      path.join(__dirname, '../../../target/release/terminator-mcp-agent.exe'),
+      path.join(__dirname, '../../../target/release/terminator-mcp-agent'),
       path.join(__dirname, '../target/release/terminator-mcp-agent.exe'),
       path.join(__dirname, '../target/release/terminator-mcp-agent'),
       'target/release/terminator-mcp-agent.exe',
@@ -372,3 +374,4 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 }
 
 export { Simple5SecRecordingClient };
+

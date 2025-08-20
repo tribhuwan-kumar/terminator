@@ -98,6 +98,10 @@ impl McpConverter {
             {
                 self.convert_scroll(mouse_event).await
             }
+            WorkflowEvent::Hotkey(hotkey_event) => self.convert_hotkey(hotkey_event).await,
+            WorkflowEvent::Clipboard(clipboard_event) => {
+                self.convert_clipboard(clipboard_event).await
+            }
             // Add other event types as needed
             _ => {
                 warn!("MCP conversion not implemented for event type: {:?}", event);
@@ -1080,5 +1084,263 @@ impl McpConverter {
             }
         }
         format!("role:{}", event.field_type)
+    }
+
+    /// Convert hotkey event to MCP sequence
+    async fn convert_hotkey(&self, event: &crate::events::HotkeyEvent) -> Result<ConversionResult> {
+        let mut sequence = Vec::new();
+        let mut notes = Vec::new();
+
+        // Log the original hotkey combination
+        tracing::info!(
+            "Converting hotkey: {} -> {:?}",
+            event.combination,
+            event.action
+        );
+        notes.push(format!(
+            "Hotkey event: {} ({})",
+            event.combination,
+            event
+                .action
+                .as_ref()
+                .unwrap_or(&"Unknown action".to_string())
+        ));
+
+        // Convert the hotkey combination to MCP format
+        let mcp_key = self.convert_hotkey_format(&event.combination, event.action.as_deref());
+
+        // Create press_key_global step
+        sequence.push(McpToolStep {
+            tool_name: "press_key_global".to_string(),
+            arguments: json!({
+                "key": mcp_key
+            }),
+            description: format!(
+                "Press hotkey: {}",
+                event.action.as_ref().unwrap_or(&event.combination)
+            ),
+            timeout_ms: Some(1000),
+            continue_on_error: Some(false),
+            delay_ms: Some(100),
+        });
+
+        notes.push(format!(
+            "Converted '{}' to MCP format: '{}'",
+            event.combination, mcp_key
+        ));
+
+        Ok(ConversionResult {
+            primary_sequence: sequence,
+            semantic_action: format!(
+                "hotkey_{}",
+                event
+                    .action
+                    .as_ref()
+                    .unwrap_or(&"custom".to_string())
+                    .to_lowercase()
+                    .replace(' ', "_")
+            ),
+            fallback_sequences: vec![],
+            conversion_notes: notes,
+        })
+    }
+
+    /// Convert hotkey format from recorder to MCP format
+    fn convert_hotkey_format(&self, combination: &str, action: Option<&str>) -> String {
+        // Handle common action-based mappings first
+        match action {
+            Some("Copy") => return "{Ctrl}c".to_string(),
+            Some("Paste") => return "{Ctrl}v".to_string(),
+            Some("Cut") => return "{Ctrl}x".to_string(),
+            Some("Undo") => return "{Ctrl}z".to_string(),
+            Some("Redo") => return "{Ctrl}y".to_string(),
+            Some("Save") => return "{Ctrl}s".to_string(),
+            Some("Select All") => return "{Ctrl}a".to_string(),
+            Some("Alt+Tab") => return "{Alt}{Tab}".to_string(),
+            _ => {}
+        }
+
+        // Parse the combination string (e.g., "[162, 67]" or "Ctrl+C" format)
+        if combination.starts_with('[') {
+            // Handle raw key code format "[162, 67]"
+            // 162 = Ctrl, 67 = C
+            // This is a fallback for when we get raw keycodes
+            if combination.contains("162") && combination.contains("67") {
+                return "{Ctrl}c".to_string();
+            } else if combination.contains("162") && combination.contains("86") {
+                return "{Ctrl}v".to_string();
+            } else if combination.contains("162") && combination.contains("88") {
+                return "{Ctrl}x".to_string();
+            } else if combination.contains("162") && combination.contains("90") {
+                return "{Ctrl}z".to_string();
+            } else if combination.contains("162") && combination.contains("89") {
+                return "{Ctrl}y".to_string();
+            } else if combination.contains("162") && combination.contains("83") {
+                return "{Ctrl}s".to_string();
+            } else if combination.contains("162") && combination.contains("65") {
+                return "{Ctrl}a".to_string();
+            } else if combination.contains("18") && combination.contains("9") {
+                return "{Alt}{Tab}".to_string();
+            }
+            // If we can't parse it, return a comment
+            return format!("{{Unknown: {combination}}}");
+        }
+
+        // Handle string format "Ctrl+C", "Alt+Tab", etc.
+        let mut result = String::new();
+        let parts: Vec<&str> = combination.split('+').collect();
+
+        for (i, part) in parts.iter().enumerate() {
+            let lower = part.to_lowercase();
+            let key = match lower.as_str() {
+                "ctrl" | "control" => "{Ctrl}".to_string(),
+                "alt" => "{Alt}".to_string(),
+                "shift" => "{Shift}".to_string(),
+                "win" | "windows" | "meta" | "cmd" => "{Win}".to_string(),
+                "tab" => "{Tab}".to_string(),
+                "enter" | "return" => "{Enter}".to_string(),
+                "esc" | "escape" => "{Escape}".to_string(),
+                "space" => "{Space}".to_string(),
+                "backspace" => "{Backspace}".to_string(),
+                "delete" | "del" => "{Delete}".to_string(),
+                "home" => "{Home}".to_string(),
+                "end" => "{End}".to_string(),
+                "pageup" | "pgup" => "{PageUp}".to_string(),
+                "pagedown" | "pgdn" => "{PageDown}".to_string(),
+                "up" => "{Up}".to_string(),
+                "down" => "{Down}".to_string(),
+                "left" => "{Left}".to_string(),
+                "right" => "{Right}".to_string(),
+                "f1" => "{F1}".to_string(),
+                "f2" => "{F2}".to_string(),
+                "f3" => "{F3}".to_string(),
+                "f4" => "{F4}".to_string(),
+                "f5" => "{F5}".to_string(),
+                "f6" => "{F6}".to_string(),
+                "f7" => "{F7}".to_string(),
+                "f8" => "{F8}".to_string(),
+                "f9" => "{F9}".to_string(),
+                "f10" => "{F10}".to_string(),
+                "f11" => "{F11}".to_string(),
+                "f12" => "{F12}".to_string(),
+                _ => {
+                    // For regular keys, only wrap in braces if it's a modifier or special key
+                    if i < parts.len() - 1 {
+                        // This is likely a modifier we didn't recognize
+                        format!("{{{part}}}")
+                    } else {
+                        // This is the actual key being pressed (single character)
+                        lower
+                    }
+                }
+            };
+            result.push_str(&key);
+        }
+
+        result
+    }
+
+    /// Convert clipboard event to MCP sequence
+    ///
+    /// Since MCP doesn't have direct clipboard manipulation tools, we:
+    /// 1. Store clipboard content as metadata
+    /// 2. For paste operations, potentially use type_into_element
+    /// 3. Track clipboard state for context
+    async fn convert_clipboard(
+        &self,
+        event: &crate::events::ClipboardEvent,
+    ) -> Result<ConversionResult> {
+        let mut notes = Vec::new();
+        let sequence = Vec::new();
+
+        // Log the clipboard event details
+        tracing::info!(
+            "Converting clipboard event: {:?} action with {} bytes of content",
+            event.action,
+            event.content_size.unwrap_or(0)
+        );
+
+        let content_preview = event.content.as_ref().map(|c| {
+            if c.len() > 100 {
+                format!("{}...", &c[..100])
+            } else {
+                c.clone()
+            }
+        });
+
+        match event.action {
+            crate::events::ClipboardAction::Copy => {
+                // Copy is typically handled by the preceding Ctrl+C hotkey
+                // We just track what was copied for context
+                notes.push(format!(
+                    "Clipboard copy detected: {} bytes",
+                    event.content_size.unwrap_or(0)
+                ));
+
+                if let Some(preview) = &content_preview {
+                    notes.push(format!("Copied content: '{preview}'"));
+                    // Store this for potential future paste operations
+                    // In a real implementation, we'd maintain clipboard state
+                }
+            }
+            crate::events::ClipboardAction::Paste => {
+                // Paste can be implemented as typing the clipboard content
+                notes.push("Clipboard paste detected".to_string());
+
+                if let Some(content) = &event.content {
+                    if !event.truncated {
+                        // Only create a type step if we have the full content
+                        // and it's reasonable to type
+                        if content.len() <= 5000 {
+                            // Reasonable limit for typing
+                            // Note: In a real scenario, we'd need to know the target element
+                            // For now, we'll create a placeholder that shows the intent
+                            notes.push(format!(
+                                "Paste operation could be replayed as typing: {} chars",
+                                content.len()
+                            ));
+
+                            // Store metadata about the paste for future reference
+                            if let Some(preview) = &content_preview {
+                                notes.push(format!("Pasted text: '{preview}'"));
+                            }
+                        } else {
+                            notes.push(
+                                "Paste content too large for direct typing replay".to_string(),
+                            );
+                        }
+                    } else {
+                        notes.push("Paste content was truncated in recording".to_string());
+                    }
+                } else {
+                    notes.push("Paste detected but content not captured".to_string());
+                }
+            }
+            crate::events::ClipboardAction::Cut => {
+                // Cut is like copy but also deletes the original
+                notes.push(format!(
+                    "Clipboard cut detected: {} bytes",
+                    event.content_size.unwrap_or(0)
+                ));
+
+                if let Some(preview) = &content_preview {
+                    notes.push(format!("Cut content: '{preview}'"));
+                }
+            }
+            crate::events::ClipboardAction::Clear => {
+                notes.push("Clipboard cleared".to_string());
+            }
+        }
+
+        // Since we don't have direct clipboard tools in MCP,
+        // we return an empty sequence but with rich metadata
+        // The hotkey events (Ctrl+C, Ctrl+V) will handle the actual operations
+
+        Ok(ConversionResult {
+            primary_sequence: sequence,
+            semantic_action: format!("clipboard_{}", format!("{:?}", event.action).to_lowercase()),
+            fallback_sequences: vec![],
+            conversion_notes: notes,
+        })
     }
 }
