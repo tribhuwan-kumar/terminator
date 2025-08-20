@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     std::panic::set_hook(Box::new(|panic_info| {
         // CRITICAL: Never write to stdout during panic - it corrupts the JSON-RPC stream
         if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            eprintln!("MCP Server Panic: {}", s);
+            eprintln!("MCP Server Panic: {s}");
         } else {
             eprintln!("MCP Server Panic occurred");
         }
@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("cmd")
-            .args(&["/c", "chcp", "65001"])
+            .args(["/c", "chcp", "65001"])
             .output();
         eprintln!("Set Windows console to UTF-8 mode");
     }
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
                 Ok(d) => d,
                 Err(e) => {
                     tracing::error!("Failed to initialize desktop wrapper: {}", e);
-                    eprintln!("Fatal: Failed to initialize MCP server: {}", e);
+                    eprintln!("Fatal: Failed to initialize MCP server: {e}");
                     // Exit with code 1 to signal Cursor to potentially restart
                     std::process::exit(1);
                 }
@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
             // Serve with better error handling
             let service = desktop.serve(stdio()).await.inspect_err(|e| {
                 tracing::error!("Serving error: {:?}", e);
-                eprintln!("Fatal: stdio communication error: {}", e);
+                eprintln!("Fatal: stdio communication error: {e}");
                 // Many successful MCP servers exit cleanly on stdio errors
                 // This signals to Cursor that the server needs to be restarted
                 std::process::exit(1);
