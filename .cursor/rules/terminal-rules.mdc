@@ -24,16 +24,16 @@ alwaysApply: true
 # Use semicolons (;) instead of && for command chaining
 
 # Commands WITH output - use | Out-String:
-cd C:\Users\screenpipe-windows\terminator; git status | Out-String
-cd C:\Users\screenpipe-windows\terminator; git log --oneline -n 5 | Out-String
+git status | Out-String
+git log --oneline -n 5 | Out-String
 
 # Commands WITHOUT output - DON'T use | Out-String:
-cd C:\Users\screenpipe-windows\terminator; git add .
-cd C:\Users\screenpipe-windows\terminator; git commit -m "message"
-cd C:\Users\screenpipe-windows\terminator; git push
+git add .
+git commit -m "message"
+git push
 
 # For complex operations, use script blocks
-cd C:\Users\screenpipe-windows\terminator; if (Test-Path logs) { Remove-Item logs\*.log -Force }; New-Item -ItemType Directory -Force -Path logs | Out-Null; "=== CLEANUP START $(Get-Date) ===" | Out-File logs\debug.log; taskkill /F /IM cargo.exe 2>>logs\debug.log; taskkill /F /IM mediar.exe 2>>logs\debug.log; taskkill /F /IM terminator-mcp-agent.exe 2>>logs\debug.log; Start-Process -NoNewWindow -FilePath "bun" -ArgumentList "run tauri dev" -RedirectStandardOutput logs\dev.log
+if (Test-Path logs) { Remove-Item logs\*.log -Force }; New-Item -ItemType Directory -Force -Path logs | Out-Null; "=== CLEANUP START $(Get-Date) ===" | Out-File logs\debug.log; taskkill /F /IM cargo.exe 2>>logs\debug.log; taskkill /F /IM mediar.exe 2>>logs\debug.log; taskkill /F /IM terminator-mcp-agent.exe 2>>logs\debug.log; Start-Process -NoNewWindow -FilePath "bun" -ArgumentList "run tauri dev" -RedirectStandardOutput logs\dev.log
 ```
 
 **Bash Version (Alternative):**

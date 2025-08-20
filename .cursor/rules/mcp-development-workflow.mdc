@@ -7,7 +7,7 @@ alwaysApply: false
 ## Build Process
 **Only use this command:**
 ```bash
-C:\Users\screenpipe-windows\.cargo\bin\cargo.exe build --release --bin terminator-mcp-agent
+cargo build --release --bin terminator-mcp-agent
 ```
 
 ❌ **Never manually run/manage the MCP server** - Cursor IDE handles startup/restarts automatically
@@ -64,7 +64,7 @@ format!("{} files processed in {:?}", count, elapsed);
 ## Build Process
 **Only use this command:**
 ```bash
-C:\Users\screenpipe-windows\.cargo\bin\cargo.exe build --release --bin terminator-mcp-agent
+cargo build --release --bin terminator-mcp-agent
 ```
 
 ❌ **Never manually run/manage the MCP server** - Cursor IDE handles startup/restarts automatically
