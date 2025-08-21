@@ -403,10 +403,21 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    /// Helper function to apply highlighting before an action if configured
-    /// Ensures the element is scrolled into view for reliable interaction
+    /// Helper function to ensure element is scrolled into view for reliable interaction
+    /// Uses sophisticated scrolling logic with focus fallback and viewport positioning
     /// Returns Ok(()) if element is visible or successfully scrolled into view
     fn ensure_element_in_view(element: &UIElement) -> Result<(), String> {
+        // Helper function to check if rectangles intersect
+        fn rects_intersect(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> bool {
+            let (ax, ay, aw, ah) = a;
+            let (bx, by, bw, bh) = b;
+            let a_right = ax + aw;
+            let a_bottom = ay + ah;
+            let b_right = bx + bw;
+            let b_bottom = by + bh;
+            ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
+        }
+
         // Check if element needs scrolling
         let mut need_scroll = false;
 
@@ -418,15 +429,13 @@ impl DesktopWrapper {
                 if let Ok((wx, wy, ww, wh)) = win.bounds() {
                     tracing::debug!("Window bounds: x={wx}, y={wy}, w={ww}, h={wh}");
 
-                    // Check if element intersects with window viewport
-                    let e_right = ex + ew;
-                    let e_bottom = ey + eh;
-                    let w_right = wx + ww;
-                    let w_bottom = wy + wh;
-
-                    if ex >= w_right || e_right <= wx || ey >= w_bottom || e_bottom <= wy {
-                        tracing::info!("Element not in viewport, needs scroll");
+                    let e_box = (ex, ey, ew, eh);
+                    let w_box = (wx, wy, ww, wh);
+                    if !rects_intersect(e_box, w_box) {
+                        tracing::info!("Element NOT in viewport, need scroll");
                         need_scroll = true;
+                    } else {
+                        tracing::debug!("Element IS in viewport, no scroll needed");
                     }
                 } else {
                     // Heuristic: if element Y > 1080 (typical viewport height), probably needs scroll
@@ -449,7 +458,7 @@ impl DesktopWrapper {
 
         if need_scroll {
             // First try focusing the element to allow the application to auto-scroll it into view
-            tracing::info!("Attempting focus() to auto-scroll element into view");
+            tracing::info!("Element outside viewport; attempting focus() to auto-scroll into view");
             match element.focus() {
                 Ok(()) => {
                     // Re-check visibility/intersection after focus
@@ -457,6 +466,7 @@ impl DesktopWrapper {
 
                     let mut still_offscreen = false;
                     if let Ok((_, ey2, _, _)) = element.bounds() {
+                        tracing::debug!("After focus(), element Y={ey2}");
                         // Use same heuristic as before
                         if ey2 > 1080.0 {
                             tracing::debug!("After focus(), element Y={ey2} still > 1080");
@@ -468,30 +478,114 @@ impl DesktopWrapper {
                         still_offscreen = true;
                     }
 
-                    if still_offscreen {
+                    if !still_offscreen {
                         tracing::info!(
-                            "Focus() didn't bring element into view, attempting scroll_into_view()"
+                            "Focus() brought element into view; skipping scroll_into_view"
                         );
-                        need_scroll = true;
-                    } else {
                         need_scroll = false;
+                    } else {
+                        tracing::info!("Focus() did not bring element into view; will attempt scroll_into_view()");
                     }
                 }
                 Err(e) => {
-                    tracing::debug!("Focus() failed: {e}, will attempt scroll_into_view()");
+                    tracing::debug!("Focus() failed: {e}; will attempt scroll_into_view()");
                 }
             }
 
             if need_scroll {
-                tracing::info!("Attempting scroll_into_view()");
+                tracing::info!("Element outside viewport; attempting scroll_into_view()");
                 if let Err(e) = element.scroll_into_view() {
-                    tracing::warn!("scroll_into_view() failed: {e}");
-                    return Err(format!("Failed to scroll element into view: {e}"));
+                    tracing::warn!("scroll_into_view failed: {e}");
+                    // Don't return error, scrolling is best-effort
                 } else {
-                    tracing::info!("scroll_into_view() succeeded");
+                    tracing::info!("scroll_into_view succeeded");
 
-                    // Let scroll animation settle
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    // After initial scroll, verify element position and adjust if needed
+                    std::thread::sleep(std::time::Duration::from_millis(50)); // Let initial scroll settle
+
+                    if let Ok((_, ey, _, eh)) = element.bounds() {
+                        tracing::debug!("After scroll_into_view, element at y={ey}");
+
+                        // Define optimal viewport zones (assuming typical 1080p screen)
+                        const VIEWPORT_TOP_EDGE: f64 = 100.0; // Too close to top
+                        const VIEWPORT_OPTIMAL_BOTTOM: f64 = 700.0; // Good zone ends here
+                        const VIEWPORT_BOTTOM_EDGE: f64 = 900.0; // Too close to bottom
+
+                        // Check if we have window bounds for more accurate positioning
+                        let mut needs_adjustment = false;
+                        let mut adjustment_direction: Option<&str> = None;
+                        let adjustment_amount: f64 = 0.3; // Smaller adjustment
+
+                        if let Ok(Some(window)) = element.window() {
+                            if let Ok((_, wy, _, wh)) = window.bounds() {
+                                // We have window bounds - use precise positioning
+                                let element_relative_y = ey - wy;
+                                let element_bottom = element_relative_y + eh;
+
+                                tracing::debug!(
+                                    "Element relative_y={element_relative_y}, window_height={wh}"
+                                );
+
+                                // Check if element is poorly positioned
+                                if element_relative_y < 50.0 {
+                                    // Too close to top - scroll up a bit
+                                    tracing::debug!(
+                                        "Element too close to top ({element_relative_y}px)"
+                                    );
+                                    needs_adjustment = true;
+                                    adjustment_direction = Some("up");
+                                } else if element_bottom > wh - 50.0 {
+                                    // Too close to bottom or cut off - scroll down a bit
+                                    tracing::debug!("Element too close to bottom or cut off");
+                                    needs_adjustment = true;
+                                    adjustment_direction = Some("down");
+                                } else if element_relative_y > wh * 0.7 {
+                                    // Element is in lower 30% of viewport - not ideal
+                                    tracing::debug!("Element in lower portion of viewport");
+                                    needs_adjustment = true;
+                                    adjustment_direction = Some("down");
+                                }
+                            } else {
+                                // No window bounds - use heuristic based on absolute Y position
+                                if ey < VIEWPORT_TOP_EDGE {
+                                    tracing::debug!(
+                                        "Element at y={ey} < {VIEWPORT_TOP_EDGE}, too high"
+                                    );
+                                    needs_adjustment = true;
+                                    adjustment_direction = Some("up");
+                                } else if ey > VIEWPORT_BOTTOM_EDGE {
+                                    tracing::debug!(
+                                        "Element at y={ey} > {VIEWPORT_BOTTOM_EDGE}, too low"
+                                    );
+                                    needs_adjustment = true;
+                                    adjustment_direction = Some("down");
+                                } else if ey > VIEWPORT_OPTIMAL_BOTTOM {
+                                    // Element is lower than optimal but not at edge
+                                    tracing::debug!("Element at y={ey} lower than optimal");
+                                    needs_adjustment = true;
+                                    adjustment_direction = Some("down");
+                                }
+                            }
+                        } else {
+                            // No window available - use simple heuristics
+                            if !(VIEWPORT_TOP_EDGE..=VIEWPORT_BOTTOM_EDGE).contains(&ey) {
+                                needs_adjustment = true;
+                                adjustment_direction = Some(if ey < 500.0 { "up" } else { "down" });
+                                tracing::debug!("Element at y={ey} outside optimal range");
+                            }
+                        }
+
+                        // Apply fine-tuning adjustment if needed
+                        if needs_adjustment {
+                            if let Some(dir) = adjustment_direction {
+                                tracing::debug!(
+                                    "Fine-tuning position: scrolling {dir} by {adjustment_amount}"
+                                );
+                                let _ = element.scroll(dir, adjustment_amount);
+                                std::thread::sleep(std::time::Duration::from_millis(30));
+                            }
+                        }
+                    }
                 }
             }
         }
