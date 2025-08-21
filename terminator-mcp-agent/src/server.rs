@@ -665,7 +665,7 @@ impl DesktopWrapper {
                         "type",
                     );
 
-                    // Execute the typing action
+                    // Execute the typing action with state tracking
                     if should_clear {
                         if let Err(clear_error) = element.set_value("") {
                             warn!(
@@ -674,12 +674,12 @@ impl DesktopWrapper {
                             );
                         }
                     }
-                    element.type_text(&text_to_type, true)
+                    element.type_text_with_state(&text_to_type, true)
                 }
             }
         };
 
-        let ((_result, element), successful_selector) =
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -705,6 +705,11 @@ impl DesktopWrapper {
             "status": "success",
             "text_typed": args.text_to_type,
             "cleared_before_typing": args.clear_before_typing.unwrap_or(true),
+            "action_result": {
+                "action": result.action,
+                "details": result.details,
+                "data": result.data,
+            },
             "element": build_element_info(&element),
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
@@ -902,13 +907,13 @@ impl DesktopWrapper {
                         "key",
                     );
 
-                    // Execute the key press action
-                    element.press_key(&key_to_press)
+                    // Execute the key press action with state tracking
+                    element.press_key_with_state(&key_to_press)
                 }
             }
         };
 
-        let ((_result, element), successful_selector) =
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -935,6 +940,11 @@ impl DesktopWrapper {
             "action": "press_key",
             "status": "success",
             "key_pressed": args.key,
+            "action_result": {
+                "action": result.action,
+                "details": result.details,
+                "data": result.data,
+            },
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
@@ -1736,13 +1746,13 @@ impl DesktopWrapper {
                         "scroll",
                     );
 
-                    // Execute the scroll action
-                    element.scroll(&direction, amount)
+                    // Execute the scroll action with state tracking
+                    element.scroll_with_state(&direction, amount)
                 }
             }
         };
 
-        let ((_result, element), successful_selector) =
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -1768,6 +1778,11 @@ impl DesktopWrapper {
         let mut result_json = json!({
             "action": "scroll_element",
             "status": "success",
+            "action_result": {
+                "action": result.action,
+                "details": result.details,
+                "data": result.data,
+            },
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
@@ -1799,11 +1814,11 @@ impl DesktopWrapper {
                 if let Err(e) = Self::ensure_element_in_view(&element) {
                     tracing::warn!("Failed to ensure element is in view for select_option: {e}");
                 }
-                element.select_option(&option_name)
+                element.select_option_with_state(&option_name)
             }
         };
 
-        let ((_result, element), successful_selector) =
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -1829,6 +1844,11 @@ impl DesktopWrapper {
         let mut result_json = json!({
             "action": "select_option",
             "status": "success",
+            "action_result": {
+                "action": result.action,
+                "details": result.details,
+                "data": result.data,
+            },
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
@@ -1907,10 +1927,10 @@ impl DesktopWrapper {
             if let Err(e) = Self::ensure_element_in_view(&element) {
                 tracing::warn!("Failed to ensure element is in view for set_toggled: {e}");
             }
-            element.set_toggled(state)
+            element.set_toggled_with_state(state)
         };
 
-        let ((_result, element), successful_selector) =
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -1936,6 +1956,11 @@ impl DesktopWrapper {
         let mut result_json = json!({
             "action": "set_toggled",
             "status": "success",
+            "action_result": {
+                "action": result.action,
+                "details": result.details,
+                "data": result.data,
+            },
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
@@ -2016,9 +2041,10 @@ impl DesktopWrapper {
         Parameters(args): Parameters<SetSelectedArgs>,
     ) -> Result<CallToolResult, McpError> {
         let state = args.state;
-        let action = move |element: UIElement| async move { element.set_selected(state) };
+        let action =
+            move |element: UIElement| async move { element.set_selected_with_state(state) };
 
-        let ((_result, element), successful_selector) =
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -2044,6 +2070,11 @@ impl DesktopWrapper {
         let mut result_json = json!({
             "action": "set_selected",
             "status": "success",
+            "action_result": {
+                "action": result.action,
+                "details": result.details,
+                "data": result.data,
+            },
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
@@ -2269,7 +2300,7 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let ((_result, element), successful_selector) =
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -2282,7 +2313,7 @@ impl DesktopWrapper {
                     if let Err(e) = Self::ensure_element_in_view(&element) {
                         tracing::warn!("Failed to ensure element is in view for invoke: {e}");
                     }
-                    element.invoke()
+                    element.invoke_with_state()
                 },
             )
             .await
@@ -2301,6 +2332,11 @@ impl DesktopWrapper {
         let mut result_json = json!({
             "action": "invoke",
             "status": "success",
+            "action_result": {
+                "action": result.action,
+                "details": result.details,
+                "data": result.data,
+            },
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),

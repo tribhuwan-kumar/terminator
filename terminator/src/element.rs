@@ -356,6 +356,41 @@ pub trait UIElementImpl: Send + Sync + Debug {
     fn invoke(&self) -> Result<(), AutomationError>;
     fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError>;
     fn press_key(&self, key: &str) -> Result<(), AutomationError>;
+
+    fn type_text_with_state(
+        &self,
+        text: &str,
+        use_clipboard: bool,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        // Default implementation - platforms can override for state tracking
+        self.type_text(text, use_clipboard)?;
+        Ok(crate::ActionResult {
+            action: "type_text".to_string(),
+            details: "No state tracking available".to_string(),
+            data: Some(serde_json::json!({"text": text, "use_clipboard": use_clipboard})),
+        })
+    }
+
+    // New methods with state tracking
+    fn invoke_with_state(&self) -> Result<crate::ActionResult, AutomationError> {
+        // Default implementation - platforms can override for state tracking
+        self.invoke()?;
+        Ok(crate::ActionResult {
+            action: "invoke".to_string(),
+            details: "No state tracking available".to_string(),
+            data: None,
+        })
+    }
+
+    fn press_key_with_state(&self, key: &str) -> Result<crate::ActionResult, AutomationError> {
+        // Default implementation - platforms can override for state tracking
+        self.press_key(key)?;
+        Ok(crate::ActionResult {
+            action: "press_key".to_string(),
+            details: "No state tracking available".to_string(),
+            data: Some(serde_json::json!({"key": key})),
+        })
+    }
     fn get_text(&self, max_depth: usize) -> Result<String, AutomationError>;
     fn set_value(&self, value: &str) -> Result<(), AutomationError>;
     fn is_enabled(&self) -> Result<bool, AutomationError>;
@@ -365,6 +400,20 @@ pub trait UIElementImpl: Send + Sync + Debug {
     fn as_any(&self) -> &dyn std::any::Any;
     fn create_locator(&self, selector: Selector) -> Result<Locator, AutomationError>;
     fn scroll(&self, direction: &str, amount: f64) -> Result<(), AutomationError>;
+
+    fn scroll_with_state(
+        &self,
+        direction: &str,
+        amount: f64,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        // Default implementation - platforms can override for state tracking
+        self.scroll(direction, amount)?;
+        Ok(crate::ActionResult {
+            action: "scroll".to_string(),
+            details: "No state tracking available".to_string(),
+            data: Some(serde_json::json!({"direction": direction, "amount": amount})),
+        })
+    }
 
     // New method to activate the window containing the element
     fn activate_window(&self) -> Result<(), AutomationError>;
@@ -429,12 +478,45 @@ pub trait UIElementImpl: Send + Sync + Debug {
     // New high-level input functions
     fn select_option(&self, option_name: &str) -> Result<(), AutomationError>;
     fn list_options(&self) -> Result<Vec<String>, AutomationError>;
+
+    fn select_option_with_state(
+        &self,
+        option_name: &str,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        // Default implementation - platforms can override for state tracking
+        self.select_option(option_name)?;
+        Ok(crate::ActionResult {
+            action: "select_option".to_string(),
+            details: "No state tracking available".to_string(),
+            data: Some(serde_json::json!({"option_selected": option_name})),
+        })
+    }
     fn is_toggled(&self) -> Result<bool, AutomationError>;
     fn set_toggled(&self, state: bool) -> Result<(), AutomationError>;
+
+    fn set_toggled_with_state(&self, state: bool) -> Result<crate::ActionResult, AutomationError> {
+        // Default implementation - platforms can override for state tracking
+        self.set_toggled(state)?;
+        Ok(crate::ActionResult {
+            action: "set_toggled".to_string(),
+            details: "No state tracking available".to_string(),
+            data: Some(serde_json::json!({"state": state})),
+        })
+    }
     fn get_range_value(&self) -> Result<f64, AutomationError>;
     fn set_range_value(&self, value: f64) -> Result<(), AutomationError>;
     fn is_selected(&self) -> Result<bool, AutomationError>;
     fn set_selected(&self, state: bool) -> Result<(), AutomationError>;
+
+    fn set_selected_with_state(&self, state: bool) -> Result<crate::ActionResult, AutomationError> {
+        // Default implementation - platforms can override for state tracking
+        self.set_selected(state)?;
+        Ok(crate::ActionResult {
+            action: "set_selected".to_string(),
+            details: "No state tracking available".to_string(),
+            data: Some(serde_json::json!({"state": state})),
+        })
+    }
 
     /// Returns the `Monitor` object that contains this element.
     ///
@@ -639,14 +721,36 @@ impl UIElement {
         self.inner.invoke()
     }
 
+    /// Invoke this element with state tracking
+    #[instrument(level = "debug", skip(self))]
+    pub fn invoke_with_state(&self) -> Result<crate::ActionResult, AutomationError> {
+        self.inner.invoke_with_state()
+    }
+
     /// Type text into this element
     pub fn type_text(&self, text: &str, use_clipboard: bool) -> Result<(), AutomationError> {
         self.inner.type_text(text, use_clipboard)
     }
 
+    /// Type text with state tracking
+    #[instrument(level = "debug", skip(self))]
+    pub fn type_text_with_state(
+        &self,
+        text: &str,
+        use_clipboard: bool,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        self.inner.type_text_with_state(text, use_clipboard)
+    }
+
     /// Press a key while this element is focused
     pub fn press_key(&self, key: &str) -> Result<(), AutomationError> {
         self.inner.press_key(key)
+    }
+
+    /// Press a key with state tracking
+    #[instrument(level = "debug", skip(self))]
+    pub fn press_key_with_state(&self, key: &str) -> Result<crate::ActionResult, AutomationError> {
+        self.inner.press_key_with_state(key)
     }
 
     /// Get text content of this element
@@ -694,6 +798,16 @@ impl UIElement {
     /// Scroll the element in a given direction
     pub fn scroll(&self, direction: &str, amount: f64) -> Result<(), AutomationError> {
         self.inner.scroll(direction, amount)
+    }
+
+    /// Scroll with state tracking
+    #[instrument(level = "debug", skip(self))]
+    pub fn scroll_with_state(
+        &self,
+        direction: &str,
+        amount: f64,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        self.inner.scroll_with_state(direction, amount)
     }
 
     /// Activate the window containing this element (bring to foreground)
@@ -865,6 +979,15 @@ impl UIElement {
         self.inner.select_option(option_name)
     }
 
+    /// Selects an option with state tracking
+    #[instrument(level = "debug", skip(self))]
+    pub fn select_option_with_state(
+        &self,
+        option_name: &str,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        self.inner.select_option_with_state(option_name)
+    }
+
     /// Lists all available option strings from a dropdown or list box.
     pub fn list_options(&self) -> Result<Vec<String>, AutomationError> {
         self.inner.list_options()
@@ -879,6 +1002,15 @@ impl UIElement {
     /// It only performs an action if the control is not already in the desired state.
     pub fn set_toggled(&self, state: bool) -> Result<(), AutomationError> {
         self.inner.set_toggled(state)
+    }
+
+    /// Set toggle state with state tracking
+    #[instrument(level = "debug", skip(self))]
+    pub fn set_toggled_with_state(
+        &self,
+        state: bool,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        self.inner.set_toggled_with_state(state)
     }
 
     /// Gets the current value from a range-based control like a slider or progress bar.
@@ -899,6 +1031,15 @@ impl UIElement {
     /// Sets the selection state of a selectable item.
     pub fn set_selected(&self, state: bool) -> Result<(), AutomationError> {
         self.inner.set_selected(state)
+    }
+
+    /// Set selection state with state tracking
+    #[instrument(level = "debug", skip(self))]
+    pub fn set_selected_with_state(
+        &self,
+        state: bool,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        self.inner.set_selected_with_state(state)
     }
 
     /// Return the `Monitor` that contains this UI element.

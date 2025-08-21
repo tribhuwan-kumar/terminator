@@ -98,6 +98,16 @@ pub struct WindowsUIElement {
     pub(crate) element: ThreadSafeWinUIElement,
 }
 
+/// Captures the state of an element for before/after comparison
+#[derive(Debug, Clone)]
+struct ElementState {
+    window_title: String,
+    bounds: Option<(f64, f64, f64, f64)>,
+    enabled: bool,
+    visible: bool,
+    focused: bool,
+}
+
 impl WindowsUIElement {
     /// Get the raw UI element for direct automation
     pub fn get_raw_element(&self) -> &uiautomation::UIElement {
@@ -110,6 +120,74 @@ impl WindowsUIElement {
             #[allow(clippy::arc_with_non_send_sync)]
             element: ThreadSafeWinUIElement(std::sync::Arc::new(element)),
         }
+    }
+
+    /// Capture current element state for tracking changes
+    fn capture_state(&self) -> ElementState {
+        ElementState {
+            window_title: self
+                .window()
+                .ok()
+                .flatten()
+                .map(|w| w.name_or_empty())
+                .unwrap_or_default(),
+            bounds: self.bounds().ok(),
+            enabled: self.is_enabled().unwrap_or(false),
+            visible: self.is_visible().unwrap_or(false),
+            focused: self.is_focused().unwrap_or(false),
+        }
+    }
+
+    /// Execute an action with state tracking
+    fn execute_with_state_tracking<F>(
+        &self,
+        action_name: &str,
+        action_fn: F,
+        extra_data: Option<serde_json::Value>,
+    ) -> Result<crate::ActionResult, AutomationError>
+    where
+        F: FnOnce(&Self) -> Result<(), AutomationError>,
+    {
+        // Capture pre-state
+        let pre_state = self.capture_state();
+
+        // Execute action
+        action_fn(self)?;
+
+        // Brief stabilization delay
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // Capture post-state
+        let post_state = self.capture_state();
+
+        // Build details string with changes
+        let window_title_changed = pre_state.window_title != post_state.window_title;
+        let focus_changed = pre_state.focused != post_state.focused;
+        let bounds_changed = match (pre_state.bounds, post_state.bounds) {
+            (Some(a), Some(b)) => a != b,
+            _ => false,
+        };
+        let enabled_changed = pre_state.enabled != post_state.enabled;
+        let visible_changed = pre_state.visible != post_state.visible;
+
+        let details = format!(
+            "window_title_changed={}; focus_changed={}; bounds_changed={}; enabled_changed={}; visible_changed={}; pre_title='{}'; post_title='{}'; pre_focused={}; post_focused={}",
+            window_title_changed,
+            focus_changed,
+            bounds_changed,
+            enabled_changed,
+            visible_changed,
+            pre_state.window_title,
+            post_state.window_title,
+            pre_state.focused,
+            post_state.focused,
+        );
+
+        Ok(crate::ActionResult {
+            action: action_name.to_string(),
+            details,
+            data: extra_data,
+        })
     }
 }
 
@@ -2022,6 +2100,76 @@ impl UIElementImpl for WindowsUIElement {
         Err(AutomationError::UnsupportedOperation(
             "Element cannot be deselected as it supports neither SelectionItemPattern nor TogglePattern. For radio buttons and list items, deselection typically happens by selecting another item.".to_string(),
         ))
+    }
+
+    // State tracking implementations
+    fn invoke_with_state(&self) -> Result<crate::ActionResult, AutomationError> {
+        self.execute_with_state_tracking("invoke", |elem| elem.invoke(), None)
+    }
+
+    fn press_key_with_state(&self, key: &str) -> Result<crate::ActionResult, AutomationError> {
+        let key_str = key.to_string();
+        self.execute_with_state_tracking(
+            "press_key",
+            |elem| elem.press_key(&key_str),
+            Some(serde_json::json!({"key": key_str})),
+        )
+    }
+
+    fn select_option_with_state(
+        &self,
+        option_name: &str,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        let option = option_name.to_string();
+        self.execute_with_state_tracking(
+            "select_option",
+            |elem| elem.select_option(&option),
+            Some(serde_json::json!({"option_selected": option})),
+        )
+    }
+
+    fn type_text_with_state(
+        &self,
+        text: &str,
+        use_clipboard: bool,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        let text_str = text.to_string();
+        let clipboard = use_clipboard;
+        self.execute_with_state_tracking(
+            "type_text",
+            |elem| elem.type_text(&text_str, clipboard),
+            Some(serde_json::json!({"text": text_str, "use_clipboard": clipboard})),
+        )
+    }
+
+    fn scroll_with_state(
+        &self,
+        direction: &str,
+        amount: f64,
+    ) -> Result<crate::ActionResult, AutomationError> {
+        let dir = direction.to_string();
+        let amt = amount;
+        self.execute_with_state_tracking(
+            "scroll",
+            |elem| elem.scroll(&dir, amt),
+            Some(serde_json::json!({"direction": dir, "amount": amt})),
+        )
+    }
+
+    fn set_toggled_with_state(&self, state: bool) -> Result<crate::ActionResult, AutomationError> {
+        self.execute_with_state_tracking(
+            "set_toggled",
+            |elem| elem.set_toggled(state),
+            Some(serde_json::json!({"state": state})),
+        )
+    }
+
+    fn set_selected_with_state(&self, state: bool) -> Result<crate::ActionResult, AutomationError> {
+        self.execute_with_state_tracking(
+            "set_selected",
+            |elem| elem.set_selected(state),
+            Some(serde_json::json!({"state": state})),
+        )
     }
 }
 

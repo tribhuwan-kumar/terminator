@@ -49,6 +49,13 @@ pub struct ClickResult {
     pub details: String,
 }
 
+/// Generic result struct for UI actions with state tracking
+pub struct ActionResult {
+    pub action: String,
+    pub details: String,
+    pub data: Option<serde_json::Value>,
+}
+
 /// Holds the output of a terminal command execution
 pub struct CommandOutput {
     pub exit_status: Option<i32>,
