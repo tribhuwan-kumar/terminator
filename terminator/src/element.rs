@@ -1432,11 +1432,20 @@ impl<'de> Deserialize<'de> for UIElement {
         let serializable = SerializableUIElement::deserialize(deserializer)?;
 
         // Try to find the actual live element
+        // Note: find_live_element now returns None instead of panicking in async contexts
         find_live_element(&serializable).ok_or_else(|| {
-            Error::custom(format!(
-                "Could not find UI element with role '{}' and name '{:?}' in current UI tree",
-                serializable.role, serializable.name
-            ))
+            // Check if we're in an async context - if so, provide a more helpful error message
+            if tokio::runtime::Handle::try_current().is_ok() {
+                Error::custom(format!(
+                    "UIElement deserialization skipped in async context (role='{}', name={:?})",
+                    serializable.role, serializable.name
+                ))
+            } else {
+                Error::custom(format!(
+                    "Could not find UI element with role '{}' and name '{:?}' in current UI tree",
+                    serializable.role, serializable.name
+                ))
+            }
         })
     }
 }
@@ -1448,7 +1457,21 @@ fn find_live_element(serializable: &SerializableUIElement) -> Option<UIElement> 
     std::panic::catch_unwind(|| {
         // Desktop::new is now synchronous, so we can call it directly
         let desktop = crate::Desktop::new(false, false).ok()?;
-        // find_element_in_tree is still async, so we need a runtime only for that
+
+        // Check if we're already in an async runtime context
+        if let Ok(_handle) = tokio::runtime::Handle::try_current() {
+            // We're already in an async context, use the existing runtime
+            // This happens during MCP workflow conversion
+            // We can't use block_on here, so just return None
+            tracing::debug!(
+                "Skipping live element lookup for role='{}', name={:?} (in async context)",
+                serializable.role,
+                serializable.name
+            );
+            return None;
+        }
+
+        // We're in a sync context, create a new runtime for the async operation
         let rt = tokio::runtime::Runtime::new().ok()?;
         rt.block_on(async { find_element_in_tree(&desktop, serializable).await })
     })

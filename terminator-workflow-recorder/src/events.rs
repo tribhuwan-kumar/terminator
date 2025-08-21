@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::SystemTime;
@@ -310,7 +311,7 @@ pub struct ClickEvent {
     pub element_description: Option<String>,
 
     /// Text content from all child elements (unlimited depth traversal)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub child_text_content: Vec<String>,
 
     /// Event metadata with UI element context
@@ -468,21 +469,9 @@ pub struct RecordedEvent {
     /// The original workflow event
     pub event: WorkflowEvent,
 
-    /// MCP-ready tool sequence for this event
+    /// Optional metadata for the event
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mcp_sequence: Option<Vec<McpToolStep>>,
-
-    /// Semantic action description (e.g., "select_from_dropdown", "button_click")
-    #[serde(skip_serializing_if = "is_empty_string")]
-    pub semantic_action: Option<String>,
-
-    /// Alternative MCP sequences as fallback options
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fallback_sequences: Option<Vec<Vec<McpToolStep>>>,
-
-    /// Enhanced UI element context if available
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub enhanced_ui_context: Option<EnhancedUIElement>,
+    pub metadata: Option<EventMetadata>,
 }
 
 /// Represents a recorded workflow
@@ -532,10 +521,7 @@ impl RecordedWorkflow {
         self.events.push(RecordedEvent {
             timestamp,
             event,
-            mcp_sequence: None,
-            semantic_action: None,
-            fallback_sequences: None,
-            enhanced_ui_context: None,
+            metadata: None,
         });
     }
 
@@ -552,51 +538,6 @@ impl RecordedWorkflow {
             .as_millis() as u64;
 
         self.end_time = Some(now);
-    }
-
-    /// Generate an MCP execute_sequence tool call from recorded events
-    pub fn generate_mcp_workflow(&self) -> Option<serde_json::Value> {
-        let mut sequence_items = Vec::new();
-        let mut conversion_notes = Vec::new();
-        let mut step_count = 0;
-
-        // Extract MCP sequences from events
-        for recorded_event in &self.events {
-            if let Some(ref mcp_sequence) = recorded_event.mcp_sequence {
-                // Add sequence items from this event
-                for step in mcp_sequence {
-                    sequence_items.push(serde_json::json!({
-                        "tool_name": step.tool_name,
-                        "arguments": step.arguments,
-                        "continue_on_error": step.continue_on_error.unwrap_or(false),
-                        "delay_ms": step.delay_ms.unwrap_or(200)
-                    }));
-                    step_count += 1;
-                }
-
-                // Collect semantic actions for notes
-                if let Some(ref semantic_action) = recorded_event.semantic_action {
-                    conversion_notes.push(format!("{semantic_action}_{step_count}"));
-                }
-            }
-        }
-
-        // Only generate if we have meaningful sequences
-        if sequence_items.is_empty() {
-            return None;
-        }
-
-        Some(serde_json::json!({
-            "tool_name": "execute_sequence",
-            "arguments": {
-                "items": sequence_items,
-                "stop_on_error": true,
-                "include_detailed_results": true
-            },
-            "conversion_notes": conversion_notes,
-            "total_steps": sequence_items.len(),
-            "workflow_name": self.name
-        }))
     }
 
     /// Serialize the workflow to JSON string
@@ -804,11 +745,64 @@ pub struct BrowserTabNavigationEvent {
     pub metadata: EventMetadata,
 }
 
+/// Helper type for deserializing Option<UIElement> with error tolerance
+#[derive(Debug, Clone)]
+struct OptionalUIElement(Option<UIElement>);
+
+impl<'de> Deserialize<'de> for OptionalUIElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // First try to deserialize as Option<serde_json::Value>
+        let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+
+        match value {
+            None => Ok(OptionalUIElement(None)),
+            Some(json_value) => {
+                // Try to deserialize the UIElement from the JSON value
+                match serde_json::from_value::<UIElement>(json_value.clone()) {
+                    Ok(element) => Ok(OptionalUIElement(Some(element))),
+                    Err(e) => {
+                        // Log the error but return None instead of failing
+                        tracing::debug!(
+                            "UIElement deserialization failed (likely in async context): {}. \
+                            Continuing with None. Raw data: {:?}",
+                            e,
+                            json_value
+                        );
+                        Ok(OptionalUIElement(None))
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Default for OptionalUIElement {
+    fn default() -> Self {
+        OptionalUIElement(None)
+    }
+}
+
+/// Custom deserializer for Option<UIElement> that returns None on deserialization errors
+fn deserialize_optional_ui_element<'de, D>(deserializer: D) -> Result<Option<UIElement>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let optional = OptionalUIElement::deserialize(deserializer)?;
+    Ok(optional.0)
+}
+
 /// Unified metadata for all workflow events
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventMetadata {
     /// The UI element associated with this event (if available)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "deserialize_optional_ui_element"
+    )]
     pub ui_element: Option<UIElement>,
 
     /// The exact timestamp when this event occurred (milliseconds since epoch)
@@ -1195,7 +1189,7 @@ pub struct SerializableClickEvent {
     pub click_position: Option<Position>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub element_description: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub child_text_content: Vec<String>,
     pub metadata: SerializableEventMetadata,
 }

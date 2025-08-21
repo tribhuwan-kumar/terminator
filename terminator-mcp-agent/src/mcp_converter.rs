@@ -1,4 +1,4 @@
-use crate::events::{
+use crate::workflow_events::{
     ClickEvent, EnhancedUIElement, McpToolStep, TextInputCompletedEvent, WorkflowEvent,
 };
 use anyhow::Result;
@@ -94,7 +94,7 @@ impl McpConverter {
                 self.convert_browser_navigation(nav_event).await
             }
             WorkflowEvent::Mouse(mouse_event)
-                if mouse_event.event_type == crate::events::MouseEventType::Wheel =>
+                if mouse_event.event_type == crate::workflow_events::MouseEventType::Wheel =>
             {
                 self.convert_scroll(mouse_event).await
             }
@@ -129,15 +129,15 @@ impl McpConverter {
 
         // Analyze input method to determine conversion strategy
         let conversion_strategy = match event.input_method {
-            crate::events::TextInputMethod::Suggestion => {
+            crate::workflow_events::TextInputMethod::Suggestion => {
                 notes.push("Detected suggestion-based input".to_string());
                 self.convert_suggestion_input(event, ui_context).await?
             }
-            crate::events::TextInputMethod::Typed => {
+            crate::workflow_events::TextInputMethod::Typed => {
                 notes.push("Detected typed input".to_string());
                 self.convert_typed_input(event, ui_context).await?
             }
-            crate::events::TextInputMethod::Pasted => {
+            crate::workflow_events::TextInputMethod::Pasted => {
                 notes.push("Detected pasted input".to_string());
                 self.convert_pasted_input(event, ui_context).await?
             }
@@ -256,7 +256,7 @@ impl McpConverter {
                 "selector": selector,
                 "timeout_ms": 3000
             }),
-            description: format!(
+            description: Some(format!(
                 "Click '{}' element",
                 if !event.element_text.is_empty() {
                     &event.element_text
@@ -265,7 +265,7 @@ impl McpConverter {
                 } else {
                     &event.element_role
                 }
-            ),
+            )),
             timeout_ms: Some(3000),
             continue_on_error: Some(false),
             delay_ms: Some(200),
@@ -283,7 +283,7 @@ impl McpConverter {
     /// Convert application switch event to MCP sequence
     async fn convert_application_switch(
         &self,
-        event: &crate::events::ApplicationSwitchEvent,
+        event: &crate::workflow_events::ApplicationSwitchEvent,
     ) -> Result<ConversionResult> {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
@@ -291,10 +291,12 @@ impl McpConverter {
         // Generate stable fallback selector for common applications
         let fallback_selector = self.generate_stable_fallback_selector(&event.to_application);
 
-        let mut arguments = json!({
-            "selector": format!("application|{}", event.to_application),
-            "timeout_ms": 800,
+        // Generate selector with proper role: prefix for application switching
+        let selector = format!("role:Window|name:contains:{}", event.to_application);
 
+        let mut arguments = json!({
+            "selector": selector,
+            "timeout_ms": 800,
             "retries": 0
         });
 
@@ -307,7 +309,7 @@ impl McpConverter {
         sequence.push(McpToolStep {
             tool_name: "activate_element".to_string(),
             arguments,
-            description: format!("Switch to application: {}", event.to_application),
+            description: Some(format!("Switch to application: {}", event.to_application)),
             timeout_ms: Some(800),
             continue_on_error: Some(false),
             delay_ms: Some(150), // Reduced from 1000ms since server already waits 500ms for verification
@@ -330,18 +332,18 @@ impl McpConverter {
     /// Convert browser navigation event to MCP sequence
     async fn convert_browser_navigation(
         &self,
-        event: &crate::events::BrowserTabNavigationEvent,
+        event: &crate::workflow_events::BrowserTabNavigationEvent,
     ) -> Result<ConversionResult> {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
 
         if let Some(url) = &event.to_url {
             sequence.push(McpToolStep {
-                tool_name: "open_url".to_string(),
+                tool_name: "navigate_browser".to_string(),
                 arguments: json!({
                     "url": url
                 }),
-                description: format!("Navigate to URL: {url}"),
+                description: Some(format!("Navigate to URL: {url}")),
                 timeout_ms: Some(10000),
                 continue_on_error: Some(false),
                 delay_ms: Some(1000),
@@ -358,7 +360,10 @@ impl McpConverter {
     }
 
     /// Convert scroll event to MCP sequence
-    async fn convert_scroll(&self, event: &crate::events::MouseEvent) -> Result<ConversionResult> {
+    async fn convert_scroll(
+        &self,
+        event: &crate::workflow_events::MouseEvent,
+    ) -> Result<ConversionResult> {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
 
@@ -398,7 +403,7 @@ impl McpConverter {
                     "amount": amount,
                     "timeout_ms": 2000
                 }),
-                description: format!("Scroll {direction} by {amount:.1} units"),
+                description: Some(format!("Scroll {direction} by {amount:.1} units")),
                 timeout_ms: Some(2000),
                 continue_on_error: Some(true), // Scrolling can be non-critical
                 delay_ms: Some(100),
@@ -482,12 +487,12 @@ impl McpConverter {
     /// Generate escape key press for dismissing UI elements
     fn generate_escape_key_step(&self) -> McpToolStep {
         McpToolStep {
-            tool_name: "key_press".to_string(),
+            tool_name: "press_key".to_string(),
             arguments: json!({
                 "key": "Escape",
                 "timeout_ms": 1000
             }),
-            description: "Press Escape to dismiss dropdown/modal/overlay".to_string(),
+            description: Some("Press Escape to dismiss dropdown/modal/overlay".to_string()),
             timeout_ms: Some(1000),
             continue_on_error: Some(false),
             delay_ms: Some(100),
@@ -640,7 +645,7 @@ impl McpConverter {
                 "selector": selector,
                 "timeout_ms": 2000
             }),
-            description: format!("Activate {app_name} window"),
+            description: Some(format!("Activate {app_name} window")),
             timeout_ms: Some(2000),
             continue_on_error: Some(false),
             delay_ms: Some(100),
@@ -771,7 +776,7 @@ impl McpConverter {
                 arguments: json!({
                     "selector": format!("name:{}", event.element_text)
                 }),
-                description: format!("Click element by name: {}", event.element_text),
+                description: Some(format!("Click element by name: {}", event.element_text)),
                 timeout_ms: Some(5000),
                 continue_on_error: Some(false),
                 delay_ms: Some(200),
@@ -787,10 +792,10 @@ impl McpConverter {
                     arguments: json!({
                         "selector": format!("{}|{}", event.element_role, child_text)
                     }),
-                    description: format!(
+                    description: Some(format!(
                         "Click {} containing '{}'",
                         event.element_role, child_text
-                    ),
+                    )),
                     timeout_ms: Some(5000),
                     continue_on_error: Some(false),
                     delay_ms: Some(200),
@@ -802,7 +807,7 @@ impl McpConverter {
                     arguments: json!({
                         "selector": format!("contains:{}", child_text)
                     }),
-                    description: format!("Click element containing text: {child_text}"),
+                    description: Some(format!("Click element containing text: {child_text}")),
                     timeout_ms: Some(5000),
                     continue_on_error: Some(false),
                     delay_ms: Some(200),
@@ -856,7 +861,7 @@ impl McpConverter {
             arguments: json!({
                 "selector": format!("MenuItem|{}", event.text_value)
             }),
-            description: format!("Select '{}' from menu", event.text_value),
+            description: Some(format!("Select '{}' from menu", event.text_value)),
             timeout_ms: Some(5000),
             continue_on_error: Some(false),
             delay_ms: Some(300),
@@ -894,10 +899,10 @@ impl McpConverter {
             arguments: json!({
                 "selector": selector.clone()
             }),
-            description: format!(
+            description: Some(format!(
                 "Focus {} field",
                 event.field_name.as_deref().unwrap_or("text")
-            ),
+            )),
             timeout_ms: Some(3000),
             continue_on_error: Some(false),
             delay_ms: Some(100),
@@ -911,7 +916,7 @@ impl McpConverter {
                 "text_to_type": event.text_value,
                 "clear_before_typing": true
             }),
-            description: format!("Type '{}' into field", event.text_value),
+            description: Some(format!("Type '{}' into field", event.text_value)),
             timeout_ms: Some(5000),
             continue_on_error: Some(false),
             delay_ms: Some(200),
@@ -959,7 +964,7 @@ impl McpConverter {
                 arguments: json!({
                     "selector": trigger_selector
                 }),
-                description: "Open dropdown menu".to_string(),
+                description: Some("Open dropdown menu".to_string()),
                 timeout_ms: Some(5000),
                 continue_on_error: Some(false),
                 delay_ms: Some(500),
@@ -973,7 +978,7 @@ impl McpConverter {
             arguments: json!({
                 "selector": item_selector
             }),
-            description: format!("Select '{}' from dropdown", event.text_value),
+            description: Some(format!("Select '{}' from dropdown", event.text_value)),
             timeout_ms: Some(5000),
             continue_on_error: Some(false),
             delay_ms: Some(200),
@@ -1007,7 +1012,7 @@ impl McpConverter {
             arguments: json!({
                 "selector": selector.clone()
             }),
-            description: "Focus autocomplete field".to_string(),
+            description: Some("Focus autocomplete field".to_string()),
             timeout_ms: Some(3000),
             continue_on_error: Some(false),
             delay_ms: Some(100),
@@ -1027,7 +1032,7 @@ impl McpConverter {
                 "text_to_type": partial_text,
                 "clear_before_typing": true
             }),
-            description: format!("Type '{partial_text}' to trigger autocomplete"),
+            description: Some(format!("Type '{partial_text}' to trigger autocomplete")),
             timeout_ms: Some(3000),
             continue_on_error: Some(false),
             delay_ms: Some(500),
@@ -1039,7 +1044,7 @@ impl McpConverter {
             arguments: json!({
                 "selector": format!("ListItem|{}", event.text_value)
             }),
-            description: format!("Select '{}' from autocomplete", event.text_value),
+            description: Some(format!("Select '{}' from autocomplete", event.text_value)),
             timeout_ms: Some(5000),
             continue_on_error: Some(false),
             delay_ms: Some(200),
@@ -1087,7 +1092,10 @@ impl McpConverter {
     }
 
     /// Convert hotkey event to MCP sequence
-    async fn convert_hotkey(&self, event: &crate::events::HotkeyEvent) -> Result<ConversionResult> {
+    async fn convert_hotkey(
+        &self,
+        event: &crate::workflow_events::HotkeyEvent,
+    ) -> Result<ConversionResult> {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
 
@@ -1109,16 +1117,16 @@ impl McpConverter {
         // Convert the hotkey combination to MCP format
         let mcp_key = self.convert_hotkey_format(&event.combination, event.action.as_deref());
 
-        // Create press_key_global step
+        // Create press_key step
         sequence.push(McpToolStep {
-            tool_name: "press_key_global".to_string(),
+            tool_name: "press_key".to_string(),
             arguments: json!({
                 "key": mcp_key
             }),
-            description: format!(
+            description: Some(format!(
                 "Press hotkey: {}",
                 event.action.as_ref().unwrap_or(&event.combination)
-            ),
+            )),
             timeout_ms: Some(1000),
             continue_on_error: Some(false),
             delay_ms: Some(100),
@@ -1248,7 +1256,7 @@ impl McpConverter {
     /// 3. Track clipboard state for context
     async fn convert_clipboard(
         &self,
-        event: &crate::events::ClipboardEvent,
+        event: &crate::workflow_events::ClipboardEvent,
     ) -> Result<ConversionResult> {
         let mut notes = Vec::new();
         let sequence = Vec::new();
@@ -1269,7 +1277,7 @@ impl McpConverter {
         });
 
         match event.action {
-            crate::events::ClipboardAction::Copy => {
+            crate::workflow_events::ClipboardAction::Copy => {
                 // Copy is typically handled by the preceding Ctrl+C hotkey
                 // We just track what was copied for context
                 notes.push(format!(
@@ -1283,7 +1291,7 @@ impl McpConverter {
                     // In a real implementation, we'd maintain clipboard state
                 }
             }
-            crate::events::ClipboardAction::Paste => {
+            crate::workflow_events::ClipboardAction::Paste => {
                 // Paste can be implemented as typing the clipboard content
                 notes.push("Clipboard paste detected".to_string());
 
@@ -1316,7 +1324,7 @@ impl McpConverter {
                     notes.push("Paste detected but content not captured".to_string());
                 }
             }
-            crate::events::ClipboardAction::Cut => {
+            crate::workflow_events::ClipboardAction::Cut => {
                 // Cut is like copy but also deletes the original
                 notes.push(format!(
                     "Clipboard cut detected: {} bytes",
@@ -1327,7 +1335,7 @@ impl McpConverter {
                     notes.push(format!("Cut content: '{preview}'"));
                 }
             }
-            crate::events::ClipboardAction::Clear => {
+            crate::workflow_events::ClipboardAction::Clear => {
                 notes.push("Clipboard cleared".to_string());
             }
         }

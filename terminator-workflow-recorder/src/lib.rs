@@ -8,7 +8,6 @@
 
 mod error;
 mod events;
-mod mcp_converter;
 mod recorder;
 
 pub use error::*;
@@ -20,7 +19,6 @@ pub use events::{
     SelectionMethod, TabAction, TabNavigationMethod, TextInputCompletedEvent, TextInputMethod,
     TextSelectionEvent, UIElementInfo, WorkflowEvent,
 };
-pub use mcp_converter::{ConversionConfig, ConversionResult, McpConverter};
 pub use recorder::*;
 
 #[cfg(target_os = "windows")]

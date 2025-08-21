@@ -2573,27 +2573,53 @@ impl DesktopWrapper {
                     )
                 })?;
 
-                let file_content = std::fs::read_to_string(&file_path).unwrap_or_default();
+                // Convert the recorded workflow to MCP sequences
+                let mcp_workflow = match crate::workflow_converter::load_and_convert_workflow(
+                    file_path.to_str().unwrap_or_default(),
+                )
+                .await
+                {
+                    Ok(mcp_workflow) => {
+                        info!("Successfully converted workflow to MCP sequences");
 
-                // Generate MCP-ready workflow sequence
-                let mcp_workflow = {
-                    let workflow = recorder.workflow.lock().unwrap();
-                    workflow.generate_mcp_workflow()
+                        // Return null if no steps were converted
+                        if mcp_workflow.steps.is_empty() {
+                            info!("No convertible events found in workflow");
+                            None
+                        } else {
+                            // Build mcp_workflow object with conversion_notes at the root level
+                            let mut workflow_obj = json!({
+                                "tool_name": "execute_sequence",
+                                "arguments": {
+                                    "items": mcp_workflow.steps
+                                }
+                            });
+
+                            // Add conversion_notes at the root level if they exist
+                            if let Some(metadata) = &mcp_workflow.metadata {
+                                if !metadata.conversion_notes.is_empty() {
+                                    workflow_obj["conversion_notes"] =
+                                        json!(metadata.conversion_notes);
+                                }
+                            }
+
+                            Some(workflow_obj)
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to convert workflow to MCP: {}", e);
+                        None
+                    }
                 };
 
+                // Build response matching client expectations
                 let mut response = json!({
-                    "action": "record_workflow",
-                    "status": "stopped",
-                    "workflow_name": workflow_name,
-                    "message": "Recording stopped and workflow saved.",
-                    "file_path": file_path,
-                    "file_content": file_content
+                    "status": "success",
+                    "file_path": file_path.to_string_lossy()
                 });
 
-                // Add MCP workflow if available
-                if let Some(mcp_workflow) = mcp_workflow {
-                    response["mcp_workflow"] = mcp_workflow;
-                }
+                // Add MCP workflow if conversion was successful, otherwise null
+                response["mcp_workflow"] = mcp_workflow.unwrap_or(serde_json::Value::Null);
 
                 Ok(CallToolResult::success(vec![Content::json(response)?]))
             }
