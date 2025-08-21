@@ -404,11 +404,113 @@ impl DesktopWrapper {
     }
 
     /// Helper function to apply highlighting before an action if configured
-    fn apply_highlight_before_action(
+    /// Ensures the element is scrolled into view for reliable interaction
+    /// Returns Ok(()) if element is visible or successfully scrolled into view
+    fn ensure_element_in_view(element: &UIElement) -> Result<(), String> {
+        // Check if element needs scrolling
+        let mut need_scroll = false;
+
+        if let Ok((ex, ey, ew, eh)) = element.bounds() {
+            tracing::debug!("Element bounds: x={ex}, y={ey}, w={ew}, h={eh}");
+
+            // Try to get window bounds, but if that fails, use heuristics
+            if let Ok(Some(win)) = element.window() {
+                if let Ok((wx, wy, ww, wh)) = win.bounds() {
+                    tracing::debug!("Window bounds: x={wx}, y={wy}, w={ww}, h={wh}");
+
+                    // Check if element intersects with window viewport
+                    let e_right = ex + ew;
+                    let e_bottom = ey + eh;
+                    let w_right = wx + ww;
+                    let w_bottom = wy + wh;
+
+                    if ex >= w_right || e_right <= wx || ey >= w_bottom || e_bottom <= wy {
+                        tracing::info!("Element not in viewport, needs scroll");
+                        need_scroll = true;
+                    }
+                } else {
+                    // Heuristic: if element Y > 1080 (typical viewport height), probably needs scroll
+                    if ey > 1080.0 {
+                        tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
+                        need_scroll = true;
+                    }
+                }
+            } else {
+                // Heuristic: if element Y > 1080 (typical viewport height), probably needs scroll
+                if ey > 1080.0 {
+                    tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
+                    need_scroll = true;
+                }
+            }
+        } else if !element.is_visible().unwrap_or(true) {
+            tracing::info!("Element not visible, needs scroll");
+            need_scroll = true;
+        }
+
+        if need_scroll {
+            // First try focusing the element to allow the application to auto-scroll it into view
+            tracing::info!("Attempting focus() to auto-scroll element into view");
+            match element.focus() {
+                Ok(()) => {
+                    // Re-check visibility/intersection after focus
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+
+                    let mut still_offscreen = false;
+                    if let Ok((_, ey2, _, _)) = element.bounds() {
+                        // Use same heuristic as before
+                        if ey2 > 1080.0 {
+                            tracing::debug!("After focus(), element Y={ey2} still > 1080");
+                            still_offscreen = true;
+                        } else {
+                            tracing::info!("Focus() brought element into view");
+                        }
+                    } else if !element.is_visible().unwrap_or(true) {
+                        still_offscreen = true;
+                    }
+
+                    if still_offscreen {
+                        tracing::info!(
+                            "Focus() didn't bring element into view, attempting scroll_into_view()"
+                        );
+                        need_scroll = true;
+                    } else {
+                        need_scroll = false;
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!("Focus() failed: {e}, will attempt scroll_into_view()");
+                }
+            }
+
+            if need_scroll {
+                tracing::info!("Attempting scroll_into_view()");
+                if let Err(e) = element.scroll_into_view() {
+                    tracing::warn!("scroll_into_view() failed: {e}");
+                    return Err(format!("Failed to scroll element into view: {e}"));
+                } else {
+                    tracing::info!("scroll_into_view() succeeded");
+
+                    // Let scroll animation settle
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Ensures element is visible and optionally applies highlighting before action
+    fn ensure_visible_and_apply_highlight(
         element: &UIElement,
         highlight_config: Option<&ActionHighlightConfig>,
         action_name: &str,
     ) {
+        // Always ensure element is in view first (for all actions, not just when highlighting)
+        if let Err(e) = Self::ensure_element_in_view(element) {
+            tracing::warn!("Failed to ensure element is in view for {action_name} action: {e}");
+        }
+
+        // Then apply highlighting if configured
         if let Some(config) = highlight_config {
             if config.enabled {
                 let duration = config.duration_ms.map(std::time::Duration::from_millis);
@@ -435,7 +537,7 @@ impl DesktopWrapper {
                 {
                     // Highlight applied successfully - runs concurrently with action
                 } else {
-                    tracing::warn!("Failed to apply highlighting before {} action", action_name);
+                    tracing::warn!("Failed to apply highlighting before {action_name} action");
                 }
             }
         }
@@ -463,7 +565,7 @@ impl DesktopWrapper {
                 let highlight_config = highlight_config.clone();
                 async move {
                     // Apply highlighting before action if configured
-                    Self::apply_highlight_before_action(
+                    Self::ensure_visible_and_apply_highlight(
                         &element,
                         highlight_config.as_ref(),
                         "type",
@@ -591,8 +693,8 @@ impl DesktopWrapper {
             move |element: UIElement| {
                 let highlight_config = highlight_config.clone();
                 async move {
-                    // Apply highlighting before action if configured
-                    Self::apply_highlight_before_action(
+                    // Ensure element is visible and apply highlighting if configured
+                    Self::ensure_visible_and_apply_highlight(
                         &element,
                         highlight_config.as_ref(),
                         "click",
@@ -699,8 +801,12 @@ impl DesktopWrapper {
                 let key_to_press = key_to_press.clone();
                 let highlight_config = highlight_config.clone();
                 async move {
-                    // Apply highlighting before action if configured
-                    Self::apply_highlight_before_action(&element, highlight_config.as_ref(), "key");
+                    // Ensure element is visible and apply highlighting if configured
+                    Self::ensure_visible_and_apply_highlight(
+                        &element,
+                        highlight_config.as_ref(),
+                        "key",
+                    );
 
                     // Execute the key press action
                     element.press_key(&key_to_press)
@@ -1529,8 +1635,8 @@ impl DesktopWrapper {
                 let direction = direction.clone();
                 let highlight_config = highlight_config.clone();
                 async move {
-                    // Apply highlighting before action if configured
-                    Self::apply_highlight_before_action(
+                    // Ensure element is visible and apply highlighting if configured
+                    Self::ensure_visible_and_apply_highlight(
                         &element,
                         highlight_config.as_ref(),
                         "scroll",
@@ -1594,7 +1700,13 @@ impl DesktopWrapper {
         let option_name = args.option_name.clone();
         let action = move |element: UIElement| {
             let option_name = option_name.clone();
-            async move { element.select_option(&option_name) }
+            async move {
+                // Ensure element is visible before interaction
+                if let Err(e) = Self::ensure_element_in_view(&element) {
+                    tracing::warn!("Failed to ensure element is in view for select_option: {e}");
+                }
+                element.select_option(&option_name)
+            }
         };
 
         let ((_result, element), successful_selector) =
@@ -1696,7 +1808,13 @@ impl DesktopWrapper {
         Parameters(args): Parameters<SetToggledArgs>,
     ) -> Result<CallToolResult, McpError> {
         let state = args.state;
-        let action = move |element: UIElement| async move { element.set_toggled(state) };
+        let action = move |element: UIElement| async move {
+            // Ensure element is visible before interaction
+            if let Err(e) = Self::ensure_element_in_view(&element) {
+                tracing::warn!("Failed to ensure element is in view for set_toggled: {e}");
+            }
+            element.set_toggled(state)
+        };
 
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
@@ -1747,7 +1865,13 @@ impl DesktopWrapper {
         Parameters(args): Parameters<SetRangeValueArgs>,
     ) -> Result<CallToolResult, McpError> {
         let value = args.value;
-        let action = move |element: UIElement| async move { element.set_range_value(value) };
+        let action = move |element: UIElement| async move {
+            // Ensure element is visible before interaction
+            if let Err(e) = Self::ensure_element_in_view(&element) {
+                tracing::warn!("Failed to ensure element is in view for set_range_value: {e}");
+            }
+            element.set_range_value(value)
+        };
 
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
@@ -2059,7 +2183,13 @@ impl DesktopWrapper {
                 args.fallback_selectors.as_deref(),
                 args.timeout_ms,
                 args.retries,
-                |element| async move { element.invoke() },
+                |element| async move {
+                    // Ensure element is visible before interaction
+                    if let Err(e) = Self::ensure_element_in_view(&element) {
+                        tracing::warn!("Failed to ensure element is in view for invoke: {e}");
+                    }
+                    element.invoke()
+                },
             )
             .await
             {
