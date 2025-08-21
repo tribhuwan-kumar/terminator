@@ -12,14 +12,12 @@ use tracing::{debug, error};
 
 use uiautomation::UIElement;
 // Windows GDI imports
-use windows::Win32::Foundation::{COLORREF, POINT, RECT};
+use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
     CreateFontW, CreatePen, CreateSolidBrush, DeleteObject, DrawTextW, FillRect, GetDC, Rectangle,
     ReleaseDC, SelectObject, SetBkMode, SetTextColor, DT_SINGLELINE, HBRUSH, HGDIOBJ, PS_SOLID,
     TRANSPARENT,
 };
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
-
 // Additional imports for overlay window approach
 use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -29,9 +27,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SetLayeredWindowAttributes, ShowWindow, HICON, IDC_ARROW, LWA_COLORKEY, SW_SHOWNOACTIVATE,
     WM_DESTROY, WM_PAINT, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     WS_EX_TRANSPARENT, WS_POPUP,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
 };
 
 const OVERLAY_CLASS_NAME: PCWSTR = w!("TerminatorHighlightOverlay");
@@ -82,26 +77,18 @@ pub fn highlight(
     //     rect.get_height()
     // );
 
-    // Try to get scale factor from focused window first, fall back to cursor position,
-    // but allow disabling via env for debugging
-    let scale_factor = if std::env::var("TERMINATOR_NO_DPI").is_ok() {
-        1.0
-    } else {
-        get_scale_factor_from_focused_window().unwrap_or_else(get_scale_factor_from_cursor)
-    };
+    // UI Automation coordinates are already in physical pixels (DPI-aware)
+    // No scaling needed - use coordinates directly
+    let x = rect.get_left();
+    let y = rect.get_top();
+    let width = rect.get_width();
+    let height = rect.get_height();
 
     // Constants for border appearance
     const DEFAULT_RED_COLOR: u32 = 0x0000FF; // Pure red in BGR format
 
     // Use provided color or default to red
     let highlight_color = color.unwrap_or(DEFAULT_RED_COLOR);
-
-    // Scale the coordinates and dimensions
-    // info!("highlight: applying scale_factor={scale_factor} to coordinates");
-    let mut x = (rect.get_left() as f64 * scale_factor) as i32;
-    let mut y = (rect.get_top() as f64 * scale_factor) as i32;
-    let mut width = (rect.get_width() as f64 * scale_factor) as i32;
-    let mut height = (rect.get_height() as f64 * scale_factor) as i32;
 
     // Validate coordinates
     if width <= 0 || height <= 0 {
@@ -110,34 +97,10 @@ pub fn highlight(
         )));
     }
 
-    // info!(
-    //     "highlight: scaled coordinates for overlay: x={}, y={}, width={}, height={}",
-    //     x, y, width, height
-    // );
-
-    // Validate coordinates against virtual screen bounds; if out-of-bounds, fallback to no-DPI scaling
-    let vs_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-    let vs_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-    let vs_w = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-    let vs_h = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-    let out_of_bounds = x < vs_x - 100
-        || y < vs_y - 100
-        || x + width > vs_x + vs_w + 100
-        || y + height > vs_y + vs_h + 100;
-    if out_of_bounds && (scale_factor - 1.0).abs() > f64::EPSILON {
-        // info!(
-        //     "DPI fallback: coords out of virtual screen (vs: {},{} {}x{}). Using unscaled bounds.",
-        //     vs_x, vs_y, vs_w, vs_h
-        // );
-        x = rect.get_left();
-        y = rect.get_top();
-        width = rect.get_width();
-        height = rect.get_height();
-        debug!(
-            "Unscaled highlight coordinates: x={}, y={}, width={}, height={}",
-            x, y, width, height
-        );
-    }
+    debug!(
+        "Highlight coordinates (physical pixels): x={}, y={}, width={}, height={}",
+        x, y, width, height
+    );
 
     // Prepare text overlay data (no truncation for better readability)
     let text_data = text.map(|t| {
@@ -246,42 +209,6 @@ pub fn highlight(
         should_close,
         handle: Some(handle),
     })
-}
-
-/// Helper function to get scale factor from cursor position
-fn get_scale_factor_from_cursor() -> f64 {
-    let mut point = POINT { x: 0, y: 0 };
-    unsafe {
-        let _ = GetCursorPos(&mut point);
-    }
-    match xcap::Monitor::from_point(point.x, point.y) {
-        Ok(monitor) => match monitor.scale_factor() {
-            Ok(factor) => factor as f64,
-            Err(e) => {
-                error!("Failed to get scale factor from cursor position: {}", e);
-                1.0 // Fallback to default scale factor
-            }
-        },
-        Err(e) => {
-            error!("Failed to get monitor from cursor position: {}", e);
-            1.0 // Fallback to default scale factor
-        }
-    }
-}
-
-/// Helper function to get scale factor from focused window
-fn get_scale_factor_from_focused_window() -> Option<f64> {
-    match xcap::Window::all() {
-        Ok(windows) => windows
-            .iter()
-            .find(|w| w.is_focused().unwrap_or(false))
-            .and_then(|focused_window| focused_window.current_monitor().ok())
-            .and_then(|monitor| monitor.scale_factor().ok().map(|factor| factor as f64)),
-        Err(e) => {
-            error!("Failed to get windows: {}", e);
-            None
-        }
-    }
 }
 
 // Thread-local storage for the last created overlay window to destroy later
