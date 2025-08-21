@@ -1,6 +1,7 @@
 use std::time::Instant;
+use terminator_mcp_agent::mcp_converter::McpConverter;
 use terminator_workflow_recorder::{
-    ApplicationSwitchEvent, ApplicationSwitchMethod, EventMetadata, McpConverter, WorkflowEvent,
+    ApplicationSwitchEvent, ApplicationSwitchMethod, EventMetadata, WorkflowEvent,
 };
 
 #[tokio::main]
@@ -37,7 +38,10 @@ async fn main() -> anyhow::Result<()> {
     println!("📋 Generated MCP sequence:");
     for (i, step) in result.primary_sequence.iter().enumerate() {
         println!("  Step {}: {}", i + 1, step.tool_name);
-        println!("    Description: {}", step.description);
+        println!(
+            "    Description: {}",
+            step.description.as_deref().unwrap_or("N/A")
+        );
         println!(
             "    Arguments: {}",
             serde_json::to_string_pretty(&step.arguments)?

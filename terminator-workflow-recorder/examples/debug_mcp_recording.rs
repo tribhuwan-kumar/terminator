@@ -1,7 +1,6 @@
 use std::time::Instant;
-use terminator_workflow_recorder::{
-    McpConverter, WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig,
-};
+use terminator_mcp_agent::mcp_converter::McpConverter;
+use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::signal::ctrl_c;
 use tokio_stream::StreamExt;
 use tracing::{info, Level};
@@ -279,7 +278,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("│   Steps: {}", result.primary_sequence.len());
 
                             for (i, step) in result.primary_sequence.iter().enumerate() {
-                                println!("│   {}. {} -> {}", i+1, step.tool_name, step.description);
+                                println!("│   {}. {} -> {}", i+1, step.tool_name, step.description.as_deref().unwrap_or("N/A"));
                                 println!("│      Args: {}", step.arguments);
                                 if let Some(timeout) = step.timeout_ms {
                                     println!("│      Timeout: {timeout}ms");

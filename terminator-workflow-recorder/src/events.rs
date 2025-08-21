@@ -1,5 +1,4 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::SystemTime;
@@ -746,7 +745,7 @@ pub struct BrowserTabNavigationEvent {
 }
 
 /// Helper type for deserializing Option<UIElement> with error tolerance
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct OptionalUIElement(Option<UIElement>);
 
 impl<'de> Deserialize<'de> for OptionalUIElement {
@@ -776,12 +775,6 @@ impl<'de> Deserialize<'de> for OptionalUIElement {
                 }
             }
         }
-    }
-}
-
-impl Default for OptionalUIElement {
-    fn default() -> Self {
-        OptionalUIElement(None)
     }
 }
 

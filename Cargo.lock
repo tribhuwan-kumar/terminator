@@ -4791,6 +4791,7 @@ dependencies = [
  "serde_json",
  "sysinfo",
  "tempfile",
+ "terminator-mcp-agent",
  "terminator-rs",
  "thiserror 1.0.69",
  "tokio",

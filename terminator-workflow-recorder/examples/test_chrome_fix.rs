@@ -1,4 +1,5 @@
-use terminator_workflow_recorder::{ClickEvent, EventMetadata, McpConverter, WorkflowEvent};
+use terminator_mcp_agent::mcp_converter::McpConverter;
+use terminator_workflow_recorder::{ClickEvent, EventMetadata, WorkflowEvent};
 use tracing::info;
 
 #[tokio::main]

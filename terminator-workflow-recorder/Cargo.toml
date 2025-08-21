@@ -35,10 +35,11 @@ arboard = "3.0"
 
 [dev-dependencies]
 terminator = { workspace = true }
+terminator-mcp-agent = { path = "../terminator-mcp-agent" }
 tempfile = "3.0"
-criterion = "0.5"                 # For benchmarking
-sysinfo = { workspace = true }    # For CPU monitoring
-rand = "0.8"                      # For random element selection in benchmarks
+criterion = "0.5"                                           # For benchmarking
+sysinfo = { workspace = true }                              # For CPU monitoring
+rand = "0.8"                                                # For random element selection in benchmarks
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
