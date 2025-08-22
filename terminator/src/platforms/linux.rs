@@ -1594,6 +1594,15 @@ impl AccessibilityEngine for LinuxEngine {
                 AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
             })? as f64;
 
+            // Linux desktop environments vary, but for simplicity we use full monitor dimensions
+            // Most panels are configurable/auto-hiding, so we don't make assumptions
+            let work_area = Some(crate::WorkAreaBounds {
+                x,
+                y,
+                width,
+                height,
+            });
+
             result.push(crate::Monitor {
                 id: format!("monitor_{}", index),
                 name,
@@ -1603,6 +1612,7 @@ impl AccessibilityEngine for LinuxEngine {
                 x,
                 y,
                 scale_factor,
+                work_area,
             });
         }
 
@@ -1674,6 +1684,14 @@ impl AccessibilityEngine for LinuxEngine {
             AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
         })? as f64;
 
+        // Linux desktop environments vary, so we use full monitor dimensions
+        let work_area = Some(crate::WorkAreaBounds {
+            x,
+            y,
+            width,
+            height,
+        });
+
         Ok(crate::Monitor {
             id: format!("monitor_{}", monitor_index),
             name,
@@ -1683,6 +1701,7 @@ impl AccessibilityEngine for LinuxEngine {
             x,
             y,
             scale_factor,
+            work_area,
         })
     }
 

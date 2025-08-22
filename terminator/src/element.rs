@@ -577,6 +577,37 @@ pub trait UIElementImpl: Send + Sync + Debug {
                     ))
                 })? as f64;
 
+                // Get work area for this monitor if it's Windows and primary
+                #[cfg(target_os = "windows")]
+                let work_area = if is_primary {
+                    use crate::platforms::windows::element::WorkArea;
+                    if let Ok(work_area) = WorkArea::get_primary() {
+                        Some(crate::WorkAreaBounds {
+                            x: work_area.x,
+                            y: work_area.y,
+                            width: work_area.width as u32,
+                            height: work_area.height as u32,
+                        })
+                    } else {
+                        None
+                    }
+                } else {
+                    Some(crate::WorkAreaBounds {
+                        x: mon_x,
+                        y: mon_y,
+                        width: mon_w as u32,
+                        height: mon_h as u32,
+                    })
+                };
+
+                #[cfg(not(target_os = "windows"))]
+                let work_area = Some(crate::WorkAreaBounds {
+                    x: mon_x,
+                    y: mon_y,
+                    width: mon_w as u32,
+                    height: mon_h as u32,
+                });
+
                 return Ok(crate::Monitor {
                     id: format!("monitor_{idx}"),
                     name,
@@ -586,6 +617,7 @@ pub trait UIElementImpl: Send + Sync + Debug {
                     x: mon_x,
                     y: mon_y,
                     scale_factor,
+                    work_area,
                 });
             }
         }
@@ -631,6 +663,30 @@ pub trait UIElementImpl: Send + Sync + Debug {
                     ))
                 })? as f64;
 
+                // Get work area for primary monitor (Windows only)
+                #[cfg(target_os = "windows")]
+                let work_area = {
+                    use crate::platforms::windows::element::WorkArea;
+                    if let Ok(work_area) = WorkArea::get_primary() {
+                        Some(crate::WorkAreaBounds {
+                            x: work_area.x,
+                            y: work_area.y,
+                            width: work_area.width as u32,
+                            height: work_area.height as u32,
+                        })
+                    } else {
+                        None
+                    }
+                };
+
+                #[cfg(not(target_os = "windows"))]
+                let work_area = Some(crate::WorkAreaBounds {
+                    x,
+                    y,
+                    width,
+                    height,
+                });
+
                 return Ok(crate::Monitor {
                     id: format!("monitor_{idx}"),
                     name,
@@ -640,6 +696,7 @@ pub trait UIElementImpl: Send + Sync + Debug {
                     x,
                     y,
                     scale_factor,
+                    work_area,
                 });
             }
         }
@@ -1077,6 +1134,23 @@ impl UIElement {
             ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
         }
 
+        // Helper: check if element is within work area (excluding taskbar)
+        #[cfg(target_os = "windows")]
+        fn is_in_work_area(elem_bounds: (f64, f64, f64, f64)) -> bool {
+            use crate::platforms::windows::element::WorkArea;
+            if let Ok(work_area) = WorkArea::get_primary() {
+                let (x, y, width, height) = elem_bounds;
+                work_area.intersects(x, y, width, height)
+            } else {
+                true // If we can't get work area, assume it's visible
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        fn is_in_work_area(_elem_bounds: (f64, f64, f64, f64)) -> bool {
+            true // On non-Windows platforms, no taskbar adjustment needed
+        }
+
         // Initial snapshot for diagnostics
         let init_visible = self.is_visible().unwrap_or(false);
         let init_bounds = self.bounds().ok();
@@ -1105,17 +1179,20 @@ impl UIElement {
                 }
             };
 
-            // If visible and, when available, intersecting the window area, we are done
+            // If visible and, when available, intersecting the window area AND within work area, we are done
             if visible {
+                // Also check if element is within work area (not behind taskbar)
+                let in_work_area = is_in_work_area(elem_bounds);
+
                 if let Some(wb) = window_bounds {
-                    if intersects(elem_bounds, wb) {
+                    if intersects(elem_bounds, wb) && in_work_area {
                         info!(
                             "scroll_into_view:done steps_taken={} final_bounds={:?}",
                             steps_taken, elem_bounds
                         );
                         return Ok(());
                     }
-                } else {
+                } else if in_work_area {
                     info!(
                         "scroll_into_view:done (no window bounds) steps_taken={} final_bounds={:?}",
                         steps_taken, elem_bounds
@@ -1124,30 +1201,48 @@ impl UIElement {
                 }
             }
 
-            // Determine scroll directions based on position relative to window bounds (if available)
+            // Determine scroll directions based on position relative to window bounds and work area
             let mut vertical_dir: Option<&'static str> = None;
             let mut horizontal_dir: Option<&'static str> = None;
 
-            if let Some((wx, wy, ww, wh)) = window_bounds {
-                let (ex, ey, ew, eh) = elem_bounds;
-                // Vertical
-                if ey + eh <= wy {
-                    // Element is above the viewport -> scroll up
-                    vertical_dir = Some("up");
-                } else if ey >= wy + wh {
-                    // Element is below the viewport -> scroll down
-                    vertical_dir = Some("down");
+            // Check if element is behind taskbar (Windows only)
+            #[cfg(target_os = "windows")]
+            {
+                use crate::platforms::windows::element::WorkArea;
+                if let Ok(work_area) = WorkArea::get_primary() {
+                    let (_ex, ey, _ew, eh) = elem_bounds;
+                    let work_bottom = (work_area.y + work_area.height) as f64;
+
+                    // If element is below work area (behind taskbar), scroll down
+                    if ey + eh > work_bottom {
+                        vertical_dir = Some("down");
+                    }
                 }
-                // Horizontal (best effort)
-                if ex + ew <= wx {
-                    horizontal_dir = Some("left");
-                } else if ex >= wx + ww {
-                    horizontal_dir = Some("right");
+            }
+
+            // Standard scroll direction logic based on window bounds
+            if vertical_dir.is_none() {
+                if let Some((wx, wy, ww, wh)) = window_bounds {
+                    let (ex, ey, ew, eh) = elem_bounds;
+                    // Vertical
+                    if ey + eh <= wy {
+                        // Element is above the viewport -> scroll up
+                        vertical_dir = Some("up");
+                    } else if ey >= wy + wh {
+                        // Element is below the viewport -> scroll down
+                        vertical_dir = Some("down");
+                    }
+                    // Horizontal (best effort)
+                    if ex + ew <= wx {
+                        horizontal_dir = Some("left");
+                    } else if ex >= wx + ww {
+                        horizontal_dir = Some("right");
+                    }
+                } else {
+                    // Without window bounds, attempt a sensible default sequence
+                    // Try down first (common case), then up; we alternate if no progress.
+                    vertical_dir = Some(if steps_taken % 2 == 0 { "down" } else { "up" });
                 }
-            } else {
-                // Without window bounds, attempt a sensible default sequence
-                // Try down first (common case), then up; we alternate if no progress.
-                vertical_dir = Some(if steps_taken % 2 == 0 { "down" } else { "up" });
             }
 
             // Perform one vertical step if needed

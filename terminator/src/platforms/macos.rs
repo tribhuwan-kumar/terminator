@@ -3428,6 +3428,15 @@ impl AccessibilityEngine for MacOSEngine {
                 AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
             })? as f64;
 
+            // macOS doesn't have a taskbar that reduces work area like Windows
+            // The dock can auto-hide, so we use full monitor dimensions
+            let work_area = Some(crate::WorkAreaBounds {
+                x,
+                y,
+                width,
+                height,
+            });
+
             result.push(crate::Monitor {
                 id: format!("monitor_{}", index),
                 name,
@@ -3437,6 +3446,7 @@ impl AccessibilityEngine for MacOSEngine {
                 x,
                 y,
                 scale_factor,
+                work_area,
             });
         }
 
@@ -3508,6 +3518,14 @@ impl AccessibilityEngine for MacOSEngine {
             AutomationError::PlatformError(format!("Failed to get monitor scale factor: {}", e))
         })? as f64;
 
+        // macOS doesn't have a taskbar that reduces work area like Windows
+        let work_area = Some(crate::WorkAreaBounds {
+            x,
+            y,
+            width,
+            height,
+        });
+
         Ok(crate::Monitor {
             id: format!("monitor_{}", monitor_index),
             name,
@@ -3517,6 +3535,7 @@ impl AccessibilityEngine for MacOSEngine {
             x,
             y,
             scale_factor,
+            work_area,
         })
     }
 

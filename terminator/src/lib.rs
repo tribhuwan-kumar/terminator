@@ -80,6 +80,18 @@ pub struct Monitor {
     pub y: i32,
     /// Scale factor (e.g., 1.0 for 100%, 1.25 for 125%)
     pub scale_factor: f64,
+    /// Work area dimensions (screen area excluding taskbar) - Windows only
+    /// On other platforms, this will be the same as the full monitor dimensions
+    pub work_area: Option<WorkAreaBounds>,
+}
+
+/// Represents the work area bounds (excluding taskbar and docked windows)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct WorkAreaBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Monitor {

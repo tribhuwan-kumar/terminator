@@ -418,37 +418,97 @@ impl DesktopWrapper {
             ax < b_right && a_right > bx && ay < b_bottom && a_bottom > by
         }
 
+        // Helper function to check if element is within work area (Windows only)
+        #[cfg(target_os = "windows")]
+        fn check_work_area(ex: f64, ey: f64, ew: f64, eh: f64) -> bool {
+            use terminator::platforms::windows::element::WorkArea;
+            if let Ok(work_area) = WorkArea::get_primary() {
+                work_area.intersects(ex, ey, ew, eh)
+            } else {
+                true // If we can't get work area, assume visible
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        fn check_work_area(_ex: f64, _ey: f64, _ew: f64, _eh: f64) -> bool {
+            true // Non-Windows platforms don't need taskbar adjustment
+        }
+
         // Check if element needs scrolling
         let mut need_scroll = false;
 
         if let Ok((ex, ey, ew, eh)) = element.bounds() {
             tracing::debug!("Element bounds: x={ex}, y={ey}, w={ew}, h={eh}");
 
-            // Try to get window bounds, but if that fails, use heuristics
-            if let Ok(Some(win)) = element.window() {
-                if let Ok((wx, wy, ww, wh)) = win.bounds() {
-                    tracing::debug!("Window bounds: x={wx}, y={wy}, w={ww}, h={wh}");
+            // First check if element is outside work area (behind taskbar)
+            if !check_work_area(ex, ey, ew, eh) {
+                tracing::info!("Element outside work area (possibly behind taskbar), need scroll");
+                need_scroll = true;
+            } else {
+                // Try to get window bounds, but if that fails, use heuristics
+                if let Ok(Some(win)) = element.window() {
+                    if let Ok((wx, wy, ww, wh)) = win.bounds() {
+                        tracing::debug!("Window bounds: x={wx}, y={wy}, w={ww}, h={wh}");
 
-                    let e_box = (ex, ey, ew, eh);
-                    let w_box = (wx, wy, ww, wh);
-                    if !rects_intersect(e_box, w_box) {
-                        tracing::info!("Element NOT in viewport, need scroll");
-                        need_scroll = true;
+                        let e_box = (ex, ey, ew, eh);
+                        let w_box = (wx, wy, ww, wh);
+                        if !rects_intersect(e_box, w_box) {
+                            tracing::info!("Element NOT in viewport, need scroll");
+                            need_scroll = true;
+                        } else {
+                            tracing::debug!(
+                                "Element IS in viewport and work area, no scroll needed"
+                            );
+                        }
                     } else {
-                        tracing::debug!("Element IS in viewport, no scroll needed");
+                        // Use dynamic work area height instead of hardcoded 1080
+                        #[cfg(target_os = "windows")]
+                        {
+                            use terminator::platforms::windows::element::WorkArea;
+                            if let Ok(work_area) = WorkArea::get_primary() {
+                                let work_height = work_area.height as f64;
+                                if ey > work_height - 100.0 {
+                                    tracing::info!("Element Y={ey} near bottom of work area, assuming needs scroll");
+                                    need_scroll = true;
+                                }
+                            } else if ey > 1080.0 {
+                                // Fallback to heuristic if we can't get work area
+                                tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
+                                need_scroll = true;
+                            }
+                        }
+                        #[cfg(not(target_os = "windows"))]
+                        {
+                            if ey > 1080.0 {
+                                tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
+                                need_scroll = true;
+                            }
+                        }
                     }
                 } else {
-                    // Heuristic: if element Y > 1080 (typical viewport height), probably needs scroll
-                    if ey > 1080.0 {
-                        tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
-                        need_scroll = true;
+                    // Use dynamic work area height instead of hardcoded 1080
+                    #[cfg(target_os = "windows")]
+                    {
+                        use terminator::platforms::windows::element::WorkArea;
+                        if let Ok(work_area) = WorkArea::get_primary() {
+                            let work_height = work_area.height as f64;
+                            if ey > work_height - 100.0 {
+                                tracing::info!("Element Y={ey} near bottom of work area, assuming needs scroll");
+                                need_scroll = true;
+                            }
+                        } else if ey > 1080.0 {
+                            // Fallback to heuristic if we can't get work area
+                            tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
+                            need_scroll = true;
+                        }
                     }
-                }
-            } else {
-                // Heuristic: if element Y > 1080 (typical viewport height), probably needs scroll
-                if ey > 1080.0 {
-                    tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
-                    need_scroll = true;
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        if ey > 1080.0 {
+                            tracing::info!("Element Y={ey} > 1080, assuming needs scroll");
+                            need_scroll = true;
+                        }
+                    }
                 }
             }
         } else if !element.is_visible().unwrap_or(true) {
@@ -506,10 +566,26 @@ impl DesktopWrapper {
                     if let Ok((_, ey, _, eh)) = element.bounds() {
                         tracing::debug!("After scroll_into_view, element at y={ey}");
 
-                        // Define optimal viewport zones (assuming typical 1080p screen)
-                        const VIEWPORT_TOP_EDGE: f64 = 100.0; // Too close to top
-                        const VIEWPORT_OPTIMAL_BOTTOM: f64 = 700.0; // Good zone ends here
-                        const VIEWPORT_BOTTOM_EDGE: f64 = 900.0; // Too close to bottom
+                        // Define dynamic viewport zones based on work area
+                        #[cfg(target_os = "windows")]
+                        let (viewport_top_edge, viewport_optimal_bottom, viewport_bottom_edge) = {
+                            use terminator::platforms::windows::element::WorkArea;
+                            if let Ok(work_area) = WorkArea::get_primary() {
+                                let work_height = work_area.height as f64;
+                                (
+                                    100.0,               // Too close to top
+                                    work_height * 0.65,  // Good zone ends at 65% of work area
+                                    work_height - 100.0, // Too close to bottom (accounting for taskbar)
+                                )
+                            } else {
+                                // Fallback to defaults if work area unavailable
+                                (100.0, 700.0, 900.0)
+                            }
+                        };
+
+                        #[cfg(not(target_os = "windows"))]
+                        let (viewport_top_edge, viewport_optimal_bottom, viewport_bottom_edge) =
+                            (100.0, 700.0, 900.0);
 
                         // Check if we have window bounds for more accurate positioning
                         let mut needs_adjustment = false;
@@ -547,19 +623,19 @@ impl DesktopWrapper {
                                 }
                             } else {
                                 // No window bounds - use heuristic based on absolute Y position
-                                if ey < VIEWPORT_TOP_EDGE {
+                                if ey < viewport_top_edge {
                                     tracing::debug!(
-                                        "Element at y={ey} < {VIEWPORT_TOP_EDGE}, too high"
+                                        "Element at y={ey} < {viewport_top_edge}, too high"
                                     );
                                     needs_adjustment = true;
                                     adjustment_direction = Some("up");
-                                } else if ey > VIEWPORT_BOTTOM_EDGE {
+                                } else if ey > viewport_bottom_edge {
                                     tracing::debug!(
-                                        "Element at y={ey} > {VIEWPORT_BOTTOM_EDGE}, too low"
+                                        "Element at y={ey} > {viewport_bottom_edge}, too low"
                                     );
                                     needs_adjustment = true;
                                     adjustment_direction = Some("down");
-                                } else if ey > VIEWPORT_OPTIMAL_BOTTOM {
+                                } else if ey > viewport_optimal_bottom {
                                     // Element is lower than optimal but not at edge
                                     tracing::debug!("Element at y={ey} lower than optimal");
                                     needs_adjustment = true;
@@ -568,7 +644,7 @@ impl DesktopWrapper {
                             }
                         } else {
                             // No window available - use simple heuristics
-                            if !(VIEWPORT_TOP_EDGE..=VIEWPORT_BOTTOM_EDGE).contains(&ey) {
+                            if !(viewport_top_edge..=viewport_bottom_edge).contains(&ey) {
                                 needs_adjustment = true;
                                 adjustment_direction = Some(if ey < 500.0 { "up" } else { "down" });
                                 tracing::debug!("Element at y={ey} outside optimal range");

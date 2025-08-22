@@ -94,6 +94,91 @@ impl ScrollFallback for WindowsUIElement {
 
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
+/// Represents the work area (screen area excluding taskbar and docked windows)
+#[derive(Debug, Clone, Copy)]
+pub struct WorkArea {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl WorkArea {
+    /// Get the current work area for the primary monitor
+    #[cfg(target_os = "windows")]
+    pub fn get_primary() -> Result<Self, AutomationError> {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA};
+        
+        unsafe {
+            let mut rect = RECT::default();
+            let success = SystemParametersInfoW(
+                SPI_GETWORKAREA,
+                0,
+                Some(&mut rect as *mut RECT as *mut std::ffi::c_void),
+                windows::Win32::UI::WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+            );
+            
+            if success.is_ok() {
+                Ok(WorkArea {
+                    x: rect.left,
+                    y: rect.top,
+                    width: rect.right - rect.left,
+                    height: rect.bottom - rect.top,
+                })
+            } else {
+                Err(AutomationError::PlatformError(
+                    "Failed to get work area".to_string(),
+                ))
+            }
+        }
+    }
+    
+    /// Check if a given rectangle intersects with the work area
+    pub fn intersects(&self, x: f64, y: f64, width: f64, height: f64) -> bool {
+        let elem_left = x as i32;
+        let elem_top = y as i32;
+        let elem_right = elem_left + width as i32;
+        let elem_bottom = elem_top + height as i32;
+        
+        let work_right = self.x + self.width;
+        let work_bottom = self.y + self.height;
+        
+        // Check if element is within work area bounds
+        elem_left < work_right && 
+        elem_right > self.x && 
+        elem_top < work_bottom && 
+        elem_bottom > self.y
+    }
+    
+    /// Check if a given rectangle is fully contained within the work area
+    pub fn contains(&self, x: f64, y: f64, width: f64, height: f64) -> bool {
+        let elem_left = x as i32;
+        let elem_top = y as i32;
+        let elem_right = elem_left + width as i32;
+        let elem_bottom = elem_top + height as i32;
+        
+        let work_right = self.x + self.width;
+        let work_bottom = self.y + self.height;
+        
+        // Check if element is fully within work area bounds
+        elem_left >= self.x && 
+        elem_right <= work_right && 
+        elem_top >= self.y && 
+        elem_bottom <= work_bottom
+    }
+    
+    /// Check if an element is near the taskbar (within threshold pixels)
+    pub fn is_near_taskbar(&self, y: f64, height: f64, threshold: f64) -> bool {
+        let elem_bottom = y + height;
+        let work_bottom = (self.y + self.height) as f64;
+        
+        // Check if element's bottom edge is near the work area bottom edge
+        // (which means it's near where the taskbar starts)
+        (elem_bottom > work_bottom - threshold) && (elem_bottom <= work_bottom + threshold)
+    }
+}
+
 pub struct WindowsUIElement {
     pub(crate) element: ThreadSafeWinUIElement,
 }
@@ -843,11 +928,27 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn is_visible(&self) -> Result<bool, AutomationError> {
-        self.element
+        // First check if the element is offscreen
+        let is_offscreen = self.element
             .0
             .is_offscreen()
-            .map(|is_offscreen| !is_offscreen)
-            .map_err(|e| AutomationError::ElementNotFound(e.to_string()))
+            .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
+        
+        if is_offscreen {
+            return Ok(false);
+        }
+        
+        // Now check if it's behind the taskbar or outside work area
+        if let Ok((x, y, width, height)) = self.bounds() {
+            // Get the work area
+            if let Ok(work_area) = WorkArea::get_primary() {
+                // Element is visible if it intersects with the work area
+                return Ok(work_area.intersects(x, y, width, height));
+            }
+        }
+        
+        // If we can't get bounds or work area, fall back to the offscreen check
+        Ok(!is_offscreen)
     }
 
     fn is_focused(&self) -> Result<bool, AutomationError> {
@@ -1077,6 +1178,8 @@ impl UIElementImpl for WindowsUIElement {
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         fn to_absolute(x: f64, y: f64) -> (i32, i32) {
+            // Still use full screen for mouse coordinates as they're absolute to the entire screen
+            // The work area is used for visibility checks, not mouse positioning
             let screen_w = unsafe { GetSystemMetrics(SM_CXSCREEN) };
             let screen_h = unsafe { GetSystemMetrics(SM_CYSCREEN) };
             let abs_x = ((x / screen_w as f64) * 65535.0).round() as i32;
@@ -1123,6 +1226,8 @@ impl UIElementImpl for WindowsUIElement {
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
         fn to_absolute(x: f64, y: f64) -> (i32, i32) {
+            // Still use full screen for mouse coordinates as they're absolute to the entire screen
+            // The work area is used for visibility checks, not mouse positioning
             let screen_w = unsafe { GetSystemMetrics(SM_CXSCREEN) };
             let screen_h = unsafe { GetSystemMetrics(SM_CYSCREEN) };
             let abs_x = ((x / screen_w as f64) * 65535.0).round() as i32;

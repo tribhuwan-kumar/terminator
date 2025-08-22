@@ -2246,6 +2246,30 @@ impl AccessibilityEngine for WindowsEngine {
                 AutomationError::PlatformError(format!("Failed to get monitor scale factor: {e}"))
             })? as f64;
 
+            // Get work area for this monitor if it's primary (Windows only supports primary monitor work area via SPI_GETWORKAREA)
+            let work_area = if is_primary {
+                use crate::platforms::windows::element::WorkArea;
+                if let Ok(work_area) = WorkArea::get_primary() {
+                    Some(crate::WorkAreaBounds {
+                        x: work_area.x,
+                        y: work_area.y,
+                        width: work_area.width as u32,
+                        height: work_area.height as u32,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                // For non-primary monitors, work area is same as full monitor
+                // (Windows doesn't provide per-monitor work area through simple API)
+                Some(crate::WorkAreaBounds {
+                    x,
+                    y,
+                    width,
+                    height,
+                })
+            };
+
             result.push(crate::Monitor {
                 id: format!("monitor_{index}"),
                 name,
@@ -2255,6 +2279,7 @@ impl AccessibilityEngine for WindowsEngine {
                 x,
                 y,
                 scale_factor,
+                work_area,
             });
         }
 
@@ -2325,6 +2350,29 @@ impl AccessibilityEngine for WindowsEngine {
             AutomationError::PlatformError(format!("Failed to get monitor scale factor: {e}"))
         })? as f64;
 
+        // Get work area for this monitor if it's primary
+        let work_area = if is_primary {
+            use crate::platforms::windows::element::WorkArea;
+            if let Ok(work_area) = WorkArea::get_primary() {
+                Some(crate::WorkAreaBounds {
+                    x: work_area.x,
+                    y: work_area.y,
+                    width: work_area.width as u32,
+                    height: work_area.height as u32,
+                })
+            } else {
+                None
+            }
+        } else {
+            // For non-primary monitors, work area is same as full monitor
+            Some(crate::WorkAreaBounds {
+                x,
+                y,
+                width,
+                height,
+            })
+        };
+
         Ok(crate::Monitor {
             id: format!("monitor_{monitor_index}"),
             name,
@@ -2334,6 +2382,7 @@ impl AccessibilityEngine for WindowsEngine {
             x,
             y,
             scale_factor,
+            work_area,
         })
     }
 
