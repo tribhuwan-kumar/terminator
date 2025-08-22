@@ -1279,23 +1279,39 @@ impl McpConverter {
         // Fix invalid "application|" prefix
         if selector.starts_with("application|") {
             let title = selector.strip_prefix("application|").unwrap_or("");
-            let is_browser = title.contains("Chrome") || title.contains("Edge") || title.contains("Firefox");
+            let is_browser =
+                title.contains("Chrome") || title.contains("Edge") || title.contains("Firefox");
             if is_browser {
-                return format!("role:TabItem|name:contains:{}", title.split(" - ").next().unwrap_or(title));
+                return format!(
+                    "role:TabItem|name:contains:{}",
+                    title.split(" - ").next().unwrap_or(title)
+                );
             } else {
                 return format!("role:Window|name:contains:{title}");
             }
         }
 
         // Fix missing "role:" prefix for standard role|name selectors
-        if selector.contains('|') && !selector.starts_with("role:") && !selector.starts_with("text:") && !selector.starts_with("name:") && !selector.starts_with("#") {
+        if selector.contains('|')
+            && !selector.starts_with("role:")
+            && !selector.starts_with("text:")
+            && !selector.starts_with("name:")
+            && !selector.starts_with("#")
+        {
             let parts: Vec<&str> = selector.split('|').collect();
             if parts.len() == 2 {
                 // Check if first part looks like a role (starts with uppercase or common roles)
                 let potential_role = parts[0];
-                if potential_role.chars().next().is_some_and(|c| c.is_uppercase()) ||
-                   ["button", "edit", "menuitem", "listitem", "window", "pane", "tabitem"]
-                       .iter().any(|&r| potential_role.to_lowercase() == r) {
+                if potential_role
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_uppercase())
+                    || [
+                        "button", "edit", "menuitem", "listitem", "window", "pane", "tabitem",
+                    ]
+                    .iter()
+                    .any(|&r| potential_role.to_lowercase() == r)
+                {
                     return format!("role:{}|name:{}", parts[0], parts[1]);
                 }
             }
