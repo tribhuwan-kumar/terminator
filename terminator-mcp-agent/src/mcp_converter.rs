@@ -116,6 +116,32 @@ impl McpConverter {
             }
         }?;
 
+        // Apply validation to all generated selectors
+        let mut result = result;
+        for step in &mut result.primary_sequence {
+            if let Some(selector) = step.arguments.get_mut("selector") {
+                if let Some(selector_str) = selector.as_str() {
+                    let validated = self.validate_selector(selector_str);
+                    if validated != selector_str {
+                        debug!("Validated selector: '{}' -> '{}'", selector_str, validated);
+                    }
+                    *selector = json!(validated);
+                }
+            }
+        }
+
+        // Also validate fallback sequences
+        for fallback_seq in &mut result.fallback_sequences {
+            for step in fallback_seq {
+                if let Some(selector) = step.arguments.get_mut("selector") {
+                    if let Some(selector_str) = selector.as_str() {
+                        let validated = self.validate_selector(selector_str);
+                        *selector = json!(validated);
+                    }
+                }
+            }
+        }
+
         Ok(result)
     }
 
@@ -508,16 +534,16 @@ impl McpConverter {
             let window_title = metadata.window_title();
 
             if self.is_desktop_context(&app_name, &window_title) {
-                // Desktop-specific selector generation - prefer child text
+                // Desktop-specific selector generation - use standard format
                 if !event.child_text_content.is_empty() {
                     return format!(
-                        "desktop:{}|{}",
+                        "role:{}|name:{}",
                         event.element_role, event.child_text_content[0]
                     );
                 } else if !event.element_text.is_empty() {
-                    return format!("desktop:{}|{}", event.element_role, event.element_text);
+                    return format!("role:{}|name:{}", event.element_role, event.element_text);
                 } else {
-                    return format!("desktop:role:{}", event.element_role);
+                    return format!("role:{}", event.element_role);
                 }
             }
         }
@@ -528,8 +554,8 @@ impl McpConverter {
         // that may not be under the click coordinates.
 
         if !event.element_text.is_empty() {
-            // Use the actual clicked element's text
-            format!("{}|{}", event.element_role, event.element_text)
+            // Use the actual clicked element's text with proper format
+            format!("role:{}|name:{}", event.element_role, event.element_text)
         } else {
             // If the clicked element has no text, try child text as a fallback
             // (but only if we have child text and it's not from a large container)
@@ -537,7 +563,7 @@ impl McpConverter {
                 let child_text = &event.child_text_content[0];
                 // Only use child text if it's concise and specific
                 if child_text.len() < 50 && !child_text.to_lowercase().contains("click") {
-                    format!("{}|{}", event.element_role, child_text)
+                    format!("role:{}|name:{}", event.element_role, child_text)
                 } else {
                     // Child text is too verbose, use role-only selector
                     format!("role:{}", event.element_role)
@@ -790,7 +816,7 @@ impl McpConverter {
                 fallbacks.push(vec![McpToolStep {
                     tool_name: "click_element".to_string(),
                     arguments: json!({
-                        "selector": format!("{}|{}", event.element_role, child_text)
+                        "selector": format!("role:{}|name:{}", event.element_role, child_text)
                     }),
                     description: Some(format!(
                         "Click {} containing '{}'",
@@ -859,7 +885,7 @@ impl McpConverter {
         sequence.push(McpToolStep {
             tool_name: "click_element".to_string(),
             arguments: json!({
-                "selector": format!("MenuItem|{}", event.text_value)
+                "selector": format!("role:MenuItem|name:{}", event.text_value)
             }),
             description: Some(format!("Select '{}' from menu", event.text_value)),
             timeout_ms: Some(5000),
@@ -972,7 +998,7 @@ impl McpConverter {
         }
 
         // Step 2: Select from dropdown
-        let item_selector = format!("MenuItem|{}", event.text_value);
+        let item_selector = format!("role:MenuItem|name:{}", event.text_value);
         sequence.push(McpToolStep {
             tool_name: "click_element".to_string(),
             arguments: json!({
@@ -1042,7 +1068,7 @@ impl McpConverter {
         sequence.push(McpToolStep {
             tool_name: "click_element".to_string(),
             arguments: json!({
-                "selector": format!("ListItem|{}", event.text_value)
+                "selector": format!("role:ListItem|name:{}", event.text_value)
             }),
             description: Some(format!("Select '{}' from autocomplete", event.text_value)),
             timeout_ms: Some(5000),
@@ -1085,7 +1111,7 @@ impl McpConverter {
     fn generate_text_field_selector(&self, event: &TextInputCompletedEvent) -> String {
         if let Some(field_name) = &event.field_name {
             if !field_name.is_empty() {
-                return format!("{}|{}", event.field_type, field_name);
+                return format!("role:{}|name:{}", event.field_type, field_name);
             }
         }
         format!("role:{}", event.field_type)
@@ -1246,6 +1272,51 @@ impl McpConverter {
         }
 
         result
+    }
+
+    /// Validate and fix selector format to ensure proper "role:" prefix
+    fn validate_selector(&self, selector: &str) -> String {
+        // Fix invalid "application|" prefix
+        if selector.starts_with("application|") {
+            let title = selector.strip_prefix("application|").unwrap_or("");
+            let is_browser = title.contains("Chrome") || title.contains("Edge") || title.contains("Firefox");
+            if is_browser {
+                return format!("role:TabItem|name:contains:{}", title.split(" - ").next().unwrap_or(title));
+            } else {
+                return format!("role:Window|name:contains:{title}");
+            }
+        }
+
+        // Fix missing "role:" prefix for standard role|name selectors
+        if selector.contains('|') && !selector.starts_with("role:") && !selector.starts_with("text:") && !selector.starts_with("name:") && !selector.starts_with("#") {
+            let parts: Vec<&str> = selector.split('|').collect();
+            if parts.len() == 2 {
+                // Check if first part looks like a role (starts with uppercase or common roles)
+                let potential_role = parts[0];
+                if potential_role.chars().next().is_some_and(|c| c.is_uppercase()) ||
+                   ["button", "edit", "menuitem", "listitem", "window", "pane", "tabitem"]
+                       .iter().any(|&r| potential_role.to_lowercase() == r) {
+                    return format!("role:{}|name:{}", parts[0], parts[1]);
+                }
+            }
+        }
+
+        // Fix "desktop:" prefix - convert to standard format
+        if selector.starts_with("desktop:") {
+            let rest = selector.strip_prefix("desktop:").unwrap_or("");
+            if rest.contains('|') {
+                let parts: Vec<&str> = rest.split('|').collect();
+                if parts.len() == 2 {
+                    return format!("role:{}|name:{}", parts[0], parts[1]);
+                }
+            } else if rest.starts_with("role:") {
+                return rest.to_string();
+            } else {
+                return format!("role:{rest}");
+            }
+        }
+
+        selector.to_string()
     }
 
     /// Convert clipboard event to MCP sequence
