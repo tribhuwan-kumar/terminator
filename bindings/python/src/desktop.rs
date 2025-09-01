@@ -204,6 +204,7 @@ impl Desktop {
                     x: m.x,
                     y: m.y,
                     scale_factor: m.scale_factor,
+                    work_area: None,
                 }),
         };
         pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
@@ -476,6 +477,7 @@ impl Desktop {
             x: monitor.x,
             y: monitor.y,
             scale_factor: monitor.scale_factor,
+            work_area: None,
         };
         pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
             let result = desktop

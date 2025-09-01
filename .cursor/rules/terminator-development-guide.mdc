@@ -52,6 +52,8 @@ use accessibility::*;
 use atspi::*;
 ```
 
+Avoid high level logic in platform specific part of terminator core lib, implement in MCP or elsewhere. Platform specific files in core should mostly just do the plumbing between OS API and the nice high level playwright like API.
+
 ## Development Loop
 ```bash
 # Fast iteration

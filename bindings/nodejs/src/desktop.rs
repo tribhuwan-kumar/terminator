@@ -147,6 +147,7 @@ impl Desktop {
                 x: m.x,
                 y: m.y,
                 scale_factor: m.scale_factor,
+                work_area: None,
             }),
         };
         self.inner
@@ -359,6 +360,7 @@ impl Desktop {
             x: monitor.x,
             y: monitor.y,
             scale_factor: monitor.scale_factor,
+            work_area: None,
         };
         self.inner
             .capture_monitor(&rust_monitor)
