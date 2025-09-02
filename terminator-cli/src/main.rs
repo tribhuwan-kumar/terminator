@@ -17,12 +17,15 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use serde_json::Value;
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 mod mcp_client;
+
+use mcp_client::execute_command_with_result;
 
 #[derive(Parser)]
 #[command(name = "terminator")]
@@ -94,7 +97,7 @@ enum InputType {
     File,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 struct McpRunArgs {
     /// MCP server URL (e.g., http://localhost:3000)
     #[clap(long, short = 'u', conflicts_with = "command")]
@@ -887,6 +890,15 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     let mut workflow_val = parse_workflow_content(&content)
         .with_context(|| format!("Failed to parse workflow from {}", args.input))?;
 
+    // Handle cron scheduling if specified in workflow
+    if let Some(cron_expr) = extract_cron_from_workflow(&workflow_val) {
+        info!(
+            "🕐 Starting cron scheduler with workflow expression: {}",
+            cron_expr
+        );
+        return run_workflow_with_cron(transport, args, &cron_expr).await;
+    }
+
     // Validate workflow structure early to catch issues
     validate_workflow(&workflow_val).with_context(|| "Workflow validation failed")?;
 
@@ -943,17 +955,192 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
 
     info!("Executing workflow with {steps_count} steps via MCP");
 
-    // Debug: Print the workflow structure that we're about to send
-    if args.verbose {
-        let workflow_debug = serde_json::to_string_pretty(&workflow_val)?;
-        info!("Workflow structure being sent: {}", workflow_debug);
-    }
-
-    // Send the clean workflow JSON directly instead of converting through ExecuteSequenceArgs
-    // to avoid adding null fields that might confuse the server
     let workflow_str = serde_json::to_string(&workflow_val)?;
 
-    mcp_client::execute_command(
+    execute_command_with_result(
+        transport,
+        "execute_sequence".to_string(),
+        Some(workflow_str),
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Extract cron expression from workflow YAML
+fn extract_cron_from_workflow(workflow: &Value) -> Option<String> {
+    // Primary format: cron field at root level (simpler format)
+    if let Some(cron) = workflow.get("cron") {
+        if let Some(cron_str) = cron.as_str() {
+            return Some(cron_str.to_string());
+        }
+    }
+
+    // Alternative: GitHub Actions style: on.schedule.cron
+    if let Some(on) = workflow.get("on") {
+        if let Some(schedule) = on.get("schedule") {
+            // Handle both single cron and array of crons
+            if let Some(cron_array) = schedule.as_array() {
+                // If it's an array, take the first cron expression
+                if let Some(first_schedule) = cron_array.first() {
+                    if let Some(cron) = first_schedule.get("cron") {
+                        if let Some(cron_str) = cron.as_str() {
+                            return Some(cron_str.to_string());
+                        }
+                    }
+                }
+            } else if let Some(cron) = schedule.get("cron") {
+                // Handle single cron expression
+                if let Some(cron_str) = cron.as_str() {
+                    return Some(cron_str.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Execute workflow with cron scheduling
+async fn run_workflow_with_cron(
+    transport: mcp_client::Transport,
+    args: McpRunArgs,
+    cron_expr: &str,
+) -> anyhow::Result<()> {
+    use tokio_cron_scheduler::{Job, JobScheduler};
+    use tracing::error;
+
+    println!("🕐 Setting up cron scheduler...");
+    println!("📅 Cron expression: {}", cron_expr);
+    println!("🔄 Workflow will run continuously at scheduled intervals");
+    println!("💡 Press Ctrl+C to stop the scheduler");
+
+    // Try to parse the cron expression to validate it (tokio-cron-scheduler will handle this)
+    // We'll let tokio-cron-scheduler validate it when we create the job
+
+    // For preview, we'll just show a generic message since calculating next times
+    // with tokio-cron-scheduler is more complex
+    println!(
+        "📋 Workflow will run according to cron schedule: {}",
+        cron_expr
+    );
+    println!("💡 Note: Exact execution times depend on system clock and scheduler timing");
+
+    // Create scheduler
+    let mut sched = JobScheduler::new().await?;
+
+    // Clone transport for the job closure
+    let transport_clone = transport.clone();
+    let args_clone = args.clone();
+
+    // Create the scheduled job
+    let job = Job::new_async(cron_expr, move |_uuid, _lock| {
+        let transport = transport_clone.clone();
+        let args = args_clone.clone();
+
+        Box::pin(async move {
+            let start_time = std::time::Instant::now();
+            println!(
+                "\n🚀 Starting scheduled workflow execution at {}",
+                chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+            );
+
+            match run_workflow_once(transport, args).await {
+                Ok(_) => {
+                    let duration = start_time.elapsed();
+                    println!(
+                        "✅ Scheduled workflow completed successfully in {:.2}s",
+                        duration.as_secs_f64()
+                    );
+                }
+                Err(e) => {
+                    let duration = start_time.elapsed();
+                    println!(
+                        "❌ Scheduled workflow failed after {:.2}s: {}",
+                        duration.as_secs_f64(),
+                        e
+                    );
+                }
+            }
+        })
+    })?;
+
+    // Add job to scheduler
+    sched.add(job).await?;
+    println!("✅ Cron job scheduled successfully");
+
+    // Start the scheduler
+    sched.start().await?;
+    println!("▶️  Scheduler started - workflow will run at scheduled intervals");
+
+    // Set up graceful shutdown
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
+
+    // Spawn a task to handle Ctrl+C
+    tokio::spawn(async move {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                println!("\n🛑 Received shutdown signal");
+                let _ = shutdown_tx.send(()).await;
+            }
+            Err(e) => {
+                error!("Failed to listen for shutdown signal: {}", e);
+            }
+        }
+    });
+
+    // Wait for shutdown signal
+    let _ = shutdown_rx.recv().await;
+
+    println!("🛑 Shutting down scheduler...");
+    sched.shutdown().await?;
+    println!("✅ Scheduler stopped successfully");
+
+    Ok(())
+}
+
+/// Execute a single workflow run (used by cron scheduler)
+async fn run_workflow_once(
+    transport: mcp_client::Transport,
+    args: McpRunArgs,
+) -> anyhow::Result<()> {
+    // Resolve actual input type (auto-detect if needed)
+    let resolved_type = determine_input_type(&args.input, args.input_type);
+
+    // Fetch workflow content
+    let content = match resolved_type {
+        InputType::File => read_local_file(&args.input).await?,
+        InputType::Gist => {
+            let raw_url = convert_gist_to_raw_url(&args.input)?;
+            fetch_remote_content(&raw_url).await?
+        }
+        InputType::Raw => fetch_remote_content(&args.input).await?,
+        InputType::Auto => unreachable!(),
+    };
+
+    // Parse workflow using the same robust logic as gist_executor
+    let mut workflow_val = parse_workflow_content(&content)
+        .with_context(|| format!("Failed to parse workflow from {}", args.input))?;
+
+    // Validate workflow structure early to catch issues
+    validate_workflow(&workflow_val).with_context(|| "Workflow validation failed")?;
+
+    // Apply overrides
+    if let Some(obj) = workflow_val.as_object_mut() {
+        if args.no_stop_on_error {
+            obj.insert("stop_on_error".into(), serde_json::Value::Bool(false));
+        }
+        if args.no_detailed_results {
+            obj.insert(
+                "include_detailed_results".into(),
+                serde_json::Value::Bool(false),
+            );
+        }
+    }
+
+    // For cron jobs, use simple execution to avoid connection spam
+    let workflow_str = serde_json::to_string(&workflow_val)?;
+    execute_command_with_result(
         transport,
         "execute_sequence".to_string(),
         Some(workflow_str),

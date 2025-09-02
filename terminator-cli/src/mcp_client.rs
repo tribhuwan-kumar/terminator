@@ -13,6 +13,7 @@ use anthropic_sdk::{Client as AnthropicClient, ToolChoice};
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
 pub enum Transport {
     Http(String),
     Stdio(Vec<String>),
@@ -532,8 +533,7 @@ fn init_logging() {
     let _ = tracing_subscriber::registry()
         .with(
             // Respect RUST_LOG if provided, else default to info
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .try_init();
@@ -826,4 +826,14 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
 
     service.cancel().await?;
     Ok(())
+}
+
+pub async fn execute_command_with_result(
+    transport: Transport,
+    tool: String,
+    args: Option<String>,
+) -> Result<String> {
+    // Just call the existing execute_command and return a simple success result
+    execute_command(transport, tool, args).await?;
+    Ok(json!({"status": "success", "message": "Command executed"}).to_string())
 }
