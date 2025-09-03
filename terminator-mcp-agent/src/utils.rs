@@ -61,6 +61,27 @@ impl Default for DesktopWrapper {
     }
 }
 
+// Test helper methods for DesktopWrapper
+#[cfg(test)]
+impl DesktopWrapper {
+    /// Test helper method that wraps execute_sequence without requiring Peer and RequestContext
+    /// This is a simplified version for testing that doesn't support progress notifications
+    pub async fn execute_sequence_for_test(
+        &self,
+        _args: ExecuteSequenceArgs,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        // Since we can't easily create Peer and RequestContext for testing,
+        // we'll need to use a different approach. The tests should be updated
+        // to test the logic directly without going through the MCP protocol layer.
+
+        // For now, return an error indicating this method needs implementation
+        Err(rmcp::ErrorData::internal_error(
+            "execute_sequence_for_test is not implemented. Tests need to be refactored.",
+            None,
+        ))
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetWindowTreeArgs {
     #[schemars(description = "Process ID of the target application")]
