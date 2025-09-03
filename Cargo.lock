@@ -4679,7 +4679,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.12.16"
+version = "0.12.17"
 dependencies = [
  "anthropic-sdk",
  "anyhow",
@@ -4700,7 +4700,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.12.16"
+version = "0.12.17"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4731,7 +4731,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.12.16"
+version = "0.12.17"
 dependencies = [
  "napi",
  "napi-build",
@@ -4743,7 +4743,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.12.16"
+version = "0.12.17"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -4757,7 +4757,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.12.16"
+version = "0.12.17"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -4801,7 +4801,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.12.16"
+version = "0.12.17"
 dependencies = [
  "anyhow",
  "arboard",
