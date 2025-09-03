@@ -109,9 +109,6 @@ if (platform === "darwin") {
   try {
     execSync(`codesign --force --deep --sign - ${destPath}`);
     console.log("Signing successful.");
-    // Also sign the shared binary
-    execSync(`codesign --force --deep --sign - ${sharedBinPath}`);
-    console.log("Signed shared binary.");
   } catch (error) {
     console.error("Signing failed. Please ensure you have Xcode Command Line Tools installed.");
     console.error(error);
