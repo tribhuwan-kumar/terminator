@@ -832,8 +832,106 @@ pub async fn execute_command_with_result(
     transport: Transport,
     tool: String,
     args: Option<String>,
-) -> Result<String> {
-    // Just call the existing execute_command and return a simple success result
-    execute_command(transport, tool, args).await?;
-    Ok(json!({"status": "success", "message": "Command executed"}).to_string())
+) -> Result<serde_json::Value> {
+    use tracing::debug;
+    
+    // Special handling for execute_sequence to capture full result
+    if tool == "execute_sequence" {
+        match transport {
+            Transport::Http(url) => {
+                debug!("Connecting to server: {}", url);
+                let transport = StreamableHttpClientTransport::from_uri(url.as_str());
+                let client_info = ClientInfo {
+                    protocol_version: Default::default(),
+                    capabilities: ClientCapabilities::default(),
+                    client_info: Implementation {
+                        name: "terminator-cli".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                    },
+                };
+                let service = client_info.serve(transport).await?;
+
+                let arguments = if let Some(args_str) = args {
+                    serde_json::from_str::<serde_json::Value>(&args_str)
+                        .ok()
+                        .and_then(|v| v.as_object().cloned())
+                } else {
+                    None
+                };
+
+                let result = service
+                    .call_tool(CallToolRequestParam {
+                        name: tool.into(),
+                        arguments,
+                    })
+                    .await?;
+
+                // Parse the result content as JSON
+                if let Some(content_vec) = &result.content {
+                    for content in content_vec {
+                        if let rmcp::model::RawContent::Text(text) = &content.raw {
+                            // Try to parse as JSON
+                            if let Ok(json_result) = serde_json::from_str::<serde_json::Value>(&text.text) {
+                                service.cancel().await?;
+                                return Ok(json_result);
+                            }
+                        }
+                    }
+                }
+
+                service.cancel().await?;
+                Ok(json!({"status": "unknown", "message": "No parseable result from workflow"}))
+            }
+            Transport::Stdio(command) => {
+                debug!("Starting MCP server: {}", command.join(" "));
+                let executable = find_executable(&command[0]).unwrap_or_else(|| command[0].clone());
+                let command_args: Vec<String> = if command.len() > 1 {
+                    command[1..].to_vec()
+                } else {
+                    vec![]
+                };
+                let mut cmd = create_command(&executable, &command_args);
+                if std::env::var("LOG_LEVEL").is_err() && std::env::var("RUST_LOG").is_err() {
+                    cmd.env("LOG_LEVEL", "info");
+                }
+                let transport = TokioChildProcess::new(cmd)?;
+                let service = ().serve(transport).await?;
+
+                let arguments = if let Some(args_str) = args {
+                    serde_json::from_str::<serde_json::Value>(&args_str)
+                        .ok()
+                        .and_then(|v| v.as_object().cloned())
+                } else {
+                    None
+                };
+
+                let result = service
+                    .call_tool(CallToolRequestParam {
+                        name: tool.into(),
+                        arguments,
+                    })
+                    .await?;
+
+                // Parse the result content as JSON
+                if let Some(content_vec) = &result.content {
+                    for content in content_vec {
+                        if let rmcp::model::RawContent::Text(text) = &content.raw {
+                            // Try to parse as JSON
+                            if let Ok(json_result) = serde_json::from_str::<serde_json::Value>(&text.text) {
+                                service.cancel().await?;
+                                return Ok(json_result);
+                            }
+                        }
+                    }
+                }
+
+                service.cancel().await?;
+                Ok(json!({"status": "unknown", "message": "No parseable result from workflow"}))
+            }
+        }
+    } else {
+        // For other tools, just execute normally
+        execute_command(transport, tool.clone(), args).await?;
+        Ok(json!({"status": "success", "message": format!("Tool {} executed", tool)}))
+    }
 }

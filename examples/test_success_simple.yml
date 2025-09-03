@@ -1,0 +1,35 @@
+---
+# Ultra-simple workflow to test success indication
+tool_name: execute_sequence
+arguments:
+  steps:
+    # Take a screenshot (should always work)
+    - tool_name: take_screenshot
+      arguments: {}
+      id: "screenshot_step"
+
+  output_parser:
+    javascript_code: |
+      // Simple success parser - we always succeed if we get here
+      // since take_screenshot should work
+
+      const message = "Screenshot captured successfully";
+
+      // Return standardized success response
+      return {
+        success: true,
+        data: {
+          action: "screenshot",
+          timestamp: new Date().toISOString(),
+          message: message
+        },
+        message: message,
+        error: null,
+        validation: {
+          screenshot_taken: true,
+          parser_executed: true
+        }
+      };
+
+  stop_on_error: false
+

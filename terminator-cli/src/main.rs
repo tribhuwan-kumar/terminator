@@ -24,8 +24,10 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 mod mcp_client;
+mod workflow_result;
 
 use mcp_client::execute_command_with_result;
+use workflow_result::WorkflowResult;
 
 #[derive(Parser)]
 #[command(name = "terminator")]
@@ -957,12 +959,29 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
 
     let workflow_str = serde_json::to_string(&workflow_val)?;
 
-    execute_command_with_result(
+    let result_json = execute_command_with_result(
         transport,
         "execute_sequence".to_string(),
         Some(workflow_str),
     )
     .await?;
+
+    // Parse and display the workflow result
+    let workflow_result = WorkflowResult::from_mcp_response(&result_json)?;
+
+    // Display result in user-friendly format
+    workflow_result.display();
+
+    // If verbose mode, also show raw JSON
+    if args.verbose {
+        println!("📝 Raw MCP Response:");
+        println!("{}", serde_json::to_string_pretty(&result_json)?);
+    }
+
+    // Exit with appropriate code based on success
+    if !workflow_result.success {
+        std::process::exit(1);
+    }
 
     Ok(())
 }
@@ -1140,12 +1159,28 @@ async fn run_workflow_once(
 
     // For cron jobs, use simple execution to avoid connection spam
     let workflow_str = serde_json::to_string(&workflow_val)?;
-    execute_command_with_result(
+    let result_json = execute_command_with_result(
         transport,
         "execute_sequence".to_string(),
         Some(workflow_str),
     )
     .await?;
+
+    // Parse the workflow result
+    let workflow_result = WorkflowResult::from_mcp_response(&result_json)?;
+
+    // For cron jobs, log success/failure
+    if workflow_result.success {
+        println!("   ✅ {}", workflow_result.message);
+        if let Some(Value::Array(arr)) = &workflow_result.data {
+            println!("   📊 Extracted {} items", arr.len());
+        }
+    } else {
+        println!("   ❌ {}", workflow_result.message);
+        if let Some(error) = &workflow_result.error {
+            println!("   ⚠️  {}", error);
+        }
+    }
 
     Ok(())
 }
