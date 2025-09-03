@@ -834,7 +834,7 @@ pub async fn execute_command_with_result(
     args: Option<String>,
 ) -> Result<serde_json::Value> {
     use tracing::debug;
-    
+
     // Special handling for execute_sequence to capture full result
     if tool == "execute_sequence" {
         match transport {
@@ -871,7 +871,9 @@ pub async fn execute_command_with_result(
                     for content in content_vec {
                         if let rmcp::model::RawContent::Text(text) = &content.raw {
                             // Try to parse as JSON
-                            if let Ok(json_result) = serde_json::from_str::<serde_json::Value>(&text.text) {
+                            if let Ok(json_result) =
+                                serde_json::from_str::<serde_json::Value>(&text.text)
+                            {
                                 service.cancel().await?;
                                 return Ok(json_result);
                             }
@@ -917,7 +919,9 @@ pub async fn execute_command_with_result(
                     for content in content_vec {
                         if let rmcp::model::RawContent::Text(text) = &content.raw {
                             // Try to parse as JSON
-                            if let Ok(json_result) = serde_json::from_str::<serde_json::Value>(&text.text) {
+                            if let Ok(json_result) =
+                                serde_json::from_str::<serde_json::Value>(&text.text)
+                            {
                                 service.cancel().await?;
                                 return Ok(json_result);
                             }

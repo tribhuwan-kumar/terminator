@@ -18,8 +18,8 @@ use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
 use rmcp::handler::server::tool::Parameters;
 use rmcp::model::{
-    CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
-    LoggingLevel, LoggingMessageNotificationParam, ProgressNotificationParam,
+    CallToolResult, Content, Implementation, LoggingLevel, LoggingMessageNotificationParam,
+    ProgressNotificationParam, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
 use rmcp::{tool, ErrorData as McpError, ServerHandler};
 use rmcp::{tool_handler, tool_router};
@@ -3055,11 +3055,7 @@ impl DesktopWrapper {
                     current_index,
                     group_name,
                     original_step.id.as_deref().unwrap_or(""),
-                    original_step
-                        .steps
-                        .as_ref()
-                        .map(|v| v.len())
-                        .unwrap_or(0)
+                    original_step.steps.as_ref().map(|v| v.len()).unwrap_or(0)
                 );
                 let _ = peer
                     .notify_logging_message(LoggingMessageNotificationParam {
@@ -3325,7 +3321,11 @@ impl DesktopWrapper {
                 );
                 let _ = peer
                     .notify_logging_message(LoggingMessageNotificationParam {
-                        level: if step_succeeded { LoggingLevel::Info } else { LoggingLevel::Warning },
+                        level: if step_succeeded {
+                            LoggingLevel::Info
+                        } else {
+                            LoggingLevel::Warning
+                        },
                         logger: Some("execute_sequence".to_string()),
                         data: json!({
                             "event": "step_end",
@@ -3347,7 +3347,11 @@ impl DesktopWrapper {
                 );
                 let _ = peer
                     .notify_logging_message(LoggingMessageNotificationParam {
-                        level: if step_succeeded { LoggingLevel::Info } else { LoggingLevel::Warning },
+                        level: if step_succeeded {
+                            LoggingLevel::Info
+                        } else {
+                            LoggingLevel::Warning
+                        },
                         logger: Some("execute_sequence".to_string()),
                         data: json!({
                             "event": "step_end",
@@ -3414,7 +3418,11 @@ impl DesktopWrapper {
         );
         let _ = peer
             .notify_logging_message(LoggingMessageNotificationParam {
-                level: if final_status == "success" { LoggingLevel::Info } else { LoggingLevel::Warning },
+                level: if final_status == "success" {
+                    LoggingLevel::Info
+                } else {
+                    LoggingLevel::Warning
+                },
                 logger: Some("execute_sequence".to_string()),
                 data: json!({
                     "event": "sequence_end",
