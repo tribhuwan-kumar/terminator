@@ -18,14 +18,14 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 </p>
 
 <p align="center">
-  <a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22terminator-mcp-agent%22%3A%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22terminator-mcp-agent%40latest%22%5D%7D%7D">
+  <a href="cursor://anysphere.cursor-deeplink/mcp/install?name=terminator-mcp-agent&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50Il19">
+    <img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20MCP&color=22272e">
+  </a>
+  <a href="https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22terminator-mcp-agent%22%3A%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22terminator-mcp-agent%22%5D%7D%7D">
     <img alt="Install in VS Code" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20MCP&color=0098FF">
   </a>
-  <a href="https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%7B%22terminator-mcp-agent%22%3A%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22terminator-mcp-agent%40latest%22%5D%7D%7D">
+  <a href="https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%7B%22terminator-mcp-agent%22%3A%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22terminator-mcp-agent%22%5D%7D%7D">
     <img alt="Install in VS Code Insiders" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20MCP&color=24bfa5">
-  </a>
-  <a href="https://cursor.com/install-mcp?name=terminator-mcp-agent&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsInRlcm1pbmF0b3ItbWNwLWFnZW50QGxhdGVzdCJdfQ==">
-    <img alt="Install in Cursor" src="https://img.shields.io/badge/Cursor-Cursor?style=flat-square&label=Install%20MCP&color=22272e">
   </a>
 </p>
 
@@ -35,12 +35,13 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
 - 08/25 [we raised $2.8m to give AI hands to every desktop](https://x.com/louis030195/status/1948745185178914929) ⚠
 
 > AI-powered desktop automation — open source, MIT-licensed, cross-platform, accessibility-first.
-Works across all apps and browsers. Inspired by GitHub Actions & Playwright.
-100x faster than generic AI agents, >95% success rate, no vendor lock-in.
+> Works across all apps and browsers. Inspired by GitHub Actions & Playwright.
+> 100x faster than generic AI agents, >95% success rate, no vendor lock-in.
 
 ## 🧠 Why Terminator
 
 ### For Developers
+
 - Create automations that work across any desktop app or browser
 - Runs 100x faster than ChatGPT Agents, Claude, Perplexity Comet, BrowserBase, BrowserUse
 - \>95% success rate without costly consultant armies (UIPath, Automation Anywhere)
@@ -49,7 +50,9 @@ Works across all apps and browsers. Inspired by GitHub Actions & Playwright.
 We achieve this by pre-training workflows as deterministic code, and calling AI only when recovery is needed.
 
 ### For Teams
+
 [Our private beta workflow builder](https://www.mediar.ai/) + managed hosting = plug-and-play automation engine for your business:
+
 - Record & map your processes in days
 - Deploy AI to execute them at >95% accuracy
 - Kill repetitive work without legacy RPA complexity or cost

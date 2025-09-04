@@ -17,13 +17,22 @@ const configObjCursor = {
 const configJSONCursor = JSON.stringify(configObjCursor);
 const configBase64Cursor = Buffer.from(configJSONCursor).toString("base64");
 
-const cursorWebUrl = `https://cursor.com/install-mcp?name=terminator-mcp-agent&config=${encodeURIComponent(configBase64Cursor)}`;
+// Use the new Cursor deeplink format (as per https://docs.cursor.com/en/tools/developers#generate-install-link)
+const cursorWebUrl = `cursor://anysphere.cursor-deeplink/mcp/install?name=terminator-mcp-agent&config=${configBase64Cursor}`;
 
-const urlForVSCode = `vscode:mcp/install?${encodeURIComponent(configJSONVSCode)}`;
-const urlForVSCodeGithub = `https://insiders.vscode.dev/redirect?url=${encodeURIComponent(urlForVSCode)}`;
+const urlForVSCode = `vscode:mcp/install?${encodeURIComponent(
+  configJSONVSCode
+)}`;
+const urlForVSCodeGithub = `https://insiders.vscode.dev/redirect?url=${encodeURIComponent(
+  urlForVSCode
+)}`;
 
-const urlForVSCodeInsiders = `vscode-insiders:mcp/install?${encodeURIComponent(configJSONVSCode)}`;
-const urlForVSCodeInsidersGithub = `https://insiders.vscode.dev/redirect?url=${encodeURIComponent(urlForVSCodeInsiders)}`;
+const urlForVSCodeInsiders = `vscode-insiders:mcp/install?${encodeURIComponent(
+  configJSONVSCode
+)}`;
+const urlForVSCodeInsidersGithub = `https://insiders.vscode.dev/redirect?url=${encodeURIComponent(
+  urlForVSCodeInsiders
+)}`;
 
 // Just log the raw URLs, in order
 console.log(urlForVSCodeGithub);
