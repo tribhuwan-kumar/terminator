@@ -18,6 +18,8 @@ const configJSONCursor = JSON.stringify(configObjCursor);
 const configBase64Cursor = Buffer.from(configJSONCursor).toString("base64");
 
 // Use the new Cursor deeplink format (as per https://docs.cursor.com/en/tools/developers#generate-install-link)
+// Note: This deeplink works when clicked from a webpage or copied to browser, but GitHub blocks
+// custom protocols like cursor:// in markdown for security reasons
 const cursorWebUrl = `cursor://anysphere.cursor-deeplink/mcp/install?name=terminator-mcp-agent&config=${configBase64Cursor}`;
 
 const urlForVSCode = `vscode:mcp/install?${encodeURIComponent(
