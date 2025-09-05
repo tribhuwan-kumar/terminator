@@ -46,6 +46,8 @@ pub struct ConversionResult {
 #[derive(Clone)]
 pub struct McpConverter {
     config: ConversionConfig,
+    /// Track the last known window context for fallback
+    last_window_context: std::sync::Arc<std::sync::Mutex<Option<(String, String, String)>>>,
 }
 
 impl Default for McpConverter {
@@ -62,7 +64,22 @@ impl McpConverter {
 
     /// Create a new MCP converter with custom configuration
     pub fn with_config(config: ConversionConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            last_window_context: std::sync::Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    /// Get the last known window context for fallback
+    fn get_last_window_context(&self) -> Option<(String, String, String)> {
+        self.last_window_context.lock().ok()?.clone()
+    }
+
+    /// Update the last known window context
+    fn update_last_window_context(&self, context: Option<(String, String, String)>) {
+        if let Ok(mut last) = self.last_window_context.lock() {
+            *last = context;
+        }
     }
 
     /// Convert a workflow event to MCP sequences
@@ -142,6 +159,37 @@ impl McpConverter {
             }
         }
 
+        // Update last known window context from clicks and application switches
+        match event {
+            WorkflowEvent::Click(click_event) => {
+                if let Some(metadata) = &click_event.metadata.ui_element {
+                    if let Ok(serialized) = serde_json::to_value(metadata) {
+                        let app = serialized
+                            .get("application")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        if !app.is_empty() {
+                            let window_role = "Window".to_string();
+                            self.update_last_window_context(Some((
+                                app.to_string(),
+                                app.to_string(),
+                                window_role,
+                            )));
+                        }
+                    }
+                }
+            }
+            WorkflowEvent::ApplicationSwitch(app_event) => {
+                // Store window context from app switch
+                self.update_last_window_context(Some((
+                    app_event.to_application.clone(),
+                    app_event.to_application.clone(),
+                    "Window".to_string(),
+                )));
+            }
+            _ => {}
+        }
+
         Ok(result)
     }
 
@@ -192,47 +240,79 @@ impl McpConverter {
 
         // Extract application/window context for scoped selector generation
         let window_context = if let Some(metadata) = &event.metadata.ui_element {
-            let app_name = metadata.application_name();
-            let window_title = metadata.window_title();
+            // Try to get the serialized application field directly if it's a SerializableUIElement
+            // Otherwise fall back to the UIElement methods
+            let (app_name, window_title, window_role) =
+                if let Ok(serialized) = serde_json::to_value(metadata) {
+                    // We have a serialized form - extract fields directly
+                    let app = serialized
+                        .get("application")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let title = serialized
+                        .get("window_title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let role = serialized
+                        .get("role")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Window");
+                    (app.to_string(), title.to_string(), role.to_string())
+                } else {
+                    // Fall back to UIElement methods (for live elements)
+                    let app_name = metadata.application_name();
+                    let window_title = metadata.window_title();
+                    let window_role = metadata
+                        .window()
+                        .ok()
+                        .flatten()
+                        .map(|w| w.role())
+                        .unwrap_or_else(|| "Window".to_string());
+                    (app_name, window_title, window_role)
+                };
 
-            // FIX: Use window container role, not clicked element role
-            let window_role = metadata
-                .window()
-                .ok()
-                .flatten()
-                .map(|w| w.role())
-                .unwrap_or_else(|| "Window".to_string());
-
-            // Use app_name as the source of window context (recorder stores window titles there)
+            // Use the application name directly as window context if available
             let effective_window_title = if !app_name.is_empty() {
-                &app_name
+                app_name.clone()
+            } else if !window_title.is_empty() {
+                window_title.clone()
             } else {
-                &window_title
+                String::new()
             };
+
             let effective_app_name = if app_name.contains("Chrome") {
                 "Google Chrome"
             } else if app_name.contains("Firefox") {
                 "Firefox"
             } else if app_name.contains("Edge") {
                 "Microsoft Edge"
+            } else if !app_name.is_empty() {
+                &app_name
             } else {
                 "Application"
             };
 
-            tracing::info!("🔍 MCP Converter - app: '{}', title: '{}', window_role: '{}', clicked_element_role: '{}'", 
+            tracing::info!("🔍 MCP Converter - app: '{}', effective_title: '{}', window_role: '{}', clicked_element_role: '{}'", 
                           effective_app_name, effective_window_title, window_role, metadata.role());
 
-            if !effective_window_title.is_empty() && effective_window_title.len() > 3 {
+            // Always provide window context if we have ANY application info
+            if !effective_window_title.is_empty() {
                 Some((
                     effective_app_name.to_string(),
-                    effective_window_title.to_string(),
-                    window_role.to_string(),
+                    effective_window_title,
+                    window_role,
                 ))
             } else {
-                None
+                // Use last known window context as fallback
+                notes.push(
+                    "No window context found in element, using last known context".to_string(),
+                );
+                self.get_last_window_context()
             }
         } else {
-            None
+            // No metadata at all - use last known window context
+            notes.push("No UI element metadata, using last known context".to_string());
+            self.get_last_window_context()
         };
 
         // NEW: Check if this is a click-away action to dismiss UI elements
@@ -273,6 +353,13 @@ impl McpConverter {
         if window_context.is_some() {
             notes
                 .push("Generated scoped selector using >> operator for window context".to_string());
+        } else {
+            notes.push("WARNING: No window context available for scoping selector".to_string());
+        }
+
+        // Store window context if available
+        if let Some(ref ctx) = window_context {
+            self.update_last_window_context(Some(ctx.clone()));
         }
 
         // Create the click step with 3000ms timeout as requested
@@ -313,6 +400,17 @@ impl McpConverter {
     ) -> Result<ConversionResult> {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
+
+        // Store this as the new window context for subsequent clicks
+        self.update_last_window_context(Some((
+            event.to_application.clone(),
+            event.to_application.clone(),
+            "Window".to_string(),
+        )));
+        notes.push(format!(
+            "Updated window context to: {}",
+            event.to_application
+        ));
 
         // Generate stable fallback selector for common applications
         let fallback_selector = self.generate_stable_fallback_selector(&event.to_application);
