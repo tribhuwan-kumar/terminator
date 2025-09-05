@@ -1392,11 +1392,14 @@ impl AccessibilityEngine for WindowsEngine {
                 // Check if the chain ends with Nth selector
                 // When a chain ends with Nth, it should select from the collection, not get children
                 if let Some(Selector::Nth(index)) = selectors.last() {
-                    debug!("Chain ends with Nth({}), applying to collection from previous selectors", index);
-                    
+                    debug!(
+                        "Chain ends with Nth({}), applying to collection from previous selectors",
+                        index
+                    );
+
                     // Build a chain without the last Nth selector
                     let collection_selectors = &selectors[..selectors.len() - 1];
-                    
+
                     // Get all elements matching the chain up to (but not including) the Nth
                     let mut elements = if collection_selectors.len() == 1 {
                         // Single selector before Nth
@@ -1407,14 +1410,14 @@ impl AccessibilityEngine for WindowsEngine {
                         let sub_chain = Selector::Chain(collection_selectors.to_vec());
                         self.find_elements(&sub_chain, root, timeout, None)?
                     };
-                    
+
                     let mut idx = *index;
                     let len = elements.len() as i32;
-                    
+
                     if idx < 0 {
                         idx += len; // Handle negative indexing
                     }
-                    
+
                     if idx >= 0 && idx < len {
                         return Ok(elements.remove(idx as usize));
                     } else {
@@ -1424,10 +1427,10 @@ impl AccessibilityEngine for WindowsEngine {
                         )));
                     }
                 }
-                
+
                 // Get all potential starting points (elements matching first selector)
                 let starting_elements = self.find_elements(&selectors[0], root, timeout, None)?;
-                
+
                 if starting_elements.is_empty() {
                     return Err(AutomationError::ElementNotFound(format!(
                         "First selector in chain '{:?}' found no elements",
@@ -1447,61 +1450,86 @@ impl AccessibilityEngine for WindowsEngine {
                         start_idx + 1,
                         starting_elements.len()
                     );
-                    
+
                     // Try to traverse the rest of the chain from this starting point
                     let mut current_element = start_element.clone();
                     let mut chain_valid = true;
-                    
+
                     for (step_idx, selector) in selectors.iter().skip(1).enumerate() {
                         // Use a shorter timeout for sub-queries to fail fast
                         let sub_timeout = Some(Duration::from_millis(1000));
-                        
+
                         match selector {
                             Selector::Nth(index) => {
                                 // For Nth selector, we need to get ALL children and pick the Nth
-                                debug!("Processing Nth({}) selector in chain at step {}", index, step_idx + 2);
-                                
+                                debug!(
+                                    "Processing Nth({}) selector in chain at step {}",
+                                    index,
+                                    step_idx + 2
+                                );
+
                                 // We need a parent selector to apply Nth to
                                 // This is a bit tricky - we need to know what elements to get the Nth of
                                 // Usually this follows another selector that defines the collection
                                 // For now, we'll treat this as getting all children of any type
-                                
+
                                 // Get all direct children (using a generic matcher)
-                                let condition = self.automation.0
-                                    .create_true_condition()
-                                    .unwrap();
-                                    
-                                let win_element = current_element.as_any()
+                                let condition = self.automation.0.create_true_condition().unwrap();
+
+                                let win_element = current_element
+                                    .as_any()
                                     .downcast_ref::<WindowsUIElement>()
-                                    .ok_or_else(|| AutomationError::PlatformError("Invalid element type".to_string()))?;
-                                    
-                                let children = win_element.element.0
+                                    .ok_or_else(|| {
+                                        AutomationError::PlatformError(
+                                            "Invalid element type".to_string(),
+                                        )
+                                    })?;
+
+                                let children = win_element
+                                    .element
+                                    .0
                                     .find_all(TreeScope::Children, &condition)
-                                    .map_err(|e| AutomationError::ElementNotFound(format!("Failed to get children for Nth: {}", e)))?;
-                                
+                                    .map_err(|e| {
+                                        AutomationError::ElementNotFound(format!(
+                                            "Failed to get children for Nth: {}",
+                                            e
+                                        ))
+                                    })?;
+
                                 let mut idx = *index;
                                 let len = children.len() as i32;
-                                
+
                                 if idx < 0 {
                                     idx += len; // Handle negative indexing
                                 }
-                                
+
                                 if idx >= 0 && idx < len {
                                     let selected = &children[idx as usize];
                                     current_element = UIElement::new(Box::new(WindowsUIElement {
                                         element: ThreadSafeWinUIElement(Arc::new(selected.clone())),
                                     }));
                                 } else {
-                                    debug!("Nth index {} out of bounds (found {} children)", index, len);
+                                    debug!(
+                                        "Nth index {} out of bounds (found {} children)",
+                                        index, len
+                                    );
                                     chain_valid = false;
                                     break;
                                 }
                             }
                             _ => {
                                 // For other selectors, use find_element to get just the FIRST match
-                                debug!("Processing {:?} selector in chain at step {}", selector, step_idx + 2);
-                                
-                                match self.find_element(selector, Some(&current_element), sub_timeout) {
+                                debug!(
+                                    "Processing {:?} selector in chain at step {}",
+                                    selector,
+                                    step_idx + 2
+                                );
+
+                                match self.find_element(
+                                    selector,
+                                    Some(&current_element),
+                                    sub_timeout,
+                                ) {
                                     Ok(element) => {
                                         current_element = element;
                                     }
@@ -1518,7 +1546,7 @@ impl AccessibilityEngine for WindowsEngine {
                             }
                         }
                     }
-                    
+
                     if chain_valid {
                         debug!(
                             "Successfully completed chain from starting element {}",
@@ -1527,7 +1555,7 @@ impl AccessibilityEngine for WindowsEngine {
                         return Ok(current_element);
                     }
                 }
-                
+
                 // If we've tried all starting elements and none completed the chain
                 Err(AutomationError::ElementNotFound(format!(
                     "Selector chain `{:?}` could not be completed from any of the {} starting elements",
