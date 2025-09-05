@@ -481,13 +481,36 @@ impl UIElementImpl for WindowsUIElement {
 
         // Decide click path and execute it
         let method: String;
-        let mut coordinates: Option<(f64, f64)> = None;
+        let coordinates: Option<(f64, f64)>;
         let path_used: String;
+
+        // Try to get the click coordinates before clicking
+        // This ensures we capture the position even if the element is destroyed after click
+        let element_bounds = self.element.0.get_bounding_rectangle().ok();
+        let click_point = if let Some(rect) = &element_bounds {
+            let center_x = rect.get_left() + rect.get_width() / 2;
+            let center_y = rect.get_top() + rect.get_height() / 2;
+            debug!(
+                "Pre-click bounds: left={}, top={}, width={}, height={}, center=({}, {})",
+                rect.get_left(),
+                rect.get_top(),
+                rect.get_width(),
+                rect.get_height(),
+                center_x,
+                center_y
+            );
+            Some((center_x as f64, center_y as f64))
+        } else {
+            debug!("Unable to get element bounds before click");
+            None
+        };
 
         // 1) Try native/UIA click
         if self.element.0.click().is_ok() {
             method = "Single Click".to_string();
             path_used = "Native".to_string();
+            coordinates = click_point; // Use the pre-calculated coordinates
+            debug!("Native UIA click succeeded, coordinates: {:?}", coordinates);
         } else {
             // 2) Try clickable point
             let clickable_attempt = self
