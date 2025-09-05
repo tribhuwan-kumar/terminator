@@ -138,12 +138,12 @@ impl WorkflowResult {
         println!("   • Status: {}", self.execution_status);
 
         if let Some(steps) = self.executed_steps {
-            println!("   • Steps Executed: {}", steps);
+            println!("   • Steps Executed: {steps}");
         }
 
         if let Some(duration) = self.duration_ms {
             let seconds = duration as f64 / 1000.0;
-            println!("   • Duration: {:.2}s", seconds);
+            println!("   • Duration: {seconds:.2}s");
         }
 
         // Display extracted data if any
@@ -161,7 +161,7 @@ impl WorkflowResult {
                         for (i, item) in arr.iter().enumerate().take(5) {
                             if let Ok(pretty) = serde_json::to_string_pretty(item) {
                                 for line in pretty.lines() {
-                                    println!("   {}", line);
+                                    println!("   {line}");
                                 }
                                 if i < arr.len() - 1 && i < 4 {
                                     println!("   ---");
@@ -176,12 +176,12 @@ impl WorkflowResult {
                 Value::Object(_) => {
                     if let Ok(pretty) = serde_json::to_string_pretty(data) {
                         for line in pretty.lines() {
-                            println!("   {}", line);
+                            println!("   {line}");
                         }
                     }
                 }
                 _ => {
-                    println!("   {:?}", data);
+                    println!("   {data:?}");
                 }
             }
         }
@@ -192,7 +192,7 @@ impl WorkflowResult {
             println!("✔️  Validation:");
             if let Ok(pretty) = serde_json::to_string_pretty(validation) {
                 for line in pretty.lines() {
-                    println!("   {}", line);
+                    println!("   {line}");
                 }
             }
         }

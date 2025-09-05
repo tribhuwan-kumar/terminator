@@ -1030,7 +1030,7 @@ async fn run_workflow_with_cron(
     use tracing::error;
 
     println!("🕐 Setting up cron scheduler...");
-    println!("📅 Cron expression: {}", cron_expr);
+    println!("📅 Cron expression: {cron_expr}");
     println!("🔄 Workflow will run continuously at scheduled intervals");
     println!("💡 Press Ctrl+C to stop the scheduler");
 
@@ -1039,10 +1039,7 @@ async fn run_workflow_with_cron(
 
     // For preview, we'll just show a generic message since calculating next times
     // with tokio-cron-scheduler is more complex
-    println!(
-        "📋 Workflow will run according to cron schedule: {}",
-        cron_expr
-    );
+    println!("📋 Workflow will run according to cron schedule: {cron_expr}");
     println!("💡 Note: Exact execution times depend on system clock and scheduler timing");
 
     // Create scheduler
@@ -1178,7 +1175,7 @@ async fn run_workflow_once(
     } else {
         println!("   ❌ {}", workflow_result.message);
         if let Some(error) = &workflow_result.error {
-            println!("   ⚠️  {}", error);
+            println!("   ⚠️  {error}");
         }
     }
 

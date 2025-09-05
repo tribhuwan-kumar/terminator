@@ -1422,8 +1422,7 @@ impl AccessibilityEngine for WindowsEngine {
                         return Ok(elements.remove(idx as usize));
                     } else {
                         return Err(AutomationError::ElementNotFound(format!(
-                            "Nth index {} out of bounds (found {} elements)",
-                            index, len
+                            "Nth index {index} out of bounds (found {len} elements)"
                         )));
                     }
                 }
@@ -1491,8 +1490,7 @@ impl AccessibilityEngine for WindowsEngine {
                                     .find_all(TreeScope::Children, &condition)
                                     .map_err(|e| {
                                         AutomationError::ElementNotFound(format!(
-                                            "Failed to get children for Nth: {}",
-                                            e
+                                            "Failed to get children for Nth: {e}"
                                         ))
                                     })?;
 

@@ -1453,6 +1453,23 @@ impl WindowsRecorder {
         }
     }
 
+    /// Helper function to check if two URLs represent meaningful navigation
+    fn is_meaningful_navigation(old_url: &str, new_url: &str) -> bool {
+        // Extract base URL without query params and fragments
+        fn get_base(url: &str) -> &str {
+            url.split('?')
+                .next()
+                .unwrap_or(url)
+                .split('#')
+                .next()
+                .unwrap_or(url)
+        }
+
+        // Compare only base URLs, ignoring all query parameters and fragments
+        // Real navigation means the path or domain changed, not just parameters
+        get_base(old_url) != get_base(new_url)
+    }
+
     /// Check and emit browser navigation events with improved filtering
     async fn check_and_emit_browser_navigation(
         tracker: &Arc<Mutex<BrowserTabTracker>>,
@@ -1534,8 +1551,8 @@ impl WindowsRecorder {
 
                     let is_switch = match &tracker_guard.current_url {
                         Some(current_url) => {
-                            // Only check URL change, ignore title changes (they often change with popups)
-                            new_url != *current_url
+                            // Check if this is a meaningful navigation, not just query param changes
+                            Self::is_meaningful_navigation(current_url, &new_url)
                         }
                         None => {
                             // First time seeing a URL - check if it's a real page or just a blank tab
@@ -1550,6 +1567,14 @@ impl WindowsRecorder {
                                 && !new_url.contains("://new-tab-page")
                         }
                     };
+
+                    if !is_switch && tracker_guard.current_url.is_some() {
+                        debug!(
+                            "Ignoring non-meaningful navigation: {} -> {} (likely just query params or in-page state change)",
+                            tracker_guard.current_url.as_ref().unwrap(),
+                            new_url
+                        );
+                    }
 
                     debug!(
                         "Is switch: {}, current_url: {:?}, current_title: {:?}",
