@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Simple 5-Second Recording Test
+ * Simple 10-Second Recording Test
  * 
  * Tests the terminator MCP agent's record_workflow functionality by:
  * 1. Connecting to the MCP server via HTTP
  * 2. Starting a workflow recording
- * 3. Waiting 5 seconds for manual interactions
+ * 3. Waiting 10 seconds for manual interactions
  * 4. Stopping the recording and showing results
  * 
  * Usage:
@@ -162,12 +162,12 @@ class Simple5SecRecordingClient {
     }
   }
 
-  async test5SecondRecording() {
+  async test10SecondRecording() {
     console.log('\n' + '='.repeat(60));
-    console.log('⏱️  5-SECOND RECORDING TEST');
+    console.log('⏱️  10-SECOND RECORDING TEST');
     console.log('='.repeat(60));
     console.log('');
-    console.log('This will start recording for 5 seconds.');
+    console.log('This will start recording for 10 seconds.');
     console.log('During this time, you can:');
     console.log('• Click on things');
     console.log('• Type text');
@@ -177,7 +177,7 @@ class Simple5SecRecordingClient {
     
     try {
       // Step 1: Start recording with highlighting enabled
-      console.log('📹 Starting 5-second recording with visual highlighting...');
+      console.log('📹 Starting 10-second recording with visual highlighting...');
       const startResult = await this.callTool('record_workflow', {
         action: 'start',
         workflow_name: '5sec_test_recording',
@@ -213,12 +213,12 @@ class Simple5SecRecordingClient {
       console.log('👉 Perform any actions you want to capture...');
       console.log('');
       
-      // Step 2: Wait exactly 5 seconds with countdown
-      for (let i = 5; i > 0; i--) {
+      // Step 2: Wait exactly 10 seconds with countdown
+      for (let i = 10; i > 0; i--) {
         process.stdout.write(`\r⏳ Recording... ${i} seconds remaining`);
         await setTimeout(1000);
       }
-      console.log('\r⏱️  5 seconds completed!                    ');
+      console.log('\r⏱️  10 seconds completed!                    ');
       console.log('');
       
       // Step 3: Stop recording
@@ -280,7 +280,7 @@ class Simple5SecRecordingClient {
       }
       
     } catch (error) {
-      console.error('❌ 5-second recording test failed:', error);
+      console.error('❌ 10-second recording test failed:', error);
       throw error;
     }
   }
@@ -329,7 +329,7 @@ class Simple5SecRecordingClient {
 }
 
 async function main() {
-  console.log('🧪 MCP 5-Second Recording Test');
+  console.log('🧪 MCP 10-Second Recording Test');
   console.log('Simple workflow recording test - no automated actions\n');
   
   const client = new Simple5SecRecordingClient();
@@ -341,8 +341,8 @@ async function main() {
     // Connect to the server
     await client.connect(3001);
     
-    // Run the 5-second recording test
-    await client.test5SecondRecording();
+    // Run the 10-second recording test
+    await client.test10SecondRecording();
     
     console.log('\n🎉 Test completed successfully!');
     

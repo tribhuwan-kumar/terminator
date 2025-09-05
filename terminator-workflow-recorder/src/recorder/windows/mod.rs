@@ -1532,9 +1532,24 @@ impl WindowsRecorder {
 
                     let mut tracker_guard = tracker.lock().unwrap();
 
-                    let is_switch = new_url
-                        != tracker_guard.current_url.clone().unwrap_or_default()
-                        || new_title != tracker_guard.current_title.clone().unwrap_or_default();
+                    let is_switch = match &tracker_guard.current_url {
+                        Some(current_url) => {
+                            // Only check URL change, ignore title changes (they often change with popups)
+                            new_url != *current_url
+                        }
+                        None => {
+                            // First time seeing a URL - check if it's a real page or just a blank tab
+                            // Common new tab/blank pages to ignore
+                            !new_url.is_empty() 
+                                && !new_url.starts_with("about:blank")
+                                && !new_url.starts_with("about:newtab") 
+                                && !new_url.starts_with("chrome://newtab")
+                                && !new_url.starts_with("edge://newtab")
+                                && !new_url.starts_with("about:home")
+                                && !new_url.contains("://newtab")
+                                && !new_url.contains("://new-tab-page")
+                        }
+                    };
 
                     debug!(
                         "Is switch: {}, current_url: {:?}, current_title: {:?}",
@@ -1571,14 +1586,17 @@ impl WindowsRecorder {
                             .is_ok()
                         {
                             debug!("Γ£à Browser navigation event sent successfully");
-                            tracker_guard.current_browser = Some(browser_display_name);
-                            tracker_guard.current_url = Some(new_url);
-                            tracker_guard.current_title = Some(new_title);
                             tracker_guard.last_navigation_time = now;
                         } else {
                             debug!("Γ¥î Failed to send browser navigation event");
                         }
                     }
+                    
+                    // Always update tracker state, regardless of whether we sent an event
+                    // This ensures we track the current state even when no navigation occurs
+                    tracker_guard.current_browser = Some(browser_display_name);
+                    tracker_guard.current_url = Some(new_url);
+                    tracker_guard.current_title = Some(new_title);
                 } else {
                     debug!(
                         "No URL information found for browser element: '{}'",
