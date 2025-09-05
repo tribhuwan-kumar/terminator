@@ -1540,9 +1540,9 @@ impl WindowsRecorder {
                         None => {
                             // First time seeing a URL - check if it's a real page or just a blank tab
                             // Common new tab/blank pages to ignore
-                            !new_url.is_empty() 
+                            !new_url.is_empty()
                                 && !new_url.starts_with("about:blank")
-                                && !new_url.starts_with("about:newtab") 
+                                && !new_url.starts_with("about:newtab")
                                 && !new_url.starts_with("chrome://newtab")
                                 && !new_url.starts_with("edge://newtab")
                                 && !new_url.starts_with("about:home")
@@ -1591,7 +1591,7 @@ impl WindowsRecorder {
                             debug!("Γ¥î Failed to send browser navigation event");
                         }
                     }
-                    
+
                     // Always update tracker state, regardless of whether we sent an event
                     // This ensures we track the current state even when no navigation occurs
                     tracker_guard.current_browser = Some(browser_display_name);
