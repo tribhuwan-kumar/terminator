@@ -61,7 +61,7 @@ arguments:
     # Extract the downloaded zip to the destination folder (Windows + Unix)
     - tool_name: run_command
       arguments:
-        windows_command: |
+        run: |
           $ErrorActionPreference = 'Stop'
           # Avoid template substitution issues: compute paths directly
           $zip = Join-Path $env:TEMP 'terminator-browser-extension.zip'
@@ -69,16 +69,7 @@ arguments:
           if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Expand-Archive -Path $zip -DestinationPath $dest -Force
-        unix_command: |
-          bash -lc '
-          set -euo pipefail
-          ZIP_RAW="${{env.zip_path}}"
-          DEST_RAW="${{env.extension_dir}}"
-          ZIP="$(printf "%s" "$ZIP_RAW" | sed "s|%TEMP%|${TMPDIR:-/tmp}|g")"
-          DEST="$(printf "%s" "$DEST_RAW" | sed "s|%TEMP%|${TMPDIR:-/tmp}|g")"
-          rm -rf "$DEST" && mkdir -p "$DEST"
-          unzip -o "$ZIP" -d "$DEST" >/dev/null
-          '
+        shell: powershell
       delay_ms: 400
 
     # Find the actual folder that contains manifest.json (some zips have a nested folder)

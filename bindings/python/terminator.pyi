@@ -111,11 +111,23 @@ class Desktop:
     async def run_command(self, windows_command:typing.Optional[builtins.str]=None, unix_command:typing.Optional[builtins.str]=None) -> CommandOutput:
         r"""
         (async) Run a shell command.
-        
+
         Args:
             windows_command (Optional[str]): Command to run on Windows.
             unix_command (Optional[str]): Command to run on Unix.
-        
+
+        Returns:
+            CommandOutput: The command output.
+        """
+    async def run(self, command:builtins.str, shell:typing.Optional[builtins.str]=None, working_directory:typing.Optional[builtins.str]=None) -> CommandOutput:
+        r"""
+        (async) Execute a shell command using GitHub Actions-style syntax.
+
+        Args:
+            command (str): The command to run (can be single or multi-line).
+            shell (Optional[str]): Optional shell to use (defaults to PowerShell on Windows, bash on Unix).
+            working_directory (Optional[str]): Optional working directory for the command.
+
         Returns:
             CommandOutput: The command output.
         """

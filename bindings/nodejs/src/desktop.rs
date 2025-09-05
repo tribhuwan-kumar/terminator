@@ -116,6 +116,34 @@ impl Desktop {
             .map_err(map_error)
     }
 
+    /// (async) Execute a shell command using GitHub Actions-style syntax.
+    ///
+    /// @param {string} command - The command to run (can be single or multi-line).
+    /// @param {string} [shell] - Optional shell to use (defaults to PowerShell on Windows, bash on Unix).
+    /// @param {string} [workingDirectory] - Optional working directory for the command.
+    /// @returns {Promise<CommandOutput>} The command output.
+    #[napi]
+    pub async fn run(
+        &self,
+        command: String,
+        shell: Option<String>,
+        working_directory: Option<String>,
+    ) -> napi::Result<CommandOutput> {
+        self.inner
+            .run(
+                command.as_str(),
+                shell.as_deref(),
+                working_directory.as_deref(),
+            )
+            .await
+            .map(|r| CommandOutput {
+                exit_status: r.exit_status,
+                stdout: r.stdout,
+                stderr: r.stderr,
+            })
+            .map_err(map_error)
+    }
+
     /// (async) Perform OCR on an image file.
     ///
     /// @param {string} imagePath - Path to the image file.

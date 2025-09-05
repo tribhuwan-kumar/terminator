@@ -159,6 +159,15 @@ export declare class Desktop {
    */
   runCommand(windowsCommand?: string | undefined | null, unixCommand?: string | undefined | null): Promise<CommandOutput>
   /**
+   * (async) Execute a shell command using GitHub Actions-style syntax.
+   *
+   * @param {string} command - The command to run (can be single or multi-line).
+   * @param {string} [shell] - Optional shell to use (defaults to PowerShell on Windows, bash on Unix).
+   * @param {string} [workingDirectory] - Optional working directory for the command.
+   * @returns {Promise<CommandOutput>} The command output.
+   */
+  run(command: string, shell?: string | undefined | null, workingDirectory?: string | undefined | null): Promise<CommandOutput>
+  /**
    * (async) Perform OCR on an image file.
    *
    * @param {string} imagePath - Path to the image file.

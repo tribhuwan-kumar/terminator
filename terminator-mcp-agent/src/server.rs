@@ -1112,22 +1112,80 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Executes a shell command.")]
+    #[tool(
+        description = "Executes a shell command. Uses GitHub Actions-style syntax with a simple 'run' field. Automatically detects the platform and uses the appropriate shell."
+    )]
     async fn run_command(
         &self,
         Parameters(args): Parameters<RunCommandArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Determine which shell to use based on platform and user preference
+        let (windows_cmd, unix_cmd) = if cfg!(target_os = "windows") {
+            // On Windows, prepare the command for execution
+            let shell = args.shell.as_deref().unwrap_or("powershell");
+            let command_with_cd = if let Some(ref cwd) = args.working_directory {
+                match shell {
+                    "cmd" => format!("cd /d \"{cwd}\" && {}", args.run),
+                    "powershell" | "pwsh" => format!("cd '{cwd}'; {}", args.run),
+                    _ => args.run.clone(), // For other shells, handle cwd differently
+                }
+            } else {
+                args.run.clone()
+            };
+
+            let windows_cmd = match shell {
+                "bash" => {
+                    // Use Git Bash or WSL bash if available
+                    format!("bash -c \"{}\"", command_with_cd.replace('\"', "\\\""))
+                }
+                "sh" => {
+                    // Use sh (might be Git Bash)
+                    format!("sh -c \"{}\"", command_with_cd.replace('\"', "\\\""))
+                }
+                "cmd" => {
+                    // Use cmd.exe
+                    format!("cmd /c \"{command_with_cd}\"")
+                }
+                "powershell" | "pwsh" => {
+                    // Default to PowerShell on Windows
+                    command_with_cd
+                }
+                _ => {
+                    // For any other shell
+                    command_with_cd
+                }
+            };
+            (Some(windows_cmd), None)
+        } else {
+            // On Unix-like systems (Linux, macOS)
+            let shell = args.shell.as_deref().unwrap_or("bash");
+            let command_with_cd = if let Some(ref cwd) = args.working_directory {
+                format!("cd '{cwd}' && {}", args.run)
+            } else {
+                args.run.clone()
+            };
+
+            let unix_cmd = match shell {
+                "python" => format!("python -c \"{}\"", command_with_cd.replace('\"', "\\\"")),
+                "node" => format!("node -e \"{}\"", command_with_cd.replace('\"', "\\\"")),
+                _ => command_with_cd, // For bash, sh, zsh, etc.
+            };
+            (None, Some(unix_cmd))
+        };
+
         let output = self
             .desktop
-            .run_command(
-                args.windows_command.as_deref(),
-                args.unix_command.as_deref(),
-            )
+            .run_command(windows_cmd.as_deref(), unix_cmd.as_deref())
             .await
             .map_err(|e| {
                 McpError::internal_error(
                     "Failed to run command",
-                    Some(json!({"reason": e.to_string()})),
+                    Some(json!({
+                        "reason": e.to_string(),
+                        "command": args.run,
+                        "shell": args.shell,
+                        "working_directory": args.working_directory
+                    })),
                 )
             })?;
 
@@ -1135,6 +1193,11 @@ impl DesktopWrapper {
             "exit_status": output.exit_status,
             "stdout": output.stdout,
             "stderr": output.stderr,
+            "command": args.run,
+            "shell": args.shell.unwrap_or_else(|| {
+                if cfg!(target_os = "windows") { "powershell" } else { "bash" }.to_string()
+            }),
+            "working_directory": args.working_directory
         }))?]))
     }
 
@@ -3415,7 +3478,7 @@ impl DesktopWrapper {
                         progress_token: token.clone(),
                         progress: (current_index as u32).saturating_add(1),
                         total: Some(args.steps.len() as u32),
-                        message: Some(format!("Step {} {}", current_index, step_status_str)),
+                        message: Some(format!("Step {current_index} {step_status_str}")),
                     })
                     .await;
             }

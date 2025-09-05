@@ -244,10 +244,18 @@ pub struct GlobalKeyArgs {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RunCommandArgs {
-    #[schemars(description = "The command to run on Windows")]
-    pub windows_command: Option<String>,
-    #[schemars(description = "The command to run on Linux/macOS")]
-    pub unix_command: Option<String>,
+    #[schemars(
+        description = "The command to run. Can be a single command or multiple lines for a script."
+    )]
+    pub run: String,
+    #[schemars(
+        description = "The shell to use. If not specified, defaults to PowerShell on Windows, bash on Unix. Common values: 'bash', 'sh', 'cmd', 'powershell', 'pwsh', 'python', 'node'"
+    )]
+    pub shell: Option<String>,
+    #[schemars(
+        description = "Working directory where the command should be executed. Defaults to current directory."
+    )]
+    pub working_directory: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

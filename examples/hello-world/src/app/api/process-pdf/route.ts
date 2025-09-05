@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { DesktopUseClient, ApiError, sleep, Locator } from "desktop-use";
-import path from "path";
-import os from "os";
-import fs from "fs/promises";
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
+import { ApiError, DesktopUseClient, Locator, sleep } from "desktop-use";
+import fs from "fs/promises";
+import { NextRequest, NextResponse } from "next/server";
+import os from "os";
+import path from "path";
 import { z } from 'zod';
 
 export const runtime = "nodejs";
@@ -61,10 +61,9 @@ export async function POST(request: NextRequest) {
 
     // 1. Download the PDF
     console.log(`downloading pdf from: ${PDF_URL} to ${PDF_PATH}`);
-    const downloadResult = await client.runCommand({
-      windowsCommand: `Invoke-WebRequest -Uri "${PDF_URL}" -OutFile "${PDF_PATH}"`,
-      unixCommand: `curl -L "${PDF_URL}" -o "${PDF_PATH}" --create-dirs`,
-    });
+    const downloadResult = await client.run(
+      `curl -L "${PDF_URL}" -o "${PDF_PATH}" --create-dirs`
+    );
     console.log("download command result:", downloadResult);
     if (downloadResult.exit_code !== 0) {
       throw new Error(`failed to download PDF. Exit code: ${downloadResult.exit_code}. stderr: ${downloadResult.stderr}`);

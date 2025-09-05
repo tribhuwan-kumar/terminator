@@ -318,6 +318,76 @@ impl Desktop {
         self.engine.run_command(windows_command, unix_command).await
     }
 
+    /// Execute a shell command using GitHub Actions-style syntax
+    ///
+    /// # Arguments
+    /// * `command` - The command to run (can be single or multi-line)
+    /// * `shell` - Optional shell to use (defaults to PowerShell on Windows, bash on Unix)
+    /// * `working_directory` - Optional working directory for the command
+    ///
+    /// # Examples
+    /// ```no_run
+    /// use terminator::Desktop;
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let desktop = Desktop::new_default().unwrap();
+    ///     let output = desktop.run(
+    ///         "echo 'Hello, World!'",
+    ///         None,
+    ///         None
+    ///     ).await.unwrap();
+    ///     println!("Output: {}", output.stdout);
+    /// }
+    /// ```
+    #[instrument(skip(self, command))]
+    pub async fn run(
+        &self,
+        command: &str,
+        shell: Option<&str>,
+        working_directory: Option<&str>,
+    ) -> Result<CommandOutput, AutomationError> {
+        // Determine which shell to use based on platform and user preference
+        let (windows_cmd, unix_cmd) = if cfg!(target_os = "windows") {
+            let shell = shell.unwrap_or("powershell");
+            let command_with_cd = if let Some(cwd) = working_directory {
+                match shell {
+                    "cmd" => format!("cd /d \"{cwd}\" && {command}"),
+                    "powershell" | "pwsh" => format!("cd '{cwd}'; {command}"),
+                    _ => command.to_string(),
+                }
+            } else {
+                command.to_string()
+            };
+
+            let windows_cmd = match shell {
+                "bash" => format!("bash -c \"{}\"", command_with_cd.replace('\"', "\\\"")),
+                "sh" => format!("sh -c \"{}\"", command_with_cd.replace('\"', "\\\"")),
+                "cmd" => format!("cmd /c \"{command_with_cd}\""),
+                "powershell" | "pwsh" => command_with_cd,
+                _ => command_with_cd,
+            };
+            (Some(windows_cmd), None)
+        } else {
+            let shell = shell.unwrap_or("bash");
+            let command_with_cd = if let Some(cwd) = working_directory {
+                format!("cd '{cwd}' && {command}")
+            } else {
+                command.to_string()
+            };
+
+            let unix_cmd = match shell {
+                "python" => format!("python -c \"{}\"", command_with_cd.replace('\"', "\\\"")),
+                "node" => format!("node -e \"{}\"", command_with_cd.replace('\"', "\\\"")),
+                _ => command_with_cd,
+            };
+            (None, Some(unix_cmd))
+        };
+
+        self.engine
+            .run_command(windows_cmd.as_deref(), unix_cmd.as_deref())
+            .await
+    }
+
     // ============== NEW MONITOR ABSTRACTIONS ==============
 
     /// List all available monitors/displays

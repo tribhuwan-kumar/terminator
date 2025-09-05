@@ -150,6 +150,41 @@ impl Desktop {
         })
     }
 
+    #[pyo3(
+        name = "run",
+        text_signature = "($self, command, shell=None, working_directory=None)"
+    )]
+    /// (async) Execute a shell command using GitHub Actions-style syntax.
+    ///
+    /// Args:
+    ///     command (str): The command to run (can be single or multi-line).
+    ///     shell (Optional[str]): Optional shell to use (defaults to PowerShell on Windows, bash on Unix).
+    ///     working_directory (Optional[str]): Optional working directory for the command.
+    ///
+    /// Returns:
+    ///     CommandOutput: The command output.
+    pub fn run<'py>(
+        &self,
+        py: Python<'py>,
+        command: String,
+        shell: Option<String>,
+        working_directory: Option<String>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let desktop = self.inner.clone();
+        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
+            let result = desktop
+                .run(
+                    command.as_str(),
+                    shell.as_deref(),
+                    working_directory.as_deref(),
+                )
+                .await
+                .map_err(automation_error_to_pyerr)?;
+            let py_result = CommandOutput::from(result);
+            Ok(py_result)
+        })
+    }
+
     #[pyo3(name = "ocr_image_path", text_signature = "($self, image_path)")]
     /// (async) Perform OCR on an image file.
     ///

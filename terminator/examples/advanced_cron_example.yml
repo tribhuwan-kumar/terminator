@@ -6,15 +6,15 @@ cron: "* * * * * *"
 steps:
   - tool_name: "run_command"
     arguments:
-      unix_command: "echo 'Scheduled maintenance task started'"
+      run: "echo 'Scheduled maintenance task started'"
 
   - tool_name: "run_command"
     arguments:
-      unix_command: "date '+%Y-%m-%d %H:%M:%S'"
+      run: "date '+%Y-%m-%d %H:%M:%S'"
 
   - tool_name: "run_command"
     arguments:
-      unix_command: "echo 'Cron job completed at second level!'"
+      run: "echo 'Cron job completed at second level!'"
 
 # Alternative cron expressions (uncomment to use):
 # cron: "0 0 2 * * *"     # Every day at 2 AM
