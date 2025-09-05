@@ -1384,78 +1384,156 @@ impl AccessibilityEngine for WindowsEngine {
                     ));
                 }
 
-                // Start with all elements matching the first selector in the chain.
-                let mut current_results = self.find_elements(&selectors[0], root, timeout, None)?;
+                debug!(
+                    "Processing chain selector with optimized depth-first search: {:?}",
+                    selectors
+                );
 
-                // Sequentially apply the rest of the selectors.
-                for (i, selector) in selectors.iter().skip(1).enumerate() {
-                    if current_results.is_empty() {
-                        // If at any point we have no results, the chain is broken.
+                // Check if the chain ends with Nth selector
+                // When a chain ends with Nth, it should select from the collection, not get children
+                if let Some(Selector::Nth(index)) = selectors.last() {
+                    debug!("Chain ends with Nth({}), applying to collection from previous selectors", index);
+                    
+                    // Build a chain without the last Nth selector
+                    let collection_selectors = &selectors[..selectors.len() - 1];
+                    
+                    // Get all elements matching the chain up to (but not including) the Nth
+                    let mut elements = if collection_selectors.len() == 1 {
+                        // Single selector before Nth
+                        self.find_elements(&collection_selectors[0], root, timeout, None)?
+                    } else {
+                        // Multiple selectors before Nth - need to evaluate the chain
+                        // We'll use find_elements on the sub-chain
+                        let sub_chain = Selector::Chain(collection_selectors.to_vec());
+                        self.find_elements(&sub_chain, root, timeout, None)?
+                    };
+                    
+                    let mut idx = *index;
+                    let len = elements.len() as i32;
+                    
+                    if idx < 0 {
+                        idx += len; // Handle negative indexing
+                    }
+                    
+                    if idx >= 0 && idx < len {
+                        return Ok(elements.remove(idx as usize));
+                    } else {
                         return Err(AutomationError::ElementNotFound(format!(
-                            "Selector chain broke at step {}: '{:?}' found no elements from the previous step's results.",
-                            i + 1,
-                            selector
+                            "Nth index {} out of bounds (found {} elements)",
+                            index, len
                         )));
                     }
+                }
+                
+                // Get all potential starting points (elements matching first selector)
+                let starting_elements = self.find_elements(&selectors[0], root, timeout, None)?;
+                
+                if starting_elements.is_empty() {
+                    return Err(AutomationError::ElementNotFound(format!(
+                        "First selector in chain '{:?}' found no elements",
+                        selectors[0]
+                    )));
+                }
 
-                    if let Selector::Nth(index) = selector {
-                        let mut i = *index;
-                        let len = current_results.len();
+                debug!(
+                    "Found {} potential starting elements for chain",
+                    starting_elements.len()
+                );
 
-                        if i < 0 {
-                            // Handle negative index
-                            i += len as i32;
-                        }
-
-                        if i >= 0 && (i as usize) < len {
-                            // Filter down to the single element at the specified index.
-                            let selected = current_results.remove(i as usize);
-                            current_results = vec![selected];
-                        } else {
-                            // Index out of bounds, no elements match.
-                            current_results.clear();
-                        }
-                    } else {
-                        // For other selectors, find all children that match from the current set of results.
-                        let mut next_results = Vec::new();
-                        for element_root in &current_results {
-                            // Use a shorter timeout for sub-queries to avoid long delays on non-existent elements mid-chain.
-                            let sub_timeout = Some(Duration::from_millis(1000));
-                            match self.find_elements(
-                                selector,
-                                Some(element_root),
-                                sub_timeout,
-                                None, // Default depth for sub-queries
-                            ) {
-                                Ok(elements) => next_results.extend(elements),
-                                Err(AutomationError::ElementNotFound(_)) => {
-                                    // It's okay if one branch of the search finds nothing, continue with others.
+                // Try to complete the chain from each starting element (depth-first)
+                for (start_idx, start_element) in starting_elements.iter().enumerate() {
+                    debug!(
+                        "Trying chain from starting element {} of {}",
+                        start_idx + 1,
+                        starting_elements.len()
+                    );
+                    
+                    // Try to traverse the rest of the chain from this starting point
+                    let mut current_element = start_element.clone();
+                    let mut chain_valid = true;
+                    
+                    for (step_idx, selector) in selectors.iter().skip(1).enumerate() {
+                        // Use a shorter timeout for sub-queries to fail fast
+                        let sub_timeout = Some(Duration::from_millis(1000));
+                        
+                        match selector {
+                            Selector::Nth(index) => {
+                                // For Nth selector, we need to get ALL children and pick the Nth
+                                debug!("Processing Nth({}) selector in chain at step {}", index, step_idx + 2);
+                                
+                                // We need a parent selector to apply Nth to
+                                // This is a bit tricky - we need to know what elements to get the Nth of
+                                // Usually this follows another selector that defines the collection
+                                // For now, we'll treat this as getting all children of any type
+                                
+                                // Get all direct children (using a generic matcher)
+                                let condition = self.automation.0
+                                    .create_true_condition()
+                                    .unwrap();
+                                    
+                                let win_element = current_element.as_any()
+                                    .downcast_ref::<WindowsUIElement>()
+                                    .ok_or_else(|| AutomationError::PlatformError("Invalid element type".to_string()))?;
+                                    
+                                let children = win_element.element.0
+                                    .find_all(TreeScope::Children, &condition)
+                                    .map_err(|e| AutomationError::ElementNotFound(format!("Failed to get children for Nth: {}", e)))?;
+                                
+                                let mut idx = *index;
+                                let len = children.len() as i32;
+                                
+                                if idx < 0 {
+                                    idx += len; // Handle negative indexing
                                 }
-                                Err(e) => return Err(e), // Propagate other critical errors.
+                                
+                                if idx >= 0 && idx < len {
+                                    let selected = &children[idx as usize];
+                                    current_element = UIElement::new(Box::new(WindowsUIElement {
+                                        element: ThreadSafeWinUIElement(Arc::new(selected.clone())),
+                                    }));
+                                } else {
+                                    debug!("Nth index {} out of bounds (found {} children)", index, len);
+                                    chain_valid = false;
+                                    break;
+                                }
+                            }
+                            _ => {
+                                // For other selectors, use find_element to get just the FIRST match
+                                debug!("Processing {:?} selector in chain at step {}", selector, step_idx + 2);
+                                
+                                match self.find_element(selector, Some(&current_element), sub_timeout) {
+                                    Ok(element) => {
+                                        current_element = element;
+                                    }
+                                    Err(_) => {
+                                        debug!(
+                                            "Chain broken at step {} with selector {:?}",
+                                            step_idx + 2,
+                                            selector
+                                        );
+                                        chain_valid = false;
+                                        break;
+                                    }
+                                }
                             }
                         }
-                        current_results = next_results;
+                    }
+                    
+                    if chain_valid {
+                        debug!(
+                            "Successfully completed chain from starting element {}",
+                            start_idx + 1
+                        );
+                        return Ok(current_element);
                     }
                 }
-
-                // After the chain, we expect exactly one element for find_element.
-                // If multiple elements are found, take the first one (useful for click actions)
-                if current_results.len() == 1 {
-                    Ok(current_results.remove(0))
-                } else if current_results.len() > 1 {
-                    debug!(
-                        "Selector chain `{:?}` resolved to {} elements, using the first one.",
-                        selectors,
-                        current_results.len()
-                    );
-                    Ok(current_results.remove(0)) // Take the first element
-                } else {
-                    Err(AutomationError::ElementNotFound(format!(
-                        "Selector chain `{:?}` resolved to {} elements, but expected at least 1.",
-                        selectors,
-                        current_results.len(),
-                    )))
-                }
+                
+                // If we've tried all starting elements and none completed the chain
+                Err(AutomationError::ElementNotFound(format!(
+                    "Selector chain `{:?}` could not be completed from any of the {} starting elements",
+                    selectors,
+                    starting_elements.len()
+                )))
             }
             Selector::ClassName(classname) => {
                 debug!("searching element by class name: {}", classname);
