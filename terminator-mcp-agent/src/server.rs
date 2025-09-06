@@ -218,7 +218,7 @@ impl DesktopWrapper {
 
         Ok(Self {
             desktop: Arc::new(desktop),
-            tool_router: Self::tool_router() + Self::tool_router_2(),
+            tool_router: Self::tool_router(),
             recorder: Arc::new(Mutex::new(None)),
             active_highlights: Arc::new(Mutex::new(Vec::new())),
         })
@@ -3175,85 +3175,7 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ExportWorkflowSequenceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        let use_regex = args.use_regex.unwrap_or(false);
-        let create_if_missing = args.create_if_missing.unwrap_or(true);
-
-        // Read existing file or start with empty content
-        let current_content = match std::fs::read_to_string(&args.file_path) {
-            Ok(content) => content,
-            Err(_) => {
-                if create_if_missing {
-                    String::new()
-                } else {
-                    return Err(McpError::invalid_params(
-                        "File does not exist and create_if_missing is false",
-                        Some(json!({"file_path": args.file_path})),
-                    ));
-                }
-            }
-        };
-
-        let new_content = if let Some(find_pattern) = &args.find_pattern {
-            // Replace mode - find and replace pattern with content
-            if use_regex {
-                // Use regex replacement
-                match regex::Regex::new(find_pattern) {
-                    Ok(re) => {
-                        let result = re.replace_all(&current_content, args.content.as_str());
-                        if result == current_content {
-                            return Err(McpError::invalid_params(
-                                "Pattern not found in file",
-                                Some(json!({"pattern": find_pattern, "file": args.file_path})),
-                            ));
-                        }
-                        result.to_string()
-                    }
-                    Err(e) => {
-                        return Err(McpError::invalid_params(
-                            "Invalid regex pattern",
-                            Some(json!({"pattern": find_pattern, "error": e.to_string()})),
-                        ));
-                    }
-                }
-            } else {
-                // Simple string replacement
-                if !current_content.contains(find_pattern) {
-                    return Err(McpError::invalid_params(
-                        "Pattern not found in file",
-                        Some(json!({"pattern": find_pattern, "file": args.file_path})),
-                    ));
-                }
-                current_content.replace(find_pattern, &args.content)
-            }
-        } else {
-            // Append mode - add content to end of file
-            if current_content.is_empty() {
-                args.content
-            } else if current_content.ends_with('\n') {
-                format!("{}{}", current_content, args.content)
-            } else {
-                format!("{}\n{}", current_content, args.content)
-            }
-        };
-
-        // Write back to file
-        std::fs::write(&args.file_path, &new_content).map_err(|e| {
-            McpError::internal_error(
-                "Failed to write file",
-                Some(json!({"error": e.to_string(), "path": args.file_path})),
-            )
-        })?;
-
-        // Return success
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "action": "edit_workflow_file",
-            "status": "success",
-            "file_path": args.file_path,
-            "operation": if args.find_pattern.is_some() { "replace" } else { "append" },
-            "pattern_type": if use_regex { "regex" } else { "string" },
-            "file_size": new_content.len(),
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        self.export_workflow_sequence_impl(args).await
     }
 
     #[tool(description = "Load a YAML workflow file or scan folder for YAML workflow files")]
@@ -3261,101 +3183,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ImportWorkflowSequenceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        match (args.file_path, args.folder_path) {
-            // Load single file
-            (Some(file_path), None) => {
-                let content = std::fs::read_to_string(&file_path).map_err(|e| {
-                    McpError::invalid_params(
-                        "Failed to read file",
-                        Some(json!({"error": e.to_string(), "path": file_path})),
-                    )
-                })?;
-
-                let workflow: serde_json::Value = serde_yaml::from_str(&content).map_err(|e| {
-                    McpError::invalid_params(
-                        "Invalid YAML format",
-                        Some(json!({"error": e.to_string()})),
-                    )
-                })?;
-
-                Ok(CallToolResult::success(vec![Content::json(json!({
-                    "operation": "load_file",
-                    "file_path": file_path,
-                    "workflow": workflow
-                }))?]))
-            }
-            // Scan folder
-            (None, Some(folder_path)) => {
-                let files = scan_yaml_files(&folder_path)?;
-
-                Ok(CallToolResult::success(vec![Content::json(json!({
-                    "operation": "scan_folder",
-                    "folder_path": folder_path,
-                    "files": files,
-                    "count": files.len()
-                }))?]))
-            }
-            // Error cases
-            (Some(_), Some(_)) => Err(McpError::invalid_params(
-                "Provide either file_path OR folder_path, not both",
-                None,
-            )),
-            (None, None) => Err(McpError::invalid_params(
-                "Must provide either file_path or folder_path",
-                None,
-            )),
-        }
-    }
-}
-
-fn scan_yaml_files(folder_path: &str) -> Result<Vec<serde_json::Value>, McpError> {
-    let mut files = Vec::new();
-
-    let dir = std::fs::read_dir(folder_path).map_err(|e| {
-        McpError::invalid_params(
-            "Failed to read directory",
-            Some(json!({"error": e.to_string(), "path": folder_path})),
-        )
-    })?;
-
-    for entry in dir {
-        let entry = entry.map_err(|e| {
-            McpError::internal_error(
-                "Directory entry error",
-                Some(json!({"error": e.to_string()})),
-            )
-        })?;
-
-        let path = entry.path();
-
-        if path.is_file() {
-            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if ext == "yaml" || ext == "yml" {
-                    let metadata = entry.metadata().ok();
-                    let file_name = path
-                        .file_stem()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-
-                    files.push(json!({
-                        "name": file_name,
-                        "file_path": path.to_string_lossy(),
-                        "size": metadata.as_ref().map(|m| m.len()).unwrap_or(0),
-                        "modified": metadata.and_then(|m| m.modified().ok())
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs())
-                    }));
-                }
-            }
-        }
+        self.import_workflow_sequence_impl(args).await
     }
 
-    Ok(files)
-}
-
-#[tool_router(router = tool_router_2)]
-impl DesktopWrapper {
     #[tool(description = "Maximizes a window.")]
     async fn maximize_window(
         &self,

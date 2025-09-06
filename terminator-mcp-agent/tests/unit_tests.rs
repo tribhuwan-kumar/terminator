@@ -11,7 +11,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 #[test]
 fn test_execute_sequence_args_serialization() {
     let args = ExecuteSequenceArgs {
-        steps: vec![SequenceStep {
+        url: None,
+        steps: Some(vec![SequenceStep {
             tool_name: Some("click_element".to_string()),
             arguments: Some(json!({
                 "selector": "button|Submit"
@@ -19,7 +20,7 @@ fn test_execute_sequence_args_serialization() {
             continue_on_error: Some(true),
             delay_ms: Some(100),
             ..Default::default()
-        }],
+        }]),
         stop_on_error: Some(false),
         include_detailed_results: Some(true),
         output_parser: None,
@@ -49,17 +50,23 @@ fn test_execute_sequence_args_deserialization() {
     let deserialized: ExecuteSequenceArgs = serde_json::from_str(json).unwrap();
 
     // Verify the steps content
-    assert_eq!(deserialized.steps.len(), 1);
+    assert_eq!(deserialized.steps.as_ref().map(|v| v.len()).unwrap_or(0), 1);
     assert_eq!(
-        deserialized.steps[0].tool_name,
+        deserialized.steps.as_ref().unwrap()[0].tool_name,
         Some("another_tool".to_string())
     );
     assert_eq!(
-        deserialized.steps[0].arguments.as_ref().unwrap()["foo"],
+        deserialized.steps.as_ref().unwrap()[0]
+            .arguments
+            .as_ref()
+            .unwrap()["foo"],
         "bar"
     );
-    assert_eq!(deserialized.steps[0].continue_on_error, Some(false));
-    assert_eq!(deserialized.steps[0].delay_ms, Some(200));
+    assert_eq!(
+        deserialized.steps.as_ref().unwrap()[0].continue_on_error,
+        Some(false)
+    );
+    assert_eq!(deserialized.steps.as_ref().unwrap()[0].delay_ms, Some(200));
 
     assert_eq!(deserialized.stop_on_error, Some(true));
     assert_eq!(deserialized.include_detailed_results, Some(false));
@@ -74,7 +81,7 @@ fn test_execute_sequence_args_default_values() {
     let args: ExecuteSequenceArgs = serde_json::from_str(json).unwrap();
 
     // Verify it's an empty array
-    assert_eq!(args.steps.len(), 0);
+    assert_eq!(args.steps.as_ref().map(|v| v.len()).unwrap_or(0), 0);
 
     assert_eq!(args.stop_on_error, None);
     assert_eq!(args.include_detailed_results, None);
@@ -103,7 +110,7 @@ fn test_execute_sequence_minimal() {
     }"#;
 
     let args: ExecuteSequenceArgs = serde_json::from_str(json_str).unwrap();
-    assert_eq!(args.steps.len(), 0);
+    assert_eq!(args.steps.as_ref().map(|v| v.len()).unwrap_or(0), 0);
     assert_eq!(args.stop_on_error, None);
     assert_eq!(args.include_detailed_results, None);
 }
