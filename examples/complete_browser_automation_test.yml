@@ -1,0 +1,104 @@
+---
+tool_name: execute_sequence
+arguments:
+  variables:
+    target_website:
+      type: string
+      label: "Website to test browser automation on"
+      default: "https://httpbin.org/html"
+
+    test_script:
+      type: string
+      label: "JavaScript to execute in the browser"
+      default: |
+        // Get page information
+        const info = {
+          title: document.title,
+          url: window.location.href,
+          userAgent: navigator.userAgent.substring(0, 100) + "...",
+          timestamp: new Date().toISOString(),
+          elementCount: document.getElementsByTagName('*').length
+        };
+
+        // Create a visible test indicator
+        const indicator = document.createElement('div');
+        indicator.id = 'automation-success-indicator';
+        indicator.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: linear-gradient(45deg, #4CAF50, #45a049);
+          color: white;
+          padding: 15px 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+          font-family: Arial, sans-serif;
+          font-size: 14px;
+          z-index: 10000;
+          border: 2px solid #fff;
+        `;
+        indicator.innerHTML = `
+          <strong>🤖 Automation Success!</strong><br/>
+          <small>Page: ${document.title}</small><br/>
+          <small>Elements: ${info.elementCount}</small>
+        `;
+        document.body.appendChild(indicator);
+
+        return JSON.stringify(info, null, 2);
+
+  inputs:
+    target_website: "https://httpbin.org/html"
+    test_script: "${{variables.test_script.default}}"
+
+  steps:
+    # Step 1: Install Chrome extension using remote workflow from GitHub
+    - tool_name: execute_sequence
+      arguments:
+        url: "https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator/browser-extension/install_chrome_extension_ui.yml"
+        inputs:
+          release_url: "https://github.com/mediar-ai/terminator/releases/latest/download/terminator-browser-extension.zip"
+        steps: []
+      continue_on_error: false
+      delay_ms: 3000
+
+    # Step 2: Navigate to target website
+    - tool_name: navigate_browser
+      arguments:
+        url: "${{inputs.target_website}}"
+        browser: "chrome"
+      delay_ms: 4000
+
+    # Step 3: Execute the test script using the installed extension
+    - tool_name: execute_browser_script
+      arguments:
+        selector: "role:Document"
+        script: "${{inputs.test_script}}"
+        timeout_ms: 15000
+      delay_ms: 2000
+
+    # Step 4: Verify our test indicator was created
+    - tool_name: validate_element
+      arguments:
+        selector: "#automation-success-indicator"
+        timeout_ms: 8000
+      continue_on_error: true
+      delay_ms: 1000
+
+    # Step 5: Highlight the success indicator
+    - tool_name: highlight_element
+      arguments:
+        selector: "#automation-success-indicator"
+        duration_ms: 2000
+        color: 0x00FF00
+        text: "SUCCESS!"
+      continue_on_error: true
+      delay_ms: 500
+
+    # Step 6: Take a final screenshot showing the result
+    - tool_name: capture_element_screenshot
+      arguments:
+        selector: "role:Document"
+        timeout_ms: 5000
+      continue_on_error: true
+
+  stop_on_error: false

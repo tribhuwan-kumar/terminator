@@ -1,0 +1,71 @@
+---
+tool_name: execute_sequence
+arguments:
+  variables:
+    test_url:
+      type: string
+      label: "URL to test browser script on"
+      default: "https://example.com"
+
+    script_to_run:
+      type: string
+      label: "JavaScript to execute in browser"
+      default: "document.title"
+
+  inputs:
+    test_url: "https://httpbin.org/html"
+    script_to_run: |
+      // Test script that gets page info and creates a simple element
+      const pageInfo = {
+        title: document.title,
+        url: window.location.href,
+        timestamp: new Date().toISOString()
+      };
+
+      // Create a test div to show we can modify the page
+      const testDiv = document.createElement('div');
+      testDiv.id = 'terminator-test-element';
+      testDiv.style.cssText = 'position:fixed;top:10px;right:10px;background:red;color:white;padding:10px;z-index:9999;';
+      testDiv.textContent = 'Terminator Test: ' + pageInfo.title;
+      document.body.appendChild(testDiv);
+
+      return JSON.stringify(pageInfo);
+
+  steps:
+    # Step 1: Install Chrome extension using remote workflow
+    - tool_name: execute_sequence
+      arguments:
+        url: "https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator/browser-extension/install_chrome_extension_ui.yml"
+        inputs:
+          release_url: "https://github.com/mediar-ai/terminator/releases/latest/download/terminator-browser-extension.zip"
+      continue_on_error: false
+      delay_ms: 2000
+
+    # Step 2: Open browser to test page
+    - tool_name: navigate_browser
+      arguments:
+        url: "${{inputs.test_url}}"
+        browser: "chrome"
+      delay_ms: 3000
+
+    # Step 3: Execute browser script using the installed extension
+    - tool_name: execute_browser_script
+      arguments:
+        selector: "role:Document"
+        script: "${{inputs.script_to_run}}"
+      delay_ms: 1000
+
+    # Step 4: Verify the test element was created
+    - tool_name: validate_element
+      arguments:
+        selector: "#terminator-test-element"
+        timeout_ms: 5000
+      continue_on_error: true
+
+    # Step 5: Take a screenshot to show the result
+    - tool_name: capture_element_screenshot
+      arguments:
+        selector: "role:Document"
+      continue_on_error: true
+
+  stop_on_error: true

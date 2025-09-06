@@ -690,8 +690,15 @@ pub struct SequenceStep {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Default, JsonSchema)]
 pub struct ExecuteSequenceArgs {
-    #[schemars(description = "The steps of the workflow to execute in order.")]
-    pub steps: Vec<SequenceStep>,
+    #[schemars(
+        description = "Optional URL to fetch workflow definition from (HTTP/HTTPS or file:// supported)."
+    )]
+    pub url: Option<String>,
+    #[schemars(
+        description = "The steps of the workflow to execute in order. Optional when url is provided."
+    )]
+    #[serde(default)]
+    pub steps: Option<Vec<SequenceStep>>,
     #[schemars(
         description = "A key-value map defining the schema for dynamic variables (e.g., for UI generation)."
     )]

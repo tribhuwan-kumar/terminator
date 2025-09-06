@@ -1,0 +1,163 @@
+---
+tool_name: execute_sequence
+arguments:
+  variables:
+    target_website:
+      type: string
+      label: "Website to test browser automation on"
+      default: "https://httpbin.org/html"
+
+  steps:
+    # Step 1: Install Chrome Extension (inline steps)
+    - tool_name: run_javascript
+      arguments:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const os = require('os');
+          (async () => {
+            const url = 'https://github.com/mediar-ai/terminator/releases/latest/download/terminator-browser-extension.zip';
+            const isWin = process.platform === 'win32';
+            const tmp = isWin ? (process.env.TEMP || os.tmpdir()) : os.tmpdir();
+            const zipPath = path.join(tmp, 'terminator-browser-extension.zip');
+            const destDir = path.join(tmp, 'terminator-bridge');
+            
+            try { fs.rmSync(destDir, { recursive: true, force: true }); } catch (_) {}
+            try { fs.mkdirSync(destDir, { recursive: true }); } catch (e) { throw new Error('Failed to create dest dir: ' + e.message); }
+            
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+            const arrayBuf = await res.arrayBuffer();
+            fs.writeFileSync(zipPath, Buffer.from(arrayBuf));
+            
+            console.log(`Downloaded extension to: ${zipPath}`);
+            return { zip_path: zipPath, extension_dir: destDir, success: true };
+          })();
+      delay_ms: 3000
+
+    # Step 2: Extract the extension
+    - tool_name: run_command
+      arguments:
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:TEMP 'terminator-browser-extension.zip'
+          $dest = Join-Path $env:TEMP 'terminator-bridge'
+          if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          Write-Host "Extension extracted to: $dest"
+        shell: powershell
+      delay_ms: 2000
+
+    # Step 3: Navigate to Chrome extensions page
+    - tool_name: navigate_browser
+      arguments:
+        url: "chrome://extensions"
+        browser: "chrome"
+      delay_ms: 3000
+
+    # Step 4: Enable developer mode if needed and install extension
+    - tool_name: click_element
+      arguments:
+        selector: "role:Button|name:Load unpacked"
+      timeout_ms: 10000
+      continue_on_error: true
+      delay_ms: 2000
+
+    # Step 5: Navigate to extension folder in file picker
+    - tool_name: type_into_element
+      arguments:
+        selector: "role:Edit|name:Folder:"
+        text_to_type: "C:\\Users\\louis\\AppData\\Local\\Temp\\terminator-bridge"
+        clear_before_typing: true
+      timeout_ms: 10000
+      continue_on_error: true
+      delay_ms: 1000
+
+    # Step 6: Confirm folder selection
+    - tool_name: click_element
+      arguments:
+        selector: "role:Button|name:Select Folder"
+      timeout_ms: 10000
+      continue_on_error: true
+      delay_ms: 3000
+
+    # Step 7: Navigate to test website
+    - tool_name: navigate_browser
+      arguments:
+        url: "${{inputs.target_website}}"
+        browser: "chrome"
+      delay_ms: 4000
+
+    # Step 8: Execute browser script through extension bridge
+    - tool_name: execute_browser_script
+      arguments:
+        selector: "role:Document"
+        script: |
+          (function() {
+            const pageInfo = {
+              title: document.title,
+              url: window.location.href,
+              timestamp: new Date().toISOString(),
+              elementCount: document.getElementsByTagName('*').length
+            };
+            
+            // Create success indicator
+            const indicator = document.createElement('div');
+            indicator.id = 'full-workflow-success';
+            indicator.style.cssText = `
+              position: fixed;
+              top: 20px;
+              right: 20px;
+              background: linear-gradient(45deg, #E91E63, #9C27B0);
+              color: white;
+              padding: 25px;
+              border-radius: 15px;
+              box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+              font-family: Arial, sans-serif;
+              font-size: 18px;
+              font-weight: bold;
+              z-index: 10000;
+              border: 4px solid #fff;
+              animation: celebration 3s infinite;
+            `;
+            indicator.innerHTML = `
+              <div style="text-align: center;">
+                <div style="font-size: 32px; margin-bottom: 15px;">🎉 🚀</div>
+                <div>FULL WORKFLOW SUCCESS!</div>
+                <div style="font-size: 14px; margin-top: 12px; opacity: 0.9;">
+                  Extension Installed + Browser Bridge Working
+                </div>
+                <div style="font-size: 12px; margin-top: 10px; background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px;">
+                  ✅ Remote Download<br>
+                  ✅ Extension Install<br>
+                  ✅ Browser Script<br>
+                  📊 Elements: ${pageInfo.elementCount}
+                </div>
+              </div>
+            `;
+            document.body.appendChild(indicator);
+            
+            // Add celebration animation
+            const style = document.createElement('style');
+            style.textContent = `
+              @keyframes celebration {
+                0%, 100% { transform: scale(1) rotate(0deg); }
+                25% { transform: scale(1.05) rotate(2deg); }
+                50% { transform: scale(1.1) rotate(0deg); }
+                75% { transform: scale(1.05) rotate(-2deg); }
+              }
+            `;
+            document.head.appendChild(style);
+            
+            return pageInfo;
+          })();
+        timeout_ms: 15000
+      delay_ms: 3000
+
+    # Step 9: Take final screenshot
+    - tool_name: capture_element_screenshot
+      arguments:
+        selector: "role:Document"
+        timeout_ms: 5000
+      continue_on_error: true

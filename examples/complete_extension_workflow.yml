@@ -1,0 +1,53 @@
+url: null
+variables: {}
+selectors: {}
+inputs: {}
+steps:
+  - tool_name: navigate_browser
+    arguments:
+      url: "https://httpbin.org/html"
+      browser: "chrome"
+    delay_ms: 3000
+
+  - tool_name: execute_browser_script
+    arguments:
+      selector: "role:Document"
+      script: |
+        (function() {
+          const pageInfo = {
+            title: document.title,
+            url: window.location.href,
+            timestamp: new Date().toISOString()
+          };
+          
+          const indicator = document.createElement('div');
+          indicator.id = 'remote-workflow-success';
+          indicator.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(45deg, #9C27B0, #673AB7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 10000;
+            border: 3px solid #fff;
+          `;
+          indicator.innerHTML = `
+            <div style="text-align: center;">
+              <div style="font-size: 24px; margin-bottom: 10px;">🌐 ✅</div>
+              <div>REMOTE WORKFLOW SUCCESS!</div>
+              <div style="font-size: 12px; margin-top: 8px;">
+                Loaded from URL and executed!
+              </div>
+            </div>
+          `;
+          document.body.appendChild(indicator);
+          
+          return pageInfo;
+        })();
+    delay_ms: 2000

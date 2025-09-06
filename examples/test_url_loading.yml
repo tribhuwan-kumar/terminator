@@ -1,0 +1,7 @@
+---
+tool_name: execute_sequence
+arguments:
+  url: "file://C:\\Users\\louis\\Documents\\terminator\\examples\\simple_remote_test.yml"
+  inputs:
+    message: "Testing URL workflow loading from YAML!"
+  steps: []

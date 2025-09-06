@@ -2,7 +2,6 @@
 alwaysApply: true
 ---
 
-## ALWAYS use is_background=true for terminal commands on Windows to avoid hanging
 
 ## You (LLM) tend to be too helpful and you tend to guess what response i'm looking, But I want you to be critical and reasoning through a given task and optimizing for the best long-term outcome,
 
@@ -14,7 +13,6 @@ alwaysApply: true
 
 **Bash Command Rules:**
 
-- **ALWAYS use is_background=true** - Windows terminal commands run in background
 - **Use MCP delay tool instead of timeout commands** - Background commands don't pause for timeouts
 - **CRITICAL: Always kill/cleanup terminal processes after use:**
 - Kill background terminal sessions when task is complete

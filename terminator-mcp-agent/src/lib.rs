@@ -6,6 +6,7 @@ pub mod output_parser;
 pub mod prompt;
 pub mod scripting_engine;
 pub mod server;
+pub mod server_sequence;
 pub mod utils;
 pub mod workflow_converter;
 pub mod workflow_events;

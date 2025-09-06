@@ -6,7 +6,6 @@ alwaysApply: true
 
 **CRITICAL: Windows Terminal Rules**
 
-**ALWAYS use is_background=true** - Windows terminal commands run in background
 **Use MCP delay tool instead of timeout commands** - Background commands don't pause for timeouts
 **CRITICAL: Always kill/cleanup terminal processes after use:**
 
