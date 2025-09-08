@@ -139,6 +139,74 @@ pub struct LocatorArgs {
     pub retries: Option<u32>,
 }
 
+#[derive(Debug, Serialize, JsonSchema, Clone)]
+pub struct ClickPosition {
+    #[schemars(description = "X position as percentage (0-100) within the element")]
+    pub x_percentage: u32,
+    #[schemars(description = "Y position as percentage (0-100) within the element")]
+    pub y_percentage: u32,
+}
+
+// Custom deserializer that handles both direct objects and stringified JSON
+impl<'de> Deserialize<'de> for ClickPosition {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, Visitor};
+        use std::fmt;
+
+        struct ClickPositionVisitor;
+
+        impl<'de> Visitor<'de> for ClickPositionVisitor {
+            type Value = ClickPosition;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a ClickPosition object or a JSON string representing one")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                // Handle stringified JSON
+                serde_json::from_str(value).map_err(de::Error::custom)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let mut x_percentage = None;
+                let mut y_percentage = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "x_percentage" => {
+                            x_percentage = Some(map.next_value()?);
+                        }
+                        "y_percentage" => {
+                            y_percentage = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let _: serde_json::Value = map.next_value()?;
+                        }
+                    }
+                }
+
+                Ok(ClickPosition {
+                    x_percentage: x_percentage
+                        .ok_or_else(|| de::Error::missing_field("x_percentage"))?,
+                    y_percentage: y_percentage
+                        .ok_or_else(|| de::Error::missing_field("y_percentage"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(ClickPositionVisitor)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ClickElementArgs {
     #[schemars(
@@ -166,6 +234,10 @@ pub struct ClickElementArgs {
         description = "Optional highlighting configuration to visually indicate the target element before clicking"
     )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
+    #[schemars(
+        description = "Optional click position as percentage (0-100) within the element. If not provided, clicks the center."
+    )]
+    pub click_position: Option<ClickPosition>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

@@ -1,8 +1,10 @@
-use crate::events::{ButtonInteractionType, ClickEvent};
+use crate::events::{
+    BrowserTabNavigationEvent, ButtonInteractionType, ClickEvent, TabAction, TabNavigationMethod,
+};
 use crate::{
-    ApplicationSwitchMethod, BrowserTabNavigationEvent, ClipboardAction, ClipboardEvent,
-    EventMetadata, HotkeyEvent, KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position,
-    Result, WorkflowEvent, WorkflowRecorderConfig,
+    ApplicationSwitchMethod, ClipboardAction, ClipboardEvent, EventMetadata, HotkeyEvent,
+    KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position, Result, WorkflowEvent,
+    WorkflowRecorderConfig,
 };
 use arboard::Clipboard;
 use rdev::{Button, EventType};
@@ -238,7 +240,13 @@ impl WindowsRecorder {
         default_switch_method: ApplicationSwitchMethod,
         config: &WorkflowRecorderConfig,
         alt_tab_tracker: &Arc<Mutex<AltTabTracker>>,
+        browser_tab_tracker: &Arc<Mutex<BrowserTabTracker>>,
     ) {
+        warn!(
+            "🔍 CHECKING APPLICATION SWITCH - called with element: {:?}",
+            new_element.as_ref().map(|e| e.application_name())
+        );
+
         if !config.record_application_switches {
             return;
         }
@@ -287,6 +295,73 @@ impl WindowsRecorder {
 
                         // Only emit if we have meaningful dwell time or this is first app
                         if dwell_time.is_some() || current.is_none() {
+                            // Check if this is a browser and try to get URL
+                            let is_browser = app_name.to_lowercase().contains("chrome")
+                                || app_name.to_lowercase().contains("firefox")
+                                || app_name.to_lowercase().contains("edge");
+
+                            if is_browser {
+                                warn!("🌐 Browser detected: {}, element role: {}, attempting URL detection", 
+                                     app_name, element.role());
+                                // Try to find the browser URL before emitting event
+                                if let Some(url) = Self::proactive_browser_url_search(element) {
+                                    warn!("✅ Successfully found browser URL: {}", url);
+                                    // Emit browser navigation event instead of application switch
+                                    let nav_event = crate::BrowserTabNavigationEvent {
+                                        action: crate::events::TabAction::Switched,
+                                        method: crate::events::TabNavigationMethod::Other,
+                                        to_url: Some(url.clone()),
+                                        from_url: None,
+                                        to_title: Some(app_name.clone()),
+                                        from_title: current.as_ref().map(|s| s.name.clone()),
+                                        browser: app_name.clone(),
+                                        tab_index: None,
+                                        total_tabs: None,
+                                        page_dwell_time_ms: dwell_time,
+                                        is_back_forward: false,
+                                        metadata: EventMetadata::with_ui_element_and_timestamp(
+                                            Some(element.clone()),
+                                        ),
+                                    };
+
+                                    if let Err(e) = event_tx
+                                        .send(WorkflowEvent::BrowserTabNavigation(nav_event))
+                                    {
+                                        debug!("Failed to send browser navigation event: {}", e);
+                                    } else {
+                                        info!(
+                                            "🌐 Browser navigation event sent: {} → {} ({})",
+                                            current
+                                                .as_ref()
+                                                .map(|s| s.name.as_str())
+                                                .unwrap_or("(none)"),
+                                            app_name,
+                                            url
+                                        );
+                                    }
+
+                                    // Also update browser tab tracker
+                                    if let Ok(mut tracker) = browser_tab_tracker.try_lock() {
+                                        tracker.current_url = Some(url.clone());
+                                        tracker.current_browser = Some(app_name.clone());
+                                        tracker.current_title = Some(app_name.clone());
+                                        tracker.last_navigation_time = now;
+                                    }
+
+                                    // Update current app state and return early
+                                    *current = Some(ApplicationState {
+                                        name: app_name.clone(),
+                                        process_id,
+                                        start_time: now,
+                                    });
+
+                                    return; // Don't emit ApplicationSwitch event
+                                } else {
+                                    warn!("⚠️ Browser detected but no URL found");
+                                }
+                            }
+
+                            // Not a browser or couldn't find URL - emit normal application switch
                             let event = crate::ApplicationSwitchEvent {
                                 from_application: current.as_ref().map(|s| s.name.clone()),
                                 to_application: app_name.clone(),
@@ -317,14 +392,417 @@ impl WindowsRecorder {
 
                         // Update current application state
                         *current = Some(ApplicationState {
-                            name: app_name,
+                            name: app_name.clone(),
                             process_id,
                             start_time: now,
                         });
+
+                        // Initialize browser tracker if switching to a browser
+                        let app_name_lower = app_name.to_lowercase();
+                        let is_browser = [
+                            "chrome", "firefox", "edge", "brave", "opera", "safari", "vivaldi",
+                        ]
+                        .iter()
+                        .any(|b| app_name_lower.contains(b));
+
+                        if is_browser {
+                            warn!(
+                                "🌐 BROWSER DETECTED: {} - attempting proactive URL search",
+                                app_name
+                            );
+                            // Proactively search for URL when switching to browser
+                            if let Some(url) = Self::proactive_browser_url_search(element) {
+                                let mut tracker = browser_tab_tracker.lock().unwrap();
+
+                                // Always update URL when switching to browser to catch timestamp changes
+                                let should_update = match &tracker.current_url {
+                                    None => true, // No URL yet
+                                    Some(current) => {
+                                        // Update if URL changed (including query params like timestamps)
+                                        current != &url
+                                    }
+                                };
+
+                                if should_update {
+                                    warn!(
+                                        "Proactive URL detection on browser switch to {}: {} (was: {:?})",
+                                        app_name, url, tracker.current_url
+                                    );
+
+                                    // Update tracker
+                                    tracker.current_url = Some(url.clone());
+                                    tracker.current_browser = Some(app_name.clone());
+                                    tracker.current_title = Some(element.window_title());
+                                    tracker.last_navigation_time = now;
+
+                                    // Emit browser navigation event
+                                    let nav_event = BrowserTabNavigationEvent {
+                                        action: TabAction::Switched,
+                                        method: TabNavigationMethod::TabClick,
+                                        to_url: Some(url.clone()),
+                                        from_url: None, // We don't track the previous URL on app switch
+                                        to_title: Some(element.window_title()),
+                                        from_title: None,
+                                        browser: app_name.clone(),
+                                        tab_index: None,
+                                        total_tabs: None,
+                                        page_dwell_time_ms: None,
+                                        is_back_forward: false,
+                                        metadata: EventMetadata::with_ui_element_and_timestamp(
+                                            Some(element.clone()),
+                                        ),
+                                    };
+
+                                    warn!("📍 Emitting browser navigation event for URL: {}", url);
+                                    if let Err(e) = event_tx
+                                        .send(WorkflowEvent::BrowserTabNavigation(nav_event))
+                                    {
+                                        debug!("Failed to send browser navigation event: {}", e);
+                                    }
+                                } else {
+                                    debug!(
+                                        "Browser switch to {} - URL unchanged: {}",
+                                        app_name, url
+                                    );
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    /// Proactively search for URL in browser window
+    fn proactive_browser_url_search(element: &UIElement) -> Option<String> {
+        warn!(
+            "🔍 Starting proactive URL search from element: role={}, name={:?}",
+            element.role(),
+            element.name()
+        );
+
+        // Try direct URL property first (fast path)
+        if let Some(url) = element.url() {
+            if !url.is_empty() && (url.starts_with("http://") || url.starts_with("https://")) {
+                warn!("✅ Found valid URL directly on element: {}", url);
+                return Some(url);
+            } else if !url.is_empty() {
+                warn!(
+                    "⚠️ Found non-HTTP URL on element: {} - continuing search",
+                    url
+                );
+            }
+        }
+        warn!("❌ No direct valid URL on element, starting deep search");
+
+        // Deep recursive search for URL (handles deeply nested browser UIs)
+        if let Some(url) = Self::deep_url_search(element, 0, 10) {
+            return Some(url);
+        }
+
+        // If we still haven't found a URL, try to navigate up to the window root
+        warn!("🔍 Attempting to find window root for comprehensive search");
+        let mut current = element.clone();
+        let mut depth = 0;
+        const MAX_PARENT_DEPTH: usize = 10;
+
+        // Navigate up the tree to find the window element
+        while depth < MAX_PARENT_DEPTH {
+            if let Ok(Some(parent)) = current.parent() {
+                let parent_role = parent.role();
+                warn!(
+                    "📍 Parent at depth {}: role={}, name={:?}",
+                    depth,
+                    parent_role,
+                    parent.name()
+                );
+
+                // If we found a Window element that looks like a browser, search from there
+                if parent_role == "Window" {
+                    let window_name = parent.name().unwrap_or_default();
+                    let is_browser_window = window_name.to_lowercase().contains("chrome")
+                        || window_name.to_lowercase().contains("firefox")
+                        || window_name.to_lowercase().contains("edge")
+                        || window_name.to_lowercase().contains("safari");
+
+                    if is_browser_window {
+                        warn!(
+                            "🎯 Found browser Window element: {}, searching from window root",
+                            window_name
+                        );
+
+                        // First try to find the address bar directly (more reliable for Chrome)
+                        if let Some(url) = Self::find_address_bar_url(&parent, 0, 10) {
+                            warn!("✅ Found URL in address bar");
+                            return Some(url);
+                        }
+
+                        // Then try deep search for Documents
+                        if let Some(url) = Self::deep_url_search(&parent, 0, 15) {
+                            warn!("✅ Found URL by deep searching browser window");
+                            return Some(url);
+                        }
+                        warn!("⚠️ No URL found in browser window, will continue searching up");
+                    } else {
+                        // Check if this is a modal dialog from a website
+                        if window_name.contains(" says") || window_name.contains(" alert") {
+                            // Extract domain from modal dialog title like "domain.com:8080 says"
+                            if let Some(domain_part) = window_name.split(" says").next() {
+                                let domain = domain_part.trim();
+                                if domain.contains('.') && !domain.contains(' ') {
+                                    // Build URL from domain
+                                    let url = if domain.contains("://") {
+                                        domain.to_string()
+                                    } else if domain.starts_with("localhost")
+                                        || domain.contains(":")
+                                    {
+                                        format!("http://{domain}")
+                                    } else {
+                                        format!("https://{domain}")
+                                    };
+                                    warn!("✅ Extracted URL from modal dialog title: {}", url);
+                                    return Some(url);
+                                }
+                            }
+                        }
+                        warn!(
+                            "⚠️ Found non-browser Window: {} - continuing up",
+                            window_name
+                        );
+                    }
+                }
+
+                current = parent;
+                depth += 1;
+            } else {
+                // No more parents - only search if we haven't reached Desktop level
+                if depth > 0 {
+                    let current_name = current.name().unwrap_or_default();
+                    if current_name.contains("Desktop") {
+                        warn!("⚠️ Reached Desktop level - stopping search to avoid traversing entire desktop");
+                    } else {
+                        warn!(
+                            "🔍 Reached top of tree at depth {}, searching from highest parent",
+                            depth
+                        );
+                        if let Some(url) = Self::deep_url_search(&current, 0, 10) {
+                            warn!("✅ Found URL by searching from highest parent");
+                            return Some(url);
+                        }
+                    }
+                }
+                break;
+            }
+        }
+
+        // Try parsing from window title as last resort
+        let window_title = element.window_title();
+        if !window_title.is_empty() {
+            // Common patterns: "Page Title - Domain - Browser"
+            if let Some(url) = Self::extract_url_from_title(&window_title) {
+                debug!("Extracted URL from window title: {}", url);
+                return Some(url);
+            }
+        }
+
+        warn!("❌ No URL found in any search method");
+        None
+    }
+
+    /// Prioritized search for browser URL - address bar first, then main Document
+    fn deep_url_search(element: &UIElement, depth: usize, max_depth: usize) -> Option<String> {
+        if depth > max_depth {
+            return None;
+        }
+
+        // First pass: Look for address bar (highest priority)
+        if let Some(url) = Self::find_address_bar_url(element, depth, max_depth) {
+            warn!("✅ Found URL in address bar: {}", url);
+            return Some(url);
+        }
+
+        // Second pass: Look for main Document element (second priority)
+        if let Some(url) = Self::find_main_document_url(element, depth, max_depth) {
+            warn!("✅ Found URL in main Document: {}", url);
+            return Some(url);
+        }
+
+        None
+    }
+
+    /// Find URL in address bar (Edit control)
+    fn find_address_bar_url(element: &UIElement, depth: usize, max_depth: usize) -> Option<String> {
+        if depth > max_depth {
+            return None;
+        }
+
+        let role = element.role();
+
+        // Check Edit controls (address bar)
+        if role == "Edit" {
+            if let Some(name) = element.name() {
+                let name_lower = name.to_lowercase();
+                // Check if this is likely an address bar
+                if name_lower.contains("address")
+                    || name_lower.contains("search bar")
+                    || name_lower.contains("location")
+                    || name_lower.contains("url")
+                {
+                    if let Ok(text) = element.text(0) {
+                        // Check if it's a URL or domain
+                        if text.starts_with("http://") || text.starts_with("https://") {
+                            return Some(text);
+                        } else if text.contains('.')
+                            && !text.contains(' ')
+                            && !text.starts_with("chrome-error://")
+                            && !text.starts_with("about:")
+                            && !text.starts_with("edge://")
+                        {
+                            // Domain without protocol (but not an error page)
+                            return Some(format!("https://{text}"));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Recursively search children
+        if let Ok(children) = element.children() {
+            for child in children {
+                if let Some(url) = Self::find_address_bar_url(&child, depth + 1, max_depth) {
+                    return Some(url);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Find URL in main Document element only (not nested iframes or links)
+    fn find_main_document_url(
+        element: &UIElement,
+        depth: usize,
+        max_depth: usize,
+    ) -> Option<String> {
+        if depth > max_depth {
+            return None;
+        }
+
+        let role = element.role();
+
+        // Check Document elements at shallow depths (main page, not nested content)
+        if role == "Document" && depth <= 5 {
+            // Main documents are usually at shallow depths
+            // First try the text property which often contains the URL
+            if let Ok(text) = element.text(0) {
+                if text.starts_with("http://") || text.starts_with("https://") {
+                    return Some(text);
+                }
+            }
+            // Fallback to url() method
+            if let Some(url) = element.url() {
+                if !url.is_empty() && (url.starts_with("http://") || url.starts_with("https://")) {
+                    return Some(url);
+                }
+            }
+        }
+
+        // Recursively search children for main document
+        if let Ok(children) = element.children() {
+            for child in children {
+                // Skip modal dialog windows
+                let child_role = child.role();
+                if child_role == "Window" {
+                    let child_name = child.name().unwrap_or_default();
+                    if child_name.contains("says")
+                        || child_name.contains("alert")
+                        || child_name.contains("dialog")
+                        || child_name.contains("popup")
+                    {
+                        continue;
+                    }
+                }
+
+                if let Some(url) = Self::find_main_document_url(&child, depth + 1, max_depth) {
+                    return Some(url);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Helper to search an element and its children for URL
+    #[allow(dead_code)]
+    fn search_element_for_url(element: &UIElement) -> Option<String> {
+        // Check direct URL
+        if let Some(url) = element.url() {
+            if !url.is_empty() {
+                return Some(url);
+            }
+        }
+
+        // Search children
+        if let Ok(children) = element.children() {
+            for child in children {
+                let role = child.role();
+                if role == "Document" {
+                    if let Some(url) = child.url() {
+                        if !url.is_empty() {
+                            return Some(url);
+                        }
+                    }
+                } else if role == "Pane" {
+                    // Recursively search Pane
+                    if let Some(url) = Self::search_element_for_url(&child) {
+                        return Some(url);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract URL from window title if possible
+    fn extract_url_from_title(title: &str) -> Option<String> {
+        // Look for common URL patterns in title
+        if title.contains("http://") || title.contains("https://") {
+            // Extract the URL part
+            for part in title.split_whitespace() {
+                if part.starts_with("http://") || part.starts_with("https://") {
+                    return Some(part.to_string());
+                }
+            }
+        }
+
+        // Try to extract domain from patterns like "Title - domain.com - Browser"
+        let parts: Vec<&str> = title.split(" - ").collect();
+        if parts.len() >= 2 {
+            for part in &parts[1..] {
+                // Check if this part looks like a domain
+                if part.contains('.') && !part.contains(' ') {
+                    // Skip browser names
+                    let part_lower = part.to_lowercase();
+                    if !part_lower.contains("chrome")
+                        && !part_lower.contains("firefox")
+                        && !part_lower.contains("edge")
+                        && !part_lower.contains("safari")
+                        && !part_lower.contains("brave")
+                        && !part_lower.contains("opera")
+                    {
+                        // Assume https if no protocol
+                        if part.starts_with("http://") || part.starts_with("https://") {
+                            return Some(part.to_string());
+                        } else {
+                            return Some(format!("https://{part}"));
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     /// Initialize common hotkey patterns
@@ -1100,6 +1578,7 @@ impl WindowsRecorder {
                         let app_switch_ignore_applications =
                             focus_processing_ignore_applications.clone();
                         let app_switch_alt_tab_tracker = Arc::clone(&focus_alt_tab_tracker);
+                        let app_switch_browser_tracker = Arc::clone(&focus_browser_tracker);
 
                         processing_handle.spawn(async move {
                             if WindowsRecorder::should_ignore_focus_event(
@@ -1123,6 +1602,7 @@ impl WindowsRecorder {
                                 ApplicationSwitchMethod::WindowClick,
                                 &app_switch_config_clone,
                                 &app_switch_alt_tab_tracker,
+                                &app_switch_browser_tracker,
                             );
                         });
 
@@ -1787,17 +2267,48 @@ impl WindowsRecorder {
                 element_name, element_role
             );
 
-            if Self::is_text_input_element(element) && tracker.is_none() {
-                debug!(
-                    "Γ£à New element is a text input field, starting tracking (reason: {})",
-                    trigger_reason
-                );
-                // Store the new text input element with current time
-                *tracker = Some(TextInputTracker::new(element.clone()));
-                debug!(
-                    "≡ƒÄ» Started tracking text input: '{}' ({})",
-                    element_name, element_role
-                );
+            if Self::is_text_input_element(element) {
+                // Check if we already have a tracker for this element
+                let should_create_new_tracker = if let Some(existing_tracker) = tracker.as_ref() {
+                    // Only create new tracker if it's a different element
+                    existing_tracker.element.name_or_empty() != element_name
+                        || existing_tracker.element.role() != element_role
+                } else {
+                    true
+                };
+
+                if should_create_new_tracker {
+                    debug!(
+                        "Γ£à New element is a text input field, starting tracking (reason: {})",
+                        trigger_reason
+                    );
+                    // Store the new text input element with current time
+                    let mut new_tracker = TextInputTracker::new(element.clone());
+                    // Set focus method based on trigger reason
+                    // Preserve MouseClick if it was already set
+                    let existing_focus_method = tracker.as_ref().map(|t| t.focus_method.clone());
+                    new_tracker.focus_method = if existing_focus_method
+                        == Some(crate::events::FieldFocusMethod::MouseClick)
+                    {
+                        crate::events::FieldFocusMethod::MouseClick
+                    } else {
+                        match trigger_reason {
+                            "mouse_click" => crate::events::FieldFocusMethod::MouseClick,
+                            "focus_change" => crate::events::FieldFocusMethod::KeyboardNav,
+                            _ => crate::events::FieldFocusMethod::Unknown,
+                        }
+                    };
+                    *tracker = Some(new_tracker);
+                    debug!(
+                        "≡ƒÄ» Started tracking text input: '{}' ({}) with focus method: {:?}",
+                        element_name, element_role, trigger_reason
+                    );
+                } else {
+                    debug!(
+                        "≡ƒöì Already tracking this text input element: '{}', keeping existing tracker",
+                        element_name
+                    );
+                }
             } else if !Self::is_text_input_element(element) && !is_potential_autocomplete_element {
                 debug!(
                     "Γ¥î New element is NOT a text input field: '{}' ({})",
@@ -1895,8 +2406,13 @@ impl WindowsRecorder {
                         "≡ƒÄ» Detected mouse click on text input element: '{}' (role: '{}') - STARTING TRACKING",
                         element_name, element_role
                     );
-                    // Note: Text input tracking logic would need to be restored here
-                    // This was removed in the simplified version
+                    // Start tracking text input with MouseClick focus method
+                    if let Ok(mut tracker) = ctx.current_text_input.try_lock() {
+                        let mut new_tracker = TextInputTracker::new(element.clone());
+                        new_tracker.focus_method = crate::events::FieldFocusMethod::MouseClick;
+                        *tracker = Some(new_tracker);
+                        debug!("Started text input tracking with MouseClick focus method");
+                    }
                 }
 
                 // Enhanced autocomplete/suggestion detection
@@ -1965,6 +2481,7 @@ impl WindowsRecorder {
                                     keystroke_count: text_input.keystroke_count,
                                     typing_duration_ms: typing_duration.as_millis() as u64,
                                     input_method: crate::TextInputMethod::Suggestion,
+                                    focus_method: text_input.focus_method.clone(),
                                     metadata: EventMetadata::with_ui_element_and_timestamp(Some(
                                         text_input.element.clone(),
                                     )),
@@ -2024,6 +2541,7 @@ impl WindowsRecorder {
                                     keystroke_count: 1, // just the click
                                     typing_duration_ms: typing_duration.as_millis() as u64,
                                     input_method: crate::TextInputMethod::Suggestion,
+                                    focus_method: temp_tracker.focus_method.clone(),
                                     metadata: EventMetadata::with_ui_element_and_timestamp(Some(
                                         temp_tracker.element.clone(),
                                     )),
@@ -2054,46 +2572,74 @@ impl WindowsRecorder {
                     }
                 }
 
-                // Capture ALL clicks universally - no role filtering
-                debug!(
-                    "≡ƒû▒∩╕Å Mouse click on element: '{}' (role: '{}')",
-                    element_name, element_role
-                );
+                // Only emit click event if it's NOT a text input that we're tracking
+                // This prevents duplicate events (Click + TextInputCompleted) for the same interaction
+                if !(ctx.config.record_text_input_completion && is_text_input) {
+                    debug!(
+                        "≡ƒû▒∩╕Å Mouse click on element: '{}' (role: '{}') - emitting Click event",
+                        element_name, element_role
+                    );
 
-                let element_desc = element.attributes().description.unwrap_or_default();
-                let interaction_type = Self::determine_button_interaction_type(
-                    &element_name,
-                    &element_desc,
-                    &element_role,
-                );
+                    let element_desc = element.attributes().description.unwrap_or_default();
+                    let interaction_type = Self::determine_button_interaction_type(
+                        &element_name,
+                        &element_desc,
+                        &element_role,
+                    );
 
-                // Since we now have the deepest element, collect only direct children (not unlimited depth)
-                let child_text_content = Self::collect_direct_child_text_content(element);
-                info!(
-                    "≡ƒöì DIRECT CHILD TEXT COLLECTION: Found {} child elements: {:?}",
-                    child_text_content.len(),
-                    child_text_content
-                );
+                    // Since we now have the deepest element, collect only direct children (not unlimited depth)
+                    let child_text_content = Self::collect_direct_child_text_content(element);
+                    info!(
+                        "≡ƒöì DIRECT CHILD TEXT COLLECTION: Found {} child elements: {:?}",
+                        child_text_content.len(),
+                        child_text_content
+                    );
 
-                let click_event = ClickEvent {
-                    element_text: element_name,
-                    interaction_type,
-                    element_role: element_role.clone(),
-                    was_enabled: element.is_enabled().unwrap_or(true),
-                    click_position: Some(*ctx.position),
-                    element_description: if element_desc.is_empty() {
-                        None
+                    // Calculate relative position within the element
+                    let relative_position = element.bounds().ok().map(|bounds| {
+                        let x_ratio =
+                            ((ctx.position.x as f64 - bounds.0) / bounds.2).clamp(0.0, 1.0) as f32;
+                        let y_ratio =
+                            ((ctx.position.y as f64 - bounds.1) / bounds.3).clamp(0.0, 1.0) as f32;
+                        (x_ratio, y_ratio)
+                    });
+
+                    if let Some((x, y)) = relative_position {
+                        debug!(
+                            "📍 Click relative position: {:.1}% x {:.1}% within element",
+                            x * 100.0,
+                            y * 100.0
+                        );
+                    }
+
+                    let click_event = ClickEvent {
+                        element_text: element_name,
+                        interaction_type,
+                        element_role: element_role.clone(),
+                        was_enabled: element.is_enabled().unwrap_or(true),
+                        click_position: Some(*ctx.position),
+                        element_description: if element_desc.is_empty() {
+                            None
+                        } else {
+                            Some(element_desc)
+                        },
+                        child_text_content,
+                        relative_position,
+                        metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                            element.clone(),
+                        )),
+                    };
+
+                    if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
+                        debug!("Failed to send click event: {}", e);
                     } else {
-                        Some(element_desc)
-                    },
-                    child_text_content,
-                    metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
-                };
-
-                if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
-                    debug!("Failed to send click event: {}", e);
+                        debug!("Γ£à Click event sent successfully");
+                    }
                 } else {
-                    debug!("Γ£à Click event sent successfully");
+                    debug!(
+                        "≡ƒöñ Skipping Click event for text input '{}' (role: '{}') - will emit TextInputCompleted instead",
+                        element_name, element_role
+                    );
                 }
             }
         }
@@ -2240,10 +2786,63 @@ impl WindowsRecorder {
             }
         }
 
+        // Before returning this element, check if it's an empty container
+        // with a single child that has content
+        let element_name = element.name().unwrap_or_default();
+        if element_name.is_empty() {
+            if let Ok(children) = element.children() {
+                // Check for single child with content
+                if children.len() == 1 {
+                    let child = &children[0];
+                    let child_name = child.name().unwrap_or_default();
+
+                    // If the single child has meaningful content
+                    if !child_name.is_empty() {
+                        // Verify the child is within our click bounds
+                        if let Ok(child_bounds) = child.bounds() {
+                            if child_bounds.0 <= position.x as f64
+                                && position.x as f64 <= child_bounds.0 + child_bounds.2
+                                && child_bounds.1 <= position.y as f64
+                                && position.y as f64 <= child_bounds.1 + child_bounds.3
+                            {
+                                debug!(
+                                    "   ≡ƒÄ» Preferring child with content: '{}' (role: {}) over empty parent",
+                                    child_name, child.role()
+                                );
+                                return Some(child.clone());
+                            }
+                        }
+                    }
+                }
+
+                // Also check for cases where we have multiple children but click is clearly on one
+                // This handles cases like clicking on "1" in a group with multiple text elements
+                for child in &children {
+                    let child_name = child.name().unwrap_or_default();
+                    if !child_name.is_empty() {
+                        if let Ok(child_bounds) = child.bounds() {
+                            // Check if click is within this specific child's bounds
+                            if child_bounds.0 <= position.x as f64
+                                && position.x as f64 <= child_bounds.0 + child_bounds.2
+                                && child_bounds.1 <= position.y as f64
+                                && position.y as f64 <= child_bounds.1 + child_bounds.3
+                            {
+                                debug!(
+                                    "   ≡ƒÄ» Found child with content at click position: '{}' (role: {})",
+                                    child_name, child.role()
+                                );
+                                return Some(child.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // No deeper element found, this is the deepest one
         debug!(
             "   ≡ƒÄ» Using this element as deepest: '{}' (role: {})",
-            element.name().unwrap_or_default(),
+            element_name,
             element.role()
         );
         Some(element.clone())
@@ -2376,6 +2975,7 @@ impl WindowsRecorder {
                         Some(element_desc.clone())
                     },
                     child_text_content,
+                    relative_position: None, // No relative position for keyboard-triggered clicks
                     metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
                 };
 

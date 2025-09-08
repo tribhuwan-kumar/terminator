@@ -14,10 +14,10 @@ pub use error::*;
 pub use events::{
     ApplicationSwitchEvent, ApplicationSwitchMethod, BrowserTabNavigationEvent,
     ButtonInteractionType, ClickEvent, ClipboardAction, ClipboardEvent, DragDropEvent,
-    EnhancedUIElement, EventMetadata, HotkeyEvent, InteractionContext, KeyboardEvent, McpToolStep,
-    MouseButton, MouseEvent, MouseEventType, Position, RecordedEvent, RecordedWorkflow, Rect,
-    SelectionMethod, TabAction, TabNavigationMethod, TextInputCompletedEvent, TextInputMethod,
-    TextSelectionEvent, UIElementInfo, WorkflowEvent,
+    EnhancedUIElement, EventMetadata, FieldFocusMethod, HotkeyEvent, InteractionContext,
+    KeyboardEvent, McpToolStep, MouseButton, MouseEvent, MouseEventType, Position, RecordedEvent,
+    RecordedWorkflow, Rect, SelectionMethod, TabAction, TabNavigationMethod,
+    TextInputCompletedEvent, TextInputMethod, TextSelectionEvent, UIElementInfo, WorkflowEvent,
 };
 pub use recorder::*;
 

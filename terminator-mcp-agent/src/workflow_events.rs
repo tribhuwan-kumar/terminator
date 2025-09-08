@@ -16,6 +16,7 @@ pub use terminator_workflow_recorder::{
     EnhancedUIElement,
     // Metadata
     EventMetadata,
+    FieldFocusMethod,
     HotkeyEvent,
     // Context types
     InteractionContext,

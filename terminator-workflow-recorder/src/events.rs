@@ -313,6 +313,11 @@ pub struct ClickEvent {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub child_text_content: Vec<String>,
 
+    /// Relative position within the element (0.0-1.0 for x and y)
+    /// Useful for clicking within large elements like table rows
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relative_position: Option<(f32, f32)>,
+
     /// Event metadata with UI element context
     pub metadata: EventMetadata,
 }
@@ -606,6 +611,20 @@ pub enum TextInputMethod {
     Mixed,
 }
 
+/// How a text field received focus before input
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum FieldFocusMethod {
+    /// User clicked the field with mouse
+    MouseClick,
+    /// User navigated via keyboard (Tab/Arrow keys)
+    KeyboardNav,
+    /// Field was focused programmatically (JS/application)
+    Programmatic,
+    /// Unknown or field was already focused when recording started
+    #[default]
+    Unknown,
+}
+
 /// High-level text input completion event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextInputCompletedEvent {
@@ -618,6 +637,9 @@ pub struct TextInputCompletedEvent {
     pub field_type: String,
     /// Whether the text was likely typed vs pasted/auto-filled
     pub input_method: TextInputMethod,
+    /// How the field received focus before input
+    #[serde(default = "FieldFocusMethod::default")]
+    pub focus_method: FieldFocusMethod,
     /// Duration of the typing session in milliseconds
     pub typing_duration_ms: u64,
     /// Number of individual keystroke events that contributed to this input
@@ -1077,6 +1099,7 @@ pub struct SerializableTextInputCompletedEvent {
     pub field_name: Option<String>,
     pub field_type: String,
     pub input_method: TextInputMethod,
+    pub focus_method: FieldFocusMethod,
     pub typing_duration_ms: u64,
     pub keystroke_count: u32,
     pub metadata: SerializableEventMetadata,
@@ -1089,6 +1112,7 @@ impl From<&TextInputCompletedEvent> for SerializableTextInputCompletedEvent {
             field_name: event.field_name.clone(),
             field_type: event.field_type.clone(),
             input_method: event.input_method.clone(),
+            focus_method: event.focus_method.clone(),
             typing_duration_ms: event.typing_duration_ms,
             keystroke_count: event.keystroke_count,
             metadata: (&event.metadata).into(),
@@ -1184,6 +1208,8 @@ pub struct SerializableClickEvent {
     pub element_description: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub child_text_content: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub relative_position: Option<(f32, f32)>,
     pub metadata: SerializableEventMetadata,
 }
 
@@ -1197,6 +1223,7 @@ impl From<&ClickEvent> for SerializableClickEvent {
             click_position: event.click_position,
             element_description: event.element_description.clone(),
             child_text_content: event.child_text_content.clone(),
+            relative_position: event.relative_position,
             metadata: (&event.metadata).into(),
         }
     }

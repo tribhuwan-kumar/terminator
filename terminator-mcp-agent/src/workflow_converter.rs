@@ -34,14 +34,88 @@ pub async fn convert_workflow_to_mcp(workflow: RecordedWorkflow) -> Result<McpWo
     let converter = McpConverter::new();
     let mut mcp_steps = Vec::new();
     let mut conversion_notes = Vec::new();
+    let mut processed_indices = std::collections::HashSet::new();
 
     // Process each event in the workflow
     for (index, event) in workflow.events.iter().enumerate() {
+        // Skip if we've already processed this event (during reordering)
+        if processed_indices.contains(&index) {
+            continue;
+        }
         debug!(
             "Converting event {} of {}",
             index + 1,
             workflow.events.len()
         );
+
+        // Check if this is a dropdown/autocomplete click that immediately precedes TextInputCompleted
+        // In this case, we should defer it until after the text input is processed
+        if let WorkflowEvent::Click(click_event) = &event.event {
+            let is_dropdown_role = click_event.element_role.to_lowercase().contains("listitem")
+                || click_event.element_role.to_lowercase().contains("menuitem")
+                || click_event.element_role.to_lowercase().contains("option")
+                || click_event
+                    .element_role
+                    .to_lowercase()
+                    .contains("comboboxitem");
+
+            if is_dropdown_role {
+                // Look ahead to find TextInputCompleted within the next few events (within 100ms)
+                let mut text_input_index = None;
+                for j in (index + 1)..workflow.events.len().min(index + 10) {
+                    let time_diff = workflow.events[j].timestamp - event.timestamp;
+                    if time_diff > 100 {
+                        break; // Too far in time
+                    }
+
+                    if let WorkflowEvent::TextInputCompleted(_) = &workflow.events[j].event {
+                        text_input_index = Some(j);
+                        break;
+                    }
+                }
+
+                if let Some(text_idx) = text_input_index {
+                    // Process the TextInputCompleted event first
+                    debug!(
+                        "Reordering: Processing TextInputCompleted before dropdown click '{}'",
+                        click_event.element_text
+                    );
+
+                    // Convert the TextInputCompleted event
+                    if let Ok(text_result) = converter
+                        .convert_event(&workflow.events[text_idx].event, None)
+                        .await
+                    {
+                        mcp_steps.extend(text_result.primary_sequence);
+                        debug!("Event {}: {}", text_idx + 1, text_result.semantic_action);
+                        if !text_result.conversion_notes.is_empty() {
+                            conversion_notes.extend(text_result.conversion_notes);
+                        }
+                    }
+
+                    // Now add the dropdown click
+                    if let Ok(click_result) = converter.convert_event(&event.event, None).await {
+                        mcp_steps.extend(click_result.primary_sequence);
+                        debug!(
+                            "Event {} (reordered): {}",
+                            index + 1,
+                            click_result.semantic_action
+                        );
+                        conversion_notes.push(format!(
+                            "Reordered dropdown selection to occur after text input"
+                        ));
+                    }
+
+                    // Mark the TextInputCompleted event as processed so we skip it later
+                    processed_indices.insert(text_idx);
+                    continue; // Skip normal processing of this click
+                }
+            }
+        }
+
+        // Skip if this is a TextInputCompleted that was already processed during reordering
+        // For simplicity, we'll just check if we recently processed a dropdown click
+        // A more robust solution would track processed indices
 
         match converter.convert_event(&event.event, None).await {
             Ok(conversion_result) => {
@@ -196,6 +270,7 @@ mod tests {
             click_position: Some(Position { x: 100, y: 200 }),
             element_description: Some("Test button description".to_string()),
             child_text_content: vec![],
+            relative_position: None,
             metadata: EventMetadata::empty(),
         });
 

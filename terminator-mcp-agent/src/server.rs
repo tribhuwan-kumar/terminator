@@ -887,10 +887,20 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         tracing::info!("[click_element] Called with selector: '{}'", args.selector);
 
+        if let Some(ref pos) = args.click_position {
+            tracing::info!(
+                "[click_element] Click position: {}%, {}%",
+                pos.x_percentage,
+                pos.y_percentage
+            );
+        }
+
         let action = {
             let highlight_config = args.highlight_before_action.clone();
+            let click_position = args.click_position.clone();
             move |element: UIElement| {
                 let highlight_config = highlight_config.clone();
+                let click_position = click_position.clone();
                 async move {
                     // Ensure element is visible and apply highlighting if configured
                     Self::ensure_visible_and_apply_highlight(
@@ -899,8 +909,44 @@ impl DesktopWrapper {
                         "click",
                     );
 
-                    // Immediately execute the click action
-                    element.click()
+                    // Click at specific position if provided
+                    if let Some(pos) = click_position {
+                        // Get element bounds to calculate absolute position
+                        match element.bounds() {
+                            Ok(bounds) => {
+                                // Calculate absolute coordinates from percentages
+                                let x = bounds.0 + (bounds.2 * pos.x_percentage as f64 / 100.0);
+                                let y = bounds.1 + (bounds.3 * pos.y_percentage as f64 / 100.0);
+
+                                tracing::debug!(
+                                    "[click_element] Clicking at absolute position ({}, {}) within bounds ({}, {}, {}, {})",
+                                    x, y, bounds.0, bounds.1, bounds.2, bounds.3
+                                );
+
+                                // Perform click at specific position
+                                element.mouse_click_and_hold(x, y)?;
+                                element.mouse_release()?;
+
+                                // Return a ClickResult
+                                use terminator::ClickResult;
+                                Ok(ClickResult {
+                                    coordinates: Some((x, y)),
+                                    method: "Position Click".to_string(),
+                                    details: format!(
+                                        "Clicked at {}%, {}%",
+                                        pos.x_percentage, pos.y_percentage
+                                    ),
+                                })
+                            }
+                            Err(e) => {
+                                tracing::warn!("[click_element] Failed to get bounds for position click: {}. Falling back to center click.", e);
+                                element.click()
+                            }
+                        }
+                    } else {
+                        // Default center click
+                        element.click()
+                    }
                 }
             }
         };

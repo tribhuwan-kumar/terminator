@@ -246,7 +246,17 @@ class Simple5SecRecordingClient {
               console.log(`   Total steps: ${workflow.arguments.items.length}`);
               console.log('   Steps:');
               workflow.arguments.items.forEach((step, index) => {
-                console.log(`     ${index + 1}. ${step.tool_name} - ${JSON.stringify(step.arguments).substring(0, 80)}...`);
+                console.log(`\n     Step ${index + 1}: ${step.tool_name}`);
+                if (step.tool_name === 'click_element') {
+                  console.log(`       Selector: ${step.arguments.selector}`);
+                  if (step.arguments.click_position) {
+                    console.log(`       ✅ Click Position: ${step.arguments.click_position.x_percentage}%, ${step.arguments.click_position.y_percentage}%`);
+                  } else {
+                    console.log(`       ❌ No click position`);
+                  }
+                } else {
+                  console.log(`       Args: ${JSON.stringify(step.arguments).substring(0, 100)}...`);
+                }
               });
             } else {
               console.log(JSON.stringify(workflow, null, 2));

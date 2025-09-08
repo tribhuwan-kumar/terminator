@@ -363,20 +363,48 @@ impl McpConverter {
         }
 
         // Create the click step with 3000ms timeout as requested
+        // Build arguments with optional position
+        let mut arguments = json!({
+            "selector": selector,
+            "timeout_ms": 3000
+        });
+
+        // Add click position if available
+        if let Some((x_ratio, y_ratio)) = event.relative_position {
+            let x_percent = (x_ratio * 100.0).round() as u32;
+            let y_percent = (y_ratio * 100.0).round() as u32;
+
+            arguments["click_position"] = json!({
+                "x_percentage": x_percent,
+                "y_percentage": y_percent
+            });
+
+            notes.push(format!(
+                "Click position captured: {}% x {}% within element",
+                x_percent, y_percent
+            ));
+        }
+
         sequence.push(McpToolStep {
             tool_name: "click_element".to_string(),
-            arguments: json!({
-                "selector": selector,
-                "timeout_ms": 3000
-            }),
+            arguments,
             description: Some(format!(
-                "Click '{}' element",
+                "Click '{}' element{}",
                 if !event.element_text.is_empty() {
                     &event.element_text
                 } else if !event.child_text_content.is_empty() {
                     &event.child_text_content[0]
                 } else {
                     &event.element_role
+                },
+                if let Some((x_ratio, y_ratio)) = event.relative_position {
+                    format!(
+                        " at {}%,{}%",
+                        (x_ratio * 100.0).round() as u32,
+                        (y_ratio * 100.0).round() as u32
+                    )
+                } else {
+                    String::new()
                 }
             )),
             timeout_ms: Some(3000),
@@ -735,22 +763,96 @@ impl McpConverter {
 
     /// Generate element selector part for scoped search
     fn generate_element_selector(&self, event: &ClickEvent) -> String {
-        // Use element text if available and meaningful
+        // If element has text, use it directly
         if !event.element_text.is_empty() {
-            format!("role:{}|name:{}", event.element_role, event.element_text)
-        } else if !event.child_text_content.is_empty() && event.child_text_content.len() < 5 {
-            // Use child text if concise and specific
-            let child_text = &event.child_text_content[0];
-            if child_text.len() < 50 && !child_text.to_lowercase().contains("click") {
-                format!("role:{}|name:{}", event.element_role, child_text)
-            } else {
-                // Text is too verbose, try text selector
-                format!("text:{child_text}")
-            }
-        } else {
-            // No usable text, use role-only selector
-            format!("role:{}", event.element_role)
+            return format!("role:{}|name:{}", event.element_role, event.element_text);
         }
+
+        // If element has no text but has children with text
+        if event.element_text.is_empty() && !event.child_text_content.is_empty() {
+            // Check if this is a container role (group, pane, etc.)
+            let is_container = matches!(
+                event.element_role.to_lowercase().as_str(),
+                "group" | "pane" | "custom" | "region" | "section" | "document" | "client"
+            );
+
+            if is_container {
+                // For containers, create a parent>>child selector instead of using child text as parent name
+                let child_text = &event.child_text_content[0];
+                if child_text.len() < 50 {
+                    // Try to create a more specific selector that will actually work
+                    // Option 1: If we know it's likely a Text element child
+                    if event.child_text_content.len() == 1 {
+                        tracing::info!(
+                            "📝 Container '{}' has no name, using parent>>child selector for child text: '{}'",
+                            event.element_role, child_text
+                        );
+                        return format!(
+                            "role:{} >> role:Text|name:{}",
+                            event.element_role, child_text
+                        );
+                    } else {
+                        // Multiple children, use text selector
+                        return format!("role:{} >> text:{}", event.element_role, child_text);
+                    }
+                }
+            } else {
+                // For non-containers, we might still be able to use child text
+                // but only if it makes sense for the element type
+                let child_text = &event.child_text_content[0];
+                if child_text.len() < 50 && !child_text.to_lowercase().contains("click") {
+                    tracing::info!(
+                        "📝 Non-container '{}' using child text as name: '{}'",
+                        event.element_role,
+                        child_text
+                    );
+                    return format!("role:{}|name:{}", event.element_role, child_text);
+                }
+            }
+        }
+
+        // Check if we have an element ID we can use as last resort
+        if let Some(metadata) = &event.metadata.ui_element {
+            // Try to get ID from the UIElement
+            // Note: This requires the UIElement to have an id() method
+            if let Ok(serialized) = serde_json::to_value(metadata) {
+                if let Some(id) = serialized.get("id").and_then(|v| v.as_str()) {
+                    if !id.is_empty() {
+                        tracing::info!("📝 Using element ID as selector fallback: #{}", id);
+                        return format!("#{id}");
+                    }
+                }
+            }
+        }
+
+        // Add position hint for wide elements (likely table rows or containers)
+        let base_selector = format!("role:{}", event.element_role);
+
+        if let Some((x_ratio, _y_ratio)) = event.relative_position {
+            // Check if element is wide (likely a table row or container)
+            if let Some(metadata) = &event.metadata.ui_element {
+                if let Ok(bounds) = metadata.bounds() {
+                    if bounds.2 > 800.0 {
+                        // Width > 800px suggests a wide element
+                        // Add position hint to selector
+                        let x_percent = (x_ratio * 100.0) as u32;
+                        tracing::info!(
+                            "📍 Adding position hint to selector: {}% across element (width: {})",
+                            x_percent,
+                            bounds.2
+                        );
+                        return format!("{base_selector}|x:{x_percent}%");
+                    }
+                }
+            }
+        }
+
+        // Fallback to role-only selector
+        tracing::warn!(
+            "⚠️ Generating role-only selector for element with no identifiable content: role:{}",
+            event.element_role
+        );
+        base_selector
     }
 
     /// Generate activation step for window/application targeting
@@ -907,7 +1009,41 @@ impl McpConverter {
             }]);
         }
 
-        // Fallback 2: Child text-based selectors (NEW ENHANCEMENT!)
+        // Fallback 2: Position-based click for wide elements (NEW!)
+        if let Some((x_ratio, y_ratio)) = event.relative_position {
+            // Check if this is a wide element
+            if let Some(metadata) = &event.metadata.ui_element {
+                if let Ok(bounds) = metadata.bounds() {
+                    if bounds.2 > 800.0 {
+                        // Wide element
+                        let x_percent = (x_ratio * 100.0) as u32;
+                        let y_percent = (y_ratio * 100.0) as u32;
+
+                        // Create a position-aware click as fallback
+                        fallbacks.push(vec![McpToolStep {
+                            tool_name: "click_element".to_string(),
+                            arguments: json!({
+                                "selector": format!("role:{}|name:{}", 
+                                    event.element_role,
+                                    event.child_text_content.first().unwrap_or(&event.element_text)),
+                                "click_position": {
+                                    "x_percentage": x_percent,
+                                    "y_percentage": y_percent
+                                }
+                            }),
+                            description: Some(format!(
+                                "Click at {x_percent}%,{y_percent}% within element"
+                            )),
+                            timeout_ms: Some(5000),
+                            continue_on_error: Some(false),
+                            delay_ms: Some(200),
+                        }]);
+                    }
+                }
+            }
+        }
+
+        // Fallback 3: Child text-based selectors (EXISTING)
         for (i, child_text) in event.child_text_content.iter().enumerate() {
             if !child_text.is_empty() {
                 // Child text with role selector
@@ -1017,22 +1153,7 @@ impl McpConverter {
             self.generate_text_field_selector(event)
         };
 
-        // Step 1: Focus the field
-        sequence.push(McpToolStep {
-            tool_name: "click_element".to_string(),
-            arguments: json!({
-                "selector": selector.clone()
-            }),
-            description: Some(format!(
-                "Focus {} field",
-                event.field_name.as_deref().unwrap_or("text")
-            )),
-            timeout_ms: Some(3000),
-            continue_on_error: Some(false),
-            delay_ms: Some(100),
-        });
-
-        // Step 2: Type the text
+        // Type the text directly - the field should already be focused from previous user actions
         sequence.push(McpToolStep {
             tool_name: "type_into_element".to_string(),
             arguments: json!({
@@ -1130,19 +1251,7 @@ impl McpConverter {
             .cloned()
             .unwrap_or_else(|| self.generate_text_field_selector(event));
 
-        // Step 1: Focus field and type partial text to trigger autocomplete
-        sequence.push(McpToolStep {
-            tool_name: "click_element".to_string(),
-            arguments: json!({
-                "selector": selector.clone()
-            }),
-            description: Some("Focus autocomplete field".to_string()),
-            timeout_ms: Some(3000),
-            continue_on_error: Some(false),
-            delay_ms: Some(100),
-        });
-
-        // Step 2: Type to trigger autocomplete
+        // Type to trigger autocomplete - field should already be focused
         let partial_text = if event.text_value.len() > 3 {
             &event.text_value[..3] // Type first 3 characters
         } else {

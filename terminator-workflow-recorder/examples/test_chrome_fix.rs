@@ -23,6 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         click_position: Some(terminator_workflow_recorder::Position { x: 100, y: 200 }),
         element_description: None,
         child_text_content: vec![],
+        relative_position: None,
         metadata: chrome_metadata,
     };
 
@@ -68,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         click_position: Some(terminator_workflow_recorder::Position { x: 100, y: 200 }),
         element_description: None,
         child_text_content: vec![],
+        relative_position: None,
         metadata: notepad_metadata,
     };
 

@@ -40,11 +40,16 @@ pub struct TextInputTracker {
     pub last_autocomplete_activity: Instant,
     /// Text value before autocomplete selection (for change detection)
     pub text_before_autocomplete: Option<String>,
+    /// How this field received focus
+    pub focus_method: crate::events::FieldFocusMethod,
+    /// Initial text value when tracking started (to detect placeholder text)
+    pub initial_text: Option<String>,
 }
 
 impl TextInputTracker {
     pub fn new(element: UIElement) -> Self {
-        // Don't try to get initial text to avoid potential access violations
+        // Capture initial text to detect placeholder text later
+        let initial_text = Self::get_element_text_value_safe(&element);
         Self {
             element,
             start_time: Instant::now(),
@@ -53,6 +58,8 @@ impl TextInputTracker {
             in_autocomplete_navigation: false,
             last_autocomplete_activity: Instant::now(),
             text_before_autocomplete: None,
+            focus_method: crate::events::FieldFocusMethod::Unknown,
+            initial_text,
         }
     }
 
@@ -179,6 +186,14 @@ impl TextInputTracker {
             return None;
         }
 
+        // Check if text is unchanged from initial value (placeholder text)
+        if let Some(ref initial) = self.initial_text {
+            if text_value == *initial && !self.has_typing_activity {
+                info!("❌ Text unchanged from initial value '{}' with no typing activity - likely placeholder, not emitting completion event.", initial);
+                return None;
+            }
+        }
+
         let typing_duration_ms = self.start_time.elapsed().as_millis() as u64;
 
         // Use safe fallbacks for element properties
@@ -193,6 +208,7 @@ impl TextInputTracker {
             field_name,
             field_type,
             input_method: final_input_method,
+            focus_method: self.focus_method.clone(),
             typing_duration_ms,
             keystroke_count: self.keystroke_count,
             metadata: EventMetadata::with_ui_element_and_timestamp(Some(self.element.clone())),
