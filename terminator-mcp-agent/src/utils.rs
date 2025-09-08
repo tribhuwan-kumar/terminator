@@ -1,3 +1,4 @@
+use crate::cancellation::RequestManager;
 use crate::mcp_types::{FontStyle, TextPosition};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
@@ -47,6 +48,8 @@ pub struct DesktopWrapper {
     pub desktop: Arc<Desktop>,
     #[serde(skip)]
     pub tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
+    #[serde(skip)]
+    pub request_manager: RequestManager,
     #[serde(skip)]
     pub recorder: Arc<Mutex<Option<terminator_workflow_recorder::WorkflowRecorder>>>,
     #[serde(skip)]

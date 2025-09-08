@@ -41,8 +41,8 @@ mod tests {
 
         // Verify defaults
         assert!(args_none["return_raw"].is_null());
-        assert_eq!(args_false["return_raw"].as_bool().unwrap(), false);
-        assert_eq!(args_true["return_raw"].as_bool().unwrap(), true);
+        assert!(!args_false["return_raw"].as_bool().unwrap());
+        assert!(args_true["return_raw"].as_bool().unwrap());
 
         println!("✓ return_raw default value test passed");
     }

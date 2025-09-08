@@ -380,8 +380,7 @@ impl McpConverter {
             });
 
             notes.push(format!(
-                "Click position captured: {}% x {}% within element",
-                x_percent, y_percent
+                "Click position captured: {x_percent}% x {y_percent}% within element"
             ));
         }
 

@@ -219,6 +219,7 @@ impl DesktopWrapper {
         Ok(Self {
             desktop: Arc::new(desktop),
             tool_router: Self::tool_router(),
+            request_manager: crate::cancellation::RequestManager::new(),
             recorder: Arc::new(Mutex::new(None)),
             active_highlights: Arc::new(Mutex::new(Vec::new())),
         })

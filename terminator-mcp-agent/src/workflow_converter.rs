@@ -101,9 +101,9 @@ pub async fn convert_workflow_to_mcp(workflow: RecordedWorkflow) -> Result<McpWo
                             index + 1,
                             click_result.semantic_action
                         );
-                        conversion_notes.push(format!(
-                            "Reordered dropdown selection to occur after text input"
-                        ));
+                        conversion_notes.push(
+                            "Reordered dropdown selection to occur after text input".to_string(),
+                        );
                     }
 
                     // Mark the TextInputCompleted event as processed so we skip it later

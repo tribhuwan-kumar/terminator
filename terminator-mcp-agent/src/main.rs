@@ -24,10 +24,12 @@ use std::{
         Arc, Mutex,
     },
 };
+use terminator_mcp_agent::cancellation::RequestManager;
 use terminator_mcp_agent::server;
 use terminator_mcp_agent::utils::init_logging;
 use tower_http::cors::CorsLayer;
-use tracing::{error, info};
+use tracing::{debug, error, info};
+use uuid::Uuid;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -175,12 +177,13 @@ async fn main() -> Result<()> {
                 Default::default(),
             );
 
-            // Busy-aware concurrency state
+            // Busy-aware concurrency state with request tracking
             #[derive(Clone)]
             struct AppState {
                 active_requests: Arc<AtomicUsize>,
                 last_activity: Arc<Mutex<String>>, // ISO-8601
                 max_concurrent: usize,
+                request_manager: RequestManager,
             }
 
             let max_concurrent = std::env::var("MCP_MAX_CONCURRENT")
@@ -192,6 +195,7 @@ async fn main() -> Result<()> {
                 active_requests: Arc::new(AtomicUsize::new(0)),
                 last_activity: Arc::new(Mutex::new(chrono::Utc::now().to_rfc3339())),
                 max_concurrent,
+                request_manager: RequestManager::new(),
             };
 
             async fn status_handler(State(state): State<AppState>) -> impl IntoResponse {
@@ -238,15 +242,65 @@ async fn main() -> Result<()> {
                         return (StatusCode::SERVICE_UNAVAILABLE, Json(body)).into_response();
                     }
 
+                    // Extract request ID from headers or generate one
+                    let headers = req.headers();
+                    let request_id = headers
+                        .get("x-request-id")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+                    // Extract timeout from headers
+                    let timeout_ms = headers
+                        .get("x-request-timeout-ms")
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .or_else(|| {
+                            std::env::var("MCP_DEFAULT_TIMEOUT_MS")
+                                .ok()
+                                .and_then(|s| s.parse::<u64>().ok())
+                        });
+
+                    debug!(
+                        "Processing request {} with timeout {:?}ms",
+                        request_id, timeout_ms
+                    );
+
+                    // Register the request with cancellation support
+                    let context = state
+                        .request_manager
+                        .register(request_id.clone(), timeout_ms)
+                        .await;
+
                     state.active_requests.fetch_add(1, Ordering::SeqCst);
                     if let Ok(mut ts) = state.last_activity.lock() {
                         *ts = chrono::Utc::now().to_rfc3339();
                     }
 
-                    let response = next.run(req).await;
+                    // Clone for cleanup
+                    let request_id_cleanup = request_id.clone();
+                    let manager_cleanup = state.request_manager.clone();
+                    let state_cleanup = state.clone();
 
-                    state.active_requests.fetch_sub(1, Ordering::SeqCst);
-                    if let Ok(mut ts) = state.last_activity.lock() {
+                    // Execute the request with cancellation support
+                    let response = tokio::select! {
+                        res = next.run(req) => res,
+                        _ = context.cancellation_token.cancelled() => {
+                            debug!("Request {} was cancelled", request_id);
+                            let body = serde_json::json!({
+                                "error": {
+                                    "code": -32001,
+                                    "message": format!("Request {} was cancelled", request_id)
+                                }
+                            });
+                            (StatusCode::REQUEST_TIMEOUT, Json(body)).into_response()
+                        }
+                    };
+
+                    // Cleanup
+                    manager_cleanup.unregister(&request_id_cleanup).await;
+                    state_cleanup.active_requests.fetch_sub(1, Ordering::SeqCst);
+                    if let Ok(mut ts) = state_cleanup.last_activity.lock() {
                         *ts = chrono::Utc::now().to_rfc3339();
                     }
 
@@ -283,8 +337,10 @@ async fn main() -> Result<()> {
             info!("Press Ctrl+C to stop");
 
             axum::serve(tcp_listener, router)
-                .with_graceful_shutdown(async {
+                .with_graceful_shutdown(async move {
                     tokio::signal::ctrl_c().await.ok();
+                    info!("Received shutdown signal, cancelling active requests...");
+                    app_state.request_manager.cancel_all().await;
                 })
                 .await?;
 
