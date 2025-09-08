@@ -1199,6 +1199,11 @@ pub struct ImportWorkflowSequenceArgs {
 
     #[schemars(description = "Path to folder to scan for YAML workflow files")]
     pub folder_path: Option<String>,
+
+    #[schemars(
+        description = "Return raw YAML content alongside parsed structure (default: false)"
+    )]
+    pub return_raw: Option<bool>,
 }
 
 /// A robust helper that finds a UI element and executes a provided action on it,
