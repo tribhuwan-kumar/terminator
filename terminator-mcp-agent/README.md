@@ -227,6 +227,140 @@ For simpler tasks, you can record your own actions to generate a baseline workfl
 3.  **Stop and Save**: Call `record_workflow` with `action: "stop"`. This returns a complete workflow JSON file containing all your recorded actions.
 4.  **Refine and Parse**: The recorded workflow is a great starting point. You can then refine the selectors for robustness, add a final step to capture the UI tree, and attach an `output_parser` to extract structured data, just as you would in the iterative workflow.
 
+### Browser DOM Inspection
+
+The `execute_browser_script` tool enables direct JavaScript execution in browser contexts, providing access to the full HTML DOM. This is particularly useful when you need information not available in the accessibility tree.
+
+#### When to Use DOM vs Accessibility Tree
+
+**Use Accessibility Tree (default) when:**
+- Navigating and interacting with UI elements
+- Working with semantic page structure
+- Building reliable automation workflows
+- Performance is critical (faster, cleaner data)
+
+**Use DOM Inspection when:**
+- Extracting data attributes, meta tags, or hidden inputs
+- Debugging why elements aren't appearing in accessibility tree
+- Scraping structured data from specific HTML patterns
+- Validating complete page structure or SEO elements
+
+#### Basic DOM Retrieval Patterns
+
+```javascript
+// Get full HTML DOM (be mindful of size limits)
+execute_browser_script({
+  selector: "role:Window|name:Google Chrome",
+  script: "document.documentElement.outerHTML"
+})
+
+// Get structured page information
+execute_browser_script({
+  selector: "role:Window|name:Google Chrome", 
+  script: `({
+    url: window.location.href,
+    title: document.title,
+    html: document.documentElement.outerHTML,
+    bodyText: document.body.innerText.substring(0, 1000)
+  })`
+})
+
+// Extract specific data (forms, hidden inputs, meta tags)
+execute_browser_script({
+  selector: "role:Window|name:Google Chrome",
+  script: `({
+    forms: Array.from(document.forms).map(f => ({
+      id: f.id,
+      action: f.action,
+      method: f.method,
+      inputs: Array.from(f.elements).map(e => ({
+        name: e.name,
+        type: e.type,
+        value: e.type === 'password' ? '[REDACTED]' : e.value
+      }))
+    })),
+    hiddenInputs: Array.from(document.querySelectorAll('input[type="hidden"]')).map(e => ({
+      name: e.name,
+      value: e.value
+    })),
+    metaTags: Array.from(document.querySelectorAll('meta')).map(m => ({
+      name: m.name || m.property,
+      content: m.content
+    }))
+  })`
+})
+```
+
+#### Handling Large DOMs
+
+The MCP protocol has response size limits (~30KB). For large DOMs, use truncation strategies:
+
+```javascript
+execute_browser_script({
+  selector: "role:Window|name:Google Chrome",
+  script: `
+    const html = document.documentElement.outerHTML;
+    const maxLength = 30000;
+    
+    ({
+      url: window.location.href,
+      title: document.title,
+      html: html.length > maxLength 
+        ? html.substring(0, maxLength) + '... [truncated at ' + maxLength + ' chars]'
+        : html,
+      totalLength: html.length,
+      truncated: html.length > maxLength
+    })
+  `
+})
+```
+
+#### Advanced DOM Analysis
+
+```javascript
+// Analyze page structure and extract semantic content
+execute_browser_script({
+  selector: "role:Window|name:Google Chrome",
+  script: `
+    // Remove scripts and styles for cleaner analysis
+    const clonedDoc = document.documentElement.cloneNode(true);
+    clonedDoc.querySelectorAll('script, style, noscript').forEach(el => el.remove());
+    
+    ({
+      // Page metrics
+      domElementCount: document.querySelectorAll('*').length,
+      formCount: document.forms.length,
+      linkCount: document.links.length,
+      imageCount: document.images.length,
+      
+      // Semantic structure
+      headings: Array.from(document.querySelectorAll('h1,h2,h3')).map(h => ({
+        level: h.tagName,
+        text: h.innerText.substring(0, 100)
+      })),
+      
+      // Clean HTML without scripts/styles
+      cleanHtml: clonedDoc.outerHTML.substring(0, 20000),
+      
+      // Data extraction
+      jsonLd: Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+        .map(s => { try { return JSON.parse(s.textContent); } catch { return null; } })
+        .filter(Boolean)
+    })
+  `
+})
+```
+
+#### Important Notes
+
+1. **Chrome Extension Required**: The `execute_browser_script` tool requires the Terminator browser extension to be installed. See the installation workflow examples for automated setup.
+
+2. **Security Considerations**: Be cautious when extracting sensitive data. The examples above redact password fields and you should follow similar practices.
+
+3. **Performance**: DOM operations are synchronous and can be slow on large pages. Consider using specific selectors rather than traversing the entire DOM.
+
+4. **Error Handling**: Always wrap complex DOM operations in try-catch blocks and return meaningful error messages.
+
 ## Local Development
 
 To build and test the agent from the source code:

@@ -121,6 +121,40 @@ Use `run_command` with `engine` to execute code directly with SDK bindings:
 *   `log(message)` - Console logging function
 *   `sleep(ms)` - Async delay function (returns Promise)
 
+**Browser DOM Inspection with execute_browser_script**
+
+The `execute_browser_script` tool executes JavaScript directly in browser contexts, providing full access to the HTML DOM. This is essential for extracting data not available in the accessibility tree.
+
+**When to use execute_browser_script:**
+*   Extracting full HTML DOM or specific HTML elements
+*   Getting data attributes, hidden inputs, meta tags
+*   Analyzing page structure (forms, links, headings)
+*   Debugging why elements don't appear in accessibility tree
+*   Scraping structured data from HTML patterns
+
+**DOM Retrieval Examples:**
+```javascript
+// Get full HTML (watch size limits ~30KB)
+execute_browser_script({{
+  selector: \"role:Window|name:Chrome\",
+  script: \"document.documentElement.outerHTML\"
+}})
+
+// Get structured page data
+execute_browser_script({{
+  selector: \"role:Window|name:Chrome\",
+  script: \"({{\\n    url: window.location.href,\\n    title: document.title,\\n    forms: Array.from(document.forms).map(f => ({{\\n      id: f.id,\\n      action: f.action,\\n      inputs: f.elements.length\\n    }})),\\n    hiddenInputs: document.querySelectorAll('input[type=\\\\\"hidden\\\\\"]').length,\\n    bodyText: document.body.innerText.substring(0, 1000)\\n  }})\"
+}})
+
+// Handle large DOMs with truncation
+execute_browser_script({{
+  selector: \"role:Window|name:Chrome\",
+  script: \"const html = document.documentElement.outerHTML;\\nconst maxLen = 30000;\\n({{\\n  html: html.length > maxLen ? html.substring(0, maxLen) + '...[truncated]' : html,\\n  totalLength: html.length\\n}})\"
+}})
+```
+
+**Important:** Chrome extension must be installed for execute_browser_script to work. The script runs in page context and must return serializable data (strings, numbers, objects, arrays).
+
 **Core Desktop APIs:**
 ```javascript
 // Element discovery

@@ -3497,7 +3497,21 @@ impl DesktopWrapper {
     // Removed: run_javascript tool (merged into run_command with engine)
 
     #[tool(
-        description = "Execute JavaScript in a browser using dev tools console. Opens dev tools, switches to console, runs the script, and returns the result. Works with any browser that supports dev tools (Chrome, Edge, Firefox)."
+        description = "Execute JavaScript in a browser using the Chrome extension bridge. Provides full access to the HTML DOM for data extraction, page analysis, and manipulation. Returns serializable data (strings, numbers, objects, arrays). 
+
+Key uses:
+- Extract full HTML DOM: document.documentElement.outerHTML
+- Get structured page data: forms, links, meta tags, hidden inputs
+- Analyze page structure: headings, images, element counts
+- Debug accessibility tree gaps
+- Scrape data not available via accessibility APIs
+
+Size limits: Response must be <30KB. For large DOMs, use truncation:
+const html = document.documentElement.outerHTML;
+const max = 30000;
+return html.length > max ? html.substring(0, max) + '...' : html;
+
+Requires Chrome extension to be installed. See browser_dom_extraction.yml for comprehensive examples."
     )]
     async fn execute_browser_script(
         &self,
