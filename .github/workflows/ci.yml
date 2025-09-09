@@ -69,6 +69,12 @@ jobs:
         with:
           node-version: "18"
 
+      - name: Install Node.js dependencies
+        run: |
+          cd bindings/nodejs
+          npm install
+        shell: pwsh
+
       - name: Build Node.js bindings
         run: |
           cd bindings/nodejs
