@@ -1223,6 +1223,192 @@ console.log('[Node.js Wrapper] Starting user script execution...');
     }
 }
 
+/// Execute Python using system interpreter with terminator.py bindings available
+pub async fn execute_python_with_bindings(script: String) -> Result<serde_json::Value, McpError> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
+    info!("[Python] Starting Python execution with terminator.py bindings");
+    info!(
+        "[Python] Script to execute ({} bytes)",
+        script.len()
+    );
+
+    // Discover python interpreter
+    let mut python_exe = find_executable("python").unwrap_or_else(|| "python".to_string());
+    // If 'python' is not a valid executable, try python3
+    if let Ok(output) = Command::new(&python_exe).arg("--version").output().await {
+        if !output.status.success() {
+            if let Some(py3) = find_executable("python3") {
+                python_exe = py3;
+            }
+        }
+    }
+
+    // Prepare wrapper script that imports terminator and runs the user code
+    let wrapper_script = {
+        let mut indented = String::new();
+        for line in script.lines() {
+            indented.push_str("    ");
+            indented.push_str(line);
+            indented.push('\n');
+        }
+        format!(
+            r#"
+import sys, json, asyncio, traceback
+
+try:
+    import terminator as _terminator
+except Exception as e:
+    sys.stdout.write('__ERROR__' + json.dumps({{ 'message': 'Failed to import terminator (terminator.py)', 'error': str(e) }}) + '__END__\n')
+    sys.exit(0)
+
+desktop = _terminator.Desktop()
+
+async def __user_main__():
+    # Helpers
+    async def sleep(ms):
+        await asyncio.sleep(ms / 1000.0)
+    def log(*args, **kwargs):
+        print(*args, **kwargs)
+    # User code (must use 'return' for final value)
+{indented}
+
+async def __runner__():
+    try:
+        result = await __user_main__()
+        # Normalize None to null for JSON
+        sys.stdout.write('__RESULT__' + json.dumps(result) + '__END__\n')
+    except Exception as e:
+        sys.stdout.write('__ERROR__' + json.dumps({{
+            'message': str(e),
+            'stack': traceback.format_exc()
+        }}) + '__END__\n')
+
+asyncio.run(__runner__())
+"#,
+            indented = indented
+        )
+    };
+
+    // Use a dedicated temp directory for Python execution
+    let script_dir = std::env::temp_dir().join(format!(
+        "terminator_mcp_python_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    tokio::fs::create_dir_all(&script_dir)
+        .await
+        .map_err(|e| McpError::internal_error("Failed to create python script directory", Some(json!({"error": e.to_string()}))))?;
+
+    let script_path = script_dir.join("main.py");
+    tokio::fs::write(&script_path, &wrapper_script)
+        .await
+        .map_err(|e| McpError::internal_error("Failed to write python script", Some(json!({"error": e.to_string()}))))?;
+
+    // Spawn python
+    let mut child = Command::new(&python_exe)
+        .current_dir(&script_dir)
+        .arg(script_path.file_name().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| McpError::internal_error("Failed to spawn python process", Some(json!({"error": e.to_string(), "python": python_exe}))))?;
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
+    let mut result: Option<serde_json::Value> = None;
+    let mut env_updates: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    let mut stderr_output: Vec<String> = Vec::new();
+
+    loop {
+        tokio::select! {
+            line = stdout.next_line() => {
+                match line {
+                    Ok(Some(text)) => {
+                        info!("[Python stdout] {}", text);
+                        // Parse GitHub Actions style env updates: ::set-env name=KEY::VALUE
+                        if let Some(stripped) = text.strip_prefix("::set-env ") {
+                            if let Some(name_pos) = stripped.find("name=") {
+                                let after_name = &stripped[name_pos + 5..];
+                                if let Some(sep_idx) = after_name.find("::") {
+                                    let key = after_name[..sep_idx].trim();
+                                    let value = after_name[sep_idx + 2..].to_string();
+                                    if !key.is_empty() {
+                                        env_updates.insert(key.to_string(), serde_json::Value::String(value));
+                                    }
+                                }
+                            }
+                        }
+                        if text.starts_with("__RESULT__") && text.ends_with("__END__") {
+                            let result_json = text.replace("__RESULT__", "").replace("__END__", "");
+                            match serde_json::from_str(&result_json) {
+                                Ok(val) => { result = Some(val); break; },
+                                Err(e) => { error!("[Python] Failed to parse result JSON: {}", e); }
+                            }
+                        } else if text.starts_with("__ERROR__") && text.ends_with("__END__") {
+                            let error_json = text.replace("__ERROR__", "").replace("__END__", "");
+                            return Err(McpError::internal_error("Python execution error", serde_json::from_str::<serde_json::Value>(&error_json).ok()));
+                        }
+                    },
+                    Ok(None) => { break; },
+                    Err(e) => { error!("[Python] Error reading stdout: {}", e); break; }
+                }
+            },
+            line = stderr.next_line() => {
+                match line {
+                    Ok(Some(text)) => { error!("[Python stderr] {}", text); stderr_output.push(text); },
+                    Ok(None) => {},
+                    Err(e) => { error!("[Python] Error reading stderr: {}", e); }
+                }
+            }
+        }
+    }
+
+    let status = child.wait().await.map_err(|e| McpError::internal_error("Python process failed", Some(json!({"error": e.to_string()}))))?;
+
+    if !status.success() {
+        return Err(McpError::internal_error(
+            "Python process exited with error",
+            Some(json!({
+                "exit_code": status.code(),
+                "stderr": stderr_output.join("\n"),
+                "script_path": script_path.to_string_lossy(),
+                "working_directory": script_dir.to_string_lossy(),
+                "python": python_exe
+            }))
+        ));
+    }
+
+    // Clean up best-effort
+    let _ = tokio::fs::remove_dir_all(&script_dir).await;
+
+    match result {
+        Some(mut r) => {
+            if !env_updates.is_empty() {
+                if let Some(obj) = r.as_object_mut() {
+                    if let Some(existing) = obj.get_mut("set_env") {
+                        if let Some(existing_obj) = existing.as_object_mut() {
+                            for (k, v) in env_updates.iter() { existing_obj.insert(k.clone(), v.clone()); }
+                        } else {
+                            obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                        }
+                    } else {
+                        obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                    }
+                } else {
+                    r = serde_json::json!({ "output": r, "set_env": env_updates });
+                }
+            }
+            Ok(r)
+        },
+        None => Err(McpError::internal_error("No result received from Python process", Some(json!({"stderr": stderr_output.join("\n")}))))
+    }
+}
+
 /// Execute JavaScript using Node.js runtime with LOCAL terminator.js bindings (for development/testing)
 pub async fn execute_javascript_with_local_bindings(
     script: String,

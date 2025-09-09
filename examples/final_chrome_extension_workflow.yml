@@ -1,6 +1,7 @@
 steps:
-  - tool_name: run_javascript
+  - tool_name: run_command
     arguments:
+      engine: javascript
       script: |
         const fs = require('fs');
         const path = require('path');

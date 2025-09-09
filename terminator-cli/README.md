@@ -112,9 +112,9 @@ arguments:
 tool_name: execute_sequence
 arguments:
   steps:
-    - tool_name: run_javascript
+    - tool_name: run_command
       arguments:
-        engine: "nodejs"
+        engine: "node"
         script: |
           // Access desktop automation APIs
           const elements = await desktop.locator('role:button').all();
@@ -240,9 +240,9 @@ terminator mcp run workflow.yml --timeout 30000
 terminator mcp run workflow.yml --verbose
 ```
 
-### JavaScript Execution in Workflows
+### Code Execution in Workflows
 
-The CLI supports executing JavaScript code within workflows using the `run_javascript` tool, providing access to desktop automation APIs:
+The CLI supports executing code within workflows using the `run_command` tool in engine mode, providing access to desktop automation APIs:
 
 **Available Engines:**
 - `nodejs` - Full Node.js runtime with desktop APIs
@@ -272,9 +272,9 @@ await sleep(1000);     // Delay in milliseconds
 **Example Use Cases:**
 ```yaml
 # Conditional logic based on UI state
-- tool_name: run_javascript
+- tool_name: run_command
   arguments:
-    engine: "nodejs"
+    engine: "node"
     script: |
       const submitButton = await desktop.locator('role:button|name:Submit').first();
       const isEnabled = await submitButton.enabled();
@@ -288,8 +288,9 @@ await sleep(1000);     // Delay in milliseconds
       }
 
 # Bulk operations on multiple elements
-- tool_name: run_javascript
+- tool_name: run_command
   arguments:
+    engine: "javascript"
     script: |
       const checkboxes = await desktop.locator('role:checkbox').all();
       let enabledCount = 0;
@@ -303,8 +304,9 @@ await sleep(1000);     // Delay in milliseconds
       return { total_enabled: enabledCount };
 
 # Dynamic element discovery and interaction
-- tool_name: run_javascript
+- tool_name: run_command
   arguments:
+    engine: "javascript"
     script: |
       // Find all buttons containing specific text
       const buttons = await desktop.locator('role:button').all();
@@ -367,11 +369,14 @@ terminator mcp run workflow.yml --dry-run
 ### JavaScript Execution Issues
 
 ```bash
-# Test JavaScript execution capability
-terminator mcp exec run_javascript '{"script": "return {test: true};"}'
+# Test JavaScript execution capability via run_command (engine mode)
+terminator mcp exec run_command '{"engine": "javascript", "script": "return {test: true};"}'
 
-# Use nodejs engine for full APIs
-terminator mcp exec run_javascript '{"engine": "nodejs", "script": "const elements = await desktop.locator(\"role:button\").all(); return {count: elements.length};"}'
+# Use node engine for full APIs
+terminator mcp exec run_command '{"engine": "node", "script": "const elements = await desktop.locator(\\\"role:button\\\").all(); return {count: elements.length};"}'
+
+# Run Python with terminator.py
+terminator mcp exec run_command '{"engine": "python", "script": "return {\\\"ok\\\": True}"}'
 
 # Debug JavaScript errors with verbose logging
 terminator mcp run workflow.yml --verbose

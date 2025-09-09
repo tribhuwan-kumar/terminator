@@ -533,9 +533,9 @@ impl DesktopWrapper {
 
                         final_result = result.clone();
 
-                        // Merge env updates from JS-based steps into the internal context
-                        if (tool_name_normalized == "run_javascript"
-                            || tool_name_normalized == "execute_browser_script")
+                        // Merge env updates from engine/script-based steps into the internal context
+                        if (tool_name_normalized == "execute_browser_script"
+                            || tool_name_normalized == "run_command")
                             && final_result["status"] == "success"
                         {
                             // Helper to merge updates into the env context map
@@ -557,7 +557,7 @@ impl DesktopWrapper {
                                 .and_then(|c| c.as_array())
                             {
                                 for item in content_arr {
-                                    // Typical run_javascript payload is under item.result
+                                    // Typical engine payload is under item.result
                                     if let Some(res) = item.get("result") {
                                         if let Some(v) =
                                             res.get("set_env").or_else(|| res.get("env"))

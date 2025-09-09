@@ -320,11 +320,23 @@ pub struct GlobalKeyArgs {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RunCommandArgs {
     #[schemars(
-        description = "The command to run. Can be a single command or multiple lines for a script."
+        description = "The shell command to run (GitHub Actions-style). Optional when using 'engine' + 'script'."
     )]
-    pub run: String,
+    pub run: Option<String>,
     #[schemars(
-        description = "The shell to use. If not specified, defaults to PowerShell on Windows, bash on Unix. Common values: 'bash', 'sh', 'cmd', 'powershell', 'pwsh', 'python', 'node'"
+        description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'python'. When set, 'script' or 'script_file_path' must be provided."
+    )]
+    pub engine: Option<String>,
+    #[schemars(
+        description = "Inline source code to execute when using 'engine'. For Node/Bun, JavaScript with terminator.js available as global 'desktop'. For Python, async Python with terminator available as 'desktop'."
+    )]
+    pub script: Option<String>,
+    #[schemars(
+        description = "Path to a source file to execute when using 'engine'. Either this or 'script' must be provided if 'engine' is set."
+    )]
+    pub script_file_path: Option<String>,
+    #[schemars(
+        description = "The shell to use for 'run' (ignored when 'engine' is used). If not specified, defaults to PowerShell on Windows, bash on Unix. Common values: 'bash', 'sh', 'cmd', 'powershell', 'pwsh'"
     )]
     pub shell: Option<String>,
     #[schemars(
@@ -980,21 +992,7 @@ pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), Validati
     Ok(())
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct RunJavascriptArgs {
-    #[schemars(
-        description = "JavaScript source code to execute inside the embedded engine. Either this or script_file_path must be provided."
-    )]
-    pub script: Option<String>,
-    #[schemars(
-        description = "Path to a JavaScript file to execute. Either this or script must be provided."
-    )]
-    pub script_file_path: Option<String>,
-    #[schemars(
-        description = "Optional timeout in milliseconds before the script execution is aborted."
-    )]
-    pub timeout_ms: Option<u64>,
-}
+// Removed: RunJavascriptArgs (merged into RunCommandArgs via engine + script)
 
 pub fn init_logging() -> Result<()> {
     let log_level = env::var("LOG_LEVEL")

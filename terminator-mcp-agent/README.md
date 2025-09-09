@@ -117,15 +117,15 @@ Tool call wrapper format (`workflow.json`):
 }
 ```
 
-**JavaScript Execution in Workflows:**
+**Code Execution in Workflows (engine mode):**
 
-Execute custom JavaScript code with access to desktop automation APIs:
+Execute custom JavaScript or Python with access to desktop automation APIs via `run_command`:
 
 ```yaml
 steps:
-  - tool_name: run_javascript
+  - tool_name: run_command
     arguments:
-      engine: "nodejs"
+      engine: "javascript"
       script: |
         // Access desktop automation APIs
         const elements = await desktop.locator('role:button').all();
@@ -309,11 +309,14 @@ terminator mcp run workflow.yml --url http://localhost:3000/mcp
 **Solution**: Verify JavaScript execution and API access:
 
 ```bash
-# Test basic JavaScript execution
-terminator mcp exec run_javascript '{"script": "return {test: true};"}'
+# Test basic JavaScript execution via run_command engine mode
+terminator mcp exec run_command '{"engine": "javascript", "script": "return {test: true};"}'
 
-# Test desktop API access with nodejs engine
-terminator mcp exec run_javascript '{"engine": "nodejs", "script": "const elements = await desktop.locator(\"role:button\").all(); return {count: elements.length};"}'
+# Test desktop API access with node engine
+terminator mcp exec run_command '{"engine": "node", "script": "const elements = await desktop.locator(\\\"role:button\\\").all(); return {count: elements.length};"}'
+
+# Test Python engine
+terminator mcp exec run_command '{"engine": "python", "script": "return {\\\"py\\\": True}"}'
 
 # Debug with verbose logging
 terminator mcp run workflow.yml --verbose
