@@ -90,6 +90,7 @@ impl DesktopWrapper {
     // Minimal, conservative parser to extract `{ set_env: {...} }` from simple scripts
     // like `return { set_env: { a: 1, b: 'x' } };`. This is only used as a fallback
     // when Node/Bun execution is unavailable, to support env propagation tests.
+    #[allow(dead_code)]
     fn parse_set_env_from_script(script: &str) -> Option<serde_json::Value> {
         // Quick check for the pattern "return {" and "set_env" to avoid heavy parsing
         let lower = script.to_ascii_lowercase();
@@ -1179,7 +1180,8 @@ impl DesktopWrapper {
             let is_py = matches!(engine.as_str(), "python" | "py");
 
             if is_js {
-                let execution_result = scripting_engine::execute_javascript_with_nodejs(script_content).await?;
+                let execution_result =
+                    scripting_engine::execute_javascript_with_nodejs(script_content).await?;
                 return Ok(CallToolResult::success(vec![Content::json(json!({
                     "action": "run_command",
                     "mode": "engine",
@@ -1188,7 +1190,8 @@ impl DesktopWrapper {
                     "result": execution_result
                 }))?]));
             } else if is_py {
-                let execution_result = scripting_engine::execute_python_with_bindings(script_content).await?;
+                let execution_result =
+                    scripting_engine::execute_python_with_bindings(script_content).await?;
                 return Ok(CallToolResult::success(vec![Content::json(json!({
                     "action": "run_command",
                     "mode": "engine",
@@ -1218,8 +1221,8 @@ impl DesktopWrapper {
             let shell = args.shell.as_deref().unwrap_or("powershell");
             let command_with_cd = if let Some(ref cwd) = args.working_directory {
                 match shell {
-                    "cmd" => format!("cd /d \"{cwd}\" && {}", run_str),
-                    "powershell" | "pwsh" => format!("cd '{cwd}'; {}", run_str),
+                    "cmd" => format!("cd /d \"{cwd}\" && {run_str}"),
+                    "powershell" | "pwsh" => format!("cd '{cwd}'; {run_str}"),
                     _ => run_str.clone(), // For other shells, handle cwd differently
                 }
             } else {
@@ -1253,7 +1256,7 @@ impl DesktopWrapper {
             // On Unix-like systems (Linux, macOS)
             let shell = args.shell.as_deref().unwrap_or("bash");
             let command_with_cd = if let Some(ref cwd) = args.working_directory {
-                format!("cd '{cwd}' && {}", run_str)
+                format!("cd '{cwd}' && {run_str}")
             } else {
                 run_str.clone()
             };

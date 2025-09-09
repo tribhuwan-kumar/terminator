@@ -1230,10 +1230,7 @@ pub async fn execute_python_with_bindings(script: String) -> Result<serde_json::
     use tokio::process::Command;
 
     info!("[Python] Starting Python execution with terminator.py bindings");
-    info!(
-        "[Python] Script to execute ({} bytes)",
-        script.len()
-    );
+    info!("[Python] Script to execute ({} bytes)", script.len());
 
     // Discover python interpreter
     let mut python_exe = find_executable("python").unwrap_or_else(|| "python".to_string());
@@ -1291,8 +1288,7 @@ async def __runner__():
         }}) + '__END__\n')
 
 asyncio.run(__runner__())
-"#,
-            indented = indented
+"#
         )
     };
 
@@ -1304,21 +1300,34 @@ asyncio.run(__runner__())
             .unwrap()
             .as_nanos()
     ));
-    tokio::fs::create_dir_all(&script_dir)
-        .await
-        .map_err(|e| McpError::internal_error("Failed to create python script directory", Some(json!({"error": e.to_string()}))))?;
+    tokio::fs::create_dir_all(&script_dir).await.map_err(|e| {
+        McpError::internal_error(
+            "Failed to create python script directory",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
 
     let script_path = script_dir.join("main.py");
     tokio::fs::write(&script_path, &wrapper_script)
         .await
-        .map_err(|e| McpError::internal_error("Failed to write python script", Some(json!({"error": e.to_string()}))))?;
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to write python script",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
 
     // Spawn python (inject PYTHONPATH so terminator is importable)
     let path_sep = if cfg!(windows) { ";" } else { ":" };
     let mut pythonpath_value = site_packages_dir.to_string_lossy().to_string();
     if let Ok(existing) = std::env::var("PYTHONPATH") {
         if !existing.is_empty() {
-            pythonpath_value = format!("{}{}{}", site_packages_dir.to_string_lossy(), path_sep, existing);
+            pythonpath_value = format!(
+                "{}{}{}",
+                site_packages_dir.to_string_lossy(),
+                path_sep,
+                existing
+            );
         }
     }
 
@@ -1329,7 +1338,12 @@ asyncio.run(__runner__())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| McpError::internal_error("Failed to spawn python process", Some(json!({"error": e.to_string(), "python": python_exe}))))?;
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to spawn python process",
+                Some(json!({"error": e.to_string(), "python": python_exe})),
+            )
+        })?;
 
     let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
@@ -1381,7 +1395,12 @@ asyncio.run(__runner__())
         }
     }
 
-    let status = child.wait().await.map_err(|e| McpError::internal_error("Python process failed", Some(json!({"error": e.to_string()}))))?;
+    let status = child.wait().await.map_err(|e| {
+        McpError::internal_error(
+            "Python process failed",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
 
     if !status.success() {
         return Err(McpError::internal_error(
@@ -1392,7 +1411,7 @@ asyncio.run(__runner__())
                 "script_path": script_path.to_string_lossy(),
                 "working_directory": script_dir.to_string_lossy(),
                 "python": python_exe
-            }))
+            })),
         ));
     }
 
@@ -1405,20 +1424,31 @@ asyncio.run(__runner__())
                 if let Some(obj) = r.as_object_mut() {
                     if let Some(existing) = obj.get_mut("set_env") {
                         if let Some(existing_obj) = existing.as_object_mut() {
-                            for (k, v) in env_updates.iter() { existing_obj.insert(k.clone(), v.clone()); }
+                            for (k, v) in env_updates.iter() {
+                                existing_obj.insert(k.clone(), v.clone());
+                            }
                         } else {
-                            obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                            obj.insert(
+                                "set_env".to_string(),
+                                serde_json::Value::Object(env_updates.clone()),
+                            );
                         }
                     } else {
-                        obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                        obj.insert(
+                            "set_env".to_string(),
+                            serde_json::Value::Object(env_updates.clone()),
+                        );
                     }
                 } else {
                     r = serde_json::json!({ "output": r, "set_env": env_updates });
                 }
             }
             Ok(r)
-        },
-        None => Err(McpError::internal_error("No result received from Python process", Some(json!({"stderr": stderr_output.join("\n")}))))
+        }
+        None => Err(McpError::internal_error(
+            "No result received from Python process",
+            Some(json!({"stderr": stderr_output.join("\n")})),
+        )),
     }
 }
 
@@ -1430,12 +1460,14 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
     let cache_dir = std::env::temp_dir().join("terminator_mcp_python_persistent");
     let site_packages_dir = cache_dir.join("site-packages");
 
-    tokio::fs::create_dir_all(&site_packages_dir).await.map_err(|e| {
-        McpError::internal_error(
-            "Failed to create Python site-packages cache directory",
-            Some(json!({"error": e.to_string(), "dir": site_packages_dir})),
-        )
-    })?;
+    tokio::fs::create_dir_all(&site_packages_dir)
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to create Python site-packages cache directory",
+                Some(json!({"error": e.to_string(), "dir": site_packages_dir})),
+            )
+        })?;
 
     // Determine if we should update: daily or forced
     let mut should_check_update = false;
@@ -1457,11 +1489,10 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
     // Check if import works already
     let import_ok = {
         let mut cmd = Command::new(python_exe);
-        cmd.arg("-c").arg("import sys;print('ok')")
-            .env(
-                "PYTHONPATH",
-                site_packages_dir.to_string_lossy().to_string(),
-            );
+        cmd.arg("-c").arg("import sys;print('ok')").env(
+            "PYTHONPATH",
+            site_packages_dir.to_string_lossy().to_string(),
+        );
         match cmd.output().await {
             Ok(out) => out.status.success(),
             Err(_) => false,
@@ -1472,7 +1503,8 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
     let mut have_terminator = false;
     if !should_check_update {
         let mut cmd = Command::new(python_exe);
-        cmd.arg("-c").arg("import sys; import terminator; print('ok')")
+        cmd.arg("-c")
+            .arg("import sys; import terminator; print('ok')")
             .env(
                 "PYTHONPATH",
                 site_packages_dir.to_string_lossy().to_string(),
@@ -1492,6 +1524,7 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
         while attempt < max_retries {
             attempt += 1;
             for pkg in &candidates {
+                let site_packages_path = site_packages_dir.to_string_lossy();
                 let args = [
                     "-m",
                     "pip",
@@ -1502,7 +1535,7 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
                     "--no-warn-script-location",
                     pkg,
                     "--target",
-                    site_packages_dir.to_string_lossy().as_ref(),
+                    site_packages_path.as_ref(),
                 ];
                 info!("[Python] pip attempt {}: installing {}", attempt, pkg);
                 match Command::new(python_exe).args(args).output().await {
@@ -1516,13 +1549,10 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
                             let _ = tokio::fs::write(cache_dir.join(".stamp"), b"ok").await;
                             // Verify import
                             let mut verify = Command::new(python_exe);
-                            verify
-                                .arg("-c")
-                                .arg("import terminator; print('ok')")
-                                .env(
-                                    "PYTHONPATH",
-                                    site_packages_dir.to_string_lossy().to_string(),
-                                );
+                            verify.arg("-c").arg("import terminator; print('ok')").env(
+                                "PYTHONPATH",
+                                site_packages_dir.to_string_lossy().to_string(),
+                            );
                             if let Ok(v) = verify.output().await {
                                 if v.status.success() {
                                     return Ok(site_packages_dir);
@@ -1574,7 +1604,10 @@ print(v)
     match Command::new(python_exe)
         .arg("-c")
         .arg(code)
-        .env("PYTHONPATH", site_packages_dir.to_string_lossy().to_string())
+        .env(
+            "PYTHONPATH",
+            site_packages_dir.to_string_lossy().to_string(),
+        )
         .output()
         .await
     {
@@ -1584,7 +1617,10 @@ print(v)
         }
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            info!("[Python] Could not determine terminator.py version: {}", stderr);
+            info!(
+                "[Python] Could not determine terminator.py version: {}",
+                stderr
+            );
         }
         Err(e) => {
             info!("[Python] Version query failed: {}", e);
