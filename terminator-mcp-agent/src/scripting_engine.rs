@@ -1246,6 +1246,10 @@ pub async fn execute_python_with_bindings(script: String) -> Result<serde_json::
         }
     }
 
+    // Ensure cached terminator.py installation and get site-packages path
+    let site_packages_dir = ensure_terminator_py_installed(&python_exe).await?;
+    log_terminator_py_version(&python_exe, &site_packages_dir).await;
+
     // Prepare wrapper script that imports terminator and runs the user code
     let wrapper_script = {
         let mut indented = String::new();
@@ -1309,10 +1313,19 @@ asyncio.run(__runner__())
         .await
         .map_err(|e| McpError::internal_error("Failed to write python script", Some(json!({"error": e.to_string()}))))?;
 
-    // Spawn python
+    // Spawn python (inject PYTHONPATH so terminator is importable)
+    let path_sep = if cfg!(windows) { ";" } else { ":" };
+    let mut pythonpath_value = site_packages_dir.to_string_lossy().to_string();
+    if let Ok(existing) = std::env::var("PYTHONPATH") {
+        if !existing.is_empty() {
+            pythonpath_value = format!("{}{}{}", site_packages_dir.to_string_lossy(), path_sep, existing);
+        }
+    }
+
     let mut child = Command::new(&python_exe)
         .current_dir(&script_dir)
         .arg(script_path.file_name().unwrap())
+        .env("PYTHONPATH", pythonpath_value)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -1406,6 +1419,176 @@ asyncio.run(__runner__())
             Ok(r)
         },
         None => Err(McpError::internal_error("No result received from Python process", Some(json!({"stderr": stderr_output.join("\n")}))))
+    }
+}
+
+/// Ensure terminator.py is installed in a persistent site-packages directory
+pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf, McpError> {
+    use tokio::process::Command;
+
+    info!("[Python] Checking if terminator.py is installed (cached)");
+    let cache_dir = std::env::temp_dir().join("terminator_mcp_python_persistent");
+    let site_packages_dir = cache_dir.join("site-packages");
+
+    tokio::fs::create_dir_all(&site_packages_dir).await.map_err(|e| {
+        McpError::internal_error(
+            "Failed to create Python site-packages cache directory",
+            Some(json!({"error": e.to_string(), "dir": site_packages_dir})),
+        )
+    })?;
+
+    // Determine if we should update: daily or forced
+    let mut should_check_update = false;
+    if let Ok(meta) = tokio::fs::metadata(&site_packages_dir).await {
+        if let Ok(modified) = meta.modified() {
+            if let Ok(age) = std::time::SystemTime::now().duration_since(modified) {
+                should_check_update = age.as_secs() > 86400; // 24h
+            }
+        }
+    }
+    if std::env::var("TERMINATOR_PY_UPDATE")
+        .map(|v| v.eq_ignore_ascii_case("always"))
+        .unwrap_or(false)
+    {
+        should_check_update = true;
+        info!("[Python] Forced update enabled via TERMINATOR_PY_UPDATE=always");
+    }
+
+    // Check if import works already
+    let import_ok = {
+        let mut cmd = Command::new(python_exe);
+        cmd.arg("-c").arg("import sys;print('ok')")
+            .env(
+                "PYTHONPATH",
+                site_packages_dir.to_string_lossy().to_string(),
+            );
+        match cmd.output().await {
+            Ok(out) => out.status.success(),
+            Err(_) => false,
+        }
+    };
+
+    // If site-packages exists but no update needed, try to see if terminator is importable
+    let mut have_terminator = false;
+    if !should_check_update {
+        let mut cmd = Command::new(python_exe);
+        cmd.arg("-c").arg("import sys; import terminator; print('ok')")
+            .env(
+                "PYTHONPATH",
+                site_packages_dir.to_string_lossy().to_string(),
+            );
+        if let Ok(out) = cmd.output().await {
+            have_terminator = out.status.success();
+        }
+    }
+
+    if should_check_update || !import_ok || !have_terminator {
+        info!("[Python] Installing/upgrading terminator.py into cache using pip");
+        let max_retries = 3;
+        let mut attempt = 0;
+        let candidates = ["terminator.py", "terminator-py", "terminator"];
+        let mut last_err: Option<String> = None;
+
+        while attempt < max_retries {
+            attempt += 1;
+            for pkg in &candidates {
+                let args = [
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "--no-input",
+                    "--disable-pip-version-check",
+                    "--no-warn-script-location",
+                    pkg,
+                    "--target",
+                    site_packages_dir.to_string_lossy().as_ref(),
+                ];
+                info!("[Python] pip attempt {}: installing {}", attempt, pkg);
+                match Command::new(python_exe).args(args).output().await {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        info!("[Python] pip stdout: {}", stdout);
+                        if out.status.success() {
+                            info!("[Python] pip install succeeded for {}", pkg);
+                            // Touch cache dir mtime
+                            let _ = tokio::fs::write(cache_dir.join(".stamp"), b"ok").await;
+                            // Verify import
+                            let mut verify = Command::new(python_exe);
+                            verify
+                                .arg("-c")
+                                .arg("import terminator; print('ok')")
+                                .env(
+                                    "PYTHONPATH",
+                                    site_packages_dir.to_string_lossy().to_string(),
+                                );
+                            if let Ok(v) = verify.output().await {
+                                if v.status.success() {
+                                    return Ok(site_packages_dir);
+                                }
+                            }
+                        } else {
+                            warn!("[Python] pip install failed for {}: {}", pkg, stderr);
+                            last_err = Some(stderr.to_string());
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[Python] Failed to run pip for {}: {}", pkg, e);
+                        last_err = Some(e.to_string());
+                    }
+                }
+            }
+            // Backoff
+            tokio::time::sleep(std::time::Duration::from_millis(500 * attempt as u64)).await;
+        }
+
+        return Err(McpError::internal_error(
+            "Failed to install terminator.py via pip",
+            Some(json!({"error": last_err})),
+        ));
+    }
+
+    Ok(site_packages_dir)
+}
+
+/// Log installed terminator.py version using Python runtime with injected PYTHONPATH
+async fn log_terminator_py_version(python_exe: &str, site_packages_dir: &std::path::Path) {
+    use tokio::process::Command;
+    let code = r#"
+import sys
+try:
+    import importlib.metadata as md
+except Exception:
+    import importlib_metadata as md  # type: ignore
+try:
+    v = md.version('terminator.py')
+except Exception:
+    try:
+        v = md.version('terminator-py')
+    except Exception:
+        v = 'unknown'
+print(v)
+"#;
+
+    match Command::new(python_exe)
+        .arg("-c")
+        .arg(code)
+        .env("PYTHONPATH", site_packages_dir.to_string_lossy().to_string())
+        .output()
+        .await
+    {
+        Ok(out) if out.status.success() => {
+            let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            info!("[Python] Using terminator.py version {}", version);
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            info!("[Python] Could not determine terminator.py version: {}", stderr);
+        }
+        Err(e) => {
+            info!("[Python] Version query failed: {}", e);
+        }
     }
 }
 
