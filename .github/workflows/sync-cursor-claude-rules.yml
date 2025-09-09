@@ -1,0 +1,71 @@
+name: Sync Cursor Rules to Claude
+
+on:
+  push:
+    paths:
+      - ".cursor/rules/**/*.mdc"
+  pull_request:
+    paths:
+      - ".cursor/rules/**/*.mdc"
+  workflow_dispatch:
+
+jobs:
+  sync-rules:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Sync Cursor rules to Claude
+        run: |
+          # Create .claude directory if it doesn't exist
+          mkdir -p .claude
+
+          # Use the existing sync script
+          node scripts/sync-cursor-claude-rules.js
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet .claude/; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .claude/
+          git commit -m "🔄 Auto-sync: Update Claude rules from .cursor/rules
+
+          - Synced $(ls .cursor/rules/*.mdc | wc -l) rule files
+          - Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - Triggered by: ${{ github.event_name }}"
+          git push
+
+      - name: Create summary comment (on PR)
+        if: github.event_name == 'pull_request' && steps.changes.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('.claude/rules-summary.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🔄 Claude Rules Sync\n\n${summary}`
+            });
