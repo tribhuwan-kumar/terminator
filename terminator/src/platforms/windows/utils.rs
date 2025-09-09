@@ -91,7 +91,7 @@ pub fn generate_element_id(element: &uiautomation::UIElement) -> Result<usize, A
 #[allow(clippy::arc_with_non_send_sync)]
 pub fn convert_uiautomation_element_to_terminator(element: uiautomation::UIElement) -> UIElement {
     let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
-    UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
+    UIElement::new(Box::new(WindowsUIElement { element: arc_ele, engine: None }))
 }
 
 /// Helper function to create UIAutomation instance with proper COM initialization

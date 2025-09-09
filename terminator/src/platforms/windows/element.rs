@@ -181,6 +181,9 @@ impl WorkArea {
 
 pub struct WindowsUIElement {
     pub(crate) element: ThreadSafeWinUIElement,
+    // Optional reference to the engine that created this element
+    // This allows reusing the engine for creating locators instead of creating new ones
+    pub(crate) engine: Option<std::sync::Arc<crate::platforms::windows::WindowsEngine>>,
 }
 
 /// Captures the state of an element for before/after comparison
@@ -204,6 +207,19 @@ impl WindowsUIElement {
         Self {
             #[allow(clippy::arc_with_non_send_sync)]
             element: ThreadSafeWinUIElement(std::sync::Arc::new(element)),
+            engine: None,
+        }
+    }
+
+    /// Create a new WindowsUIElement with an engine reference for efficient locator creation
+    pub fn new_with_engine(
+        element: uiautomation::UIElement,
+        engine: std::sync::Arc<crate::platforms::windows::WindowsEngine>,
+    ) -> Self {
+        Self {
+            #[allow(clippy::arc_with_non_send_sync)]
+            element: ThreadSafeWinUIElement(std::sync::Arc::new(element)),
+            engine: Some(engine),
         }
     }
 
@@ -414,6 +430,7 @@ impl UIElementImpl for WindowsUIElement {
                 #[allow(clippy::arc_with_non_send_sync)]
                 UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(ele)),
+                    engine: None,
                 }))
             })
             .collect())
@@ -438,6 +455,7 @@ impl UIElementImpl for WindowsUIElement {
                 #[allow(clippy::arc_with_non_send_sync)]
                 let par_ele = UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(parent_element)),
+                    engine: None,
                 }));
                 Ok(Some(par_ele))
             }
@@ -1038,8 +1056,21 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn create_locator(&self, selector: Selector) -> Result<Locator, AutomationError> {
-        let automation = WindowsEngine::new(false, false)
-            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        // Try to reuse the existing engine if available, otherwise create a new one
+        let automation = if let Some(ref engine) = self.engine {
+            // Reuse the existing engine - this is much more efficient!
+            debug!("Reusing existing WindowsEngine for locator creation");
+            engine.clone()
+        } else {
+            // Fallback to creating a new engine (original behavior)
+            debug!("Creating new WindowsEngine for locator (no engine reference available)");
+            std::sync::Arc::new(WindowsEngine::new(false, false)
+                .map_err(|e| {
+                    AutomationError::PlatformError(format!(
+                        "Failed to create WindowsEngine for element locator. This can happen due to COM initialization issues or system load. Original error: {e}"
+                    ))
+                })?)
+        };
 
         let attrs = self.attributes();
         debug!(
@@ -1047,16 +1078,19 @@ impl UIElementImpl for WindowsUIElement {
             attrs.role, attrs.label
         );
 
+        // Create the self element with the same engine reference for chaining
         let self_element = UIElement::new(Box::new(WindowsUIElement {
             element: self.element.clone(),
+            engine: Some(automation.clone()),
         }));
 
-        Ok(Locator::new(std::sync::Arc::new(automation), selector).within(self_element))
+        Ok(Locator::new(automation, selector).within(self_element))
     }
 
     fn clone_box(&self) -> Box<dyn UIElementImpl> {
         Box::new(WindowsUIElement {
             element: self.element.clone(),
+            engine: self.engine.clone(),
         })
     }
 
@@ -1399,6 +1433,7 @@ impl UIElementImpl for WindowsUIElement {
         if let Some(element) = chosen_element {
             let window_ui_element = WindowsUIElement {
                 element: ThreadSafeWinUIElement(element),
+                engine: None,
             };
             Ok(Some(UIElement::new(Box::new(window_ui_element))))
         } else {

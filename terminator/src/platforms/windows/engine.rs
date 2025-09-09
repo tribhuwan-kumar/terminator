@@ -358,7 +358,10 @@ impl AccessibilityEngine for WindowsEngine {
     fn get_root_element(&self) -> UIElement {
         let root = self.automation.0.get_root_element().unwrap();
         let arc_root = ThreadSafeWinUIElement(Arc::new(root));
-        UIElement::new(Box::new(WindowsUIElement { element: arc_root }))
+        UIElement::new(Box::new(WindowsUIElement { 
+            element: arc_root,
+            engine: None, // Root element doesn't need engine reference
+        }))
     }
 
     fn get_element_by_id(&self, id: i32) -> Result<UIElement, AutomationError> {
@@ -375,6 +378,7 @@ impl AccessibilityEngine for WindowsEngine {
 
         Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_ele,
+            engine: None, // These are lookup operations, don't need engine reference
         })))
     }
 
@@ -388,6 +392,7 @@ impl AccessibilityEngine for WindowsEngine {
 
         Ok(UIElement::new(Box::new(WindowsUIElement {
             element: arc_element,
+            engine: None, // Focused element lookup doesn't need engine reference
         })))
     }
 
@@ -455,7 +460,7 @@ impl AccessibilityEngine for WindowsEngine {
             .into_iter()
             .map(|ele| {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-                UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
+                UIElement::new(Box::new(WindowsUIElement { element: arc_ele, engine: None }))
             })
             .collect();
 
@@ -545,6 +550,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect())
@@ -591,6 +597,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect();
@@ -618,6 +625,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect())
@@ -653,6 +661,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect())
@@ -712,6 +721,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect();
@@ -759,7 +769,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .into_iter()
                     .map(|ele| {
                         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
-                        UIElement::new(Box::new(WindowsUIElement { element: arc_ele }))
+                        UIElement::new(Box::new(WindowsUIElement { element: arc_ele, engine: None }))
                     })
                     .collect())
             }
@@ -850,6 +860,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect())
@@ -880,6 +891,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect())
@@ -913,6 +925,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .map(|ele| {
                         UIElement::new(Box::new(WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::new(ele)),
+                            engine: None,
                         }))
                     })
                     .collect())
@@ -1125,6 +1138,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::Id(id) => {
@@ -1167,6 +1181,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::Name(name) => {
@@ -1190,6 +1205,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::Text(text) => {
@@ -1223,6 +1239,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::Path(path) => {
@@ -1285,6 +1302,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(current_element);
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::NativeId(automation_id) => {
@@ -1330,6 +1348,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::Attributes(attributes) => {
@@ -1372,6 +1391,7 @@ impl AccessibilityEngine for WindowsEngine {
 
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(element)),
+                    engine: None,
                 })))
             }
             Selector::Filter(_filter) => Err(AutomationError::UnsupportedOperation(
@@ -1504,8 +1524,9 @@ impl AccessibilityEngine for WindowsEngine {
                                 if idx >= 0 && idx < len {
                                     let selected = &children[idx as usize];
                                     current_element = UIElement::new(Box::new(WindowsUIElement {
-                                        element: ThreadSafeWinUIElement(Arc::new(selected.clone())),
-                                    }));
+                        element: ThreadSafeWinUIElement(Arc::new(selected.clone())),
+                        engine: None,
+                    }));
                                 } else {
                                     debug!(
                                         "Nth index {} out of bounds (found {} children)",
@@ -1579,6 +1600,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::Visible(visibility) => {
@@ -1604,6 +1626,7 @@ impl AccessibilityEngine for WindowsEngine {
                 })?;
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: ThreadSafeWinUIElement(Arc::new(element)),
+                    engine: None,
                 })))
             }
             Selector::LocalizedRole(localized_role) => {
@@ -1630,6 +1653,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })))
             }
             Selector::Nth(_) => Err(AutomationError::InvalidSelector(
@@ -1930,6 +1954,7 @@ impl AccessibilityEngine for WindowsEngine {
                         let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                         return Ok(UIElement::new(Box::new(WindowsUIElement {
                             element: arc_ele,
+                            engine: None,
                         })));
                     }
                     Err(_) => {
@@ -1974,7 +1999,7 @@ impl AccessibilityEngine for WindowsEngine {
                             );
                             let arc_ele = ThreadSafeWinUIElement(Arc::new(element));
                             let app =
-                                UIElement::new(Box::new(WindowsUIElement { element: arc_ele }));
+                                UIElement::new(Box::new(WindowsUIElement { element: arc_ele, engine: None }));
                             info!(
                                 "Found default browser '{}': {}",
                                 browser_name,
@@ -2145,6 +2170,7 @@ impl AccessibilityEngine for WindowsEngine {
                             let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                             return Ok(UIElement::new(Box::new(WindowsUIElement {
                                 element: arc_ele,
+                                engine: None,
                             })));
                         }
                         Err(e) => {
@@ -2711,6 +2737,7 @@ impl AccessibilityEngine for WindowsEngine {
                 let arc_focused_element = ThreadSafeWinUIElement(Arc::new(focused_element_raw));
                 Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_focused_element,
+                    engine: None,
                 })))
             } else {
                 // If no tab found, fall back to the main window
@@ -2730,6 +2757,7 @@ impl AccessibilityEngine for WindowsEngine {
                             ThreadSafeWinUIElement(Arc::new(focused_element_raw));
                         Ok(UIElement::new(Box::new(WindowsUIElement {
                             element: arc_focused_element,
+                            engine: None,
                         })))
                     }
                 }
@@ -2780,6 +2808,7 @@ impl AccessibilityEngine for WindowsEngine {
                     if control_type == ControlType::Window || control_type == ControlType::Pane {
                         let window_ui_element = WindowsUIElement {
                             element: ThreadSafeWinUIElement(Arc::clone(&current_element_arc)),
+                            engine: None,
                         };
                         return Ok(UIElement::new(Box::new(window_ui_element)));
                     }
@@ -2967,8 +2996,9 @@ impl AccessibilityEngine for WindowsEngine {
 
         // Wrap the raw OS element into our UIElement
         let window_element_wrapper = UIElement::new(Box::new(WindowsUIElement {
-            element: ThreadSafeWinUIElement(Arc::new(selected_window)),
-        }));
+                            element: ThreadSafeWinUIElement(Arc::new(selected_window)),
+                            engine: None,
+                        }));
 
         // Build the UI tree with configurable performance optimizations
         info!("Building UI tree with config: {:?}", config);

@@ -143,6 +143,7 @@ pub fn get_application_by_name(
                 let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
                 return Ok(UIElement::new(Box::new(WindowsUIElement {
                     element: arc_ele,
+                    engine: None,
                 })));
             }
         }
@@ -228,6 +229,7 @@ pub fn get_application_by_name(
     let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
     Ok(UIElement::new(Box::new(WindowsUIElement {
         element: arc_ele,
+        engine: None,
     })))
 }
 
@@ -272,6 +274,7 @@ pub fn get_application_by_pid(
 
     Ok(UIElement::new(Box::new(WindowsUIElement {
         element: arc_ele,
+        engine: None,
     })))
 }
 

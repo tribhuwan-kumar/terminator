@@ -54,7 +54,9 @@
     "prepublish:ci": "npm run sync-version",
     "prepublishOnly": "npm run sync-version && npx napi prepublish -t npm",
     "sync-version": "node sync-version.js",
-    "test": "node node_example.js",
+    "test": "npm run test:basic && npm run test:chaining",
+    "test:basic": "node node_example.js",
+    "test:chaining": "node tests/element-chaining.test.js",
     "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
   },
   "types": "wrapper.d.ts",

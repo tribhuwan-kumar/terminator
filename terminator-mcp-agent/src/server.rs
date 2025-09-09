@@ -2928,6 +2928,8 @@ impl DesktopWrapper {
 
     pub(crate) async fn dispatch_tool(
         &self,
+        peer: Peer<RoleServer>,
+        request_context: RequestContext<RoleServer>,
         tool_name: &str,
         arguments: &serde_json::Value,
     ) -> Result<CallToolResult, McpError> {
@@ -3247,8 +3249,18 @@ impl DesktopWrapper {
                     )),
                 }
             }
-            // Note: execute_sequence is handled at the top level, not in dispatch_tool
-            // to avoid infinite recursion
+            "execute_sequence" => {
+                match serde_json::from_value::<ExecuteSequenceArgs>(arguments.clone()) {
+                    Ok(args) => {
+                        self.execute_sequence(peer, request_context, Parameters(args))
+                            .await
+                    }
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for execute_sequence",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
                 Some(json!({"tool_name": tool_name})),

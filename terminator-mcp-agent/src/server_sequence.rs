@@ -522,6 +522,8 @@ impl DesktopWrapper {
 
                         let (result, error_occurred) = self
                             .execute_single_tool(
+                                peer.clone(),
+                                request_context.clone(),
                                 &tool_call.tool_name,
                                 &substituted_args,
                                 tool_call.continue_on_error.unwrap_or(false),
@@ -620,6 +622,8 @@ impl DesktopWrapper {
 
                             let (result, error_occurred) = self
                                 .execute_single_tool(
+                                    peer.clone(),
+                                    request_context.clone(),
                                     &step_tool_call.tool_name,
                                     &substituted_args,
                                     step_tool_call.continue_on_error.unwrap_or(false),
@@ -884,8 +888,11 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(contents))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute_single_tool(
         &self,
+        peer: Peer<RoleServer>,
+        request_context: RequestContext<RoleServer>,
         tool_name: &str,
         arguments: &Value,
         is_skippable: bool,
@@ -899,7 +906,9 @@ impl DesktopWrapper {
             .unwrap_or(tool_name);
 
         // The substitution is handled in `execute_sequence_impl`.
-        let tool_result = self.dispatch_tool(tool_name_short, arguments).await;
+        let tool_result = self
+            .dispatch_tool(peer, request_context, tool_name_short, arguments)
+            .await;
 
         let (processed_result, error_occurred) = match tool_result {
             Ok(result) => {
