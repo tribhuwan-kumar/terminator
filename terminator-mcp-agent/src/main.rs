@@ -352,8 +352,15 @@ async fn main() -> Result<()> {
 }
 
 async fn health_check() -> impl axum::response::IntoResponse {
+    // Get bridge health status
+    let bridge_health = terminator::extension_bridge::ExtensionBridge::health_status().await;
+
     (
         axum::http::StatusCode::OK,
-        axum::Json(serde_json::json!({"status": "ok"})),
+        axum::Json(serde_json::json!({
+            "status": "ok",
+            "extension_bridge": bridge_health,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })),
     )
 }

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bridge Health Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #0f0; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #333; }
+        .success { color: #0f0; }
+        .fail { color: #f00; }
+        .pending { color: #ff0; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Browser Extension Bridge Health Test</h1>
+    <div id="results"></div>
+    <button onclick="runTests()">Run Tests</button>
+    <button onclick="testReconnect()">Test Reconnect</button>
+    
+    <script>
+        let ws = null;
+        const results = document.getElementById('results');
+        
+        function log(message, status = 'pending') {
+            const div = document.createElement('div');
+            div.className = `test ${status}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            results.appendChild(div);
+            console.log(message);
+        }
+        
+        function connectWebSocket() {
+            return new Promise((resolve, reject) => {
+                log('Connecting to WebSocket bridge on ws://127.0.0.1:17373...');
+                ws = new WebSocket('ws://127.0.0.1:17373');
+                
+                ws.onopen = () => {
+                    log('✅ Connected to WebSocket bridge', 'success');
+                    ws.send(JSON.stringify({ type: 'hello', from: 'browser-test' }));
+                    resolve(true);
+                };
+                
+                ws.onerror = (err) => {
+                    log('❌ WebSocket connection failed', 'fail');
+                    reject(err);
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === 'pong') {
+                            log('✅ Received pong - bridge is responsive', 'success');
+                        } else if (msg.ok !== undefined) {
+                            if (msg.ok) {
+                                log(`✅ Script execution successful: ${JSON.stringify(msg.result)}`, 'success');
+                            } else {
+                                log(`❌ Script execution failed: ${msg.error}`, 'fail');
+                            }
+                        }
+                    } catch (e) {
+                        log(`Received: ${event.data}`);
+                    }
+                };
+                
+                ws.onclose = () => {
+                    log('WebSocket connection closed', 'pending');
+                };
+            });
+        }
+        
+        async function testPing() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ WebSocket not connected', 'fail');
+                return false;
+            }
+            
+            log('Sending ping...');
+            ws.send(JSON.stringify({ action: 'ping' }));
+            return true;
+        }
+        
+        async function testEval() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ WebSocket not connected', 'fail');
+                return false;
+            }
+            
+            const evalRequest = {
+                id: 'test-' + Date.now(),
+                action: 'eval',
+                code: '({alive: true, timestamp: Date.now(), browserInfo: navigator.userAgent})',
+                awaitPromise: false
+            };
+            
+            log('Testing browser script execution...');
+            ws.send(JSON.stringify(evalRequest));
+            return true;
+        }
+        
+        async function testMCPHealth() {
+            try {
+                log('Testing MCP server health endpoints...');
+                
+                const healthRes = await fetch('http://127.0.0.1:8080/health');
+                const healthData = await healthRes.json();
+                log(`✅ /health endpoint: ${JSON.stringify(healthData)}`, 'success');
+                
+                const statusRes = await fetch('http://127.0.0.1:8080/status');
+                const statusData = await statusRes.json();
+                log(`✅ /status endpoint: busy=${statusData.busy}, activeRequests=${statusData.activeRequests}`, 'success');
+                
+                return true;
+            } catch (e) {
+                log(`❌ MCP server unreachable: ${e.message}`, 'fail');
+                return false;
+            }
+        }
+        
+        async function runTests() {
+            results.innerHTML = '';
+            log('='.repeat(50));
+            log('Starting Health Check Tests');
+            log('='.repeat(50));
+            
+            try {
+                // Test 1: WebSocket Connection
+                await connectWebSocket();
+                await new Promise(r => setTimeout(r, 100));
+                
+                // Test 2: Ping/Pong
+                await testPing();
+                await new Promise(r => setTimeout(r, 100));
+                
+                // Test 3: Script Execution
+                await testEval();
+                await new Promise(r => setTimeout(r, 100));
+                
+                // Test 4: MCP Health
+                await testMCPHealth();
+                
+                log('='.repeat(50));
+                log('✅ All tests completed', 'success');
+            } catch (e) {
+                log(`❌ Test failed: ${e}`, 'fail');
+            }
+        }
+        
+        async function testReconnect() {
+            log('Testing reconnection...');
+            if (ws) {
+                ws.close();
+                await new Promise(r => setTimeout(r, 500));
+            }
+            await connectWebSocket();
+        }
+        
+        // Auto-run on load
+        window.onload = () => {
+            log('Page loaded. Click "Run Tests" to start.');
+        };
+    </script>
+</body>
+</html>

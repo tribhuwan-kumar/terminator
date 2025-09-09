@@ -5,7 +5,7 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::TcpListener,
-    sync::{mpsc, oneshot, Mutex},
+    sync::{mpsc, oneshot, Mutex, RwLock},
     task::JoinHandle,
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
@@ -80,17 +80,50 @@ pub struct ExtensionBridge {
     pending: Pending,
 }
 
-static GLOBAL: OnceCell<Arc<ExtensionBridge>> = OnceCell::new();
+// Supervised bridge that can auto-restart if the server task dies
+static BRIDGE_SUPERVISOR: OnceCell<Arc<RwLock<Option<Arc<ExtensionBridge>>>>> = OnceCell::new();
 
 impl ExtensionBridge {
     pub async fn global() -> Arc<ExtensionBridge> {
-        if let Some(h) = GLOBAL.get() {
-            return h.clone();
+        let supervisor = BRIDGE_SUPERVISOR.get_or_init(|| Arc::new(RwLock::new(None)));
+
+        // Check if bridge exists and is alive
+        let needs_create = {
+            let guard = supervisor.read().await;
+            match &*guard {
+                None => true,
+                Some(bridge) => {
+                    // Check if server task is still running
+                    bridge._server_task.is_finished()
+                }
+            }
+        };
+
+        if needs_create {
+            // Create new bridge
+            let mut guard = supervisor.write().await;
+
+            // Double-check after acquiring write lock (another task may have created it)
+            let should_create = match &*guard {
+                None => true,
+                Some(existing) => existing._server_task.is_finished(),
+            };
+
+            if should_create {
+                if guard.is_some() {
+                    tracing::warn!("Extension bridge server task died, recreating...");
+                } else {
+                    tracing::info!("Creating initial extension bridge...");
+                }
+
+                let new_bridge = Arc::new(ExtensionBridge::start(DEFAULT_WS_ADDR).await);
+                *guard = Some(new_bridge.clone());
+                return new_bridge;
+            }
         }
-        let bridge = ExtensionBridge::start(DEFAULT_WS_ADDR).await;
-        let arc = Arc::new(bridge);
-        let _ = GLOBAL.set(arc.clone());
-        arc
+
+        // Return existing healthy bridge
+        supervisor.read().await.as_ref().unwrap().clone()
     }
 
     async fn start(addr: &str) -> ExtensionBridge {
@@ -289,6 +322,35 @@ impl ExtensionBridge {
 
     pub async fn is_client_connected(&self) -> bool {
         !self.clients.lock().await.is_empty()
+    }
+
+    /// Get health status of the bridge for monitoring
+    pub async fn health_status() -> serde_json::Value {
+        let supervisor = BRIDGE_SUPERVISOR.get_or_init(|| Arc::new(RwLock::new(None)));
+
+        let guard = supervisor.read().await;
+        match &*guard {
+            None => serde_json::json!({
+                "connected": false,
+                "status": "not_initialized",
+                "clients": 0
+            }),
+            Some(bridge) => {
+                let is_alive = !bridge._server_task.is_finished();
+                let client_count = if is_alive {
+                    bridge.clients.lock().await.len()
+                } else {
+                    0
+                };
+
+                serde_json::json!({
+                    "connected": is_alive && client_count > 0,
+                    "status": if !is_alive { "dead" } else if client_count > 0 { "healthy" } else { "waiting_for_clients" },
+                    "clients": client_count,
+                    "server_task_alive": is_alive
+                })
+            }
+        }
     }
 
     pub async fn eval_in_active_tab(
