@@ -8,9 +8,9 @@ use crate::utils::{
     GetApplicationsArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs,
     HighlightElementArgs, ImportWorkflowSequenceArgs, LocatorArgs, MaximizeWindowArgs,
     MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
-    RecordWorkflowArgs, RunCommandArgs, RunJavascriptArgs, ScrollElementArgs, SelectOptionArgs,
-    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
+    SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, TypeIntoElementArgs,
+    ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
@@ -1157,24 +1157,73 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes a shell command. Uses GitHub Actions-style syntax with a simple 'run' field. Automatically detects the platform and uses the appropriate shell."
+        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide 'script' or 'script_file_path'."
     )]
     async fn run_command(
         &self,
         Parameters(args): Parameters<RunCommandArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Engine-based execution path (provides SDK bindings)
+        if let Some(engine_value) = args.engine.as_ref() {
+            let engine = engine_value.to_ascii_lowercase();
+            // Resolve script content from run (single source of truth)
+            let script_content = args.run.clone().ok_or_else(|| {
+                McpError::invalid_params(
+                    "'run' is required and contains the inline code when using 'engine'",
+                    None,
+                )
+            })?;
+
+            // Map engine to executor
+            let is_js = matches!(engine.as_str(), "node" | "bun" | "javascript" | "js");
+            let is_py = matches!(engine.as_str(), "python" | "py");
+
+            if is_js {
+                let execution_result = scripting_engine::execute_javascript_with_nodejs(script_content).await?;
+                return Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "run_command",
+                    "mode": "engine",
+                    "engine": engine,
+                    "status": "success",
+                    "result": execution_result
+                }))?]));
+            } else if is_py {
+                let execution_result = scripting_engine::execute_python_with_bindings(script_content).await?;
+                return Ok(CallToolResult::success(vec![Content::json(json!({
+                    "action": "run_command",
+                    "mode": "engine",
+                    "engine": engine,
+                    "status": "success",
+                    "result": execution_result
+                }))?]));
+            } else {
+                return Err(McpError::invalid_params(
+                    "Unsupported engine. Use 'node'/'bun'/'javascript' or 'python'",
+                    Some(json!({"engine": engine_value})),
+                ));
+            }
+        }
+
+        // Shell-based execution path
+        let run_str = args.run.clone().ok_or_else(|| {
+            McpError::invalid_params(
+                "Either 'run' must be provided for shell execution, or 'engine' with 'script' for code execution",
+                None,
+            )
+        })?;
+
         // Determine which shell to use based on platform and user preference
         let (windows_cmd, unix_cmd) = if cfg!(target_os = "windows") {
             // On Windows, prepare the command for execution
             let shell = args.shell.as_deref().unwrap_or("powershell");
             let command_with_cd = if let Some(ref cwd) = args.working_directory {
                 match shell {
-                    "cmd" => format!("cd /d \"{cwd}\" && {}", args.run),
-                    "powershell" | "pwsh" => format!("cd '{cwd}'; {}", args.run),
-                    _ => args.run.clone(), // For other shells, handle cwd differently
+                    "cmd" => format!("cd /d \"{cwd}\" && {}", run_str),
+                    "powershell" | "pwsh" => format!("cd '{cwd}'; {}", run_str),
+                    _ => run_str.clone(), // For other shells, handle cwd differently
                 }
             } else {
-                args.run.clone()
+                run_str.clone()
             };
 
             let windows_cmd = match shell {
@@ -1204,9 +1253,9 @@ impl DesktopWrapper {
             // On Unix-like systems (Linux, macOS)
             let shell = args.shell.as_deref().unwrap_or("bash");
             let command_with_cd = if let Some(ref cwd) = args.working_directory {
-                format!("cd '{cwd}' && {}", args.run)
+                format!("cd '{cwd}' && {}", run_str)
             } else {
-                args.run.clone()
+                run_str.clone()
             };
 
             let unix_cmd = match shell {
@@ -1226,7 +1275,7 @@ impl DesktopWrapper {
                     "Failed to run command",
                     Some(json!({
                         "reason": e.to_string(),
-                        "command": args.run,
+                        "command": run_str,
                         "shell": args.shell,
                         "working_directory": args.working_directory
                     })),
@@ -1237,7 +1286,7 @@ impl DesktopWrapper {
             "exit_status": output.exit_status,
             "stdout": output.stdout,
             "stderr": output.stderr,
-            "command": args.run,
+            "command": run_str,
             "shell": args.shell.unwrap_or_else(|| {
                 if cfg!(target_os = "windows") { "powershell" } else { "bash" }.to_string()
             }),
@@ -3179,15 +3228,7 @@ impl DesktopWrapper {
                     Some(json!({ "error": e.to_string() })),
                 )),
             },
-            "run_javascript" => {
-                match serde_json::from_value::<RunJavascriptArgs>(arguments.clone()) {
-                    Ok(args) => self.run_javascript(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for run_javascript",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
+            // run_javascript is deprecated and merged into run_command with engine
             "export_workflow_sequence" => {
                 match serde_json::from_value::<ExportWorkflowSequenceArgs>(arguments.clone()) {
                     Ok(args) => self.export_workflow_sequence(Parameters(args)).await,
@@ -3438,77 +3479,7 @@ impl DesktopWrapper {
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(
-        description = "Executes arbitrary JavaScript inside an embedded JS engine. The final value of the script is serialized to JSON and returned as the tool output. You can provide either inline script code or a path to a JavaScript file. NOTE: This is EXPERIMENTAL and currently uses a sandboxed NodeJS runtime; only standard JavaScript and terminator-js is available."
-    )]
-    async fn run_javascript(
-        &self,
-        Parameters(args): Parameters<RunJavascriptArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        use serde_json::json;
-
-        // Determine the script source - either inline or from file
-        let script_content = match (args.script, args.script_file_path) {
-            (Some(script), None) => {
-                // Inline script provided
-                script
-            }
-            (None, Some(file_path)) => {
-                // File path provided - read the file
-                match std::fs::read_to_string(&file_path) {
-                    Ok(content) => content,
-                    Err(e) => {
-                        return Err(McpError::internal_error(
-                            format!("Failed to read JavaScript file: {file_path}"),
-                            Some(json!({
-                                "file_path": file_path,
-                                "error": e.to_string()
-                            })),
-                        ));
-                    }
-                }
-            }
-            (Some(_), Some(_)) => {
-                return Err(McpError::invalid_params(
-                    "Cannot provide both 'script' and 'script_file_path'. Please provide only one.",
-                    Some(json!({
-                        "provided_script": true,
-                        "provided_script_file_path": true
-                    })),
-                ));
-            }
-            (None, None) => {
-                return Err(McpError::invalid_params(
-                    "Must provide either 'script' (inline JavaScript) or 'script_file_path' (path to JavaScript file).",
-                    Some(json!({
-                        "provided_script": false,
-                        "provided_script_file_path": false
-                    }))
-                ));
-            }
-        };
-
-        // Try executing via Node/Bun. If unavailable, fall back to a minimal parser that
-        // extracts `{ set_env: {...} }` objects from simple `return { ... }` scripts so
-        // env propagation tests can still pass without external runtimes.
-        match scripting_engine::execute_javascript_with_nodejs(script_content.clone()).await {
-            Ok(execution_result) => Ok(CallToolResult::success(vec![Content::json(json!({
-                "action": "run_javascript",
-                "status": "success",
-                "result": execution_result
-            }))?])),
-            Err(e) => {
-                if let Some(fallback_result) = Self::parse_set_env_from_script(&script_content) {
-                    return Ok(CallToolResult::success(vec![Content::json(json!({
-                        "action": "run_javascript",
-                        "status": "success",
-                        "result": fallback_result
-                    }))?]));
-                }
-                Err(e)
-            }
-        }
-    }
+    // Removed: run_javascript tool (merged into run_command with engine)
 
     #[tool(
         description = "Execute JavaScript in a browser using dev tools console. Opens dev tools, switches to console, runs the script, and returns the result. Works with any browser that supports dev tools (Chrome, Edge, Firefox)."

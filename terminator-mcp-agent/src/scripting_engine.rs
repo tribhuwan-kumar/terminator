@@ -1223,6 +1223,375 @@ console.log('[Node.js Wrapper] Starting user script execution...');
     }
 }
 
+/// Execute Python using system interpreter with terminator.py bindings available
+pub async fn execute_python_with_bindings(script: String) -> Result<serde_json::Value, McpError> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
+    info!("[Python] Starting Python execution with terminator.py bindings");
+    info!(
+        "[Python] Script to execute ({} bytes)",
+        script.len()
+    );
+
+    // Discover python interpreter
+    let mut python_exe = find_executable("python").unwrap_or_else(|| "python".to_string());
+    // If 'python' is not a valid executable, try python3
+    if let Ok(output) = Command::new(&python_exe).arg("--version").output().await {
+        if !output.status.success() {
+            if let Some(py3) = find_executable("python3") {
+                python_exe = py3;
+            }
+        }
+    }
+
+    // Ensure cached terminator.py installation and get site-packages path
+    let site_packages_dir = ensure_terminator_py_installed(&python_exe).await?;
+    log_terminator_py_version(&python_exe, &site_packages_dir).await;
+
+    // Prepare wrapper script that imports terminator and runs the user code
+    let wrapper_script = {
+        let mut indented = String::new();
+        for line in script.lines() {
+            indented.push_str("    ");
+            indented.push_str(line);
+            indented.push('\n');
+        }
+        format!(
+            r#"
+import sys, json, asyncio, traceback
+
+try:
+    import terminator as _terminator
+except Exception as e:
+    sys.stdout.write('__ERROR__' + json.dumps({{ 'message': 'Failed to import terminator (terminator.py)', 'error': str(e) }}) + '__END__\n')
+    sys.exit(0)
+
+desktop = _terminator.Desktop()
+
+async def __user_main__():
+    # Helpers
+    async def sleep(ms):
+        await asyncio.sleep(ms / 1000.0)
+    def log(*args, **kwargs):
+        print(*args, **kwargs)
+    # User code (must use 'return' for final value)
+{indented}
+
+async def __runner__():
+    try:
+        result = await __user_main__()
+        # Normalize None to null for JSON
+        sys.stdout.write('__RESULT__' + json.dumps(result) + '__END__\n')
+    except Exception as e:
+        sys.stdout.write('__ERROR__' + json.dumps({{
+            'message': str(e),
+            'stack': traceback.format_exc()
+        }}) + '__END__\n')
+
+asyncio.run(__runner__())
+"#,
+            indented = indented
+        )
+    };
+
+    // Use a dedicated temp directory for Python execution
+    let script_dir = std::env::temp_dir().join(format!(
+        "terminator_mcp_python_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    tokio::fs::create_dir_all(&script_dir)
+        .await
+        .map_err(|e| McpError::internal_error("Failed to create python script directory", Some(json!({"error": e.to_string()}))))?;
+
+    let script_path = script_dir.join("main.py");
+    tokio::fs::write(&script_path, &wrapper_script)
+        .await
+        .map_err(|e| McpError::internal_error("Failed to write python script", Some(json!({"error": e.to_string()}))))?;
+
+    // Spawn python (inject PYTHONPATH so terminator is importable)
+    let path_sep = if cfg!(windows) { ";" } else { ":" };
+    let mut pythonpath_value = site_packages_dir.to_string_lossy().to_string();
+    if let Ok(existing) = std::env::var("PYTHONPATH") {
+        if !existing.is_empty() {
+            pythonpath_value = format!("{}{}{}", site_packages_dir.to_string_lossy(), path_sep, existing);
+        }
+    }
+
+    let mut child = Command::new(&python_exe)
+        .current_dir(&script_dir)
+        .arg(script_path.file_name().unwrap())
+        .env("PYTHONPATH", pythonpath_value)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| McpError::internal_error("Failed to spawn python process", Some(json!({"error": e.to_string(), "python": python_exe}))))?;
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
+    let mut result: Option<serde_json::Value> = None;
+    let mut env_updates: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    let mut stderr_output: Vec<String> = Vec::new();
+
+    loop {
+        tokio::select! {
+            line = stdout.next_line() => {
+                match line {
+                    Ok(Some(text)) => {
+                        info!("[Python stdout] {}", text);
+                        // Parse GitHub Actions style env updates: ::set-env name=KEY::VALUE
+                        if let Some(stripped) = text.strip_prefix("::set-env ") {
+                            if let Some(name_pos) = stripped.find("name=") {
+                                let after_name = &stripped[name_pos + 5..];
+                                if let Some(sep_idx) = after_name.find("::") {
+                                    let key = after_name[..sep_idx].trim();
+                                    let value = after_name[sep_idx + 2..].to_string();
+                                    if !key.is_empty() {
+                                        env_updates.insert(key.to_string(), serde_json::Value::String(value));
+                                    }
+                                }
+                            }
+                        }
+                        if text.starts_with("__RESULT__") && text.ends_with("__END__") {
+                            let result_json = text.replace("__RESULT__", "").replace("__END__", "");
+                            match serde_json::from_str(&result_json) {
+                                Ok(val) => { result = Some(val); break; },
+                                Err(e) => { error!("[Python] Failed to parse result JSON: {}", e); }
+                            }
+                        } else if text.starts_with("__ERROR__") && text.ends_with("__END__") {
+                            let error_json = text.replace("__ERROR__", "").replace("__END__", "");
+                            return Err(McpError::internal_error("Python execution error", serde_json::from_str::<serde_json::Value>(&error_json).ok()));
+                        }
+                    },
+                    Ok(None) => { break; },
+                    Err(e) => { error!("[Python] Error reading stdout: {}", e); break; }
+                }
+            },
+            line = stderr.next_line() => {
+                match line {
+                    Ok(Some(text)) => { error!("[Python stderr] {}", text); stderr_output.push(text); },
+                    Ok(None) => {},
+                    Err(e) => { error!("[Python] Error reading stderr: {}", e); }
+                }
+            }
+        }
+    }
+
+    let status = child.wait().await.map_err(|e| McpError::internal_error("Python process failed", Some(json!({"error": e.to_string()}))))?;
+
+    if !status.success() {
+        return Err(McpError::internal_error(
+            "Python process exited with error",
+            Some(json!({
+                "exit_code": status.code(),
+                "stderr": stderr_output.join("\n"),
+                "script_path": script_path.to_string_lossy(),
+                "working_directory": script_dir.to_string_lossy(),
+                "python": python_exe
+            }))
+        ));
+    }
+
+    // Clean up best-effort
+    let _ = tokio::fs::remove_dir_all(&script_dir).await;
+
+    match result {
+        Some(mut r) => {
+            if !env_updates.is_empty() {
+                if let Some(obj) = r.as_object_mut() {
+                    if let Some(existing) = obj.get_mut("set_env") {
+                        if let Some(existing_obj) = existing.as_object_mut() {
+                            for (k, v) in env_updates.iter() { existing_obj.insert(k.clone(), v.clone()); }
+                        } else {
+                            obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                        }
+                    } else {
+                        obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                    }
+                } else {
+                    r = serde_json::json!({ "output": r, "set_env": env_updates });
+                }
+            }
+            Ok(r)
+        },
+        None => Err(McpError::internal_error("No result received from Python process", Some(json!({"stderr": stderr_output.join("\n")}))))
+    }
+}
+
+/// Ensure terminator.py is installed in a persistent site-packages directory
+pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf, McpError> {
+    use tokio::process::Command;
+
+    info!("[Python] Checking if terminator.py is installed (cached)");
+    let cache_dir = std::env::temp_dir().join("terminator_mcp_python_persistent");
+    let site_packages_dir = cache_dir.join("site-packages");
+
+    tokio::fs::create_dir_all(&site_packages_dir).await.map_err(|e| {
+        McpError::internal_error(
+            "Failed to create Python site-packages cache directory",
+            Some(json!({"error": e.to_string(), "dir": site_packages_dir})),
+        )
+    })?;
+
+    // Determine if we should update: daily or forced
+    let mut should_check_update = false;
+    if let Ok(meta) = tokio::fs::metadata(&site_packages_dir).await {
+        if let Ok(modified) = meta.modified() {
+            if let Ok(age) = std::time::SystemTime::now().duration_since(modified) {
+                should_check_update = age.as_secs() > 86400; // 24h
+            }
+        }
+    }
+    if std::env::var("TERMINATOR_PY_UPDATE")
+        .map(|v| v.eq_ignore_ascii_case("always"))
+        .unwrap_or(false)
+    {
+        should_check_update = true;
+        info!("[Python] Forced update enabled via TERMINATOR_PY_UPDATE=always");
+    }
+
+    // Check if import works already
+    let import_ok = {
+        let mut cmd = Command::new(python_exe);
+        cmd.arg("-c").arg("import sys;print('ok')")
+            .env(
+                "PYTHONPATH",
+                site_packages_dir.to_string_lossy().to_string(),
+            );
+        match cmd.output().await {
+            Ok(out) => out.status.success(),
+            Err(_) => false,
+        }
+    };
+
+    // If site-packages exists but no update needed, try to see if terminator is importable
+    let mut have_terminator = false;
+    if !should_check_update {
+        let mut cmd = Command::new(python_exe);
+        cmd.arg("-c").arg("import sys; import terminator; print('ok')")
+            .env(
+                "PYTHONPATH",
+                site_packages_dir.to_string_lossy().to_string(),
+            );
+        if let Ok(out) = cmd.output().await {
+            have_terminator = out.status.success();
+        }
+    }
+
+    if should_check_update || !import_ok || !have_terminator {
+        info!("[Python] Installing/upgrading terminator.py into cache using pip");
+        let max_retries = 3;
+        let mut attempt = 0;
+        let candidates = ["terminator.py", "terminator-py", "terminator"];
+        let mut last_err: Option<String> = None;
+
+        while attempt < max_retries {
+            attempt += 1;
+            for pkg in &candidates {
+                let args = [
+                    "-m",
+                    "pip",
+                    "install",
+                    "--upgrade",
+                    "--no-input",
+                    "--disable-pip-version-check",
+                    "--no-warn-script-location",
+                    pkg,
+                    "--target",
+                    site_packages_dir.to_string_lossy().as_ref(),
+                ];
+                info!("[Python] pip attempt {}: installing {}", attempt, pkg);
+                match Command::new(python_exe).args(args).output().await {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        let stderr = String::from_utf8_lossy(&out.stderr);
+                        info!("[Python] pip stdout: {}", stdout);
+                        if out.status.success() {
+                            info!("[Python] pip install succeeded for {}", pkg);
+                            // Touch cache dir mtime
+                            let _ = tokio::fs::write(cache_dir.join(".stamp"), b"ok").await;
+                            // Verify import
+                            let mut verify = Command::new(python_exe);
+                            verify
+                                .arg("-c")
+                                .arg("import terminator; print('ok')")
+                                .env(
+                                    "PYTHONPATH",
+                                    site_packages_dir.to_string_lossy().to_string(),
+                                );
+                            if let Ok(v) = verify.output().await {
+                                if v.status.success() {
+                                    return Ok(site_packages_dir);
+                                }
+                            }
+                        } else {
+                            warn!("[Python] pip install failed for {}: {}", pkg, stderr);
+                            last_err = Some(stderr.to_string());
+                        }
+                    }
+                    Err(e) => {
+                        warn!("[Python] Failed to run pip for {}: {}", pkg, e);
+                        last_err = Some(e.to_string());
+                    }
+                }
+            }
+            // Backoff
+            tokio::time::sleep(std::time::Duration::from_millis(500 * attempt as u64)).await;
+        }
+
+        return Err(McpError::internal_error(
+            "Failed to install terminator.py via pip",
+            Some(json!({"error": last_err})),
+        ));
+    }
+
+    Ok(site_packages_dir)
+}
+
+/// Log installed terminator.py version using Python runtime with injected PYTHONPATH
+async fn log_terminator_py_version(python_exe: &str, site_packages_dir: &std::path::Path) {
+    use tokio::process::Command;
+    let code = r#"
+import sys
+try:
+    import importlib.metadata as md
+except Exception:
+    import importlib_metadata as md  # type: ignore
+try:
+    v = md.version('terminator.py')
+except Exception:
+    try:
+        v = md.version('terminator-py')
+    except Exception:
+        v = 'unknown'
+print(v)
+"#;
+
+    match Command::new(python_exe)
+        .arg("-c")
+        .arg(code)
+        .env("PYTHONPATH", site_packages_dir.to_string_lossy().to_string())
+        .output()
+        .await
+    {
+        Ok(out) if out.status.success() => {
+            let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            info!("[Python] Using terminator.py version {}", version);
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            info!("[Python] Could not determine terminator.py version: {}", stderr);
+        }
+        Err(e) => {
+            info!("[Python] Version query failed: {}", e);
+        }
+    }
+}
+
 /// Execute JavaScript using Node.js runtime with LOCAL terminator.js bindings (for development/testing)
 pub async fn execute_javascript_with_local_bindings(
     script: String,

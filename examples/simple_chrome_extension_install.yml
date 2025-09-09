@@ -2,9 +2,10 @@ variables: {}
 selectors: {}
 steps:
   # Step 1: Download Chrome extension
-  - tool_name: run_javascript
+  - tool_name: run_command
     arguments:
-      script: |
+      engine: javascript
+      run: |
         const fs = require('fs');
         const path = require('path');
         const os = require('os');

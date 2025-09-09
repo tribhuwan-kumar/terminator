@@ -109,11 +109,14 @@ Your most reliable strategy is to inspect the application's UI structure *before
     }}
     ```
 
-**JavaScript Automation with run_javascript**
+**Code execution via run_command (engine mode)**
 
-The `run_javascript` tool enables powerful automation workflows using familiar JavaScript syntax with full access to desktop automation APIs.
+Use `run_command` with `engine` to execute code directly with SDK bindings:
 
-**Global Objects Available:**
+- engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`). Put your JS in `run`.
+- engine: `python` executes async Python with terminator.py (variable `desktop`). Put your Python in `run`.
+
+**Globals/Helpers Available:**
 *   `desktop` - Main Desktop automation instance
 *   `log(message)` - Console logging function
 *   `sleep(ms)` - Async delay function (returns Promise)

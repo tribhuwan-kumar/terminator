@@ -173,10 +173,11 @@ async fn test_execute_sequence_env_propagation() {
     // Arrange: server and args with set_env then delay using env var
     let server = DesktopWrapper::new().unwrap();
 
-    // JS step that returns an env update payload
+    // JS step merged into run_command engine mode that returns an env update payload
     let set_env_step = SequenceStep {
-        tool_name: Some("run_javascript".to_string()),
+        tool_name: Some("run_command".to_string()),
         arguments: Some(json!({
+            "engine": "javascript",
             "script": "return { set_env: { delay: 5, message: 'hello' } };"
         })),
         continue_on_error: None,
@@ -247,11 +248,12 @@ async fn test_execute_sequence_env_via_log_command() {
     /* Commented out until fixed:
     let server = DesktopWrapper::new().unwrap();
 
-    // Step 1: JS logs a GitHub Actions-style env update
+    // Step 1: JS engine logs a GitHub Actions-style env update
     let set_env_via_log = SequenceStep {
-        tool_name: Some("run_javascript".to_string()),
+        tool_name: Some("run_command".to_string()),
         arguments: Some(json!({
             // No return; just emit env via log. Wrapper will still produce a result (null) and capture set_env.
+            "engine": "javascript",
             "script": "console.log('::set-env name=dog::john');"
         })),
         continue_on_error: None,
@@ -261,8 +263,9 @@ async fn test_execute_sequence_env_via_log_command() {
 
     // Step 2: Another JS step consumes env and returns it
     let consume_env = SequenceStep {
-        tool_name: Some("run_javascript".to_string()),
+        tool_name: Some("run_command".to_string()),
         arguments: Some(json!({
+            "engine": "javascript",
             "script": "return { verify: '${{ env.dog }}' };"
         })),
         continue_on_error: None,

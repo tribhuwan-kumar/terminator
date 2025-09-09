@@ -8,9 +8,10 @@ arguments:
       default: "Hello from remote workflow!"
 
   steps:
-    - tool_name: run_javascript
+    - tool_name: run_command
       arguments:
-        script: |
+        engine: javascript
+        run: |
           console.log("Remote workflow executed successfully!");
           console.log("Message: ${{inputs.message}}");
           return { success: true, message: "${{inputs.message}}", timestamp: new Date().toISOString() };
