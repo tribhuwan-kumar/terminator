@@ -12,7 +12,7 @@ arguments:
     - tool_name: run_command
       arguments:
         engine: javascript
-        script: |
+        run: |
           const fs = require('fs');
           const path = require('path');
           const os = require('os');

@@ -11,7 +11,7 @@ arguments:
     - tool_name: run_command
       arguments:
         engine: javascript
-        script: |
+        run: |
           console.log("Remote workflow executed successfully!");
           console.log("Message: ${{inputs.message}}");
           return { success: true, message: "${{inputs.message}}", timestamp: new Date().toISOString() };
