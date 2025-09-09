@@ -1,5 +1,13 @@
 use terminator::Browser;
-use terminator::{platforms, AutomationError};
+use terminator::{platforms, AutomationError, UIElement};
+
+// Ensures any opened UIElement (app/window) is closed when going out of scope
+struct CloseOnDrop<'a>(&'a UIElement);
+impl<'a> Drop for CloseOnDrop<'a> {
+    fn drop(&mut self) {
+        let _ = self.0.close();
+    }
+}
 use tracing::{info, Level};
 
 #[tokio::test]
@@ -48,6 +56,7 @@ async fn test_open_url() -> Result<(), AutomationError> {
         } else {
             match result {
                 Ok(element) => {
+                    let _guard = CloseOnDrop(&element);
                     assert!(element.name().is_some(), "expected name for ui element");
                     info!(
                         "opened url '{:?}' in '{:?}' in '{:?}'",

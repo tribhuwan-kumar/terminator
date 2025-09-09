@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 use std::time::Duration;
 use terminator::platforms::AccessibilityEngine;
+use terminator::UIElement;
 use terminator::Browser;
 use terminator::{platforms, AutomationError};
 use tracing::{info, Level};
@@ -17,6 +18,14 @@ fn create_test_engine() -> Result<std::sync::Arc<dyn AccessibilityEngine>, Autom
     platforms::create_engine(false, false)
 }
 
+// Ensures any opened UIElement (app/window) is closed when going out of scope
+struct CloseOnDrop<'a>(&'a UIElement);
+impl<'a> Drop for CloseOnDrop<'a> {
+    fn drop(&mut self) {
+        let _ = self.0.close();
+    }
+}
+
 #[tokio::test]
 async fn test_open_url_basic_functionality() -> Result<(), AutomationError> {
     setup_logging();
@@ -31,6 +40,7 @@ async fn test_open_url_basic_functionality() -> Result<(), AutomationError> {
 
     match result {
         Ok(element) => {
+            let _guard = CloseOnDrop(&element);
             info!("✅ Successfully opened URL and found element");
             info!("Element name: {:?}", element.name());
             info!("Element role: {}", element.role());
@@ -77,6 +87,7 @@ async fn test_open_url_browser_detection() -> Result<(), AutomationError> {
 
         match engine.open_url(url, Some(browser.clone())) {
             Ok(element) => {
+                let _guard = CloseOnDrop(&element);
                 info!("✅ {} - Success in {:?}", description, start.elapsed());
                 info!(
                     "   Element: {} ({})",
@@ -124,7 +135,10 @@ async fn test_browser_window_enumeration() -> Result<(), AutomationError> {
     info!("Opening URL: {}", url);
 
     match engine.open_url(url, Some(Browser::Default)) {
-        Ok(_) => info!("✅ URL opened successfully"),
+        Ok(element) => {
+            let _guard = CloseOnDrop(&element);
+            info!("✅ URL opened successfully")
+        },
         Err(e) => info!("❌ URL opening failed: {}", e),
     }
 
@@ -316,6 +330,7 @@ async fn test_multiple_browser_windows() -> Result<(), AutomationError> {
         info!("Opening: {}", url);
         match engine.open_url(url, Some(Browser::Default)) {
             Ok(element) => {
+                let _guard = CloseOnDrop(&element);
                 info!(
                     "✅ Opened: {} -> {}",
                     url,
@@ -362,7 +377,8 @@ async fn test_focus_and_current_window() -> Result<(), AutomationError> {
 
     // Open a URL
     match engine.open_url("https://example.com", Some(Browser::Default)) {
-        Ok(_) => {
+        Ok(element) => {
+            let _guard = CloseOnDrop(&element);
             info!("✅ URL opened, now checking focus...");
 
             // Check what window is currently focused
