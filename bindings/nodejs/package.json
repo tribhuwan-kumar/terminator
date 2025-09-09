@@ -37,11 +37,11 @@
     }
   },
   "optionalDependencies": {
-    "terminator.js-darwin-arm64": "0.12.18",
-    "terminator.js-darwin-x64": "0.12.18",
-    "terminator.js-linux-x64-gnu": "0.12.18",
-    "terminator.js-win32-arm64-msvc": "0.12.18",
-    "terminator.js-win32-x64-msvc": "0.12.18"
+    "terminator.js-darwin-arm64": "0.13.0",
+    "terminator.js-darwin-x64": "0.13.0",
+    "terminator.js-linux-x64-gnu": "0.13.0",
+    "terminator.js-win32-arm64-msvc": "0.13.0",
+    "terminator.js-win32-x64-msvc": "0.13.0"
   },
   "repository": {
     "type": "git",
@@ -55,10 +55,10 @@
     "prepublishOnly": "npm run sync-version && npx napi prepublish -t npm",
     "sync-version": "node sync-version.js",
     "test": "npm run test:basic && npm run test:chaining",
+    "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\"",
     "test:basic": "node node_example.js",
-    "test:chaining": "node tests/element-chaining.test.js",
-    "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
+    "test:chaining": "node tests/element-chaining.test.js"
   },
   "types": "wrapper.d.ts",
-  "version": "0.12.18"
+  "version": "0.13.0"
 }
