@@ -1,4 +1,13 @@
 use std::{sync::Arc, time::Duration};
+use terminator::UIElement;
+
+// Ensures any opened UIElement (app/window) is closed when going out of scope
+struct CloseOnDrop<'a>(&'a UIElement);
+impl<'a> Drop for CloseOnDrop<'a> {
+    fn drop(&mut self) {
+        let _ = self.0.close();
+    }
+}
 
 fn start_test_server() -> (String, Arc<tiny_http::Server>) {
     let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
@@ -31,6 +40,7 @@ async fn test_click_hover_layout_shift_flaky() {
     let browser_window = desktop
         .open_url(&server_url, None)
         .expect("Failed to open test page");
+    let _guard = CloseOnDrop(&browser_window);
 
     // Find the target element (a div with role=button and name "Click Area")
     let target = browser_window
