@@ -1166,28 +1166,13 @@ impl DesktopWrapper {
         // Engine-based execution path (provides SDK bindings)
         if let Some(engine_value) = args.engine.as_ref() {
             let engine = engine_value.to_ascii_lowercase();
-            // Resolve script content
-            let script_content = match (&args.script, &args.script_file_path) {
-                (Some(s), None) => s.clone(),
-                (None, Some(path)) => std::fs::read_to_string(path).map_err(|e| {
-                    McpError::invalid_params(
-                        "Failed to read script file",
-                        Some(json!({"file_path": path, "error": e.to_string()})),
-                    )
-                })?,
-                (Some(_), Some(_)) => {
-                    return Err(McpError::invalid_params(
-                        "Provide only one of 'script' or 'script_file_path' when using engine",
-                        None,
-                    ))
-                }
-                (None, None) => {
-                    return Err(McpError::invalid_params(
-                        "'script' or 'script_file_path' is required when 'engine' is set",
-                        None,
-                    ))
-                }
-            };
+            // Resolve script content from run (single source of truth)
+            let script_content = args.run.clone().ok_or_else(|| {
+                McpError::invalid_params(
+                    "'run' is required and contains the inline code when using 'engine'",
+                    None,
+                )
+            })?;
 
             // Map engine to executor
             let is_js = matches!(engine.as_str(), "node" | "bun" | "javascript" | "js");

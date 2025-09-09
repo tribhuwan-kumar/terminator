@@ -320,21 +320,13 @@ pub struct GlobalKeyArgs {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RunCommandArgs {
     #[schemars(
-        description = "The shell command to run (GitHub Actions-style). Optional when using 'engine' + 'script'."
+        description = "The shell command to run (GitHub Actions-style). When using 'engine', this field contains the inline code to execute."
     )]
     pub run: Option<String>,
     #[schemars(
         description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'python'. When set, 'script' or 'script_file_path' must be provided."
     )]
     pub engine: Option<String>,
-    #[schemars(
-        description = "Inline source code to execute when using 'engine'. For Node/Bun, JavaScript with terminator.js available as global 'desktop'. For Python, async Python with terminator available as 'desktop'."
-    )]
-    pub script: Option<String>,
-    #[schemars(
-        description = "Path to a source file to execute when using 'engine'. Either this or 'script' must be provided if 'engine' is set."
-    )]
-    pub script_file_path: Option<String>,
     #[schemars(
         description = "The shell to use for 'run' (ignored when 'engine' is used). If not specified, defaults to PowerShell on Windows, bash on Unix. Common values: 'bash', 'sh', 'cmd', 'powershell', 'pwsh'"
     )]

@@ -370,13 +370,13 @@ terminator mcp run workflow.yml --dry-run
 
 ```bash
 # Test JavaScript execution capability via run_command (engine mode)
-terminator mcp exec run_command '{"engine": "javascript", "script": "return {test: true};"}'
+terminator mcp exec run_command '{"engine": "javascript", "run": "return {test: true};"}'
 
 # Use node engine for full APIs
-terminator mcp exec run_command '{"engine": "node", "script": "const elements = await desktop.locator(\\\"role:button\\\").all(); return {count: elements.length};"}'
+terminator mcp exec run_command '{"engine": "node", "run": "const elements = await desktop.locator(\"role:button\").all(); return {count: elements.length};"}'
 
 # Run Python with terminator.py
-terminator mcp exec run_command '{"engine": "python", "script": "return {\\\"ok\\\": True}"}'
+terminator mcp exec run_command '{"engine": "python", "run": "return {\"ok\": True}"}'
 
 # Debug JavaScript errors with verbose logging
 terminator mcp run workflow.yml --verbose

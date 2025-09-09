@@ -113,8 +113,8 @@ Your most reliable strategy is to inspect the application's UI structure *before
 
 Use `run_command` with `engine` to execute code directly with SDK bindings:
 
-- engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`)
-- engine: `python` executes async Python with terminator.py (variable `desktop`)
+- engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`). Put your JS in `run`.
+- engine: `python` executes async Python with terminator.py (variable `desktop`). Put your Python in `run`.
 
 **Globals/Helpers Available:**
 *   `desktop` - Main Desktop automation instance
