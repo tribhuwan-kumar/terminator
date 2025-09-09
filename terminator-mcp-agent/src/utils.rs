@@ -324,7 +324,7 @@ pub struct RunCommandArgs {
     )]
     pub run: Option<String>,
     #[schemars(
-        description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'python'. When set, 'script' or 'script_file_path' must be provided."
+        description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'python'. When set, 'run' must contain the inline code to execute."
     )]
     pub engine: Option<String>,
     #[schemars(

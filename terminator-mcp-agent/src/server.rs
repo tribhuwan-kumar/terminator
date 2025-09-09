@@ -1158,7 +1158,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide 'script' or 'script_file_path'."
+        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run'."
     )]
     async fn run_command(
         &self,
@@ -1210,7 +1210,7 @@ impl DesktopWrapper {
         // Shell-based execution path
         let run_str = args.run.clone().ok_or_else(|| {
             McpError::invalid_params(
-                "Either 'run' must be provided for shell execution, or 'engine' with 'script' for code execution",
+                "'run' is required for shell command execution",
                 None,
             )
         })?;
