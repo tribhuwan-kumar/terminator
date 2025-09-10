@@ -1,6 +1,7 @@
 use terminator_mcp_agent::scripting_engine;
 
 #[tokio::test]
+#[ignore = "Requires local bindings which aren't available in CI"]
 async fn test_javascript_engine_basic() {
     // Skip npm install in tests to avoid timeout
     std::env::set_var("TERMINATOR_SKIP_NPM_INSTALL", "1");
@@ -16,6 +17,7 @@ async fn test_javascript_engine_basic() {
 }
 
 #[tokio::test]
+#[ignore = "Requires local bindings which aren't available in CI"]
 async fn test_javascript_engine_with_async() {
     // Skip npm install in tests to avoid timeout
     std::env::set_var("TERMINATOR_SKIP_NPM_INSTALL", "1");
@@ -36,6 +38,7 @@ async fn test_javascript_engine_with_async() {
 }
 
 #[tokio::test]
+#[ignore = "Requires local bindings which aren't available in CI"]
 async fn test_javascript_engine_with_desktop_api() {
     // Skip npm install in tests to avoid timeout
     std::env::set_var("TERMINATOR_SKIP_NPM_INSTALL", "1");
