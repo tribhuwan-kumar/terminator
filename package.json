@@ -1,0 +1,28 @@
+{
+  "name": "terminator-otel-testing",
+  "version": "1.0.0",
+  "description": "https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0",
+  "main": "test-http-events.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mediar-ai/terminator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mediar-ai/terminator/issues"
+  },
+  "homepage": "https://github.com/mediar-ai/terminator#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5"
+  }
+}
