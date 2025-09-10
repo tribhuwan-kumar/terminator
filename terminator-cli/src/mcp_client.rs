@@ -206,8 +206,8 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                 {
                     Ok(result) => {
                         println!("✅ Result:");
-                        if let Some(content_vec) = &result.content {
-                            for content in content_vec {
+                        if !result.content.is_empty() {
+                            for content in &result.content {
                                 match &content.raw {
                                     rmcp::model::RawContent::Text(text) => {
                                         println!("{}", text.text);
@@ -220,6 +220,9 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                                     }
                                     rmcp::model::RawContent::Audio(audio) => {
                                         println!("[Audio: {}]", audio.mime_type);
+                                    }
+                                    rmcp::model::RawContent::ResourceLink(resource) => {
+                                        println!("[ResourceLink: {:?}]", resource);
                                     }
                                 }
                             }
@@ -358,8 +361,8 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                 {
                     Ok(result) => {
                         println!("✅ Result:");
-                        if let Some(content_vec) = &result.content {
-                            for content in content_vec {
+                        if !result.content.is_empty() {
+                            for content in &result.content {
                                 match &content.raw {
                                     rmcp::model::RawContent::Text(text) => {
                                         println!("{}", text.text);
@@ -372,6 +375,9 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                                     }
                                     rmcp::model::RawContent::Audio(audio) => {
                                         println!("[Audio: {}]", audio.mime_type);
+                                    }
+                                    rmcp::model::RawContent::ResourceLink(resource) => {
+                                        println!("[ResourceLink: {:?}]", resource);
                                     }
                                 }
                             }
@@ -438,8 +444,8 @@ pub async fn execute_command(
                 .await?;
 
             println!("✅ Result:");
-            if let Some(content_vec) = &result.content {
-                for content in content_vec {
+            if !result.content.is_empty() {
+                for content in &result.content {
                     match &content.raw {
                         rmcp::model::RawContent::Text(text) => {
                             println!("{}", text.text);
@@ -452,6 +458,9 @@ pub async fn execute_command(
                         }
                         rmcp::model::RawContent::Audio(audio) => {
                             println!("[Audio: {}]", audio.mime_type);
+                        }
+                        rmcp::model::RawContent::ResourceLink(resource) => {
+                            println!("[ResourceLink: {:?}]", resource);
                         }
                     }
                 }
@@ -501,8 +510,8 @@ pub async fn execute_command(
                 .await?;
 
             println!("✅ Result:");
-            if let Some(content_vec) = &result.content {
-                for content in content_vec {
+            if !result.content.is_empty() {
+                for content in &result.content {
                     match &content.raw {
                         rmcp::model::RawContent::Text(text) => {
                             println!("{}", text.text);
@@ -515,6 +524,9 @@ pub async fn execute_command(
                         }
                         rmcp::model::RawContent::Audio(audio) => {
                             println!("[Audio: {}]", audio.mime_type);
+                        }
+                        rmcp::model::RawContent::ResourceLink(resource) => {
+                            println!("[ResourceLink: {:?}]", resource);
                         }
                     }
                 }
@@ -772,19 +784,14 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                         Ok(res) => {
                             let text_results: Vec<String> = res
                                 .content
-                                .as_ref()
-                                .map(|content_vec| {
-                                    content_vec
-                                        .iter()
-                                        .filter_map(|c| match &c.raw {
-                                            rmcp::model::RawContent::Text(text) => {
-                                                Some(text.text.clone())
-                                            }
-                                            _ => None,
-                                        })
-                                        .collect()
+                                .iter()
+                                .filter_map(|c| match &c.raw {
+                                    rmcp::model::RawContent::Text(text) => {
+                                        Some(text.text.clone())
+                                    }
+                                    _ => None,
                                 })
-                                .unwrap_or_else(Vec::new);
+                                .collect();
                             if text_results.is_empty() {
                                 "Tool executed successfully.".to_string()
                             } else {
@@ -867,8 +874,8 @@ pub async fn execute_command_with_result(
                     .await?;
 
                 // Parse the result content as JSON
-                if let Some(content_vec) = &result.content {
-                    for content in content_vec {
+                if !result.content.is_empty() {
+                    for content in &result.content {
                         if let rmcp::model::RawContent::Text(text) = &content.raw {
                             // Try to parse as JSON
                             if let Ok(json_result) =
@@ -915,8 +922,8 @@ pub async fn execute_command_with_result(
                     .await?;
 
                 // Parse the result content as JSON
-                if let Some(content_vec) = &result.content {
-                    for content in content_vec {
+                if !result.content.is_empty() {
+                    for content in &result.content {
                         if let rmcp::model::RawContent::Text(text) = &content.raw {
                             // Try to parse as JSON
                             if let Ok(json_result) =
