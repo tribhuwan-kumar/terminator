@@ -1166,6 +1166,14 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<RunCommandArgs>,
     ) -> Result<CallToolResult, McpError> {
+        self.run_command_impl(args, None).await
+    }
+
+    async fn run_command_impl(
+        &self,
+        args: RunCommandArgs,
+        cancellation_token: Option<tokio_util::sync::CancellationToken>,
+    ) -> Result<CallToolResult, McpError> {
         // Engine-based execution path (provides SDK bindings)
         if let Some(engine_value) = args.engine.as_ref() {
             let engine = engine_value.to_ascii_lowercase();
@@ -1182,20 +1190,29 @@ impl DesktopWrapper {
             let is_py = matches!(engine.as_str(), "python" | "py");
 
             if is_js {
-                let execution_result =
-                    scripting_engine::execute_javascript_with_nodejs(script_content).await?;
-                
+                let execution_result = scripting_engine::execute_javascript_with_nodejs(
+                    script_content,
+                    cancellation_token,
+                )
+                .await?;
+
                 // Extract logs and actual result
                 let logs = execution_result.get("logs").cloned();
-                let actual_result = execution_result.get("result").cloned().unwrap_or(execution_result.clone());
-                
+                let actual_result = execution_result
+                    .get("result")
+                    .cloned()
+                    .unwrap_or(execution_result.clone());
+
                 // Debug log extraction
                 if let Some(ref log_array) = logs {
                     if let Some(arr) = log_array.as_array() {
-                        info!("[run_command] Extracted {} log lines from JavaScript execution", arr.len());
+                        info!(
+                            "[run_command] Extracted {} log lines from JavaScript execution",
+                            arr.len()
+                        );
                     }
                 }
-                
+
                 // Build response with logs
                 let mut response = json!({
                     "action": "run_command",
@@ -1204,16 +1221,16 @@ impl DesktopWrapper {
                     "status": "success",
                     "result": actual_result
                 });
-                
+
                 if let Some(logs) = logs {
                     response["logs"] = logs;
                 }
-                
+
                 return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_py {
                 let execution_result =
                     scripting_engine::execute_python_with_bindings(script_content).await?;
-                    
+
                 // For now, Python doesn't capture logs yet, but we can add it later
                 // Just pass through the result as before
                 return Ok(CallToolResult::success(vec![Content::json(json!({
@@ -3092,7 +3109,20 @@ impl DesktopWrapper {
                 )),
             },
             "run_command" => match serde_json::from_value::<RunCommandArgs>(arguments.clone()) {
-                Ok(args) => self.run_command(Parameters(args)).await,
+                Ok(args) => {
+                    // Create a child cancellation token from the request context
+                    let cancellation_token = tokio_util::sync::CancellationToken::new();
+                    let child_token = cancellation_token.child_token();
+
+                    // Link it to the request context cancellation
+                    let ct_for_task = request_context.ct.clone();
+                    tokio::spawn(async move {
+                        ct_for_task.cancelled().await;
+                        cancellation_token.cancel();
+                    });
+
+                    self.run_command_impl(args, Some(child_token)).await
+                }
                 Err(e) => Err(McpError::invalid_params(
                     "Invalid arguments for run_command",
                     Some(json!({"error": e.to_string()})),

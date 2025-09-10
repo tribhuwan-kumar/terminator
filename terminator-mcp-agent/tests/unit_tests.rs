@@ -1,4 +1,4 @@
-use rmcp::handler::server::tool::Parameters;
+use rmcp::handler::server::wrapper::Parameters;
 use serde_json::json;
 use std::fs;
 use tempfile::TempDir;
@@ -819,7 +819,7 @@ try {
 
     println!("🧪 Testing complete Node.js terminator.js execution...");
 
-    let result = execute_javascript_with_nodejs(test_script.to_string()).await;
+    let result = execute_javascript_with_nodejs(test_script.to_string(), None).await;
 
     match result {
         Ok(value) => {

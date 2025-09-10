@@ -4900,6 +4900,7 @@ dependencies = [
  "clap",
  "futures",
  "image",
+ "libc",
  "ollama-rs",
  "once_cell",
  "opentelemetry",

@@ -1,11 +1,10 @@
-use serde_json::json;
 use terminator_mcp_agent::scripting_engine;
 
 #[tokio::test]
 async fn test_javascript_engine_basic() {
     // Test basic JavaScript execution with the new 'run' parameter
     let script = "return {success: true, value: 42};".to_string();
-    let result = scripting_engine::execute_javascript_with_nodejs(script)
+    let result = scripting_engine::execute_javascript_with_nodejs(script, None)
         .await
         .expect("JavaScript execution should succeed");
 
@@ -22,7 +21,7 @@ async fn test_javascript_engine_with_async() {
     "#
     .to_string();
 
-    let result = scripting_engine::execute_javascript_with_nodejs(script)
+    let result = scripting_engine::execute_javascript_with_nodejs(script, None)
         .await
         .expect("Async JavaScript execution should succeed");
 
@@ -42,7 +41,7 @@ async fn test_javascript_engine_with_desktop_api() {
     "#
     .to_string();
 
-    let result = scripting_engine::execute_javascript_with_nodejs(script)
+    let result = scripting_engine::execute_javascript_with_nodejs(script, None)
         .await
         .expect("Desktop API check should succeed");
 

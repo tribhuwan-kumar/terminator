@@ -839,7 +839,10 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 }
 
 /// Execute JavaScript using Node.js/Bun runtime with terminator.js bindings available
-pub async fn execute_javascript_with_nodejs(script: String) -> Result<serde_json::Value, McpError> {
+pub async fn execute_javascript_with_nodejs(
+    script: String,
+    cancellation_token: Option<tokio_util::sync::CancellationToken>,
+) -> Result<serde_json::Value, McpError> {
     // Dev override: allow forcing local bindings via env var
     if std::env::var("TERMINATOR_JS_USE_LOCAL")
         .map(|v| {
@@ -1052,13 +1055,47 @@ console.log('[Node.js Wrapper] Starting user script execution...');
     // Handle communication with Node.js process
     loop {
         tokio::select! {
+            // Check for cancellation
+            _ = async {
+                if let Some(ref ct) = cancellation_token {
+                    ct.cancelled().await
+                } else {
+                    // Never resolves if no cancellation token
+                    std::future::pending::<()>().await
+                }
+            } => {
+                warn!("[Node.js] Execution cancelled, terminating child process");
+                // Kill the child process
+                #[cfg(windows)]
+                {
+                    // On Windows, we need to kill the process tree
+                    // For now, just kill the direct child
+                    if let Err(e) = child.kill().await {
+                        error!("[Node.js] Failed to kill child process: {}", e);
+                    }
+                }
+                #[cfg(unix)]
+                {
+                    // On Unix, kill the process group
+                    if let Some(pid) = child.id() {
+                        unsafe {
+                            // Send SIGTERM to the process group (negative PID)
+                            libc::kill(-(pid as i32), libc::SIGTERM);
+                        }
+                    }
+                }
+                return Err(McpError::internal_error(
+                    "Execution cancelled by user",
+                    Some(json!({"code": -32001, "reason": "user_cancelled"}))
+                ));
+            }
             stdout_line = stdout.next_line() => {
                 match stdout_line {
                     Ok(Some(line)) => {
                         info!("[Node.js stdout] {}", line);
                         // Capture non-marker lines as logs (excluding wrapper debug output)
-                        if !line.starts_with("__RESULT__") 
-                            && !line.starts_with("__ERROR__") 
+                        if !line.starts_with("__RESULT__")
+                            && !line.starts_with("__ERROR__")
                             && !line.starts_with("::set-env ")
                             && !line.starts_with("[Node.js Wrapper]") {
                             captured_logs.push(line.clone());
@@ -1214,9 +1251,12 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                     });
                 }
             }
-            
+
             // Return result with captured logs
-            info!("[Node.js] Returning {} captured log lines", captured_logs.len());
+            info!(
+                "[Node.js] Returning {} captured log lines",
+                captured_logs.len()
+            );
             Ok(json!({
                 "result": r,
                 "logs": captured_logs
