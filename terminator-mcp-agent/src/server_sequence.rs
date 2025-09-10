@@ -10,7 +10,6 @@ use rmcp::ErrorData as McpError;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tracing::{info, warn};
-use uuid::Uuid;
 
 impl DesktopWrapper {
     pub async fn execute_sequence_impl(
@@ -816,8 +815,8 @@ impl DesktopWrapper {
             Ok(result) => {
                 let mut extracted_content = Vec::new();
 
-                if let Some(content_vec) = &result.content {
-                    for content in content_vec {
+                if !result.content.is_empty() {
+                    for content in &result.content {
                         match extract_content_json(content) {
                             Ok(json_content) => extracted_content.push(json_content),
                             Err(_) => extracted_content.push(
@@ -827,7 +826,7 @@ impl DesktopWrapper {
                     }
                 }
 
-                let content_count = result.content.as_ref().map(|v| v.len()).unwrap_or(0);
+                let content_count = result.content.len();
                 let content_summary = if include_detailed {
                     json!({ "type": "tool_result", "content_count": content_count, "content": extracted_content })
                 } else {

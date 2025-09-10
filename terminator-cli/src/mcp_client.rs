@@ -87,13 +87,7 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
     match transport {
         Transport::Http(url) => {
             println!("Connecting to: {url}");
-            let transport = StreamableHttpClientTransport::with_client(
-                reqwest::Client::new(),
-                rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig {
-                    base_url: url.clone(),
-                    ..Default::default()
-                },
-            );
+            let transport = StreamableHttpClientTransport::from_uri(url.as_str());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
                 capabilities: ClientCapabilities::default(),
@@ -226,6 +220,9 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                                     }
                                     rmcp::model::RawContent::Audio(audio) => {
                                         println!("[Audio: {}]", audio.mime_type);
+                                    }
+                                    rmcp::model::RawContent::ResourceLink(resource) => {
+                                        println!("[ResourceLink: {:?}]", resource);
                                     }
                                 }
                             }
@@ -379,6 +376,9 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                                     rmcp::model::RawContent::Audio(audio) => {
                                         println!("[Audio: {}]", audio.mime_type);
                                     }
+                                    rmcp::model::RawContent::ResourceLink(resource) => {
+                                        println!("[ResourceLink: {:?}]", resource);
+                                    }
                                 }
                             }
                         }
@@ -408,13 +408,7 @@ pub async fn execute_command(
     match transport {
         Transport::Http(url) => {
             info!("Connecting to server: {}", url);
-            let transport = StreamableHttpClientTransport::with_client(
-                reqwest::Client::new(),
-                rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig {
-                    base_url: url.clone(),
-                    ..Default::default()
-                },
-            );
+            let transport = StreamableHttpClientTransport::from_uri(url.as_str());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
                 capabilities: ClientCapabilities::default(),
@@ -464,6 +458,9 @@ pub async fn execute_command(
                         }
                         rmcp::model::RawContent::Audio(audio) => {
                             println!("[Audio: {}]", audio.mime_type);
+                        }
+                        rmcp::model::RawContent::ResourceLink(resource) => {
+                            println!("[ResourceLink: {:?}]", resource);
                         }
                     }
                 }
@@ -528,6 +525,9 @@ pub async fn execute_command(
                         rmcp::model::RawContent::Audio(audio) => {
                             println!("[Audio: {}]", audio.mime_type);
                         }
+                        rmcp::model::RawContent::ResourceLink(resource) => {
+                            println!("[ResourceLink: {:?}]", resource);
+                        }
                     }
                 }
             }
@@ -571,13 +571,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
     let service = match transport {
         Transport::Http(url) => {
             println!("Connecting to MCP server: {url}");
-            let transport = StreamableHttpClientTransport::with_client(
-                reqwest::Client::new(),
-                rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig {
-                    base_url: url.clone(),
-                    ..Default::default()
-                },
-            );
+            let transport = StreamableHttpClientTransport::from_uri(url.as_str());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
                 capabilities: ClientCapabilities::default(),
@@ -853,13 +847,7 @@ pub async fn execute_command_with_result(
         match transport {
             Transport::Http(url) => {
                 debug!("Connecting to server: {}", url);
-                let transport = StreamableHttpClientTransport::with_client(
-                reqwest::Client::new(),
-                rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig {
-                    base_url: url.clone(),
-                    ..Default::default()
-                },
-            );
+                let transport = StreamableHttpClientTransport::from_uri(url.as_str());
                 let client_info = ClientInfo {
                     protocol_version: Default::default(),
                     capabilities: ClientCapabilities::default(),

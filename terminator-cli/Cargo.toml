@@ -28,8 +28,7 @@ anyhow = "1.0"
 rmcp = { version = "0.6.3", features = [
     "transport-child-process",
     "client",
-    "transport-streamable-http-client",
-    "reqwest",
+    "transport-streamable-http-client-reqwest",
 ] }
 
 tracing = "0.1"

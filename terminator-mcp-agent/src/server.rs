@@ -14,14 +14,13 @@ use crate::utils::{
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
-use rmcp::handler::server::wrapper::parameters::Parameters;
+use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
 use rmcp::{tool, ErrorData as McpError, ServerHandler};
 use rmcp::{tool_handler, tool_router};
 use serde_json::json;
-use std::future::Future;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -58,6 +57,9 @@ pub fn extract_content_json(content: &Content) -> Result<serde_json::Value, serd
         rmcp::model::RawContent::Audio(audio_content) => Ok(
             json!({"type": "audio", "data": audio_content.data, "mime_type": audio_content.mime_type}),
         ),
+        rmcp::model::RawContent::ResourceLink(resource_link) => {
+            Ok(json!({"type": "resource_link", "resource": resource_link}))
+        }
     }
 }
 
@@ -2936,7 +2938,7 @@ impl DesktopWrapper {
         tool_name: &str,
         arguments: &serde_json::Value,
     ) -> Result<CallToolResult, McpError> {
-        use rmcp::handler::server::wrapper::parameters::Parameters;
+        use rmcp::handler::server::wrapper::Parameters;
         match tool_name {
             "get_window_tree" => {
                 match serde_json::from_value::<GetWindowTreeArgs>(arguments.clone()) {
