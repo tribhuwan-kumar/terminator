@@ -1182,16 +1182,38 @@ impl DesktopWrapper {
             if is_js {
                 let execution_result =
                     scripting_engine::execute_javascript_with_nodejs(script_content).await?;
-                return Ok(CallToolResult::success(vec![Content::json(json!({
+                
+                // Extract logs and actual result
+                let logs = execution_result.get("logs").cloned();
+                let actual_result = execution_result.get("result").cloned().unwrap_or(execution_result.clone());
+                
+                // Debug log extraction
+                if let Some(ref log_array) = logs {
+                    if let Some(arr) = log_array.as_array() {
+                        info!("[run_command] Extracted {} log lines from JavaScript execution", arr.len());
+                    }
+                }
+                
+                // Build response with logs
+                let mut response = json!({
                     "action": "run_command",
                     "mode": "engine",
                     "engine": engine,
                     "status": "success",
-                    "result": execution_result
-                }))?]));
+                    "result": actual_result
+                });
+                
+                if let Some(logs) = logs {
+                    response["logs"] = logs;
+                }
+                
+                return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_py {
                 let execution_result =
                     scripting_engine::execute_python_with_bindings(script_content).await?;
+                    
+                // For now, Python doesn't capture logs yet, but we can add it later
+                // Just pass through the result as before
                 return Ok(CallToolResult::success(vec![Content::json(json!({
                     "action": "run_command",
                     "mode": "engine",

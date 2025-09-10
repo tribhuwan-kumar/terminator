@@ -1047,6 +1047,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
     // Accumulate env updates from GitHub Actions-style log commands, e.g. ::set-env name=FOO::bar
     let mut env_updates: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     let mut stderr_output = Vec::new();
+    let mut captured_logs = Vec::new(); // Capture all console output
 
     // Handle communication with Node.js process
     loop {
@@ -1055,6 +1056,13 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                 match stdout_line {
                     Ok(Some(line)) => {
                         info!("[Node.js stdout] {}", line);
+                        // Capture non-marker lines as logs (excluding wrapper debug output)
+                        if !line.starts_with("__RESULT__") 
+                            && !line.starts_with("__ERROR__") 
+                            && !line.starts_with("::set-env ")
+                            && !line.starts_with("[Node.js Wrapper]") {
+                            captured_logs.push(line.clone());
+                        }
                         // Parse GitHub Actions style env updates: ::set-env name=KEY::VALUE
                         if let Some(stripped) = line.strip_prefix("::set-env ") {
                             // Expect pattern: name=KEY::VALUE
@@ -1206,7 +1214,13 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                     });
                 }
             }
-            Ok(r)
+            
+            // Return result with captured logs
+            info!("[Node.js] Returning {} captured log lines", captured_logs.len());
+            Ok(json!({
+                "result": r,
+                "logs": captured_logs
+            }))
         }
         None => {
             error!("[Node.js] No result received from process");

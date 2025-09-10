@@ -10,7 +10,6 @@ use rmcp::ErrorData as McpError;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tracing::{info, warn};
-use uuid::Uuid;
 
 impl DesktopWrapper {
     pub async fn execute_sequence_impl(
@@ -403,6 +402,15 @@ impl DesktopWrapper {
 
         while current_index < sequence_items.len() && iterations < max_iterations {
             iterations += 1;
+            
+            // Check if the request has been cancelled
+            if request_context.ct.is_cancelled() {
+                warn!("Request cancelled by user, stopping sequence execution");
+                return Err(McpError::internal_error(
+                    "Request cancelled by user",
+                    Some(json!({"code": -32001, "reason": "user_cancelled"}))
+                ));
+            }
 
             let original_step = args.steps.as_ref().and_then(|s| s.get(current_index));
             if let Some(step) = original_step {
@@ -846,6 +854,28 @@ impl DesktopWrapper {
                 if let Some(id) = step_id {
                     if let Some(obj) = result_json.as_object_mut() {
                         obj.insert("step_id".to_string(), json!(id));
+                    }
+                }
+                
+                // Extract and add logs if present (for run_command)
+                if tool_name_short == "run_command" {
+                    // Debug: log what's in extracted content
+                    for (i, content) in extracted_content.iter().enumerate() {
+                        if let Some(logs) = content.get("logs") {
+                            info!("[execute_single_tool] Found logs in content[{}]: {} entries", i, 
+                                logs.as_array().map(|a| a.len()).unwrap_or(0));
+                        }
+                    }
+                    
+                    // Look for logs in the extracted content
+                    if let Some(logs) = extracted_content.iter()
+                        .find_map(|c| c.get("logs").cloned()) {
+                        info!("[execute_single_tool] Adding logs to result_json");
+                        if let Some(obj) = result_json.as_object_mut() {
+                            obj.insert("logs".to_string(), logs);
+                        }
+                    } else {
+                        info!("[execute_single_tool] No logs found in extracted content");
                     }
                 }
 
