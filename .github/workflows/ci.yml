@@ -12,6 +12,8 @@ env:
   CARGO_PROFILE_DEV_DEBUG: 1
   # Windows specific: disable long path issues
   CARGO_NET_GIT_FETCH_WITH_CLI: true
+  # Skip npm install in tests to avoid timeout
+  TERMINATOR_SKIP_NPM_INSTALL: 1
 
 jobs:
   test:

@@ -118,6 +118,19 @@ async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &st
 async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
     info!("[{}] Checking if terminator.js is installed...", runtime);
 
+    // Skip npm install in test environment when TERMINATOR_SKIP_NPM_INSTALL is set
+    if std::env::var("TERMINATOR_SKIP_NPM_INSTALL").is_ok() {
+        info!("[{}] Skipping npm install (TERMINATOR_SKIP_NPM_INSTALL is set)", runtime);
+        let script_dir = std::env::temp_dir().join("terminator_mcp_test_skip");
+        tokio::fs::create_dir_all(&script_dir).await.map_err(|e| {
+            McpError::internal_error(
+                "Failed to create test script directory",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+        return Ok(script_dir);
+    }
+
     // Use a persistent directory instead of a new temp directory each time
     let script_dir = std::env::temp_dir().join("terminator_mcp_persistent");
 
