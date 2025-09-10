@@ -17,6 +17,9 @@ pub struct OutputParserDefinition {
     /// Path to a JavaScript file containing the parser code.
     /// Either this or javascript_code must be provided.
     pub javascript_file_path: Option<String>,
+    /// Simplified alias for 'javascript_code' - inspired by GitHub Actions syntax
+    /// Use this for inline JavaScript code instead of javascript_code
+    pub run: Option<String>,
 }
 
 /// The main entry point for parsing tool output.
@@ -24,18 +27,30 @@ pub async fn run_output_parser(
     parser_def_val: &Value,
     tool_output: &Value,
 ) -> Result<Option<Value>> {
-    let parser_def: OutputParserDefinition = serde_json::from_value(parser_def_val.clone())
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "Invalid parser definition format. Expected JavaScript format: {}",
-                e
-            )
-        })?;
+    // Support simplified format where output is just a string (JavaScript code)
+    let parser_def = if parser_def_val.is_string() {
+        OutputParserDefinition {
+            ui_tree_source_step_id: None,
+            javascript_code: parser_def_val.as_str().map(|s| s.to_string()),
+            javascript_file_path: None,
+            run: None,
+        }
+    } else {
+        serde_json::from_value(parser_def_val.clone())
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Invalid parser definition format. Expected JavaScript format: {}",
+                    e
+                )
+            })?
+    };
 
-    // Determine the JavaScript source - either inline or from file
-    let user_javascript_code = match (parser_def.javascript_code, parser_def.javascript_file_path) {
+    // Determine the JavaScript source - support 'run' as alias for 'javascript_code'
+    let javascript_code = parser_def.javascript_code.or(parser_def.run);
+    
+    let user_javascript_code = match (javascript_code, parser_def.javascript_file_path) {
         (Some(code), None) => {
-            // Inline JavaScript provided
+            // Inline JavaScript provided (via javascript_code or run)
             code
         }
         (None, Some(file_path)) => {
@@ -46,12 +61,12 @@ pub async fn run_output_parser(
         }
         (Some(_), Some(_)) => {
             return Err(anyhow::anyhow!(
-                "Cannot provide both 'javascript_code' and 'javascript_file_path'. Please provide only one."
+                "Cannot provide both inline JavaScript code ('javascript_code' or 'run') and 'javascript_file_path'. Please provide only one."
             ));
         }
         (None, None) => {
             return Err(anyhow::anyhow!(
-                "Must provide either 'javascript_code' (inline JavaScript) or 'javascript_file_path' (path to JavaScript file)."
+                "Must provide either 'javascript_code'/'run' (inline JavaScript) or 'javascript_file_path' (path to JavaScript file)."
             ));
         }
     };
@@ -255,6 +270,7 @@ mod tests {
 
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: None,
+            run: None,
             javascript_code: Some(
                 r#"
                 const results = [];
@@ -293,6 +309,7 @@ mod tests {
     fn test_empty_results() {
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: None,
+            run: None,
             javascript_code: Some(
                 r#"
                 const results = [];
@@ -334,6 +351,7 @@ mod tests {
 
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: Some("test_step".to_string()),
+            run: None,
             javascript_code: Some(
                 r#"
                 const results = [];
@@ -375,6 +393,7 @@ mod tests {
     fn test_attribute_value_filtering() {
         let parser_def = OutputParserDefinition {
             ui_tree_source_step_id: None,
+            run: None,
             javascript_code: Some(
                 r#"
                 const results = [];

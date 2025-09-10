@@ -765,6 +765,12 @@ pub struct SequenceStep {
         description = "Optional id of the step to jump to if this step ultimately fails after all retries. This enables robust fallback flows without relying on numeric indices."
     )]
     pub fallback_id: Option<String>,
+    
+    // Simplified aliases (keeping originals for backward compatibility)
+    #[schemars(
+        description = "Simplified alias for 'delay_ms'. Supports human-readable durations like '1s', '500ms', '2m'. Defaults to milliseconds if no unit specified."
+    )]
+    pub delay: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Default, JsonSchema)]
@@ -800,6 +806,22 @@ pub struct ExecuteSequenceArgs {
         description = "An optional, structured parser to process the final tool output and extract structured data."
     )]
     pub output_parser: Option<serde_json::Value>,
+    
+    // Simplified aliases for common parameters (keeping originals for backward compatibility)
+    #[schemars(
+        description = "Simplified alias for 'output_parser'. Processes the final tool output and extracts structured data. Supports JavaScript code or file path."
+    )]
+    pub output: Option<serde_json::Value>,
+    
+    #[schemars(
+        description = "Continue execution on errors. Opposite of stop_on_error. When true, workflow continues even if steps fail (default: false)."
+    )]
+    pub r#continue: Option<bool>,
+    
+    #[schemars(
+        description = "Output verbosity level. Options: 'quiet' (minimal), 'normal' (default), 'verbose' (detailed)."
+    )]
+    pub verbosity: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]

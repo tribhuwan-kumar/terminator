@@ -1,4 +1,6 @@
 use crate::helpers::substitute_variables;
+#[allow(unused_imports)]
+use crate::telemetry::{WorkflowSpan, StepSpan};
 use crate::output_parser;
 use crate::server::extract_content_json;
 use crate::utils::{DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup};
@@ -141,8 +143,20 @@ impl DesktopWrapper {
             }
         }
 
-        let stop_on_error = args.stop_on_error.unwrap_or(true);
-        let include_detailed = args.include_detailed_results.unwrap_or(true);
+        // Handle backward compatibility: 'continue' is opposite of 'stop_on_error'
+        let stop_on_error = if let Some(continue_exec) = args.r#continue {
+            !continue_exec  // continue=true means stop_on_error=false
+        } else {
+            args.stop_on_error.unwrap_or(true)
+        };
+        
+        // Handle verbosity levels
+        let include_detailed = match args.verbosity.as_deref() {
+            Some("quiet") => false,
+            Some("verbose") => true,
+            Some("normal") | None => args.include_detailed_results.unwrap_or(true),
+            _ => args.include_detailed_results.unwrap_or(true),
+        };
 
         // Re-enabling validation logic
         if let Some(variable_schema) = &args.variables {
@@ -301,26 +315,7 @@ impl DesktopWrapper {
             stop_on_error,
             include_detailed
         );
-        // Publish start event via HTTP event bus
-        let request_id = Uuid::new_v4().to_string();
-        terminator_mcp_agent::event_bus::publish(json!({
-            "type": "sequence",
-            "phase": "start",
-            "request_id": request_id,
-            "steps": args.steps.as_ref().map(|s| s.len()).unwrap_or(0),
-            "stop_on_error": stop_on_error,
-            "include_detailed_results": include_detailed,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        }));
 
-        terminator_mcp_agent::event_bus::publish(json!({
-            "type": "sequence_progress",
-            "request_id": request_id,
-            "progress": 0,
-            "total": args.steps.as_ref().map(|s| s.len()).unwrap_or(0),
-            "message": "Starting execute_sequence",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        }));
 
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
@@ -328,11 +323,24 @@ impl DesktopWrapper {
         let steps = args.steps.as_ref().unwrap_or(&empty_steps);
         for step in steps {
             let item = if let Some(tool_name) = &step.tool_name {
+                // Parse delay from either delay_ms or human-readable delay field
+                let delay_ms = if let Some(delay_str) = &step.delay {
+                    match crate::duration_parser::parse_duration(delay_str) {
+                        Ok(ms) => Some(ms),
+                        Err(e) => {
+                            warn!("Failed to parse delay '{}': {}", delay_str, e);
+                            step.delay_ms  // Fall back to delay_ms
+                        }
+                    }
+                } else {
+                    step.delay_ms
+                };
+                
                 let tool_call = ToolCall {
                     tool_name: tool_name.clone(),
                     arguments: step.arguments.clone().unwrap_or(serde_json::json!({})),
                     continue_on_error: step.continue_on_error,
-                    delay_ms: step.delay_ms,
+                    delay_ms,
                     id: step.id.clone(),
                 };
                 SequenceItem::Tool { tool_call }
@@ -408,19 +416,6 @@ impl DesktopWrapper {
                         step.r#if,
                         step.fallback_id
                     );
-                    terminator_mcp_agent::event_bus::publish(json!({
-                        "type": "sequence_step",
-                        "phase": "begin",
-                        "request_id": request_id,
-                        "index": current_index,
-                        "step_type": "tool",
-                        "tool": tool_name,
-                        "id": step.id,
-                        "retries": step.retries.unwrap_or(0),
-                        "if": step.r#if,
-                        "fallback_id": step.fallback_id,
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    }));
                 } else if let Some(group_name) = &step.group_name {
                     info!(
                         "Step {} BEGIN group='{}' id='{}' steps={}",
@@ -429,17 +424,6 @@ impl DesktopWrapper {
                         step.id.as_deref().unwrap_or(""),
                         step.steps.as_ref().map(|v| v.len()).unwrap_or(0)
                     );
-                    terminator_mcp_agent::event_bus::publish(json!({
-                        "type": "sequence_step",
-                        "phase": "begin",
-                        "request_id": request_id,
-                        "index": current_index,
-                        "step_type": "group",
-                        "group": group_name,
-                        "id": step.id,
-                        "steps": step.steps.as_ref().map(|v| v.len()).unwrap_or(0),
-                        "timestamp": chrono::Utc::now().to_rfc3339(),
-                    }));
                 }
             }
 
@@ -699,17 +683,6 @@ impl DesktopWrapper {
                     original_step.and_then(|s| s.id.as_deref()).unwrap_or(""),
                     step_status_str
                 );
-                terminator_mcp_agent::event_bus::publish(json!({
-                    "type": "sequence_step",
-                    "phase": "end",
-                    "request_id": request_id,
-                    "index": current_index,
-                    "step_type": "tool",
-                    "tool": tool_name,
-                    "id": original_step.and_then(|s| s.id.clone()),
-                    "status": step_status_str,
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                }));
             } else if let Some(group_name) = original_step.and_then(|s| s.group_name.as_ref()) {
                 info!(
                     "Step {} END group='{}' id='{}' status={}",
@@ -718,17 +691,6 @@ impl DesktopWrapper {
                     original_step.and_then(|s| s.id.as_deref()).unwrap_or(""),
                     step_status_str
                 );
-                terminator_mcp_agent::event_bus::publish(json!({
-                    "type": "sequence_step",
-                    "phase": "end",
-                    "request_id": request_id,
-                    "index": current_index,
-                    "step_type": "group",
-                    "group": group_name,
-                    "id": original_step.and_then(|s| s.id.clone()),
-                    "status": step_status_str,
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                }));
             }
 
             if step_succeeded {
@@ -750,15 +712,6 @@ impl DesktopWrapper {
             } else {
                 current_index += 1;
             }
-
-            terminator_mcp_agent::event_bus::publish(json!({
-                "type": "sequence_progress",
-                "request_id": request_id,
-                "progress": (current_index as u32).saturating_add(1),
-                "total": args.steps.as_ref().map(|s| s.len()).unwrap_or(0) as u32,
-                "message": format!("Step {current_index} {step_status_str}"),
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-            }));
         }
 
         if iterations >= max_iterations {
@@ -780,15 +733,6 @@ impl DesktopWrapper {
             results.len(),
             total_duration
         );
-        terminator_mcp_agent::event_bus::publish(json!({
-            "type": "sequence",
-            "phase": "end",
-            "request_id": request_id,
-            "status": final_status,
-            "executed_tools": results.len(),
-            "duration_ms": total_duration,
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        }));
 
         let mut summary = json!({
             "action": "execute_sequence",
@@ -800,7 +744,10 @@ impl DesktopWrapper {
             "results": results,
         });
 
-        if let Some(parser_def) = args.output_parser.as_ref() {
+        // Support both 'output_parser' (legacy) and 'output' (simplified)
+        let parser_def = args.output_parser.as_ref().or(args.output.as_ref());
+        
+        if let Some(parser_def) = parser_def {
             // Apply variable substitution to the output_parser field
             let mut parser_json = parser_def.clone();
             let execution_context = serde_json::Value::Object(execution_context_map.clone());
