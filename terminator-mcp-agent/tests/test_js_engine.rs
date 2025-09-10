@@ -8,8 +8,8 @@ async fn test_javascript_engine_basic() {
         .await
         .expect("JavaScript execution should succeed");
 
-    assert_eq!(result["success"], true);
-    assert_eq!(result["value"], 42);
+    assert_eq!(result["result"]["success"], true);
+    assert_eq!(result["result"]["value"], 42);
 }
 
 #[tokio::test]
@@ -25,8 +25,8 @@ async fn test_javascript_engine_with_async() {
         .await
         .expect("Async JavaScript execution should succeed");
 
-    assert_eq!(result["delayed"], true);
-    assert!(result["timestamp"].is_number());
+    assert_eq!(result["result"]["delayed"], true);
+    assert!(result["result"]["timestamp"].is_number());
 }
 
 #[tokio::test]
@@ -45,6 +45,6 @@ async fn test_javascript_engine_with_desktop_api() {
         .await
         .expect("Desktop API check should succeed");
 
-    assert_eq!(result["hasDesktop"], true);
-    assert_eq!(result["hasLocator"], true);
+    assert_eq!(result["result"]["hasDesktop"], true);
+    assert_eq!(result["result"]["hasLocator"], true);
 }
