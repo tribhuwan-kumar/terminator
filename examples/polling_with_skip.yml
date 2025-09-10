@@ -1,0 +1,67 @@
+---
+# Example workflow that demonstrates the skipped state
+# This workflow polls for a file and skips if the file doesn't exist
+name: File Polling with Skip State
+description: Polls for a file and triggers automation if found, otherwise skips
+
+# Cron schedule - run every minute
+cron: "* * * * *"
+
+steps:
+  # Check if target file exists
+  - tool_name: run_command
+    arguments:
+      command: "test -f /tmp/trigger.txt && echo 'FILE_EXISTS' || echo 'FILE_NOT_FOUND'"
+    id: check_file
+    
+  # If file exists, read its contents
+  - tool_name: run_command
+    arguments:
+      command: "cat /tmp/trigger.txt"
+    id: read_file
+    condition: "{{check_file.result}} == 'FILE_EXISTS'"
+    
+  # Process the file (example: move it to processed folder)
+  - tool_name: run_command
+    arguments:
+      command: "mv /tmp/trigger.txt /tmp/processed_$(date +%Y%m%d_%H%M%S).txt"
+    id: process_file
+    condition: "{{check_file.result}} == 'FILE_EXISTS'"
+
+# Output parser to determine if workflow was skipped
+output_parser:
+  javascript_code: |
+    // Check the results from the sequence
+    const checkFileStep = sequenceResult.results?.find(r => r.step_id === 'check_file');
+    const fileCheckOutput = checkFileStep?.result?.content?.[0]?.text || '';
+    
+    // Determine if file was found
+    const fileExists = fileCheckOutput.includes('FILE_EXISTS');
+    
+    if (!fileExists) {
+      // File not found - skip the workflow
+      return {
+        skipped: true,
+        success: false,
+        message: "Workflow skipped - trigger file not found",
+        data: {
+          reason: "No file at /tmp/trigger.txt to process",
+          checked_at: new Date().toISOString()
+        }
+      };
+    }
+    
+    // File was found and processed
+    const processStep = sequenceResult.results?.find(r => r.step_id === 'process_file');
+    const processed = processStep?.status === 'success';
+    
+    return {
+      skipped: false,
+      success: processed,
+      message: processed ? "File found and processed successfully" : "File found but processing failed",
+      data: {
+        file_path: "/tmp/trigger.txt",
+        processed: processed,
+        processed_at: new Date().toISOString()
+      }
+    };

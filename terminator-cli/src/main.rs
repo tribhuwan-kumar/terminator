@@ -1166,16 +1166,28 @@ async fn run_workflow_once(
     // Parse the workflow result
     let workflow_result = WorkflowResult::from_mcp_response(&result_json)?;
 
-    // For cron jobs, log success/failure
-    if workflow_result.success {
-        println!("   ✅ {}", workflow_result.message);
-        if let Some(Value::Array(arr)) = &workflow_result.data {
-            println!("   📊 Extracted {} items", arr.len());
+    // For cron jobs, log success/failure/skipped
+    use workflow_result::WorkflowState;
+    match workflow_result.state {
+        WorkflowState::Success => {
+            println!("   ✅ {}", workflow_result.message);
+            if let Some(Value::Array(arr)) = &workflow_result.data {
+                println!("   📊 Extracted {} items", arr.len());
+            }
         }
-    } else {
-        println!("   ❌ {}", workflow_result.message);
-        if let Some(error) = &workflow_result.error {
-            println!("   ⚠️  {error}");
+        WorkflowState::Skipped => {
+            println!("   ⏭️  {}", workflow_result.message);
+            if let Some(Value::Object(data)) = &workflow_result.data {
+                if let Some(reason) = data.get("reason").and_then(|r| r.as_str()) {
+                    println!("   📝 Reason: {}", reason);
+                }
+            }
+        }
+        WorkflowState::Failure => {
+            println!("   ❌ {}", workflow_result.message);
+            if let Some(error) = &workflow_result.error {
+                println!("   ⚠️  {error}");
+            }
         }
     }
 

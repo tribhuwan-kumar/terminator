@@ -2,6 +2,15 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Workflow execution state
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WorkflowState {
+    Success,
+    Failure,
+    Skipped,
+}
+
 /// Standard workflow result format with business logic success indication
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowResult {
@@ -9,6 +18,8 @@ pub struct WorkflowResult {
     pub execution_status: String,
     /// Whether the workflow achieved its business goal
     pub success: bool,
+    /// Workflow state (success/failure/skipped)
+    pub state: WorkflowState,
     /// Human-readable message about the result
     pub message: String,
     /// Extracted data (if any)
@@ -36,34 +47,53 @@ impl WorkflowResult {
         // Check if there's parsed output from the output parser
         let parsed_output = response.get("parsed_output");
 
-        // Determine business logic success
-        let (success, message, data, error, validation) = if let Some(parsed) = parsed_output {
-            // If there's an output parser result, use its success indication
-            let success = parsed
-                .get("success")
+        // Determine business logic success and state
+        let (success, state, message, data, error, validation) = if let Some(parsed) = parsed_output {
+            // Check if workflow was skipped
+            let skipped = parsed
+                .get("skipped")
                 .and_then(|s| s.as_bool())
-                .unwrap_or_else(|| {
-                    // Fallback: check if data exists and is non-empty
-                    if let Some(data) = parsed.get("data") {
-                        match data {
-                            Value::Array(arr) => !arr.is_empty(),
-                            Value::Object(obj) => !obj.is_empty(),
-                            Value::Null => false,
-                            _ => true,
+                .unwrap_or(false);
+            
+            // If there's an output parser result, use its success indication
+            let success = if skipped {
+                false // skipped workflows are not considered successful
+            } else {
+                parsed
+                    .get("success")
+                    .and_then(|s| s.as_bool())
+                    .unwrap_or_else(|| {
+                        // Fallback: check if data exists and is non-empty
+                        if let Some(data) = parsed.get("data") {
+                            match data {
+                                Value::Array(arr) => !arr.is_empty(),
+                                Value::Object(obj) => !obj.is_empty(),
+                                Value::Null => false,
+                                _ => true,
+                            }
+                        } else {
+                            false
                         }
-                    } else {
-                        false
-                    }
-                });
+                    })
+            };
+            
+            // Determine state
+            let state = if skipped {
+                WorkflowState::Skipped
+            } else if success {
+                WorkflowState::Success
+            } else {
+                WorkflowState::Failure
+            };
 
             let message = parsed
                 .get("message")
                 .and_then(|m| m.as_str())
                 .unwrap_or({
-                    if success {
-                        "Workflow completed successfully"
-                    } else {
-                        "Workflow failed to achieve its goal"
+                    match state {
+                        WorkflowState::Success => "Workflow completed successfully",
+                        WorkflowState::Failure => "Workflow failed to achieve its goal",
+                        WorkflowState::Skipped => "Workflow skipped - conditions not met",
                     }
                 })
                 .to_string();
@@ -75,10 +105,15 @@ impl WorkflowResult {
                 .map(|s| s.to_string());
             let validation = parsed.get("validation").cloned();
 
-            (success, message, data, error, validation)
+            (success, state, message, data, error, validation)
         } else {
             // No output parser - determine success from execution status
             let success = execution_status == "success";
+            let state = if success {
+                WorkflowState::Success
+            } else {
+                WorkflowState::Failure
+            };
             let message = if success {
                 "Workflow executed successfully (no parser for business validation)"
             } else {
@@ -95,7 +130,7 @@ impl WorkflowResult {
                 None
             };
 
-            (success, message, None, error, None)
+            (success, state, message, None, error, None)
         };
 
         // Extract timing and step information
@@ -109,6 +144,7 @@ impl WorkflowResult {
         Ok(WorkflowResult {
             execution_status,
             success,
+            state,
             message,
             data,
             error,
@@ -125,11 +161,17 @@ impl WorkflowResult {
         println!();
         println!("{}", "═".repeat(60));
 
-        // Display success/failure with color
-        if self.success {
-            println!("{} {}", "✅ SUCCESS:".green().bold(), self.message);
-        } else {
-            println!("{} {}", "❌ FAILURE:".red().bold(), self.message);
+        // Display success/failure/skipped with color
+        match self.state {
+            WorkflowState::Success => {
+                println!("{} {}", "✅ SUCCESS:".green().bold(), self.message);
+            }
+            WorkflowState::Failure => {
+                println!("{} {}", "❌ FAILURE:".red().bold(), self.message);
+            }
+            WorkflowState::Skipped => {
+                println!("{} {}", "⏭️  SKIPPED:".yellow().bold(), self.message);
+            }
         }
 
         // Display execution details
