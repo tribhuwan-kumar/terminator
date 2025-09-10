@@ -64,6 +64,11 @@ jobs:
       - name: Run Rust tests
         run: cargo test --workspace --verbose  -- --test-threads=1
 
+      - name: Test with telemetry feature
+        run: |
+          cargo build -p terminator-mcp-agent --features telemetry
+          cargo test -p terminator-mcp-agent --features telemetry -- --test-threads=1
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
