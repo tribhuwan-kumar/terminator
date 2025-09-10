@@ -118,19 +118,6 @@ async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &st
 async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
     info!("[{}] Checking if terminator.js is installed...", runtime);
 
-    // Skip npm install in test environment when TERMINATOR_SKIP_NPM_INSTALL is set
-    if std::env::var("TERMINATOR_SKIP_NPM_INSTALL").is_ok() {
-        info!("[{}] Skipping npm install (TERMINATOR_SKIP_NPM_INSTALL is set)", runtime);
-        let script_dir = std::env::temp_dir().join("terminator_mcp_test_skip");
-        tokio::fs::create_dir_all(&script_dir).await.map_err(|e| {
-            McpError::internal_error(
-                "Failed to create test script directory",
-                Some(json!({"error": e.to_string()})),
-            )
-        })?;
-        return Ok(script_dir);
-    }
-
     // Use a persistent directory instead of a new temp directory each time
     let script_dir = std::env::temp_dir().join("terminator_mcp_persistent");
 
@@ -867,6 +854,12 @@ pub async fn execute_javascript_with_nodejs(
         .unwrap_or(false)
     {
         info!("[Node.js] Using local bindings due to TERMINATOR_JS_USE_LOCAL env var");
+        return execute_javascript_with_local_bindings(script).await;
+    }
+
+    // In tests with TERMINATOR_SKIP_NPM_INSTALL, use local bindings instead
+    if std::env::var("TERMINATOR_SKIP_NPM_INSTALL").is_ok() {
+        info!("[Node.js] Using local bindings due to TERMINATOR_SKIP_NPM_INSTALL");
         return execute_javascript_with_local_bindings(script).await;
     }
 
@@ -1937,7 +1930,7 @@ pub async fn execute_javascript_with_local_bindings(
     })?;
 
     let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
-    let mut result = None;
+    let mut result: Option<serde_json::Value> = None;
 
     // Handle communication with Node.js process
     while let Ok(Some(line)) = stdout.next_line().await {
@@ -1992,5 +1985,15 @@ pub async fn execute_javascript_with_local_bindings(
         ));
     }
 
-    result.ok_or_else(|| McpError::internal_error("No result received from Node.js process", None))
+    match result {
+        Some(r) => {
+            info!("[Node.js Local] Execution completed successfully");
+            // Return result with empty logs array to match main function format
+            Ok(json!({
+                "result": r,
+                "logs": []
+            }))
+        }
+        None => Err(McpError::internal_error("No result received from Node.js process", None))
+    }
 }
