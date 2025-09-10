@@ -121,6 +121,28 @@ Use `run_command` with `engine` to execute code directly with SDK bindings:
 *   `log(message)` - Console logging function
 *   `sleep(ms)` - Async delay function (returns Promise)
 
+**Passing Data Between Workflow Steps (Engine Mode Only):**
+
+When using `engine` mode, you can pass data to subsequent workflow steps using `set_env`:
+
+1. **Return set_env object** (preferred):
+   ```javascript
+   return {{ set_env: {{ key: 'value', another_key: 'data' }} }};
+   ```
+
+2. **GitHub Actions style logging**:
+   ```javascript
+   console.log('::set-env name=key::value');
+   ```
+
+3. **Access in next step** using `{{{{env.key}}}}` substitution:
+   ```javascript
+   const value = '{{{{env.key}}}}';
+   ```
+
+**Important:** `set_env` ONLY works with engine mode (JavaScript/Python), NOT with shell commands.
+Watch for backslash escaping issues with Windows paths - consider escaping or combining steps.
+
 **Browser DOM Inspection with execute_browser_script**
 
 The `execute_browser_script` tool executes JavaScript directly in browser contexts, providing full access to the HTML DOM. This is essential for extracting data not available in the accessibility tree.

@@ -10,8 +10,12 @@ The new syntax follows the [GitHub Actions convention](https://docs.github.com/e
 
 ### Tool Arguments
 
-- **`run`** (required): The command to execute. Can be a single command or multi-line script.
-- **`shell`** (optional): The shell to use for execution. Defaults to:
+- **`run`** (required): The command to execute. Can be a single command, multi-line script, or inline code when using `engine` mode.
+- **`engine`** (optional): High-level engine to execute inline code with SDK bindings. Options:
+  - `javascript`, `js`, `node`, `bun` - Execute JavaScript with terminator.js bindings
+  - `python` - Execute Python with terminator.py bindings
+  - When set, `run` must contain the inline code to execute
+- **`shell`** (optional): The shell to use for execution (ignored when `engine` is used). Defaults to:
   - Windows: `powershell`
   - Unix/Linux/macOS: `bash`
 - **`working_directory`** (optional): The directory where the command should be executed. Defaults to the current directory.
@@ -139,9 +143,91 @@ Commands that fail will return:
 - Error details in `stderr`
 - Original command information for debugging
 
+## Passing Data Between Workflow Steps (Engine Mode Only)
+
+When using `engine` mode (JavaScript or Python), you can pass data between workflow steps using the `set_env` mechanism. This allows subsequent steps to access data from previous steps.
+
+### How It Works
+
+**Important:** The `set_env` mechanism only works when using the `engine` parameter with JavaScript or Python. It does NOT work with shell commands.
+
+### Setting Environment Variables
+
+There are two ways to set environment variables for subsequent steps:
+
+#### Method 1: Return Object with set_env
+```javascript
+{
+  "engine": "javascript",
+  "run": "const data = { name: 'John', age: 30 };\nreturn { set_env: { user_data: JSON.stringify(data) } };"
+}
+```
+
+#### Method 2: GitHub Actions Style Console Output
+```javascript
+{
+  "engine": "javascript", 
+  "run": "const filePath = 'C:\\\\Users\\\\file.txt';\nconsole.log(`::set-env name=file_path::${filePath}`);"
+}
+```
+
+### Accessing Environment Variables in Subsequent Steps
+
+Use the `{{env.variable_name}}` syntax in your workflow steps:
+
+```javascript
+{
+  "engine": "javascript",
+  "run": "const filePath = '{{env.file_path}}';\nconsole.log(`Processing file: ${filePath}`);"
+}
+```
+
+### Complete Example: Reading and Moving Files
+
+```json
+{
+  "steps": [
+    {
+      "tool_name": "run_command",
+      "arguments": {
+        "engine": "javascript",
+        "run": "const { execSync } = require('child_process');\n\n// Find JSON file\nconst folder = 'C:\\\\data';\nconst result = execSync(`powershell -Command \\\"Get-ChildItem '${folder}' -Filter '*.json' | Select-Object -First 1 | ConvertTo-Json\\\"`, { encoding: 'utf8' });\nconst fileInfo = JSON.parse(result);\n\n// Set env vars for next step\nconsole.log(`::set-env name=file_path::${fileInfo.FullName}`);\nconsole.log(`::set-env name=file_name::${fileInfo.Name}`);\n\nreturn { status: 'found', file: fileInfo.Name };"
+      }
+    },
+    {
+      "tool_name": "run_command",
+      "arguments": {
+        "engine": "javascript",
+        "run": "// Access data from previous step\nconst filePath = '{{env.file_path}}';\nconst fileName = '{{env.file_name}}';\n\nconsole.log(`Moving ${fileName} to processed folder...`);\n\nconst { execSync } = require('child_process');\nexecSync(`powershell -Command \\\"Move-Item '${filePath}' -Destination 'C:\\\\processed\\\\'\\\"`);\n\nreturn { status: 'moved', file: fileName };"
+      }
+    }
+  ]
+}
+```
+
+### Important Limitations
+
+1. **Backslash Escaping**: When passing Windows file paths, backslashes may need extra escaping:
+   ```javascript
+   // Original: C:\Users\file.txt
+   // May need: C:\\Users\\file.txt or C:\\\\Users\\\\file.txt
+   const escapedPath = filePath.replace(/\\/g, '\\\\');
+   ```
+
+2. **Variable Substitution**: The `{{env.variable}}` substitution happens before the JavaScript executes, so:
+   - Variables must be set in a previous step
+   - Complex data should be JSON stringified/parsed
+   - Consider combining related operations in a single step if data passing becomes complex
+
+3. **Engine Mode Required**: Remember that `set_env` ONLY works with:
+   - `engine: "javascript"` (or `"js"`, `"node"`, `"bun"`)
+   - `engine: "python"`
+   - It does NOT work with shell commands (`shell: "powershell"`, etc.)
+
 ## Security Considerations
 
 - Commands are executed with the same privileges as the MCP server
 - Avoid executing untrusted input
 - Use proper escaping for user-provided values
 - Consider using working_directory to limit file system access
+- Be careful with sensitive data in environment variables

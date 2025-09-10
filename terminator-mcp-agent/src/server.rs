@@ -1160,7 +1160,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run'."
+        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run'. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps with {{env.key}} substitution."
     )]
     async fn run_command(
         &self,
@@ -2954,7 +2954,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element')."
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step and access with {{env.key}} in subsequent steps."
     )]
     pub async fn execute_sequence(
         &self,

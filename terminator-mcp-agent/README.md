@@ -119,32 +119,67 @@ Tool call wrapper format (`workflow.json`):
 
 **Code Execution in Workflows (engine mode):**
 
-Execute custom JavaScript or Python with access to desktop automation APIs via `run_command`:
+Execute custom JavaScript or Python with access to desktop automation APIs via `run_command`.
+
+**Passing Data Between Workflow Steps:**
+
+When using `engine` mode, you can pass data between steps using the `set_env` mechanism:
 
 ```yaml
 steps:
+  # Step 1: Set environment variables for next step
   - tool_name: run_command
     arguments:
       engine: "javascript"
-      script: |
-        // Access desktop automation APIs
+      run: |
+        // Example: Find files and pass data to next step
+        const { execSync } = require('child_process');
+        
+        // Get file info (example)
+        const filePath = 'C:\\data\\report.pdf';
+        const fileSize = 1024;
+        
+        // Pass data to next step using set_env
+        console.log(`Found file: ${filePath}`);
+        
+        // Method 1: Return set_env object (preferred)
+        return {
+          set_env: {
+            file_path: filePath,
+            file_size: fileSize.toString()
+          },
+          status: 'found'
+        };
+        
+        // Method 2: GitHub Actions style (alternative)
+        // console.log(`::set-env name=file_path::${filePath}`);
+
+  # Step 2: Access data from previous step
+  - tool_name: run_command
+    arguments:
+      engine: "javascript"
+      run: |
+        // Access environment variables from previous step
+        const filePath = '{{env.file_path}}';
+        const fileSize = '{{env.file_size}}';
+        
+        console.log(`Processing: ${filePath} (${fileSize} bytes)`);
+        
+        // Continue with desktop automation
         const elements = await desktop.locator('role:button').all();
         log(`Found ${elements.length} buttons`);
-
-        // Conditional logic and bulk operations
-        for (const element of elements) {
-          const name = await element.name();
-          if (name.includes('Submit')) {
-            await element.click();
-            break;
-          }
-        }
-
+        
         return {
-          buttons_found: elements.length,
-          action: 'clicked_submit'
+          file_processed: filePath,
+          buttons_found: elements.length
         };
 ```
+
+**Important Notes on Data Passing:**
+- `set_env` only works with `engine` mode (JavaScript/Python), NOT with shell commands
+- Use `{{env.variable_name}}` syntax to access variables in subsequent steps
+- Watch for backslash escaping issues in Windows paths (may need double escaping)
+- Consider combining related operations in a single step if data passing becomes complex
 
 For complete CLI documentation, see [Terminator CLI README](../terminator-cli/README.md).
 
