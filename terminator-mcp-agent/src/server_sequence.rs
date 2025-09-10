@@ -2,15 +2,13 @@ use crate::helpers::substitute_variables;
 use crate::output_parser;
 use crate::server::extract_content_json;
 use crate::utils::{DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup};
-use rmcp::model::{
-    CallToolResult, Content, LoggingLevel, LoggingMessageNotificationParam,
-    ProgressNotificationParam,
-};
+use rmcp::model::{CallToolResult, Content};
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::ErrorData as McpError;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tracing::{info, warn};
+use uuid::Uuid;
 
 impl DesktopWrapper {
     pub async fn execute_sequence_impl(
@@ -303,30 +301,26 @@ impl DesktopWrapper {
             stop_on_error,
             include_detailed
         );
-        let _ = peer
-            .notify_logging_message(LoggingMessageNotificationParam {
-                level: LoggingLevel::Info,
-                logger: Some("execute_sequence".to_string()),
-                data: json!({
-                    "event": "sequence_start",
-                    "steps": args.steps.as_ref().map(|s| s.len()).unwrap_or(0),
-                    "stop_on_error": stop_on_error,
-                    "include_detailed_results": include_detailed,
-                }),
-            })
-            .await;
+        // Publish start event via HTTP event bus
+        let request_id = Uuid::new_v4().to_string();
+        terminator_mcp_agent::event_bus::publish(json!({
+            "type": "sequence",
+            "phase": "start",
+            "request_id": request_id,
+            "steps": args.steps.as_ref().map(|s| s.len()).unwrap_or(0),
+            "stop_on_error": stop_on_error,
+            "include_detailed_results": include_detailed,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        }));
 
-        let progress_token_opt = request_context.meta.get_progress_token();
-        if let Some(token) = &progress_token_opt {
-            let _ = peer
-                .notify_progress(ProgressNotificationParam {
-                    progress_token: token.clone(),
-                    progress: 0,
-                    total: Some(args.steps.as_ref().map(|s| s.len()).unwrap_or(0) as u32),
-                    message: Some("Starting execute_sequence".to_string()),
-                })
-                .await;
-        }
+        terminator_mcp_agent::event_bus::publish(json!({
+            "type": "sequence_progress",
+            "request_id": request_id,
+            "progress": 0,
+            "total": args.steps.as_ref().map(|s| s.len()).unwrap_or(0),
+            "message": "Starting execute_sequence",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        }));
 
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
@@ -414,22 +408,19 @@ impl DesktopWrapper {
                         step.r#if,
                         step.fallback_id
                     );
-                    let _ = peer
-                        .notify_logging_message(LoggingMessageNotificationParam {
-                            level: LoggingLevel::Info,
-                            logger: Some("execute_sequence".to_string()),
-                            data: json!({
-                                "event": "step_begin",
-                                "index": current_index,
-                                "type": "tool",
-                                "tool": tool_name,
-                                "id": step.id,
-                                "retries": step.retries.unwrap_or(0),
-                                "if": step.r#if,
-                                "fallback_id": step.fallback_id,
-                            }),
-                        })
-                        .await;
+                    terminator_mcp_agent::event_bus::publish(json!({
+                        "type": "sequence_step",
+                        "phase": "begin",
+                        "request_id": request_id,
+                        "index": current_index,
+                        "step_type": "tool",
+                        "tool": tool_name,
+                        "id": step.id,
+                        "retries": step.retries.unwrap_or(0),
+                        "if": step.r#if,
+                        "fallback_id": step.fallback_id,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    }));
                 } else if let Some(group_name) = &step.group_name {
                     info!(
                         "Step {} BEGIN group='{}' id='{}' steps={}",
@@ -438,20 +429,17 @@ impl DesktopWrapper {
                         step.id.as_deref().unwrap_or(""),
                         step.steps.as_ref().map(|v| v.len()).unwrap_or(0)
                     );
-                    let _ = peer
-                        .notify_logging_message(LoggingMessageNotificationParam {
-                            level: LoggingLevel::Info,
-                            logger: Some("execute_sequence".to_string()),
-                            data: json!({
-                                "event": "step_begin",
-                                "index": current_index,
-                                "type": "group",
-                                "group": group_name,
-                                "id": step.id,
-                                "steps": step.steps.as_ref().map(|v| v.len()).unwrap_or(0),
-                            }),
-                        })
-                        .await;
+                    terminator_mcp_agent::event_bus::publish(json!({
+                        "type": "sequence_step",
+                        "phase": "begin",
+                        "request_id": request_id,
+                        "index": current_index,
+                        "step_type": "group",
+                        "group": group_name,
+                        "id": step.id,
+                        "steps": step.steps.as_ref().map(|v| v.len()).unwrap_or(0),
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    }));
                 }
             }
 
@@ -711,24 +699,17 @@ impl DesktopWrapper {
                     original_step.and_then(|s| s.id.as_deref()).unwrap_or(""),
                     step_status_str
                 );
-                let _ = peer
-                    .notify_logging_message(LoggingMessageNotificationParam {
-                        level: if step_succeeded {
-                            LoggingLevel::Info
-                        } else {
-                            LoggingLevel::Warning
-                        },
-                        logger: Some("execute_sequence".to_string()),
-                        data: json!({
-                            "event": "step_end",
-                            "index": current_index,
-                            "type": "tool",
-                            "tool": tool_name,
-                            "id": original_step.and_then(|s| s.id.clone()),
-                            "status": step_status_str,
-                        }),
-                    })
-                    .await;
+                terminator_mcp_agent::event_bus::publish(json!({
+                    "type": "sequence_step",
+                    "phase": "end",
+                    "request_id": request_id,
+                    "index": current_index,
+                    "step_type": "tool",
+                    "tool": tool_name,
+                    "id": original_step.and_then(|s| s.id.clone()),
+                    "status": step_status_str,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                }));
             } else if let Some(group_name) = original_step.and_then(|s| s.group_name.as_ref()) {
                 info!(
                     "Step {} END group='{}' id='{}' status={}",
@@ -737,24 +718,17 @@ impl DesktopWrapper {
                     original_step.and_then(|s| s.id.as_deref()).unwrap_or(""),
                     step_status_str
                 );
-                let _ = peer
-                    .notify_logging_message(LoggingMessageNotificationParam {
-                        level: if step_succeeded {
-                            LoggingLevel::Info
-                        } else {
-                            LoggingLevel::Warning
-                        },
-                        logger: Some("execute_sequence".to_string()),
-                        data: json!({
-                            "event": "step_end",
-                            "index": current_index,
-                            "type": "group",
-                            "group": group_name,
-                            "id": original_step.and_then(|s| s.id.clone()),
-                            "status": step_status_str,
-                        }),
-                    })
-                    .await;
+                terminator_mcp_agent::event_bus::publish(json!({
+                    "type": "sequence_step",
+                    "phase": "end",
+                    "request_id": request_id,
+                    "index": current_index,
+                    "step_type": "group",
+                    "group": group_name,
+                    "id": original_step.and_then(|s| s.id.clone()),
+                    "status": step_status_str,
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                }));
             }
 
             if step_succeeded {
@@ -777,16 +751,14 @@ impl DesktopWrapper {
                 current_index += 1;
             }
 
-            if let Some(token) = &progress_token_opt {
-                let _ = peer
-                    .notify_progress(ProgressNotificationParam {
-                        progress_token: token.clone(),
-                        progress: (current_index as u32).saturating_add(1),
-                        total: Some(args.steps.as_ref().map(|s| s.len()).unwrap_or(0) as u32),
-                        message: Some(format!("Step {current_index} {step_status_str}")),
-                    })
-                    .await;
-            }
+            terminator_mcp_agent::event_bus::publish(json!({
+                "type": "sequence_progress",
+                "request_id": request_id,
+                "progress": (current_index as u32).saturating_add(1),
+                "total": args.steps.as_ref().map(|s| s.len()).unwrap_or(0) as u32,
+                "message": format!("Step {current_index} {step_status_str}"),
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }));
         }
 
         if iterations >= max_iterations {
@@ -808,32 +780,15 @@ impl DesktopWrapper {
             results.len(),
             total_duration
         );
-        let _ = peer
-            .notify_logging_message(LoggingMessageNotificationParam {
-                level: if final_status == "success" {
-                    LoggingLevel::Info
-                } else {
-                    LoggingLevel::Warning
-                },
-                logger: Some("execute_sequence".to_string()),
-                data: json!({
-                    "event": "sequence_end",
-                    "status": final_status,
-                    "executed_tools": results.len(),
-                    "duration_ms": total_duration,
-                }),
-            })
-            .await;
-        if let Some(token) = &progress_token_opt {
-            let _ = peer
-                .notify_progress(ProgressNotificationParam {
-                    progress_token: token.clone(),
-                    progress: args.steps.as_ref().map(|s| s.len()).unwrap_or(0) as u32,
-                    total: Some(args.steps.as_ref().map(|s| s.len()).unwrap_or(0) as u32),
-                    message: Some("execute_sequence completed".to_string()),
-                })
-                .await;
-        }
+        terminator_mcp_agent::event_bus::publish(json!({
+            "type": "sequence",
+            "phase": "end",
+            "request_id": request_id,
+            "status": final_status,
+            "executed_tools": results.len(),
+            "duration_ms": total_duration,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        }));
 
         let mut summary = json!({
             "action": "execute_sequence",
