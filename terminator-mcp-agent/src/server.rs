@@ -14,7 +14,7 @@ use crate::utils::{
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
-use rmcp::handler::server::tool::Parameters;
+use rmcp::handler::server::wrapper::parameters::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
 };
@@ -2936,7 +2936,7 @@ impl DesktopWrapper {
         tool_name: &str,
         arguments: &serde_json::Value,
     ) -> Result<CallToolResult, McpError> {
-        use rmcp::handler::server::tool::Parameters;
+        use rmcp::handler::server::wrapper::parameters::Parameters;
         match tool_name {
             "get_window_tree" => {
                 match serde_json::from_value::<GetWindowTreeArgs>(arguments.clone()) {
