@@ -786,9 +786,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                                 .content
                                 .iter()
                                 .filter_map(|c| match &c.raw {
-                                    rmcp::model::RawContent::Text(text) => {
-                                        Some(text.text.clone())
-                                    }
+                                    rmcp::model::RawContent::Text(text) => Some(text.text.clone()),
                                     _ => None,
                                 })
                                 .collect();

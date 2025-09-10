@@ -48,13 +48,14 @@ impl WorkflowResult {
         let parsed_output = response.get("parsed_output");
 
         // Determine business logic success and state
-        let (success, state, message, data, error, validation) = if let Some(parsed) = parsed_output {
+        let (success, state, message, data, error, validation) = if let Some(parsed) = parsed_output
+        {
             // Check if workflow was skipped
             let skipped = parsed
                 .get("skipped")
                 .and_then(|s| s.as_bool())
                 .unwrap_or(false);
-            
+
             // If there's an output parser result, use its success indication
             let success = if skipped {
                 false // skipped workflows are not considered successful
@@ -76,7 +77,7 @@ impl WorkflowResult {
                         }
                     })
             };
-            
+
             // Determine state
             let state = if skipped {
                 WorkflowState::Skipped

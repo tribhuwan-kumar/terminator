@@ -36,18 +36,17 @@ pub async fn run_output_parser(
             run: None,
         }
     } else {
-        serde_json::from_value(parser_def_val.clone())
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Invalid parser definition format. Expected JavaScript format: {}",
-                    e
-                )
-            })?
+        serde_json::from_value(parser_def_val.clone()).map_err(|e| {
+            anyhow::anyhow!(
+                "Invalid parser definition format. Expected JavaScript format: {}",
+                e
+            )
+        })?
     };
 
     // Determine the JavaScript source - support 'run' as alias for 'javascript_code'
     let javascript_code = parser_def.javascript_code.or(parser_def.run);
-    
+
     let user_javascript_code = match (javascript_code, parser_def.javascript_file_path) {
         (Some(code), None) => {
             // Inline JavaScript provided (via javascript_code or run)

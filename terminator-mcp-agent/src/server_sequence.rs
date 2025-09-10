@@ -1,8 +1,8 @@
 use crate::helpers::substitute_variables;
-#[allow(unused_imports)]
-use crate::telemetry::{WorkflowSpan, StepSpan};
 use crate::output_parser;
 use crate::server::extract_content_json;
+#[allow(unused_imports)]
+use crate::telemetry::{StepSpan, WorkflowSpan};
 use crate::utils::{DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup};
 use rmcp::model::{CallToolResult, Content};
 use rmcp::service::{Peer, RequestContext, RoleServer};
@@ -144,11 +144,11 @@ impl DesktopWrapper {
 
         // Handle backward compatibility: 'continue' is opposite of 'stop_on_error'
         let stop_on_error = if let Some(continue_exec) = args.r#continue {
-            !continue_exec  // continue=true means stop_on_error=false
+            !continue_exec // continue=true means stop_on_error=false
         } else {
             args.stop_on_error.unwrap_or(true)
         };
-        
+
         // Handle verbosity levels
         let include_detailed = match args.verbosity.as_deref() {
             Some("quiet") => false,
@@ -315,7 +315,6 @@ impl DesktopWrapper {
             include_detailed
         );
 
-
         // Convert flattened SequenceStep to internal SequenceItem representation
         let mut sequence_items = Vec::new();
         let empty_steps = Vec::new();
@@ -328,13 +327,13 @@ impl DesktopWrapper {
                         Ok(ms) => Some(ms),
                         Err(e) => {
                             warn!("Failed to parse delay '{}': {}", delay_str, e);
-                            step.delay_ms  // Fall back to delay_ms
+                            step.delay_ms // Fall back to delay_ms
                         }
                     }
                 } else {
                     step.delay_ms
                 };
-                
+
                 let tool_call = ToolCall {
                     tool_name: tool_name.clone(),
                     arguments: step.arguments.clone().unwrap_or(serde_json::json!({})),
@@ -745,7 +744,7 @@ impl DesktopWrapper {
 
         // Support both 'output_parser' (legacy) and 'output' (simplified)
         let parser_def = args.output_parser.as_ref().or(args.output.as_ref());
-        
+
         if let Some(parser_def) = parser_def {
             // Apply variable substitution to the output_parser field
             let mut parser_json = parser_def.clone();
