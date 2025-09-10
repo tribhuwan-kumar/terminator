@@ -8,7 +8,9 @@
     "example": "examples"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm run test:integration",
+    "test:integration": "node tests/integration/test-otel-integration.js",
+    "test:collector": "node tests/integration/test-http-events.js"
   },
   "repository": {
     "type": "git",
