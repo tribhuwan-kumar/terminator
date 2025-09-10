@@ -1179,7 +1179,7 @@ async fn run_workflow_once(
             println!("   ⏭️  {}", workflow_result.message);
             if let Some(Value::Object(data)) = &workflow_result.data {
                 if let Some(reason) = data.get("reason").and_then(|r| r.as_str()) {
-                    println!("   📝 Reason: {}", reason);
+                    println!("   📝 Reason: {reason}");
                 }
             }
         }

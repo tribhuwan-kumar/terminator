@@ -222,7 +222,7 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                                         println!("[Audio: {}]", audio.mime_type);
                                     }
                                     rmcp::model::RawContent::ResourceLink(resource) => {
-                                        println!("[ResourceLink: {:?}]", resource);
+                                        println!("[ResourceLink: {resource:?}]");
                                     }
                                 }
                             }
@@ -377,7 +377,7 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                                         println!("[Audio: {}]", audio.mime_type);
                                     }
                                     rmcp::model::RawContent::ResourceLink(resource) => {
-                                        println!("[ResourceLink: {:?}]", resource);
+                                        println!("[ResourceLink: {resource:?}]");
                                     }
                                 }
                             }
@@ -460,7 +460,7 @@ pub async fn execute_command(
                             println!("[Audio: {}]", audio.mime_type);
                         }
                         rmcp::model::RawContent::ResourceLink(resource) => {
-                            println!("[ResourceLink: {:?}]", resource);
+                            println!("[ResourceLink: {resource:?}]");
                         }
                     }
                 }
@@ -526,7 +526,7 @@ pub async fn execute_command(
                             println!("[Audio: {}]", audio.mime_type);
                         }
                         rmcp::model::RawContent::ResourceLink(resource) => {
-                            println!("[ResourceLink: {:?}]", resource);
+                            println!("[ResourceLink: {resource:?}]");
                         }
                     }
                 }

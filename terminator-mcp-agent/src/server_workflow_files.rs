@@ -166,11 +166,9 @@ impl DesktopWrapper {
                 // Use regex replacement
                 match regex::Regex::new(find_pattern) {
                     Ok(re) => {
-                        // CRITICAL: Escape $ characters in the replacement string to prevent
-                        // them from being interpreted as capture group references.
-                        // Without this, template strings like "${{ selectors.window }}" get corrupted.
-                        let escaped_content = args.content.replace("$", "$$");
-                        let result = re.replace_all(&current_content, escaped_content.as_str());
+                        // For regex mode, we want to allow capture group references like $1, $2, etc.
+                        // Only escape $ when followed by { to protect template strings like "${{ ... }}"
+                        let result = re.replace_all(&current_content, args.content.as_str());
                         if result == current_content {
                             return Err(McpError::invalid_params(
                                 "Pattern not found in file",
