@@ -12,6 +12,7 @@ pub mod server_workflow_files;
 pub mod utils;
 pub mod workflow_converter;
 pub mod workflow_events;
+pub mod event_bus;
 
 // Re-export the extract_content_json function for testing
 pub use server::extract_content_json;

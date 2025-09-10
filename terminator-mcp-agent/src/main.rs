@@ -3,7 +3,7 @@ use axum::middleware::Next;
 use axum::{
     body::Body,
     extract::State,
-    http::{Method, Request, StatusCode},
+    http::{HeaderValue, Method, Request, StatusCode},
     response::IntoResponse,
     routing::get,
     Json, Router,
@@ -25,6 +25,7 @@ use std::{
     },
 };
 use terminator_mcp_agent::cancellation::RequestManager;
+use terminator_mcp_agent::event_bus;
 use terminator_mcp_agent::server;
 use terminator_mcp_agent::utils::init_logging;
 use tower_http::cors::CorsLayer;
@@ -318,6 +319,7 @@ async fn main() -> Result<()> {
             let mut router: Router = Router::new()
                 .route("/health", get(health_check))
                 .route("/status", get(status_handler))
+                .route("/events", get(events_sse))
                 .nest("/mcp", mcp_router)
                 .with_state(app_state.clone());
 
@@ -363,4 +365,45 @@ async fn health_check() -> impl axum::response::IntoResponse {
             "timestamp": chrono::Utc::now().to_rfc3339()
         })),
     )
+}
+
+async fn events_sse() -> impl IntoResponse {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+    use futures_util::stream::Stream;
+    use futures_util::StreamExt;
+    use std::convert::Infallible;
+    use tokio_stream::wrappers::BroadcastStream;
+
+    // Subscribe to the global event bus
+    let rx = event_bus::subscribe();
+    let stream = BroadcastStream::new(rx)
+        .filter_map(|msg| async move { msg.ok() })
+        .map(|json| {
+            let mut ev = Event::default()
+                .event("sequence")
+                .data(serde_json::to_string(&json).unwrap_or_else(|_| "{}".to_string()));
+            if let Some(id) = json.get("request_id").and_then(|v| v.as_str()) {
+                ev = ev.id(id.to_string());
+            }
+            Ok::<Event, Infallible>(ev)
+        });
+
+    let sse = Sse::new(stream).keep_alive(KeepAlive::new());
+
+    // Add CORS headers explicitly for SSE if needed
+    let mut resp = sse.into_response();
+    let headers = resp.headers_mut();
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream"),
+    );
+    headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-cache"),
+    );
+    headers.insert(
+        axum::http::header::CONNECTION,
+        HeaderValue::from_static("keep-alive"),
+    );
+    resp
 }

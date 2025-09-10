@@ -628,6 +628,21 @@ For additional help, see the [Terminator CLI documentation](../terminator-cli/RE
 1. Ensure the Terminator MCP agent is running (it will auto-start in supported editors).
 2. Send the JSON above as the body of an `execute_sequence` tool call from your LLM or test harness.
 3. Inspect the response: if parsing succeeds you’ll see something like
+### Realtime events (SSE)
+
+When running with the HTTP transport, you can subscribe to realtime workflow events at a separate endpoint outside `/mcp`:
+
+- SSE endpoint: `/events`
+- Emits JSON payloads for: `sequence` (start/end), `sequence_progress`, and `sequence_step` (begin/end)
+
+Example in Node.js:
+
+```js
+import EventSource from 'eventsource';
+const es = new EventSource('http://127.0.0.1:3000/events');
+es.onmessage = (e) => console.log('event', e.data);
+```
+
 
 ```jsonc
 {
