@@ -8,17 +8,17 @@ fn test_duration_parser() {
     assert_eq!(parse_duration("500").unwrap(), 500);
     assert_eq!(parse_duration("1000ms").unwrap(), 1000);
     assert_eq!(parse_duration("250milliseconds").unwrap(), 250);
-    
+
     // Test seconds
     assert_eq!(parse_duration("1s").unwrap(), 1000);
     assert_eq!(parse_duration("2.5s").unwrap(), 2500);
     assert_eq!(parse_duration("10seconds").unwrap(), 10000);
-    
+
     // Test minutes
     assert_eq!(parse_duration("1m").unwrap(), 60000);
     assert_eq!(parse_duration("2min").unwrap(), 120000);
     assert_eq!(parse_duration("0.5minutes").unwrap(), 30000);
-    
+
     // Test hours
     assert_eq!(parse_duration("1h").unwrap(), 3600000);
     assert_eq!(parse_duration("2hours").unwrap(), 7200000);
@@ -32,7 +32,7 @@ fn test_continue_field() {
         "steps": [],
         "continue": true
     });
-    
+
     let args: ExecuteSequenceArgs = serde_json::from_value(args_json).unwrap();
     assert_eq!(args.r#continue, Some(true));
     assert!(args.stop_on_error.is_none());
@@ -45,15 +45,15 @@ fn test_verbosity_field() {
         "steps": [],
         "verbosity": "quiet"
     });
-    
+
     let args: ExecuteSequenceArgs = serde_json::from_value(args_quiet).unwrap();
     assert_eq!(args.verbosity, Some("quiet".to_string()));
-    
+
     let args_verbose = json!({
         "steps": [],
         "verbosity": "verbose"
     });
-    
+
     let args: ExecuteSequenceArgs = serde_json::from_value(args_verbose).unwrap();
     assert_eq!(args.verbosity, Some("verbose".to_string()));
 }
@@ -66,7 +66,7 @@ fn test_delay_field_in_step() {
         "arguments": {},
         "delay": "2s"
     });
-    
+
     let step: SequenceStep = serde_json::from_value(step_json).unwrap();
     assert_eq!(step.delay, Some("2s".to_string()));
     assert!(step.delay_ms.is_none());
@@ -80,7 +80,7 @@ fn test_backward_compatibility_with_delay_ms() {
         "arguments": {},
         "delay_ms": 2000
     });
-    
+
     let step: SequenceStep = serde_json::from_value(step_json).unwrap();
     assert_eq!(step.delay_ms, Some(2000));
     assert!(step.delay.is_none());
@@ -95,7 +95,7 @@ fn test_both_delay_fields() {
         "delay": "1s",
         "delay_ms": 2000
     });
-    
+
     let step: SequenceStep = serde_json::from_value(step_json).unwrap();
     assert_eq!(step.delay, Some("1s".to_string()));
     assert_eq!(step.delay_ms, Some(2000));
@@ -110,7 +110,7 @@ fn test_both_continue_and_stop_on_error() {
         "continue": true,
         "stop_on_error": false
     });
-    
+
     let args: ExecuteSequenceArgs = serde_json::from_value(args_json).unwrap();
     assert_eq!(args.r#continue, Some(true));
     assert_eq!(args.stop_on_error, Some(false));
@@ -125,7 +125,7 @@ fn test_both_verbosity_and_include_detailed() {
         "verbosity": "quiet",
         "include_detailed_results": true
     });
-    
+
     let args: ExecuteSequenceArgs = serde_json::from_value(args_json).unwrap();
     assert_eq!(args.verbosity, Some("quiet".to_string()));
     assert_eq!(args.include_detailed_results, Some(true));
@@ -156,14 +156,20 @@ fn test_complex_workflow_with_all_new_fields() {
         "verbosity": "verbose",
         "output": "return { success: true, data: context };"
     });
-    
+
     let args: ExecuteSequenceArgs = serde_json::from_value(workflow).unwrap();
     assert_eq!(args.r#continue, Some(false));
     assert_eq!(args.verbosity, Some("verbose".to_string()));
     assert!(args.output.is_some());
     assert_eq!(args.steps.as_ref().unwrap().len(), 2);
-    assert_eq!(args.steps.as_ref().unwrap()[0].delay, Some("500ms".to_string()));
-    assert_eq!(args.steps.as_ref().unwrap()[1].delay, Some("1s".to_string()));
+    assert_eq!(
+        args.steps.as_ref().unwrap()[0].delay,
+        Some("500ms".to_string())
+    );
+    assert_eq!(
+        args.steps.as_ref().unwrap()[1].delay,
+        Some("1s".to_string())
+    );
 }
 
 #[test]
@@ -187,11 +193,14 @@ fn test_mixed_old_and_new_syntax() {
             "run": "return { done: true };"
         }
     });
-    
+
     let args: ExecuteSequenceArgs = serde_json::from_value(workflow).unwrap();
     assert_eq!(args.stop_on_error, Some(true));
     assert!(args.r#continue.is_none());
     assert!(args.output.is_some());
     assert_eq!(args.steps.as_ref().unwrap()[0].delay_ms, Some(1000));
-    assert_eq!(args.steps.as_ref().unwrap()[1].delay, Some("2s".to_string()));
+    assert_eq!(
+        args.steps.as_ref().unwrap()[1].delay,
+        Some("2s".to_string())
+    );
 }

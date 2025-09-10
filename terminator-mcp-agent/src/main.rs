@@ -353,7 +353,7 @@ async fn main() -> Result<()> {
 
     // Shutdown telemetry before exiting
     terminator_mcp_agent::telemetry::shutdown_telemetry();
-    
+
     Ok(())
 }
 
@@ -370,4 +370,3 @@ async fn health_check() -> impl axum::response::IntoResponse {
         })),
     )
 }
-

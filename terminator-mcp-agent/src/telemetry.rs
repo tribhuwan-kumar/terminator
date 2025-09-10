@@ -10,6 +10,7 @@ pub use without_telemetry::*;
 // Implementation with telemetry enabled
 #[cfg(feature = "telemetry")]
 mod with_telemetry {
+    use opentelemetry::global::BoxedSpan;
     use opentelemetry::{
         global,
         trace::{Span, SpanKind, Status, Tracer},
@@ -17,9 +18,7 @@ mod with_telemetry {
     };
     use opentelemetry_otlp::WithExportConfig;
     use opentelemetry_sdk::{
-        propagation::TraceContextPropagator,
-        runtime,
-        trace::TracerProvider as SdkTracerProvider,
+        propagation::TraceContextPropagator, runtime, trace::TracerProvider as SdkTracerProvider,
         Resource,
     };
     use opentelemetry_semantic_conventions::{
@@ -28,7 +27,6 @@ mod with_telemetry {
     };
     use std::time::Duration;
     use tracing::info;
-    use opentelemetry::global::BoxedSpan;
 
     pub struct WorkflowSpan {
         span: BoxedSpan,
@@ -42,9 +40,7 @@ mod with_telemetry {
                 .with_kind(SpanKind::Server)
                 .start(&tracer);
             span.set_attribute(KeyValue::new("workflow.name", name.to_string()));
-            WorkflowSpan {
-                span,
-            }
+            WorkflowSpan { span }
         }
 
         pub fn add_event(&mut self, name: &str, attributes: Vec<(&str, String)>) {
@@ -56,7 +52,8 @@ mod with_telemetry {
         }
 
         pub fn set_attribute(&mut self, key: &str, value: String) {
-            self.span.set_attribute(KeyValue::new(key.to_string(), value));
+            self.span
+                .set_attribute(KeyValue::new(key.to_string(), value));
         }
 
         pub fn set_status(&mut self, success: bool, message: &str) {
@@ -84,19 +81,18 @@ mod with_telemetry {
                 .span_builder(format!("step.{}", tool_name))
                 .with_kind(SpanKind::Internal)
                 .start(&tracer);
-            
+
             span.set_attribute(KeyValue::new("tool.name", tool_name.to_string()));
             if let Some(id) = step_id {
                 span.set_attribute(KeyValue::new("step.id", id.to_string()));
             }
-            
-            StepSpan {
-                span,
-            }
+
+            StepSpan { span }
         }
 
         pub fn set_attribute(&mut self, key: &str, value: String) {
-            self.span.set_attribute(KeyValue::new(key.to_string(), value));
+            self.span
+                .set_attribute(KeyValue::new(key.to_string(), value));
         }
 
         pub fn set_status(&mut self, success: bool, error: Option<&str>) {
@@ -127,8 +123,11 @@ mod with_telemetry {
         // Configure OTLP exporter
         let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
             .unwrap_or_else(|_| "http://localhost:4318".to_string());
-        
-        info!("Initializing OpenTelemetry with endpoint: {}", otlp_endpoint);
+
+        info!(
+            "Initializing OpenTelemetry with endpoint: {}",
+            otlp_endpoint
+        );
 
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_tonic()
@@ -149,7 +148,7 @@ mod with_telemetry {
             .build();
 
         global::set_tracer_provider(provider);
-        
+
         info!("OpenTelemetry telemetry initialized successfully");
         Ok(())
     }
