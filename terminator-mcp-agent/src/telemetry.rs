@@ -130,8 +130,8 @@ mod with_telemetry {
         );
 
         let exporter = opentelemetry_otlp::SpanExporter::builder()
-            .with_tonic()
-            .with_endpoint(&otlp_endpoint)
+            .with_http()
+            .with_endpoint(format!("{}/v1/traces", &otlp_endpoint))
             .with_timeout(Duration::from_secs(3))
             .build()?;
 
