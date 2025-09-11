@@ -11,6 +11,7 @@ pub mod input;
 pub mod tree_builder;
 pub mod types;
 pub mod utils;
+pub mod virtual_display;
 
 // Re-export the main types that external code needs
 pub use element::WindowsUIElement;
@@ -22,3 +23,6 @@ pub use utils::{convert_uiautomation_element_to_terminator, generate_element_id}
 
 // Re-export from applications module
 pub use applications::get_process_name_by_pid;
+
+// Re-export virtual display support
+pub use virtual_display::{VirtualDisplayManager, VirtualDisplayConfig, HeadlessConfig, is_headless_environment};

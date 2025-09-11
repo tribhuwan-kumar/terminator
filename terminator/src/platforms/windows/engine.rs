@@ -5,7 +5,10 @@ use crate::platforms::windows::tree_builder::{
     build_ui_node_tree_configurable, TreeBuildingConfig, TreeBuildingContext,
 };
 use crate::platforms::windows::types::ThreadSafeWinUIElement;
-
+use crate::platforms::windows::virtual_display::{
+    VirtualDisplayManager, VirtualDisplayConfig, HeadlessConfig, is_headless_environment,
+};
+use std::sync::Mutex;
 use crate::platforms::windows::utils::{
     create_ui_automation_with_com_init, map_generic_role_to_win_roles, string_to_ui_property,
 };
@@ -184,6 +187,7 @@ pub struct WindowsEngine {
     pub automation: ThreadSafeWinUIAutomation,
     use_background_apps: bool,
     activate_app: bool,
+    virtual_display: Option<Arc<Mutex<VirtualDisplayManager>>>,
 }
 
 impl WindowsEngine {
@@ -203,6 +207,20 @@ impl WindowsEngine {
             }
         }
 
+        // Check if we need to initialize virtual display for headless operation
+        let mut virtual_display = None;
+        if is_headless_environment() {
+            info!("Headless environment detected, initializing virtual display");
+            let mut display_manager = VirtualDisplayManager::new(VirtualDisplayConfig::default());
+            if let Err(e) = display_manager.initialize() {
+                warn!("Failed to initialize virtual display: {}", e);
+                // Continue without virtual display - may work with existing session
+            } else {
+                info!("Virtual display initialized successfully");
+                virtual_display = Some(Arc::new(Mutex::new(display_manager)));
+            }
+        }
+
         let automation = UIAutomation::new_direct()
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         let arc_automation = ThreadSafeWinUIAutomation(Arc::new(automation));
@@ -210,6 +228,79 @@ impl WindowsEngine {
             automation: arc_automation,
             use_background_apps,
             activate_app,
+            virtual_display,
+        })
+    }
+
+    /// Create a new WindowsEngine with custom headless configuration
+    pub fn new_with_headless(
+        use_background_apps: bool,
+        activate_app: bool,
+        headless_config: HeadlessConfig,
+    ) -> Result<Self, AutomationError> {
+        // Initialize COM
+        unsafe {
+            let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
+            if hr.is_err() && hr != HRESULT(0x80010106u32 as i32) {
+                return Err(AutomationError::PlatformError(format!(
+                    "Failed to initialize COM in multithreaded mode: {hr}"
+                )));
+            }
+            if hr == HRESULT(0x80010106u32 as i32) {
+                debug!("COM already initialized in this thread");
+            }
+        }
+
+        // Initialize virtual display if configured
+        let mut virtual_display = None;
+        if headless_config.use_virtual_display {
+            info!("Initializing virtual display with custom config");
+            let mut display_manager = VirtualDisplayManager::new(headless_config.virtual_display_config);
+            
+            // Try to install driver if path is provided
+            if display_manager.config.driver_path.is_some() {
+                if let Err(e) = display_manager.install_driver() {
+                    warn!("Failed to install virtual display driver: {}", e);
+                }
+            }
+            
+            if let Err(e) = display_manager.initialize() {
+                if headless_config.fallback_to_memory {
+                    warn!("Virtual display init failed, using memory fallback: {}", e);
+                } else {
+                    return Err(AutomationError::PlatformError(
+                        format!("Virtual display initialization failed: {}", e)
+                    ));
+                }
+            } else {
+                info!("Virtual display initialized successfully");
+                virtual_display = Some(Arc::new(Mutex::new(display_manager)));
+            }
+        }
+
+        let automation = UIAutomation::new_direct()
+            .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
+        let arc_automation = ThreadSafeWinUIAutomation(Arc::new(automation));
+        
+        Ok(Self {
+            automation: arc_automation,
+            use_background_apps,
+            activate_app,
+            virtual_display,
+        })
+    }
+
+    /// Check if virtual display is active
+    pub fn is_virtual_display_active(&self) -> bool {
+        self.virtual_display.as_ref().map_or(false, |vd| {
+            vd.lock().unwrap().is_available()
+        })
+    }
+
+    /// Get virtual display session ID if available
+    pub fn get_virtual_session_id(&self) -> Option<u32> {
+        self.virtual_display.as_ref().and_then(|vd| {
+            vd.lock().unwrap().get_session_id()
         })
     }
 
