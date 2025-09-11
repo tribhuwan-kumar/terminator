@@ -262,37 +262,44 @@ jobs:
 
       - name: Install wheel and twine
         run: |
-          pip install wheel twine
+          pip install wheel twine wheel-filename
 
-      - name: Copy and rename wheels for terminator package
+      - name: Prepare and update wheels for terminator package
         run: |
           mkdir -p terminator-wheels
           # Copy all wheel files
           find bindings/python/wheels-* -name "*.whl" -exec cp {} terminator-wheels/ \;
-          # Rename wheels from terminator_py to terminator
-          cd terminator-wheels
-          for wheel in *.whl; do
-            if [[ $wheel == *terminator_py* ]]; then
-              new_wheel=$(echo "$wheel" | sed 's/terminator_py/terminator/g')
-              mv "$wheel" "$new_wheel"
-            fi
-          done
-          cd ..
-          # Copy sdist and rename
-          cp bindings/python/wheels-sdist/*.tar.gz terminator-wheels/ || true
-          cd terminator-wheels
-          for sdist in *.tar.gz; do
-            if [[ $sdist == terminator-py* ]]; then
-              new_sdist=$(echo "$sdist" | sed 's/terminator-py/terminator/g')
-              mv "$sdist" "$new_sdist"
-            fi
-          done
-          cd ..
-
-      - name: Update metadata in wheels for terminator package
-        run: |
+          
+          # Update metadata inside wheels and rename files
           cd terminator-wheels
           python ../terminator-repo/scripts/update_wheel_metadata.py
+          
+          # Copy and update sdist
+          cp ../bindings/python/wheels-sdist/*.tar.gz . || true
+          for sdist in *.tar.gz; do
+            if [[ $sdist == terminator-py* ]] || [[ $sdist == terminator_py* ]]; then
+              # Extract, modify, and repackage sdist
+              tar -xzf "$sdist"
+              rm "$sdist"
+              
+              # Find and update the extracted directory
+              for dir in terminator-py-* terminator_py-*; do
+                if [ -d "$dir" ]; then
+                  # Update pyproject.toml and other metadata files
+                  sed -i 's/terminator-py/terminator/g' "$dir/pyproject.toml" 2>/dev/null || true
+                  sed -i 's/terminator_py/terminator/g' "$dir/PKG-INFO" 2>/dev/null || true
+                  
+                  # Rename directory
+                  new_dir=$(echo "$dir" | sed 's/terminator[-_]py/terminator/g')
+                  mv "$dir" "$new_dir"
+                  
+                  # Repackage
+                  tar -czf "${new_dir}.tar.gz" "$new_dir"
+                  rm -rf "$new_dir"
+                fi
+              done
+            fi
+          done
           cd ..
 
       - name: Publish to PyPI (terminator)
