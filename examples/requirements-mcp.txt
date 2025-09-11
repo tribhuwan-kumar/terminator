@@ -1,0 +1,6 @@
+# Requirements for MCP client examples
+# Install with: pip install -r requirements-mcp.txt
+
+anthropic>=0.39.0
+mcp>=1.0.0
+python-dotenv>=1.0.0
