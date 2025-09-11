@@ -530,6 +530,46 @@ terminator mcp run workflow.json  # JSON
 - Install required packages: `sudo apt-get install at-spi2-core`
 - Check desktop environment compatibility (GNOME, KDE, XFCE supported)
 
+### Virtual Display Support (Headless VMs)
+
+Terminator MCP Agent includes virtual display support for running on headless VMs without requiring RDP connections. This enables scalable automation on cloud platforms like Azure, AWS, and GCP.
+
+**How It Works**:
+
+The agent automatically detects headless environments and initializes a virtual display context that Windows UI Automation APIs can interact with. This allows full UI automation capabilities even when no physical display or RDP session is active.
+
+**Activation**:
+
+Virtual display activates automatically when:
+- Environment variable `TERMINATOR_HEADLESS=true` is set
+- No console window is available (common in VM/container scenarios)
+- Running as a Windows service or scheduled task
+
+**Configuration**:
+
+```bash
+# Enable virtual display mode
+export TERMINATOR_HEADLESS=true
+
+# Run the MCP agent
+npx -y terminator-mcp-agent
+```
+
+**Use Cases**:
+
+- Running multiple automation agents on VMs without RDP overhead
+- CI/CD pipelines in cloud environments
+- Scalable automation farms on Azure/AWS/GCP
+- Containerized automation workloads
+
+**Requirements**:
+
+- Windows Server 2016+ or Windows 10/11
+- .NET Framework 4.7.2+
+- UI Automation APIs available (included in Windows)
+
+The virtual display manager creates a memory-based display context that satisfies Windows UI Automation requirements, enabling terminator to enumerate and interact with UI elements as if a physical display were present.
+
 ### Performance Optimization
 
 **Large UI Trees**:
