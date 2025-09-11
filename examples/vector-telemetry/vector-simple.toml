@@ -1,0 +1,43 @@
+# Simple Vector configuration for MCP telemetry
+# Receives OTLP traces and outputs them to console
+
+# Receive OpenTelemetry traces via HTTP
+[sources.otlp]
+type = "opentelemetry"
+http.address = "0.0.0.0:4318"
+
+# Parse and format the spans
+[transforms.format]
+type = "remap"
+inputs = ["otlp"]
+source = '''
+# Calculate duration in milliseconds
+.duration_ms = if exists(.end_time_unix_nano) && exists(.start_time_unix_nano) {
+  round((to_int!(.end_time_unix_nano) - to_int!(.start_time_unix_nano)) / 1000000)
+} else {
+  0
+}
+
+# Create readable output based on span type
+if starts_with(string!(.name), "workflow.") {
+  .output = "🎯 WORKFLOW START: " + string!(.name) + " | Steps: " + string!(.attributes."workflow.total_steps")
+} else if starts_with(string!(.name), "step.") {
+  tool = string!(.attributes."tool.name")
+  step_num = string!(.attributes."step.number")
+  step_total = string!(.attributes."step.total")
+  .output = "  📍 Step " + step_num + "/" + step_total + ": " + tool + " [" + to_string(.duration_ms) + "ms]"
+} else {
+  .output = "  ↳ " + string!(.name)
+}
+
+# Add timestamp
+.time = format_timestamp!(now(), "%H:%M:%S%.3f")
+'''
+
+# Output to console
+[sinks.console]
+type = "console"
+inputs = ["format"]
+encoding.codec = "text"
+encoding.only_fields = ["time", "output"]
+encoding.text.delimiter = " | "
