@@ -1,5 +1,18 @@
+"""
+Element Screenshot Example
+
+This example demonstrates capturing screenshots of UI elements and performing OCR.
+
+Requirements:
+    pip install Pillow
+"""
+
 import asyncio
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    print("Please install Pillow: pip install Pillow")
+    exit(1)
 import terminator
 
 

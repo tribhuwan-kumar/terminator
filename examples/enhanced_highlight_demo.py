@@ -21,13 +21,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'bindings', 'py
 try:
     import terminator
 except ImportError:
-    print("❌ Terminator not found. Please build the Python bindings first:")
+    print("Terminator not found. Please build the Python bindings first:")
     print("   cd bindings/python && pip install -e .")
     sys.exit(1)
 
 
 async def main():
-    print("🎯 Enhanced Highlight Demo - Text Overlays")
+    print("Enhanced Highlight Demo - Text Overlays")
     print("=" * 50)
     
     try:
@@ -50,18 +50,18 @@ async def main():
                 break
         
         if not notepad:
-            print("❌ Notepad not found. Please open Notepad manually and try again.")
+            print("Notepad not found. Please open Notepad manually and try again.")
             return
         
-        print(f"✅ Found Notepad: {notepad.name()}")
+        print(f"Found Notepad: {notepad.name()}")
         
         # Find the text area (Edit control)
         locator = desktop.locator("role:Edit")
         try:
             text_area = await locator.first()
-            print(f"✅ Found text area: {text_area.role()}")
+            print(f"Found text area: {text_area.role()}")
         except terminator.ElementNotFoundError:
-            print("❌ Text area not found in Notepad")
+            print("Text area not found in Notepad")
             return
         
         # Step 3: Demo different text overlay positions
@@ -76,7 +76,7 @@ async def main():
         ]
         
         for text, position, font_style in demos:
-            print(f"\n   🔸 Testing {position} position with text '{text}'")
+            print(f"\n   - Testing {position} position with text '{text}'")
             
             # Highlight with text overlay
             handle = text_area.highlight(
@@ -92,7 +92,7 @@ async def main():
             
             # Demonstrate manual closing
             if position == "Inside":
-                print("   📝 Manually closing highlight...")
+                print("   Manually closing highlight...")
                 handle.close()
                 await asyncio.sleep(1)
         
@@ -106,10 +106,10 @@ async def main():
             text_position=terminator.TextPosition.TopRight,
             font_style=terminator.FontStyle(size=22, bold=True, color=0xFFFFFF)
         ):
-            print("   🔸 Highlight will auto-close when context exits...")
+            print("   - Highlight will auto-close when context exits...")
             await asyncio.sleep(2)
             
-        print("   ✅ Auto-closed successfully!")
+        print("   Auto-closed successfully!")
         
         # Step 5: Test different colors and styles
         print("\n5. Testing different font styles and colors...")
@@ -121,7 +121,7 @@ async def main():
         ]
         
         for text, font_style in style_demos:
-            print(f"   🔸 Testing font style: {text}")
+            print(f"   - Testing font style: {text}")
             
             handle = text_area.highlight(
                 color=0x0000FF,
@@ -133,16 +133,16 @@ async def main():
             
             await asyncio.sleep(2.5)
         
-        print("\n🎉 Demo completed successfully!")
+        print("\nDemo completed successfully!")
         print("\nKey features demonstrated:")
-        print("  ✅ Text overlays in 9 different positions")
-        print("  ✅ Custom font sizes, colors, and bold styling")
-        print("  ✅ Manual and automatic highlight closing")
-        print("  ✅ Context manager support")
-        print("  ✅ White background for text visibility")
+        print("  - Text overlays in 9 different positions")
+        print("  - Custom font sizes, colors, and bold styling")
+        print("  - Manual and automatic highlight closing")
+        print("  - Context manager support")
+        print("  - White background for text visibility")
         
     except Exception as e:
-        print(f"❌ Error during demo: {e}")
+        print(f"Error during demo: {e}")
         import traceback
         traceback.print_exc()
 

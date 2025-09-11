@@ -25,7 +25,7 @@ def show_all_events():
     }
     """
     
-    print("\n🔴 RECORDING - Click once and move mouse a bit\n")
+    print("\n[RECORDING] - Click once and move mouse a bit\n")
     
     # Run the PowerShell command
     result = subprocess.run(
@@ -35,7 +35,7 @@ def show_all_events():
         cwd="../terminator-workflow-recorder"
     )
     
-    print("⏹️ Recording stopped\n")
+    print("Recording stopped\n")
     
     # Read the output file
     output_file = "../terminator-workflow-recorder/all_events.txt"
@@ -44,7 +44,7 @@ def show_all_events():
             lines = f.readlines()
         
         print("=" * 60)
-        print("📊 ALL EVENTS CAPTURED (Raw Stream)")
+        print("ALL EVENTS CAPTURED (Raw Stream)")
         print("=" * 60)
         
         # Parse and show each event
@@ -70,8 +70,8 @@ def show_all_events():
         if current_event:
             events_list.append(current_event)
         
-        print(f"\n📈 Total Events Captured: {len(events_list)}")
-        print("\n📝 Event Stream:\n")
+        print(f"\nTotal Events Captured: {len(events_list)}")
+        print("\nEvent Stream:\n")
         
         # Show each event
         for i, event_lines in enumerate(events_list, 1):
@@ -121,12 +121,12 @@ def show_all_events():
                 unsupported += 1
         
         print("\n" + "=" * 60)
-        print("📊 EVENT TYPE SUMMARY")
+        print("EVENT TYPE SUMMARY")
         print("=" * 60)
         print("\nEvent Types Captured:")
         for event_type, count in event_types.items():
             if count > 0:
-                print(f"  • {event_type}: {count}")
+                print(f"  - {event_type}: {count}")
         
         print(f"\nMCP Conversions: {mcp_conversions}")
         print(f"Unsupported Events: {unsupported}")
@@ -138,7 +138,7 @@ def show_all_events():
             os.remove(error_file)
             
     else:
-        print("❌ No output file generated")
+        print("No output file generated")
     
     print("\n" + "=" * 60)
 
