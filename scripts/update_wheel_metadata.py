@@ -5,6 +5,7 @@ import zipfile
 import tempfile
 import shutil
 import re
+import tarfile
 from pathlib import Path
 
 def update_wheel_metadata(wheel_path):
@@ -82,7 +83,7 @@ def update_wheel_metadata(wheel_path):
                     print(f"  Updated top_level.txt")
         
         # Create new wheel with updated name
-        new_wheel_path = wheel_path.replace('terminator_py', 'terminator')
+        new_wheel_path = wheel_path.replace('terminator_py', 'terminator').replace('terminator-py', 'terminator')
         print(f"  Creating new wheel: {new_wheel_path}")
         
         with zipfile.ZipFile(new_wheel_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -97,30 +98,124 @@ def update_wheel_metadata(wheel_path):
             os.remove(wheel_path)
             print(f"  Removed original wheel: {wheel_path}")
         
-        print(f"✓ Successfully processed: {os.path.basename(new_wheel_path)}")
+        print(f"[SUCCESS] Successfully processed: {os.path.basename(new_wheel_path)}")
         
     except Exception as e:
-        print(f"✗ Error processing {wheel_path}: {e}")
+        print(f"[ERROR] Error processing {wheel_path}: {e}")
+        raise
+    finally:
+        shutil.rmtree(temp_dir)
+
+def update_sdist_metadata(sdist_path):
+    """Update source distribution metadata to change package name from terminator-py to terminator"""
+    print(f"Processing sdist: {sdist_path}")
+    temp_dir = tempfile.mkdtemp()
+    
+    try:
+        # Extract tarball
+        with tarfile.open(sdist_path, 'r:gz') as tar:
+            tar.extractall(temp_dir)
+        
+        # Find the extracted directory
+        extracted_dirs = [d for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))]
+        if not extracted_dirs:
+            print(f"  No directory found in {sdist_path}")
+            return
+        
+        old_dir_name = extracted_dirs[0]
+        old_dir_path = os.path.join(temp_dir, old_dir_name)
+        
+        # Update all metadata files
+        for root, dirs, files in os.walk(old_dir_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                
+                # Update pyproject.toml
+                if file == 'pyproject.toml':
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    content = re.sub(r'name\s*=\s*["\']terminator[-_]py["\']', 'name = "terminator"', content)
+                    content = content.replace('terminator-py', 'terminator')
+                    content = content.replace('terminator_py', 'terminator')
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"  Updated pyproject.toml")
+                
+                # Update PKG-INFO
+                elif file == 'PKG-INFO':
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    content = re.sub(r'^Name:\s*terminator[-_]py\s*$', 'Name: terminator', content, flags=re.MULTILINE)
+                    content = content.replace('terminator-py', 'terminator')
+                    content = content.replace('terminator_py', 'terminator')
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"  Updated PKG-INFO")
+                
+                # Update any .egg-info metadata
+                elif file == 'METADATA':
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    content = re.sub(r'^Name:\s*terminator[-_]py\s*$', 'Name: terminator', content, flags=re.MULTILINE)
+                    content = content.replace('terminator-py', 'terminator')
+                    content = content.replace('terminator_py', 'terminator')
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"  Updated METADATA")
+        
+        # Rename the directory
+        new_dir_name = old_dir_name.replace('terminator-py', 'terminator').replace('terminator_py', 'terminator')
+        new_dir_path = os.path.join(temp_dir, new_dir_name)
+        if new_dir_name != old_dir_name:
+            os.rename(old_dir_path, new_dir_path)
+            print(f"  Renamed directory: {old_dir_name} -> {new_dir_name}")
+        
+        # Create new tarball with updated name
+        new_sdist_path = sdist_path.replace('terminator-py', 'terminator').replace('terminator_py', 'terminator')
+        print(f"  Creating new sdist: {new_sdist_path}")
+        
+        with tarfile.open(new_sdist_path, 'w:gz') as tar:
+            tar.add(new_dir_path, arcname=new_dir_name)
+        
+        # Remove original sdist if different name
+        if new_sdist_path != sdist_path and os.path.exists(sdist_path):
+            os.remove(sdist_path)
+            print(f"  Removed original sdist: {sdist_path}")
+        
+        print(f"[SUCCESS] Successfully processed: {os.path.basename(new_sdist_path)}")
+        
+    except Exception as e:
+        print(f"[ERROR] Error processing {sdist_path}: {e}")
         raise
     finally:
         shutil.rmtree(temp_dir)
 
 def main():
-    # Process all wheels in current directory
+    # Process all wheels and sdists in current directory
     wheels_found = list(Path('.').glob('*.whl'))
+    sdists_found = list(Path('.').glob('*.tar.gz'))
     
-    if not wheels_found:
-        print("No wheel files found in current directory")
+    if not wheels_found and not sdists_found:
+        print("No wheel or sdist files found in current directory")
         return
     
-    print(f"Found {len(wheels_found)} wheel file(s)")
+    if wheels_found:
+        print(f"Found {len(wheels_found)} wheel file(s)")
+        for wheel_file in wheels_found:
+            wheel_name = str(wheel_file)
+            if 'terminator_py' in wheel_name or 'terminator-py' in wheel_name:
+                update_wheel_metadata(wheel_name)
+            else:
+                print(f"Skipping {wheel_name} - already using 'terminator' name")
     
-    for wheel_file in wheels_found:
-        wheel_name = str(wheel_file)
-        if 'terminator_py' in wheel_name or 'terminator-py' in wheel_name:
-            update_wheel_metadata(wheel_name)
-        else:
-            print(f"Skipping {wheel_name} - already using 'terminator' name")
+    if sdists_found:
+        print(f"Found {len(sdists_found)} sdist file(s)")
+        for sdist_file in sdists_found:
+            sdist_name = str(sdist_file)
+            if 'terminator-py' in sdist_name or 'terminator_py' in sdist_name:
+                update_sdist_metadata(sdist_name)
+            else:
+                print(f"Skipping {sdist_name} - already using 'terminator' name")
 
 if __name__ == '__main__':
     main()
