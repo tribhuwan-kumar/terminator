@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Commit and push changes
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.changed == 'true' && github.event_name != 'pull_request'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -55,7 +55,11 @@ jobs:
           - Synced $(ls .cursor/rules/*.mdc | wc -l) rule files
           - Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
           - Triggered by: ${{ github.event_name }}"
-          git push
+          
+          # Only push if we're on a branch with write access
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git push origin HEAD:${{ github.ref_name }}
+          fi
 
       - name: Create summary comment (on PR)
         if: github.event_name == 'pull_request' && steps.changes.outputs.changed == 'true'
