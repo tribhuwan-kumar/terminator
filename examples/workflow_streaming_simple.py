@@ -9,6 +9,13 @@ pip install mcp
 """
 
 import asyncio
+import sys
+import io
+
+# Fix Windows console encoding for emojis
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 import json
 import time
 from datetime import datetime
@@ -27,7 +34,7 @@ class WorkflowStreamer:
         self.exit_stack = AsyncExitStack()
         self.start_time: Optional[float] = None
     
-    async def connect(self, server_path: str = "target/release/terminator-mcp-agent"):
+    async def connect(self, server_path: str = "terminator-mcp-agent/target/release/terminator-mcp-agent"):
         """Connect to MCP server"""
         print(f"\n🔌 Connecting to MCP server...")
         

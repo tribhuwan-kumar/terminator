@@ -17,7 +17,7 @@ class WorkflowStreamer {
         this.startTime = null;
     }
 
-    async connect(serverPath = 'target/release/terminator-mcp-agent') {
+    async connect(serverPath = 'terminator-mcp-agent/target/release/terminator-mcp-agent') {
         console.log(`\n🔌 Connecting to MCP server...`);
         
         const serverParams = {
