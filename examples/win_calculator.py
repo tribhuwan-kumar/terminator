@@ -10,7 +10,12 @@ async def run_calculator():
     try:
         # 1. Open Calculator
         print("Opening Calculator...")
-        calculator_window = desktop.open_application("uwp:Microsoft.WindowsCalculator")
+        # Use calc.exe for better compatibility (UWP identifier may not work on all systems)
+        try:
+            calculator_window = desktop.open_application("uwp:Microsoft.WindowsCalculator")
+        except Exception:
+            # Fallback to calc.exe if UWP identifier fails
+            calculator_window = desktop.open_application("calc.exe")
         await asyncio.sleep(2)  # Allow app to open
 
         # Locators relative to the calculator window
