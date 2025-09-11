@@ -25,8 +25,9 @@ use std::process::{Command, Stdio};
 
 mod mcp_client;
 mod workflow_result;
+mod telemetry_receiver;
 
-use mcp_client::execute_command_with_result;
+use mcp_client::{execute_command_with_progress, execute_command_with_result};
 use workflow_result::WorkflowResult;
 
 #[derive(Parser)]
@@ -959,10 +960,11 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
 
     let workflow_str = serde_json::to_string(&workflow_val)?;
 
-    let result_json = execute_command_with_result(
+    let result_json = execute_command_with_progress(
         transport,
         "execute_sequence".to_string(),
         Some(workflow_str),
+        true, // Show progress for workflow steps
     )
     .await?;
 
@@ -1156,10 +1158,11 @@ async fn run_workflow_once(
 
     // For cron jobs, use simple execution to avoid connection spam
     let workflow_str = serde_json::to_string(&workflow_val)?;
-    let result_json = execute_command_with_result(
+    let result_json = mcp_client::execute_command_with_progress(
         transport,
         "execute_sequence".to_string(),
         Some(workflow_str),
+        true, // Show progress for workflow steps
     )
     .await?;
 

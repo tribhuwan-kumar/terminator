@@ -551,6 +551,56 @@ fn init_logging() {
         .try_init();
 }
 
+// Helper function to parse step start logs
+fn parse_step_log(line: &str) -> Option<(String, String, String)> {
+    // Parse lines like: "Step 0 BEGIN tool='open_application' id='open_notepad' ..."
+    if let Some(step_idx) = line.find("Step ") {
+        let after_step = &line[step_idx + 5..];
+        if let Some(space_idx) = after_step.find(' ') {
+            let step_num = &after_step[..space_idx];
+            if let Some(tool_idx) = line.find("tool='") {
+                let after_tool = &line[tool_idx + 6..];
+                if let Some(quote_idx) = after_tool.find('\'') {
+                    let tool_name = &after_tool[..quote_idx];
+                    return Some((
+                        step_num.to_string(),
+                        "?".to_string(), // We don't have total from logs
+                        tool_name.to_string(),
+                    ));
+                }
+            } else if let Some(group_idx) = line.find("group='") {
+                let after_group = &line[group_idx + 7..];
+                if let Some(quote_idx) = after_group.find('\'') {
+                    let group_name = &after_group[..quote_idx];
+                    return Some((
+                        step_num.to_string(),
+                        "?".to_string(),
+                        format!("[{}]", group_name),
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
+// Helper function to parse step end logs
+fn parse_step_end_log(line: &str) -> Option<(String, String)> {
+    // Parse lines like: "Step 0 END tool='open_application' id='open_notepad' status=success"
+    if let Some(step_idx) = line.find("Step ") {
+        let after_step = &line[step_idx + 5..];
+        if let Some(space_idx) = after_step.find(' ') {
+            let step_num = &after_step[..space_idx];
+            if let Some(status_idx) = line.find("status=") {
+                let after_status = &line[status_idx + 7..];
+                let status = after_status.split_whitespace().next().unwrap_or("unknown");
+                return Some((step_num.to_string(), status.to_string()));
+            }
+        }
+    }
+    None
+}
+
 pub async fn natural_language_chat(transport: Transport) -> Result<()> {
     println!("🤖 Terminator Natural Language Chat Client");
     println!("==========================================");
@@ -838,7 +888,33 @@ pub async fn execute_command_with_result(
     tool: String,
     args: Option<String>,
 ) -> Result<serde_json::Value> {
+    execute_command_with_progress(transport, tool, args, false).await
+}
+
+pub async fn execute_command_with_progress(
+    transport: Transport,
+    tool: String,
+    args: Option<String>,
+    show_progress: bool,
+) -> Result<serde_json::Value> {
+    use colored::Colorize;
     use tracing::debug;
+    
+    // Start telemetry receiver if showing progress for workflows
+    let telemetry_handle = if show_progress && tool == "execute_sequence" {
+        match crate::telemetry_receiver::start_telemetry_receiver().await {
+            Ok(handle) => {
+                debug!("Started telemetry receiver on port 4318");
+                Some(handle)
+            },
+            Err(e) => {
+                debug!("Failed to start telemetry receiver: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Special handling for execute_sequence to capture full result
     if tool == "execute_sequence" {
@@ -864,6 +940,44 @@ pub async fn execute_command_with_result(
                     None
                 };
 
+                // Parse workflow to get step count if showing progress
+                if show_progress {
+                    if let Some(args_obj) = &arguments {
+                        if let Some(steps) = args_obj.get("steps").and_then(|v| v.as_array()) {
+                            let total_steps = steps.len();
+                            println!("\n{} {} {}",
+                                "🎯".cyan(),
+                                "WORKFLOW START:".bold().cyan(),
+                                format!("{} steps", total_steps).dimmed()
+                            );
+                            
+                            // List the steps that will be executed
+                            for (i, step) in steps.iter().enumerate() {
+                                let tool_name = step.get("tool_name")
+                                    .and_then(|v| v.as_str())
+                                    .or_else(|| step.get("group_name").and_then(|v| v.as_str()))
+                                    .unwrap_or("unknown");
+                                let step_id = step.get("id")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                
+                                println!("  {} Step {}/{}: {} {}",
+                                    "📋".dimmed(),
+                                    i + 1,
+                                    total_steps,
+                                    tool_name.yellow(),
+                                    if !step_id.is_empty() { 
+                                        format!("[{}]", step_id).dimmed().to_string()
+                                    } else { 
+                                        String::new() 
+                                    }
+                                );
+                            }
+                            println!("\n{} Executing workflow...\n", "⚡".cyan());
+                        }
+                    }
+                }
+
                 let result = service
                     .call_tool(CallToolRequestParam {
                         name: tool.into(),
@@ -880,6 +994,12 @@ pub async fn execute_command_with_result(
                                 serde_json::from_str::<serde_json::Value>(&text.text)
                             {
                                 service.cancel().await?;
+                                
+                                // Stop telemetry receiver if it was started
+                                if let Some(handle) = telemetry_handle {
+                                    handle.abort();
+                                }
+                                
                                 return Ok(json_result);
                             }
                         }
@@ -887,6 +1007,12 @@ pub async fn execute_command_with_result(
                 }
 
                 service.cancel().await?;
+                
+                // Stop telemetry receiver if it was started
+                if let Some(handle) = telemetry_handle {
+                    handle.abort();
+                }
+                
                 Ok(json!({"status": "unknown", "message": "No parseable result from workflow"}))
             }
             Transport::Stdio(command) => {
@@ -898,13 +1024,68 @@ pub async fn execute_command_with_result(
                     vec![]
                 };
                 let mut cmd = create_command(&executable, &command_args);
+                
+                // Set up logging for the server to capture step progress
                 if std::env::var("LOG_LEVEL").is_err() && std::env::var("RUST_LOG").is_err() {
-                    cmd.env("LOG_LEVEL", "info");
+                    if show_progress {
+                        // Enable info level logging to see step progress
+                        cmd.env("RUST_LOG", "terminator_mcp_agent=info");
+                    } else {
+                        cmd.env("LOG_LEVEL", "info");
+                    }
                 }
+                
+                // Enable telemetry if showing progress
+                if show_progress {
+                    cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318");
+                    cmd.env("OTEL_SERVICE_NAME", "terminator-mcp");
+                    cmd.env("ENABLE_TELEMETRY", "true");
+                }
+                
+                // For now, just use the standard transport without stderr parsing
+                // TODO: Add proper step streaming once MCP protocol supports it
                 let transport = TokioChildProcess::new(cmd)?;
                 let service = ().serve(transport).await?;
 
                 let arguments = if let Some(args_str) = args {
+                    // Parse workflow to show initial progress
+                    if show_progress {
+                        if let Ok(workflow) = serde_json::from_str::<serde_json::Value>(&args_str) {
+                            if let Some(steps) = workflow.get("steps").and_then(|v| v.as_array()) {
+                                let total_steps = steps.len();
+                                println!("\n{} {} {}",
+                                    "🎯".cyan(),
+                                    "WORKFLOW START:".bold().cyan(),
+                                    format!("{} steps", total_steps).dimmed()
+                                );
+                                
+                                // List the steps that will be executed
+                                for (i, step) in steps.iter().enumerate() {
+                                    let tool_name = step.get("tool_name")
+                                        .and_then(|v| v.as_str())
+                                        .or_else(|| step.get("group_name").and_then(|v| v.as_str()))
+                                        .unwrap_or("unknown");
+                                    let step_id = step.get("id")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    
+                                    println!("  {} Step {}/{}: {} {}",
+                                        "📋".dimmed(),
+                                        i + 1,
+                                        total_steps,
+                                        tool_name.yellow(),
+                                        if !step_id.is_empty() { 
+                                            format!("[{}]", step_id).dimmed().to_string()
+                                        } else { 
+                                            String::new() 
+                                        }
+                                    );
+                                }
+                                println!("\n{} Executing workflow...\n", "⚡".cyan());
+                            }
+                        }
+                    }
+                    
                     serde_json::from_str::<serde_json::Value>(&args_str)
                         .ok()
                         .and_then(|v| v.as_object().cloned())
@@ -928,6 +1109,12 @@ pub async fn execute_command_with_result(
                                 serde_json::from_str::<serde_json::Value>(&text.text)
                             {
                                 service.cancel().await?;
+                                
+                                // Stop telemetry receiver if it was started
+                                if let Some(handle) = telemetry_handle {
+                                    handle.abort();
+                                }
+                                
                                 return Ok(json_result);
                             }
                         }
@@ -935,6 +1122,12 @@ pub async fn execute_command_with_result(
                 }
 
                 service.cancel().await?;
+                
+                // Stop telemetry receiver if it was started
+                if let Some(handle) = telemetry_handle {
+                    handle.abort();
+                }
+                
                 Ok(json!({"status": "unknown", "message": "No parseable result from workflow"}))
             }
         }
