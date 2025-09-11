@@ -43,8 +43,13 @@ def update_wheel_metadata(wheel_path):
                 
                 # Replace package name more carefully
                 original_content = content
-                content = re.sub(r'^Name: terminator[-_]py$', 'Name: terminator', content, flags=re.MULTILINE)
+                # Fix the regex to be less strict - handle any whitespace and line endings
+                content = re.sub(r'^Name:\s*terminator[-_]py\s*$', 'Name: terminator', content, flags=re.MULTILINE)
+                # Also handle cases where it might not be on its own line
+                content = re.sub(r'Name:\s*terminator[-_]py\b', 'Name: terminator', content)
+                # Replace all other occurrences
                 content = content.replace('terminator-py', 'terminator')
+                content = content.replace('terminator_py', 'terminator')
                 
                 if content != original_content:
                     print(f"  Updated METADATA in {os.path.relpath(root, temp_dir)}")
