@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "description": "Auto-synced from .cursor/rules - Terminator project workspace rules",
-  "last_sync": "2025-09-09T17:32:36.745Z",
+  "last_sync": "2025-09-11T22:05:15.332Z",
   "sync_source": ".cursor/rules/*.mdc",
   "total_rules": 13,
   "rules": {
@@ -12,7 +12,7 @@
       "type": "workspace_rule",
       "size_bytes": 1277,
       "line_count": 23,
-      "last_modified": "2025-09-06T01:35:17.183Z"
+      "last_modified": "2025-09-11T20:26:08.823Z"
     },
     "documentation-standards": {
       "title": "Documentation Standards",
@@ -21,16 +21,16 @@
       "type": "workspace_rule",
       "size_bytes": 2757,
       "line_count": 125,
-      "last_modified": "2025-07-29T16:37:23.821Z"
+      "last_modified": "2025-09-11T20:26:08.823Z"
     },
     "git-operations": {
       "title": "Git Operations",
-      "content": "---\ndescription: \"Safe git operations, pushing code, committing changes, git workflow protocols\"\n---\n\n# Safe Git Push Protocol\n\n**CRITICAL**: Follow this exact sequence for ALL git operations. Never deviate.\n\n## Mandatory Pre-Push Checks\n```bash\ngit status                    # Always check working directory first\ngit log --oneline -5         # Review recent commits  \ngit diff --stat              # Review changes scope\n```\n\n## Safe Push Sequence\n```bash\ngit add .                    # Stage all changes\ngit commit -m \"descriptive message\"  # Never use -m with empty/vague messages\ngit push origin main         # Only push to main branch\n```\n\n## Forbidden Operations\n- `git push --force` or `git push -f` \n- `git reset --hard`\n- `git rebase` in shared branches\n- Interactive commands requiring user input\n- Any command with `--force-with-lease`\n\n## Commit Message Format\n```\ntype: brief description\n\n- Specific change 1\n- Specific change 2  \n- Impact/scope summary\n```\n\n**If ANY command fails, STOP immediately. Do not proceed.**\n",
+      "content": "---\r\ndescription: \"Safe git operations, pushing code, committing changes, git workflow protocols\"\r\n---\r\n\r\n# Safe Git Push Protocol\r\n\r\n**CRITICAL**: Follow this exact sequence for ALL git operations. Never deviate.\r\n\r\n## Mandatory Pre-Push Checks\r\n```bash\r\ngit status                    # Always check working directory first\r\ngit log --oneline -5         # Review recent commits  \r\ngit diff --stat              # Review changes scope\r\n```\r\n\r\n## Safe Push Sequence\r\n```bash\r\ngit add .                    # Stage all changes\r\ngit commit -m \"descriptive message\"  # Never use -m with empty/vague messages\r\ngit push origin main         # Only push to main branch\r\n```\r\n\r\n## Forbidden Operations\r\n- `git push --force` or `git push -f` \r\n- `git reset --hard`\r\n- `git rebase` in shared branches\r\n- Interactive commands requiring user input\r\n- Any command with `--force-with-lease`\r\n\r\n## Commit Message Format\r\n```\r\ntype: brief description\r\n\r\n- Specific change 1\r\n- Specific change 2  \r\n- Impact/scope summary\r\n```\r\n\r\n**If ANY command fails, STOP immediately. Do not proceed.**\r\n",
       "source_file": ".cursor\\rules\\git-operations.mdc",
       "type": "workspace_rule",
-      "size_bytes": 1032,
+      "size_bytes": 1071,
       "line_count": 40,
-      "last_modified": "2025-07-31T16:33:12.131Z"
+      "last_modified": "2025-09-11T20:26:08.824Z"
     },
     "mcp-debugging-testing": {
       "title": "Mcp Debugging Testing",
@@ -39,7 +39,7 @@
       "type": "workspace_rule",
       "size_bytes": 5294,
       "line_count": 174,
-      "last_modified": "2025-07-29T16:37:23.821Z"
+      "last_modified": "2025-09-11T20:26:08.824Z"
     },
     "mcp-development-workflow": {
       "title": "Mcp Development Workflow",
@@ -48,7 +48,7 @@
       "type": "workspace_rule",
       "size_bytes": 3618,
       "line_count": 137,
-      "last_modified": "2025-08-22T18:07:05.327Z"
+      "last_modified": "2025-09-11T20:26:08.824Z"
     },
     "mediar-terminator-overview": {
       "title": "Mediar Terminator Overview",
@@ -57,7 +57,7 @@
       "type": "workspace_rule",
       "size_bytes": 2329,
       "line_count": 57,
-      "last_modified": "2025-07-29T16:37:23.822Z"
+      "last_modified": "2025-09-11T20:26:08.824Z"
     },
     "output-parser-javascript": {
       "title": "Output Parser Javascript",
@@ -66,7 +66,7 @@
       "type": "workspace_rule",
       "size_bytes": 3764,
       "line_count": 121,
-      "last_modified": "2025-07-29T16:37:23.822Z"
+      "last_modified": "2025-09-11T20:26:08.825Z"
     },
     "pr-preparation-guide": {
       "title": "Pr Preparation Guide",
@@ -75,7 +75,7 @@
       "type": "workspace_rule",
       "size_bytes": 4256,
       "line_count": 87,
-      "last_modified": "2025-07-29T16:37:23.822Z"
+      "last_modified": "2025-09-11T20:26:08.825Z"
     },
     "terminal-rules": {
       "title": "Terminal Rules",
@@ -84,7 +84,7 @@
       "type": "workspace_rule",
       "size_bytes": 3304,
       "line_count": 82,
-      "last_modified": "2025-09-06T01:35:17.184Z"
+      "last_modified": "2025-09-11T20:26:08.825Z"
     },
     "terminator-development-guide": {
       "title": "Terminator Development Guide",
@@ -93,7 +93,7 @@
       "type": "workspace_rule",
       "size_bytes": 5144,
       "line_count": 145,
-      "last_modified": "2025-09-01T21:17:42.970Z"
+      "last_modified": "2025-09-11T20:26:08.826Z"
     },
     "terminator-project-standards": {
       "title": "Terminator Project Standards",
@@ -102,7 +102,7 @@
       "type": "workspace_rule",
       "size_bytes": 3725,
       "line_count": 104,
-      "last_modified": "2025-07-29T16:37:23.823Z"
+      "last_modified": "2025-09-11T20:26:08.826Z"
     },
     "workflow-recorder-testing": {
       "title": "Workflow Recorder Testing",
@@ -111,7 +111,7 @@
       "type": "workspace_rule",
       "size_bytes": 4502,
       "line_count": 75,
-      "last_modified": "2025-08-08T17:07:43.028Z"
+      "last_modified": "2025-09-11T20:26:08.826Z"
     },
     "workflow-yaml-standards": {
       "title": "Workflow Yaml Standards",
@@ -120,7 +120,7 @@
       "type": "workspace_rule",
       "size_bytes": 4671,
       "line_count": 193,
-      "last_modified": "2025-07-29T16:37:23.823Z"
+      "last_modified": "2025-09-11T20:26:08.826Z"
     }
   }
 }
