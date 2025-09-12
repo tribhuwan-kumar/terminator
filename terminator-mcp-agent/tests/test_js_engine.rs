@@ -5,7 +5,7 @@ use terminator_mcp_agent::scripting_engine;
 async fn test_javascript_engine_basic() {
     // Skip npm install in tests to avoid timeout
     std::env::set_var("TERMINATOR_SKIP_NPM_INSTALL", "1");
-    
+
     // Test basic JavaScript execution with the new 'run' parameter
     let script = "return {success: true, value: 42};".to_string();
     let result = scripting_engine::execute_javascript_with_nodejs(script, None)
@@ -21,7 +21,7 @@ async fn test_javascript_engine_basic() {
 async fn test_javascript_engine_with_async() {
     // Skip npm install in tests to avoid timeout
     std::env::set_var("TERMINATOR_SKIP_NPM_INSTALL", "1");
-    
+
     // Test async JavaScript execution
     let script = r#"
         await sleep(100);
@@ -42,7 +42,7 @@ async fn test_javascript_engine_with_async() {
 async fn test_javascript_engine_with_desktop_api() {
     // Skip npm install in tests to avoid timeout
     std::env::set_var("TERMINATOR_SKIP_NPM_INSTALL", "1");
-    
+
     // Test that desktop API is available (may fail if no UI elements present)
     let script = r#"
         // Just check that desktop object exists

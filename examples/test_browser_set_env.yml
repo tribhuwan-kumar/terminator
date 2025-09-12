@@ -1,0 +1,52 @@
+steps:
+  # Step 1: Execute browser script that returns a value with set_env
+  - tool_name: execute_browser_script
+    arguments:
+      selector: "role:Window|name:Chrome"
+      script: |
+        // Try returning an object with set_env
+        const data = {
+          title: document.title,
+          url: window.location.href,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Return as JSON with set_env structure
+        return JSON.stringify({
+          set_env: {
+            page_title: data.title,
+            page_url: data.url,
+            capture_time: data.timestamp
+          },
+          data: data
+        });
+
+  # Step 2: Try to access the environment variables
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        // Check if variables were set
+        const title = '{{env.page_title}}';
+        const url = '{{env.page_url}}';
+        const time = '{{env.capture_time}}';
+        
+        console.log('Environment variables from browser script:');
+        console.log('Title:', title);
+        console.log('URL:', url);
+        console.log('Time:', time);
+        
+        // Check if substitution worked
+        if (title.startsWith('{{env.')) {
+          console.log('WARNING: Variables were not substituted - set_env may not be working');
+          return { status: 'variables_not_set' };
+        }
+        
+        return {
+          status: 'success',
+          received: {
+            title: title,
+            url: url,
+            time: time
+          }
+        };

@@ -1994,6 +1994,9 @@ pub async fn execute_javascript_with_local_bindings(
                 "logs": []
             }))
         }
-        None => Err(McpError::internal_error("No result received from Node.js process", None))
+        None => Err(McpError::internal_error(
+            "No result received from Node.js process",
+            None,
+        )),
     }
 }

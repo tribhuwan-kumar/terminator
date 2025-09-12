@@ -24,8 +24,8 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 mod mcp_client;
-mod workflow_result;
 mod telemetry_receiver;
+mod workflow_result;
 
 use mcp_client::execute_command_with_progress;
 use workflow_result::WorkflowResult;

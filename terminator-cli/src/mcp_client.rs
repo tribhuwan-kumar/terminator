@@ -902,14 +902,14 @@ pub async fn execute_command_with_progress(
 ) -> Result<serde_json::Value> {
     use colored::Colorize;
     use tracing::debug;
-    
+
     // Start telemetry receiver if showing progress for workflows
     let telemetry_handle = if show_progress && tool == "execute_sequence" {
         match crate::telemetry_receiver::start_telemetry_receiver().await {
             Ok(handle) => {
                 debug!("Started telemetry receiver on port 4318");
                 Some(handle)
-            },
+            }
             Err(e) => {
                 debug!("Failed to start telemetry receiver: {}", e);
                 None
@@ -948,31 +948,32 @@ pub async fn execute_command_with_progress(
                     if let Some(args_obj) = &arguments {
                         if let Some(steps) = args_obj.get("steps").and_then(|v| v.as_array()) {
                             let total_steps = steps.len();
-                            println!("\n{} {} {}",
+                            println!(
+                                "\n{} {} {}",
                                 "🎯".cyan(),
                                 "WORKFLOW START:".bold().cyan(),
                                 format!("{} steps", total_steps).dimmed()
                             );
-                            
+
                             // List the steps that will be executed
                             for (i, step) in steps.iter().enumerate() {
-                                let tool_name = step.get("tool_name")
+                                let tool_name = step
+                                    .get("tool_name")
                                     .and_then(|v| v.as_str())
                                     .or_else(|| step.get("group_name").and_then(|v| v.as_str()))
                                     .unwrap_or("unknown");
-                                let step_id = step.get("id")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-                                
-                                println!("  {} Step {}/{}: {} {}",
+                                let step_id = step.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+                                println!(
+                                    "  {} Step {}/{}: {} {}",
                                     "📋".dimmed(),
                                     i + 1,
                                     total_steps,
                                     tool_name.yellow(),
-                                    if !step_id.is_empty() { 
+                                    if !step_id.is_empty() {
                                         format!("[{}]", step_id).dimmed().to_string()
-                                    } else { 
-                                        String::new() 
+                                    } else {
+                                        String::new()
                                     }
                                 );
                             }
@@ -997,12 +998,12 @@ pub async fn execute_command_with_progress(
                                 serde_json::from_str::<serde_json::Value>(&text.text)
                             {
                                 service.cancel().await?;
-                                
+
                                 // Stop telemetry receiver if it was started
                                 if let Some(handle) = telemetry_handle {
                                     handle.abort();
                                 }
-                                
+
                                 return Ok(json_result);
                             }
                         }
@@ -1010,12 +1011,12 @@ pub async fn execute_command_with_progress(
                 }
 
                 service.cancel().await?;
-                
+
                 // Stop telemetry receiver if it was started
                 if let Some(handle) = telemetry_handle {
                     handle.abort();
                 }
-                
+
                 Ok(json!({"status": "unknown", "message": "No parseable result from workflow"}))
             }
             Transport::Stdio(command) => {
@@ -1027,7 +1028,7 @@ pub async fn execute_command_with_progress(
                     vec![]
                 };
                 let mut cmd = create_command(&executable, &command_args);
-                
+
                 // Set up logging for the server to capture step progress
                 if std::env::var("LOG_LEVEL").is_err() && std::env::var("RUST_LOG").is_err() {
                     if show_progress {
@@ -1037,14 +1038,14 @@ pub async fn execute_command_with_progress(
                         cmd.env("LOG_LEVEL", "info");
                     }
                 }
-                
+
                 // Enable telemetry if showing progress
                 if show_progress {
                     cmd.env("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318");
                     cmd.env("OTEL_SERVICE_NAME", "terminator-mcp");
                     cmd.env("ENABLE_TELEMETRY", "true");
                 }
-                
+
                 // For now, just use the standard transport without stderr parsing
                 // TODO: Add proper step streaming once MCP protocol supports it
                 let transport = TokioChildProcess::new(cmd)?;
@@ -1056,31 +1057,33 @@ pub async fn execute_command_with_progress(
                         if let Ok(workflow) = serde_json::from_str::<serde_json::Value>(&args_str) {
                             if let Some(steps) = workflow.get("steps").and_then(|v| v.as_array()) {
                                 let total_steps = steps.len();
-                                println!("\n{} {} {}",
+                                println!(
+                                    "\n{} {} {}",
                                     "🎯".cyan(),
                                     "WORKFLOW START:".bold().cyan(),
                                     format!("{} steps", total_steps).dimmed()
                                 );
-                                
+
                                 // List the steps that will be executed
                                 for (i, step) in steps.iter().enumerate() {
-                                    let tool_name = step.get("tool_name")
+                                    let tool_name = step
+                                        .get("tool_name")
                                         .and_then(|v| v.as_str())
                                         .or_else(|| step.get("group_name").and_then(|v| v.as_str()))
                                         .unwrap_or("unknown");
-                                    let step_id = step.get("id")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("");
-                                    
-                                    println!("  {} Step {}/{}: {} {}",
+                                    let step_id =
+                                        step.get("id").and_then(|v| v.as_str()).unwrap_or("");
+
+                                    println!(
+                                        "  {} Step {}/{}: {} {}",
                                         "📋".dimmed(),
                                         i + 1,
                                         total_steps,
                                         tool_name.yellow(),
-                                        if !step_id.is_empty() { 
+                                        if !step_id.is_empty() {
                                             format!("[{}]", step_id).dimmed().to_string()
-                                        } else { 
-                                            String::new() 
+                                        } else {
+                                            String::new()
                                         }
                                     );
                                 }
@@ -1088,7 +1091,7 @@ pub async fn execute_command_with_progress(
                             }
                         }
                     }
-                    
+
                     serde_json::from_str::<serde_json::Value>(&args_str)
                         .ok()
                         .and_then(|v| v.as_object().cloned())
@@ -1112,12 +1115,12 @@ pub async fn execute_command_with_progress(
                                 serde_json::from_str::<serde_json::Value>(&text.text)
                             {
                                 service.cancel().await?;
-                                
+
                                 // Stop telemetry receiver if it was started
                                 if let Some(handle) = telemetry_handle {
                                     handle.abort();
                                 }
-                                
+
                                 return Ok(json_result);
                             }
                         }
@@ -1125,12 +1128,12 @@ pub async fn execute_command_with_progress(
                 }
 
                 service.cancel().await?;
-                
+
                 // Stop telemetry receiver if it was started
                 if let Some(handle) = telemetry_handle {
                     handle.abort();
                 }
-                
+
                 Ok(json!({"status": "unknown", "message": "No parseable result from workflow"}))
             }
         }

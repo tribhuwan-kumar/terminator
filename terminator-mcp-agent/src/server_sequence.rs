@@ -317,7 +317,14 @@ impl DesktopWrapper {
         // Start workflow telemetry span
         let workflow_name = "execute_sequence";
         let mut workflow_span = WorkflowSpan::new(workflow_name);
-        workflow_span.set_attribute("workflow.total_steps", args.steps.as_ref().map(|s| s.len()).unwrap_or(0).to_string());
+        workflow_span.set_attribute(
+            "workflow.total_steps",
+            args.steps
+                .as_ref()
+                .map(|s| s.len())
+                .unwrap_or(0)
+                .to_string(),
+        );
         workflow_span.set_attribute("workflow.stop_on_error", stop_on_error.to_string());
 
         // Convert flattened SequenceStep to internal SequenceItem representation
@@ -515,10 +522,13 @@ impl DesktopWrapper {
                         }
 
                         // Add event for step started
-                        workflow_span.add_event("step.started", vec![
-                            ("step.tool", tool_call.tool_name.clone()),
-                            ("step.index", current_index.to_string()),
-                        ]);
+                        workflow_span.add_event(
+                            "step.started",
+                            vec![
+                                ("step.tool", tool_call.tool_name.clone()),
+                                ("step.index", current_index.to_string()),
+                            ],
+                        );
 
                         let (result, error_occurred) = self
                             .execute_single_tool(
@@ -537,19 +547,28 @@ impl DesktopWrapper {
 
                         // Update step span status and end it
                         let success = result["status"] == "success";
-                        step_span.set_status(success, if !success { 
-                            result["error"].as_str() 
-                        } else { 
-                            None 
-                        });
+                        step_span.set_status(
+                            success,
+                            if !success {
+                                result["error"].as_str()
+                            } else {
+                                None
+                            },
+                        );
                         step_span.end();
 
                         // Add workflow event for step completion
-                        workflow_span.add_event("step.completed", vec![
-                            ("step.tool", tool_call.tool_name.clone()),
-                            ("step.index", current_index.to_string()),
-                            ("step.status", result["status"].as_str().unwrap_or("unknown").to_string()),
-                        ]);
+                        workflow_span.add_event(
+                            "step.completed",
+                            vec![
+                                ("step.tool", tool_call.tool_name.clone()),
+                                ("step.index", current_index.to_string()),
+                                (
+                                    "step.status",
+                                    result["status"].as_str().unwrap_or("unknown").to_string(),
+                                ),
+                            ],
+                        );
 
                         // Merge env updates from engine/script-based steps into the internal context
                         if (tool_name_normalized == "execute_browser_script"
@@ -832,16 +851,25 @@ impl DesktopWrapper {
         let contents = vec![Content::json(summary.clone())?];
 
         // End workflow span with success status
-        let had_errors = summary.get("had_errors").and_then(|v| v.as_bool()).unwrap_or(false);
-        workflow_span.set_status(!had_errors, if had_errors {
-            "Workflow completed with errors"
-        } else {
-            "Workflow completed successfully"
-        });
-        workflow_span.add_event("workflow.completed", vec![
-            ("workflow.total_steps", results.len().to_string()),
-            ("workflow.had_errors", had_errors.to_string()),
-        ]);
+        let had_errors = summary
+            .get("had_errors")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        workflow_span.set_status(
+            !had_errors,
+            if had_errors {
+                "Workflow completed with errors"
+            } else {
+                "Workflow completed successfully"
+            },
+        );
+        workflow_span.add_event(
+            "workflow.completed",
+            vec![
+                ("workflow.total_steps", results.len().to_string()),
+                ("workflow.had_errors", had_errors.to_string()),
+            ],
+        );
         workflow_span.end();
 
         Ok(CallToolResult::success(contents))
