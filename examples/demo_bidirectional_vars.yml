@@ -1,0 +1,113 @@
+# Demonstration of bidirectional variable passing
+# Shows: run_command → browser_script → run_command
+
+inputs:
+  user_name: "John Doe"
+  test_id: 12345
+
+steps:
+  # Step 1: JavaScript sets variables for browser
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        console.log('=== Step 1: JavaScript Setting Variables ===');
+        const userData = {
+          name: '{{user_name}}',
+          id: '{{test_id}}',
+          timestamp: new Date().toISOString(),
+          sessionId: 'session_' + Math.random().toString(36).substring(7)
+        };
+        
+        console.log('User Name:', userData.name);
+        console.log('User ID:', userData.id);
+        console.log('Session ID:', userData.sessionId);
+        
+        return {
+          set_env: {
+            user_name: userData.name,
+            user_id: userData.id.toString(),
+            session_id: userData.sessionId,
+            js_timestamp: userData.timestamp
+          },
+          status: 'variables_set'
+        };
+
+  # Step 2: Browser uses JS variables and sets its own
+  - tool_name: execute_browser_script
+    arguments:
+      selector: "role:Window"
+      timeout_ms: 5000
+      script: |
+        // Access variables from JavaScript
+        var userName = '{{env.user_name}}';
+        var userId = '{{env.user_id}}';
+        var sessionId = '{{env.session_id}}';
+        
+        console.log('=== Step 2: Browser Received Variables ===');
+        console.log('User:', userName);
+        console.log('ID:', userId);
+        console.log('Session:', sessionId);
+        
+        // Get browser-specific data
+        var browserData = {
+          url: window.location.href,
+          title: document.title,
+          combinedId: sessionId + '_browser'
+        };
+        
+        // Return JSON with set_env
+        JSON.stringify({
+          set_env: {
+            browser_url: browserData.url,
+            browser_title: browserData.title,
+            combined_session_id: browserData.combinedId
+          },
+          received: {
+            user: userName,
+            session: sessionId
+          },
+          status: 'browser_complete'
+        });
+
+  # Step 3: JavaScript uses variables from both previous steps
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        console.log('=== Step 3: Final Verification ===');
+        console.log('');
+        console.log('Variables from Step 1 (JavaScript):');
+        console.log('  User Name:', '{{env.user_name}}');
+        console.log('  User ID:', '{{env.user_id}}');
+        console.log('  Session ID:', '{{env.session_id}}');
+        console.log('  JS Timestamp:', '{{env.js_timestamp}}');
+        console.log('');
+        console.log('Variables from Step 2 (Browser):');
+        console.log('  Browser URL:', '{{env.browser_url}}');
+        console.log('  Browser Title:', '{{env.browser_title}}');
+        console.log('  Combined Session:', '{{env.combined_session_id}}');
+        console.log('');
+        
+        // Verify all variables are accessible
+        const jsVarsOk = '{{env.user_name}}' === 'John Doe';
+        const browserVarsOk = '{{env.combined_session_id}}'.includes('_browser');
+        
+        if (jsVarsOk && browserVarsOk) {
+          console.log('✅ SUCCESS: Bidirectional variable passing works perfectly!');
+          console.log('   - JavaScript passed variables to browser script');
+          console.log('   - Browser script passed variables back to JavaScript');
+          console.log('   - All variables accessible throughout the workflow');
+        } else {
+          console.log('❌ FAILED: Some variables were not passed correctly');
+        }
+        
+        return {
+          status: 'complete',
+          summary: {
+            user: '{{env.user_name}}',
+            sessionId: '{{env.session_id}}',
+            browserUrl: '{{env.browser_url}}',
+            combinedSession: '{{env.combined_session_id}}'
+          }
+        };

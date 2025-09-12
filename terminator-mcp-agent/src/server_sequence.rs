@@ -588,24 +588,62 @@ impl DesktopWrapper {
                                 }
                             };
 
-                            if let Some(content_arr) = final_result
-                                .get("result")
-                                .and_then(|r| r.get("content"))
-                                .and_then(|c| c.as_array())
-                            {
-                                for item in content_arr {
-                                    // Typical engine payload is under item.result
-                                    if let Some(res) = item.get("result") {
+                            // Special handling for execute_browser_script
+                            if tool_name_normalized == "execute_browser_script" {
+                                // Browser scripts return their result as a plain string in final_result["result"]["content"][0]["result"]
+                                if let Some(result_str) = final_result
+                                    .get("result")
+                                    .and_then(|r| r.get("content"))
+                                    .and_then(|c| c.as_array())
+                                    .and_then(|arr| arr.first())
+                                    .and_then(|item| item.get("result"))
+                                    .and_then(|r| r.as_str())
+                                {
+                                    info!(
+                                        "[execute_browser_script] Browser script returned: {}",
+                                        result_str
+                                    );
+                                    // Try to parse the browser script result as JSON
+                                    match serde_json::from_str::<serde_json::Value>(result_str) {
+                                        Ok(parsed_json) => {
+                                            info!("[execute_browser_script] Successfully parsed browser result as JSON");
+                                            // Check if the parsed JSON contains set_env
+                                            if let Some(set_env) = parsed_json.get("set_env") {
+                                                info!("[execute_browser_script] Found set_env in browser script result, merging into context");
+                                                merge_env_obj(set_env);
+                                            } else {
+                                                info!("[execute_browser_script] No set_env field found in parsed JSON");
+                                            }
+                                        }
+                                        Err(e) => {
+                                            info!("[execute_browser_script] Browser result is not JSON: {}", e);
+                                        }
+                                    }
+                                } else {
+                                    info!("[execute_browser_script] Could not extract browser script result string from response structure");
+                                }
+                            } else if tool_name_normalized == "run_command" {
+                                // Original logic for run_command
+                                if let Some(content_arr) = final_result
+                                    .get("result")
+                                    .and_then(|r| r.get("content"))
+                                    .and_then(|c| c.as_array())
+                                {
+                                    for item in content_arr {
+                                        // Typical engine payload is under item.result
+                                        if let Some(res) = item.get("result") {
+                                            if let Some(v) =
+                                                res.get("set_env").or_else(|| res.get("env"))
+                                            {
+                                                merge_env_obj(v);
+                                            }
+                                        }
+                                        // Also support top-level set_env/env directly on the item
                                         if let Some(v) =
-                                            res.get("set_env").or_else(|| res.get("env"))
+                                            item.get("set_env").or_else(|| item.get("env"))
                                         {
                                             merge_env_obj(v);
                                         }
-                                    }
-                                    // Also support top-level set_env/env directly on the item
-                                    if let Some(v) = item.get("set_env").or_else(|| item.get("env"))
-                                    {
-                                        merge_env_obj(v);
                                     }
                                 }
                             }

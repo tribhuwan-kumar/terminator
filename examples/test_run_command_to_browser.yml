@@ -1,0 +1,149 @@
+# Test passing variables from run_command to browser script
+inputs:
+  initial_query: "OpenAI GPT"
+  max_results: 5
+
+steps:
+  # Step 1: Use run_command to prepare data and set variables
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        // Prepare some data in JavaScript
+        const searchConfig = {
+          query: '{{initial_query}}',
+          maxResults: {{max_results}},
+          timestamp: new Date().toISOString(),
+          searchId: Math.random().toString(36).substring(7)
+        };
+        
+        console.log('=== Preparing search configuration ===');
+        console.log('Query:', searchConfig.query);
+        console.log('Max Results:', searchConfig.maxResults);
+        console.log('Search ID:', searchConfig.searchId);
+        
+        // Calculate some values
+        const encodedQuery = encodeURIComponent(searchConfig.query);
+        const searchUrl = `https://www.google.com/search?q=${encodedQuery}`;
+        
+        // Set environment variables for browser script
+        return {
+          set_env: {
+            search_query: searchConfig.query,
+            search_url: searchUrl,
+            encoded_query: encodedQuery,
+            max_results: searchConfig.maxResults.toString(),
+            search_id: searchConfig.searchId,
+            prep_time: searchConfig.timestamp
+          },
+          status: 'prepared',
+          config: searchConfig
+        };
+
+  # Step 2: Use browser script with variables from previous step
+  - tool_name: execute_browser_script
+    arguments:
+      selector: "role:Window"
+      timeout_ms: 10000
+      script: |
+        // Access variables set by run_command
+        const searchQuery = '{{env.search_query}}';
+        const searchUrl = '{{env.search_url}}';
+        const encodedQuery = '{{env.encoded_query}}';
+        const maxResults = parseInt('{{env.max_results}}');
+        const searchId = '{{env.search_id}}';
+        const prepTime = '{{env.prep_time}}';
+        
+        console.log('=== Browser Script: Received Variables ===');
+        console.log('Search Query:', searchQuery);
+        console.log('Search URL:', searchUrl);
+        console.log('Encoded Query:', encodedQuery);
+        console.log('Max Results:', maxResults);
+        console.log('Search ID:', searchId);
+        console.log('Prepared at:', prepTime);
+        
+        // Verify variables were properly substituted
+        if (searchQuery === '{{env.search_query}}') {
+          throw new Error('Variables were not substituted!');
+        }
+        
+        // Use the variables to interact with the page
+        const pageInfo = {
+          currentUrl: window.location.href,
+          title: document.title,
+          wouldNavigateTo: searchUrl,
+          searchTerms: searchQuery,
+          resultsToFind: maxResults
+        };
+        
+        // Example: If we're on Google, we could fill the search box
+        const searchBox = document.querySelector('input[name="q"], textarea[name="q"]');
+        if (searchBox) {
+          console.log('Found search box, could fill with:', searchQuery);
+          pageInfo.hasSearchBox = true;
+          pageInfo.searchBoxName = searchBox.name;
+        } else {
+          pageInfo.hasSearchBox = false;
+        }
+        
+        // Return result with additional env vars
+        JSON.stringify({
+          set_env: {
+            browser_url: pageInfo.currentUrl,
+            browser_title: pageInfo.title,
+            search_performed: 'true',
+            combined_id: searchId + '_browser'
+          },
+          searchConfig: {
+            query: searchQuery,
+            url: searchUrl,
+            maxResults: maxResults,
+            searchId: searchId
+          },
+          pageInfo: pageInfo,
+          status: 'browser_executed'
+        });
+
+  # Step 3: Final verification - check all variables from both steps
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        console.log('=== Final Verification ===');
+        console.log('');
+        console.log('Variables from Step 1 (run_command):');
+        console.log('  Search Query:', '{{env.search_query}}');
+        console.log('  Search URL:', '{{env.search_url}}');
+        console.log('  Max Results:', '{{env.max_results}}');
+        console.log('  Search ID:', '{{env.search_id}}');
+        console.log('  Prep Time:', '{{env.prep_time}}');
+        console.log('');
+        console.log('Variables from Step 2 (browser_script):');
+        console.log('  Browser URL:', '{{env.browser_url}}');
+        console.log('  Browser Title:', '{{env.browser_title}}');
+        console.log('  Search Performed:', '{{env.search_performed}}');
+        console.log('  Combined ID:', '{{env.combined_id}}');
+        
+        // Verify all variables are accessible
+        const allVariablesSet = 
+          '{{env.search_query}}' !== '{{' + 'env.search_query}}' &&
+          '{{env.browser_url}}' !== '{{' + 'env.browser_url}}' &&
+          '{{env.combined_id}}' !== '{{' + 'env.combined_id}}';
+        
+        if (!allVariablesSet) {
+          throw new Error('Some variables were not accessible!');
+        }
+        
+        console.log('');
+        console.log('✅ SUCCESS: All variables passed correctly between steps!');
+        console.log('✅ run_command → browser_script → run_command worked perfectly!');
+        
+        return {
+          status: 'complete',
+          summary: {
+            originalQuery: '{{env.search_query}}',
+            searchId: '{{env.search_id}}',
+            browserProcessed: '{{env.search_performed}}' === 'true',
+            finalId: '{{env.combined_id}}'
+          }
+        };
