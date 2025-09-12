@@ -27,7 +27,6 @@ mod mcp_client;
 mod telemetry_receiver;
 mod workflow_result;
 
-use mcp_client::execute_command_with_progress;
 use workflow_result::WorkflowResult;
 
 #[derive(Parser)]
@@ -132,6 +131,10 @@ struct McpRunArgs {
     /// Include detailed results (default: true)
     #[clap(long)]
     no_detailed_results: bool,
+
+    /// Skip retry logic on errors (default: false, will retry on errors)
+    #[clap(long)]
+    no_retry: bool,
 }
 
 #[derive(Subcommand)]
@@ -960,11 +963,12 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
 
     let workflow_str = serde_json::to_string(&workflow_val)?;
 
-    let result_json = execute_command_with_progress(
+    let result_json = mcp_client::execute_command_with_progress_and_retry(
         transport,
         "execute_sequence".to_string(),
         Some(workflow_str),
         true, // Show progress for workflow steps
+        args.no_retry,
     )
     .await?;
 
@@ -1158,11 +1162,12 @@ async fn run_workflow_once(
 
     // For cron jobs, use simple execution to avoid connection spam
     let workflow_str = serde_json::to_string(&workflow_val)?;
-    let result_json = mcp_client::execute_command_with_progress(
+    let result_json = mcp_client::execute_command_with_progress_and_retry(
         transport,
         "execute_sequence".to_string(),
         Some(workflow_str),
         true, // Show progress for workflow steps
+        args.no_retry,
     )
     .await?;
 

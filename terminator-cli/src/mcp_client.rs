@@ -8,6 +8,8 @@ use rmcp::{
 use std::io::{self, Write};
 use tokio::process::Command;
 use tracing::info;
+use std::time::Duration;
+use tokio::time::sleep;
 
 use anthropic_sdk::{Client as AnthropicClient, ToolChoice};
 use serde_json::json;
@@ -900,6 +902,16 @@ pub async fn execute_command_with_progress(
     args: Option<String>,
     show_progress: bool,
 ) -> Result<serde_json::Value> {
+    execute_command_with_progress_and_retry(transport, tool, args, show_progress, false).await
+}
+
+pub async fn execute_command_with_progress_and_retry(
+    transport: Transport,
+    tool: String,
+    args: Option<String>,
+    show_progress: bool,
+    no_retry: bool,
+) -> Result<serde_json::Value> {
     use colored::Colorize;
     use tracing::debug;
 
@@ -933,6 +945,9 @@ pub async fn execute_command_with_progress(
                         version: env!("CARGO_PKG_VERSION").to_string(),
                     },
                 };
+                
+                // Connection setup - no retry here as StreamableHttpClientTransport doesn't support cloning
+                // Retries will be handled at the tool call level
                 let service = client_info.serve(transport).await?;
 
                 let arguments = if let Some(args_str) = args {
@@ -982,12 +997,42 @@ pub async fn execute_command_with_progress(
                     }
                 }
 
-                let result = service
-                    .call_tool(CallToolRequestParam {
-                        name: tool.into(),
-                        arguments,
-                    })
-                    .await?;
+                // Retry logic for tool execution
+                let mut retry_count = 0;
+                let max_retries = if no_retry { 0 } else { 3 };
+                let mut _last_error = None;
+                
+                let result = loop {
+                    match service
+                        .call_tool(CallToolRequestParam {
+                            name: tool.clone().into(),
+                            arguments: arguments.clone(),
+                        })
+                        .await {
+                        Ok(res) => break res,
+                        Err(e) => {
+                            let error_str = e.to_string();
+                            let is_retryable = error_str.contains("401") || 
+                                              error_str.contains("Unauthorized") ||
+                                              error_str.contains("500") ||
+                                              error_str.contains("502") ||
+                                              error_str.contains("503") ||
+                                              error_str.contains("504") ||
+                                              error_str.contains("timeout");
+                            
+                            if is_retryable && retry_count < max_retries {
+                                retry_count += 1;
+                                let delay = Duration::from_secs(2u64.pow(retry_count));
+                                eprintln!("⚠️  Tool execution failed: {}. Retrying in {} seconds... (attempt {}/{})", 
+                                         error_str, delay.as_secs(), retry_count, max_retries);
+                                sleep(delay).await;
+                                _last_error = Some(e);
+                            } else {
+                                return Err(e.into());
+                            }
+                        }
+                    }
+                };
 
                 // Parse the result content as JSON
                 if !result.content.is_empty() {
@@ -1099,12 +1144,42 @@ pub async fn execute_command_with_progress(
                     None
                 };
 
-                let result = service
-                    .call_tool(CallToolRequestParam {
-                        name: tool.into(),
-                        arguments,
-                    })
-                    .await?;
+                // Retry logic for tool execution (stdio)
+                let mut retry_count = 0;
+                let max_retries = if no_retry { 0 } else { 3 };
+                let mut _last_error = None;
+                
+                let result = loop {
+                    match service
+                        .call_tool(CallToolRequestParam {
+                            name: tool.clone().into(),
+                            arguments: arguments.clone(),
+                        })
+                        .await {
+                        Ok(res) => break res,
+                        Err(e) => {
+                            let error_str = e.to_string();
+                            let is_retryable = error_str.contains("401") || 
+                                              error_str.contains("Unauthorized") ||
+                                              error_str.contains("500") ||
+                                              error_str.contains("502") ||
+                                              error_str.contains("503") ||
+                                              error_str.contains("504") ||
+                                              error_str.contains("timeout");
+                            
+                            if is_retryable && retry_count < max_retries {
+                                retry_count += 1;
+                                let delay = Duration::from_secs(2u64.pow(retry_count));
+                                eprintln!("⚠️  Tool execution failed: {}. Retrying in {} seconds... (attempt {}/{})", 
+                                         error_str, delay.as_secs(), retry_count, max_retries);
+                                sleep(delay).await;
+                                _last_error = Some(e);
+                            } else {
+                                return Err(e.into());
+                            }
+                        }
+                    }
+                };
 
                 // Parse the result content as JSON
                 if !result.content.is_empty() {

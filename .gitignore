@@ -31,3 +31,7 @@ scripts/copy-mcp-binary.ps1
 
 # Local logs
 /logs/
+# MCP configuration (contains sensitive keys)
+.mcp.json
+mcp.json
+.cursor/mcp.json
