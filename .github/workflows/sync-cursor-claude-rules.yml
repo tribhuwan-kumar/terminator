@@ -56,9 +56,18 @@ jobs:
           - Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
           - Triggered by: ${{ github.event_name }}"
           
-          # Only push if we're on a branch with write access
+          # Determine target branch - use main for tags, otherwise use the current branch
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # For tags, push to main branch
+            TARGET_BRANCH="main"
+          else
+            # For branches, use the branch name
+            TARGET_BRANCH="${{ github.ref_name }}"
+          fi
+          
+          # Only push if we're on a branch with write access (not for tags themselves)
           if [ "${{ github.event_name }}" = "push" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            git push origin HEAD:${{ github.ref_name }}
+            git push origin HEAD:${TARGET_BRANCH}
           fi
 
       - name: Create summary comment (on PR)

@@ -552,6 +552,7 @@ fn init_logging() {
 }
 
 // Helper function to parse step start logs
+#[allow(dead_code)]
 fn parse_step_log(line: &str) -> Option<(String, String, String)> {
     // Parse lines like: "Step 0 BEGIN tool='open_application' id='open_notepad' ..."
     if let Some(step_idx) = line.find("Step ") {
@@ -585,6 +586,7 @@ fn parse_step_log(line: &str) -> Option<(String, String, String)> {
 }
 
 // Helper function to parse step end logs
+#[allow(dead_code)]
 fn parse_step_end_log(line: &str) -> Option<(String, String)> {
     // Parse lines like: "Step 0 END tool='open_application' id='open_notepad' status=success"
     if let Some(step_idx) = line.find("Step ") {
@@ -883,6 +885,7 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn execute_command_with_result(
     transport: Transport,
     tool: String,

@@ -27,7 +27,7 @@ mod mcp_client;
 mod workflow_result;
 mod telemetry_receiver;
 
-use mcp_client::{execute_command_with_progress, execute_command_with_result};
+use mcp_client::execute_command_with_progress;
 use workflow_result::WorkflowResult;
 
 #[derive(Parser)]
