@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "description": "Auto-synced from .cursor/rules - Terminator project workspace rules",
-  "last_sync": "2025-09-12T00:45:04.791Z",
+  "last_sync": "2025-09-12T23:23:23.987Z",
   "sync_source": ".cursor/rules/*.mdc",
   "total_rules": 13,
   "rules": {
@@ -12,7 +12,7 @@
       "type": "workspace_rule",
       "size_bytes": 1255,
       "line_count": 23,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "documentation-standards": {
       "title": "Documentation Standards",
@@ -21,7 +21,7 @@
       "type": "workspace_rule",
       "size_bytes": 2633,
       "line_count": 125,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "git-operations": {
       "title": "Git Operations",
@@ -30,7 +30,7 @@
       "type": "workspace_rule",
       "size_bytes": 1032,
       "line_count": 40,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "mcp-debugging-testing": {
       "title": "Mcp Debugging Testing",
@@ -39,7 +39,7 @@
       "type": "workspace_rule",
       "size_bytes": 5121,
       "line_count": 174,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "mcp-development-workflow": {
       "title": "Mcp Development Workflow",
@@ -48,7 +48,7 @@
       "type": "workspace_rule",
       "size_bytes": 3482,
       "line_count": 137,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "mediar-terminator-overview": {
       "title": "Mediar Terminator Overview",
@@ -57,7 +57,7 @@
       "type": "workspace_rule",
       "size_bytes": 2273,
       "line_count": 57,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "output-parser-javascript": {
       "title": "Output Parser Javascript",
@@ -66,7 +66,7 @@
       "type": "workspace_rule",
       "size_bytes": 3644,
       "line_count": 121,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "pr-preparation-guide": {
       "title": "Pr Preparation Guide",
@@ -75,7 +75,7 @@
       "type": "workspace_rule",
       "size_bytes": 4170,
       "line_count": 87,
-      "last_modified": "2025-09-12T00:45:03.757Z"
+      "last_modified": "2025-09-12T23:23:23.339Z"
     },
     "terminal-rules": {
       "title": "Terminal Rules",
@@ -84,7 +84,7 @@
       "type": "workspace_rule",
       "size_bytes": 3223,
       "line_count": 82,
-      "last_modified": "2025-09-12T00:45:03.758Z"
+      "last_modified": "2025-09-12T23:23:23.340Z"
     },
     "terminator-development-guide": {
       "title": "Terminator Development Guide",
@@ -93,7 +93,7 @@
       "type": "workspace_rule",
       "size_bytes": 5000,
       "line_count": 145,
-      "last_modified": "2025-09-12T00:45:03.758Z"
+      "last_modified": "2025-09-12T23:23:23.340Z"
     },
     "terminator-project-standards": {
       "title": "Terminator Project Standards",
@@ -102,7 +102,7 @@
       "type": "workspace_rule",
       "size_bytes": 3622,
       "line_count": 104,
-      "last_modified": "2025-09-12T00:45:03.758Z"
+      "last_modified": "2025-09-12T23:23:23.340Z"
     },
     "workflow-recorder-testing": {
       "title": "Workflow Recorder Testing",
@@ -111,7 +111,7 @@
       "type": "workspace_rule",
       "size_bytes": 4428,
       "line_count": 75,
-      "last_modified": "2025-09-12T00:45:03.758Z"
+      "last_modified": "2025-09-12T23:23:23.340Z"
     },
     "workflow-yaml-standards": {
       "title": "Workflow Yaml Standards",
@@ -120,7 +120,7 @@
       "type": "workspace_rule",
       "size_bytes": 4479,
       "line_count": 193,
-      "last_modified": "2025-09-12T00:45:03.758Z"
+      "last_modified": "2025-09-12T23:23:23.340Z"
     }
   }
 }
