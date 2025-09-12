@@ -25,4 +25,6 @@ pub use utils::{convert_uiautomation_element_to_terminator, generate_element_id}
 pub use applications::get_process_name_by_pid;
 
 // Re-export virtual display support
-pub use virtual_display::{VirtualDisplayManager, VirtualDisplayConfig, HeadlessConfig, is_headless_environment};
+pub use virtual_display::{
+    is_headless_environment, HeadlessConfig, VirtualDisplayConfig, VirtualDisplayManager,
+};

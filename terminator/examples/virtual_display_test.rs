@@ -1,14 +1,16 @@
-use terminator::{Desktop, AutomationError};
-use terminator::platforms::windows::{WindowsEngine, HeadlessConfig, VirtualDisplayConfig};
 use std::env;
+use terminator::platforms::windows::{HeadlessConfig, VirtualDisplayConfig, WindowsEngine};
+use terminator::{AutomationError, Desktop};
 use tracing::info;
 use tracing_subscriber;
 
 fn main() -> Result<(), AutomationError> {
     // Initialize logging
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
-            .add_directive("terminator=debug".parse().unwrap()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("terminator=debug".parse().unwrap()),
+        )
         .init();
 
     info!("Starting virtual display test");
@@ -25,7 +27,7 @@ fn main() -> Result<(), AutomationError> {
         });
 
     info!("Headless mode detected: {}", headless);
-    
+
     if headless {
         info!("Running in HEADLESS mode with virtual display");
         test_with_virtual_display()?;
@@ -39,7 +41,7 @@ fn main() -> Result<(), AutomationError> {
 
 fn test_with_virtual_display() -> Result<(), AutomationError> {
     info!("Initializing virtual display configuration");
-    
+
     // Create headless configuration
     let headless_config = HeadlessConfig {
         use_virtual_display: true,
@@ -55,15 +57,18 @@ fn test_with_virtual_display() -> Result<(), AutomationError> {
 
     // Create Windows engine with virtual display
     let engine = WindowsEngine::new_with_headless(false, false, headless_config)?;
-    
-    info!("Virtual display active: {}", engine.is_virtual_display_active());
+
+    info!(
+        "Virtual display active: {}",
+        engine.is_virtual_display_active()
+    );
     if let Some(session_id) = engine.get_virtual_session_id() {
         info!("Virtual session ID: {}", session_id);
     }
 
     // Test basic UI automation with virtual display
     test_ui_automation()?;
-    
+
     Ok(())
 }
 
@@ -75,14 +80,14 @@ fn test_normal_mode() -> Result<(), AutomationError> {
 
 fn test_ui_automation() -> Result<(), AutomationError> {
     info!("Initializing desktop automation");
-    
+
     // Create desktop instance with default settings
     let desktop = Desktop::new_default()?;
-    
+
     // Try to find desktop root
     let root = desktop.root();
     info!("Found root element: {:?}", root.name());
-    
+
     // List available applications
     match desktop.applications() {
         Ok(apps) => {
@@ -97,16 +102,16 @@ fn test_ui_automation() -> Result<(), AutomationError> {
             info!("Failed to get applications: {}", e);
         }
     }
-    
+
     // Try to open calculator (if available)
     info!("Attempting to open calculator...");
     match desktop.open_application("calc") {
         Ok(calc) => {
             info!("Calculator opened successfully");
-            
+
             // Wait a moment for it to load
             std::thread::sleep(std::time::Duration::from_secs(2));
-            
+
             // Try to get calculator name
             if let Some(name) = calc.name() {
                 info!("Calculator window name: {}", name);
@@ -116,7 +121,7 @@ fn test_ui_automation() -> Result<(), AutomationError> {
             info!("Failed to open calculator: {}", e);
         }
     }
-    
+
     info!("UI automation test completed");
     Ok(())
 }

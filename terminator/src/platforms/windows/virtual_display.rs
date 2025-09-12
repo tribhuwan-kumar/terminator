@@ -1,5 +1,5 @@
-use std::process::Command;
 use crate::AutomationError;
+use std::process::Command;
 use tracing::info;
 
 /// Configuration for virtual display
@@ -42,8 +42,11 @@ impl VirtualDisplayManager {
 
     /// Initialize virtual display using Windows Virtual Display Driver
     pub fn initialize(&mut self) -> Result<(), AutomationError> {
-        info!("Initializing virtual display: {}x{}", self.config.width, self.config.height);
-        
+        info!(
+            "Initializing virtual display: {}x{}",
+            self.config.width, self.config.height
+        );
+
         // For MVP, we'll detect if we're in a headless environment
         // and set up accordingly
         if is_headless_environment() {
@@ -59,7 +62,7 @@ impl VirtualDisplayManager {
         // Mark as initialized
         self.is_initialized = true;
         info!("Virtual display initialized");
-        
+
         Ok(())
     }
 
@@ -69,7 +72,7 @@ impl VirtualDisplayManager {
         // For the MVP, we'll use a simpler approach that doesn't require
         // direct Windows API calls that may not be available
         info!("Creating virtual display context");
-        
+
         // The actual display creation would happen here if we had
         // a virtual display driver installed
         if self.config.driver_path.is_some() {
@@ -77,7 +80,7 @@ impl VirtualDisplayManager {
         } else {
             info!("No driver configured, using default virtual session");
         }
-        
+
         Ok(())
     }
 
@@ -86,12 +89,12 @@ impl VirtualDisplayManager {
     fn create_memory_display(&mut self) -> Result<(), AutomationError> {
         // Simplified approach for MVP
         info!("Setting up memory-based virtual display");
-        
+
         // In a real implementation, we would:
         // 1. Create a memory device context
         // 2. Set up a bitmap for rendering
         // 3. Configure the display properties
-        
+
         self.is_initialized = true;
         Ok(())
     }
@@ -102,10 +105,10 @@ impl VirtualDisplayManager {
         // 1. Creating a new window station
         // 2. Creating a new desktop
         // 3. Setting up the session for UI automation
-        
+
         // For MVP, we'll use a simpler approach
         info!("Setting up virtual session for headless operation");
-        
+
         // Ensure we have a valid window station and desktop
         // This is simplified - full implementation would create new ones
         Ok(())
@@ -115,19 +118,20 @@ impl VirtualDisplayManager {
     pub fn install_driver(&self) -> Result<(), AutomationError> {
         if let Some(driver_path) = &self.config.driver_path {
             info!("Installing virtual display driver from: {}", driver_path);
-            
+
             let output = Command::new("pnputil")
                 .args(&["/add-driver", driver_path, "/install"])
                 .output()
-                .map_err(|e| AutomationError::PlatformError(
-                    format!("Failed to install driver: {}", e)
-                ))?;
+                .map_err(|e| {
+                    AutomationError::PlatformError(format!("Failed to install driver: {}", e))
+                })?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(AutomationError::PlatformError(
-                    format!("Driver installation failed: {}", stderr)
-                ));
+                return Err(AutomationError::PlatformError(format!(
+                    "Driver installation failed: {}",
+                    stderr
+                )));
             }
 
             info!("Virtual display driver installed successfully");
@@ -164,12 +168,12 @@ pub fn is_headless_environment() -> bool {
     if let Ok(val) = std::env::var("TERMINATOR_HEADLESS") {
         return val.to_lowercase() == "true" || val == "1";
     }
-    
+
     // Additional checks could be added here for:
     // - Checking if running as a service
     // - Detecting container environments
     // - Checking for remote sessions
-    
+
     false
 }
 

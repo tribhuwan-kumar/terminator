@@ -5,12 +5,11 @@ use crate::platforms::windows::tree_builder::{
     build_ui_node_tree_configurable, TreeBuildingConfig, TreeBuildingContext,
 };
 use crate::platforms::windows::types::ThreadSafeWinUIElement;
-use crate::platforms::windows::virtual_display::{
-    VirtualDisplayManager, VirtualDisplayConfig, HeadlessConfig, is_headless_environment,
-};
-use std::sync::Mutex;
 use crate::platforms::windows::utils::{
     create_ui_automation_with_com_init, map_generic_role_to_win_roles, string_to_ui_property,
+};
+use crate::platforms::windows::virtual_display::{
+    is_headless_environment, HeadlessConfig, VirtualDisplayConfig, VirtualDisplayManager,
 };
 use crate::platforms::windows::{applications, generate_element_id, WindowsUIElement};
 use crate::platforms::AccessibilityEngine;
@@ -19,6 +18,7 @@ use crate::{AutomationError, Selector, UIElement};
 use image::DynamicImage;
 use image::{ImageBuffer, Rgba};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -255,22 +255,24 @@ impl WindowsEngine {
         let mut virtual_display = None;
         if headless_config.use_virtual_display {
             info!("Initializing virtual display with custom config");
-            let mut display_manager = VirtualDisplayManager::new(headless_config.virtual_display_config);
-            
+            let mut display_manager =
+                VirtualDisplayManager::new(headless_config.virtual_display_config);
+
             // Try to install driver if path is provided
             if display_manager.config.driver_path.is_some() {
                 if let Err(e) = display_manager.install_driver() {
                     warn!("Failed to install virtual display driver: {}", e);
                 }
             }
-            
+
             if let Err(e) = display_manager.initialize() {
                 if headless_config.fallback_to_memory {
                     warn!("Virtual display init failed, using memory fallback: {}", e);
                 } else {
-                    return Err(AutomationError::PlatformError(
-                        format!("Virtual display initialization failed: {}", e)
-                    ));
+                    return Err(AutomationError::PlatformError(format!(
+                        "Virtual display initialization failed: {}",
+                        e
+                    )));
                 }
             } else {
                 info!("Virtual display initialized successfully");
@@ -281,7 +283,7 @@ impl WindowsEngine {
         let automation = UIAutomation::new_direct()
             .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
         let arc_automation = ThreadSafeWinUIAutomation(Arc::new(automation));
-        
+
         Ok(Self {
             automation: arc_automation,
             use_background_apps,
@@ -292,16 +294,16 @@ impl WindowsEngine {
 
     /// Check if virtual display is active
     pub fn is_virtual_display_active(&self) -> bool {
-        self.virtual_display.as_ref().map_or(false, |vd| {
-            vd.lock().unwrap().is_available()
-        })
+        self.virtual_display
+            .as_ref()
+            .map_or(false, |vd| vd.lock().unwrap().is_available())
     }
 
     /// Get virtual display session ID if available
     pub fn get_virtual_session_id(&self) -> Option<u32> {
-        self.virtual_display.as_ref().and_then(|vd| {
-            vd.lock().unwrap().get_session_id()
-        })
+        self.virtual_display
+            .as_ref()
+            .and_then(|vd| vd.lock().unwrap().get_session_id())
     }
 
     /// Extract browser-specific information from window titles
