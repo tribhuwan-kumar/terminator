@@ -319,6 +319,7 @@ async fn main() -> Result<()> {
             );
 
             let mut router: Router = Router::new()
+                .route("/", get(root_handler))
                 .route("/health", get(health_check))
                 .route("/status", get(status_handler))
                 .nest("/mcp", mcp_router)
@@ -334,9 +335,11 @@ async fn main() -> Result<()> {
             if args.cors {
                 info!("CORS enabled - accessible from web browsers");
             }
-            info!("Connect your MCP client to: http://{addr}/mcp");
-            info!("Status endpoint available at: http://{addr}/status");
-            info!("Health check available at: http://{addr}/health");
+            info!("Available endpoints:");
+            info!("  Root (endpoint list): http://{addr}/");
+            info!("  MCP client endpoint: http://{addr}/mcp");
+            info!("  Status endpoint: http://{addr}/status");
+            info!("  Health check: http://{addr}/health");
             info!("Press Ctrl+C to stop");
 
             axum::serve(tcp_listener, router)
@@ -355,6 +358,29 @@ async fn main() -> Result<()> {
     terminator_mcp_agent::telemetry::shutdown_telemetry();
 
     Ok(())
+}
+
+async fn root_handler() -> impl axum::response::IntoResponse {
+    (
+        axum::http::StatusCode::OK,
+        axum::Json(serde_json::json!({
+            "name": "Terminator MCP Server",
+            "description": "Desktop automation via Model Context Protocol",
+            "version": env!("CARGO_PKG_VERSION"),
+            "endpoints": {
+                "/": "This endpoint - lists available endpoints",
+                "/mcp": "MCP protocol endpoint - connect your MCP client here",
+                "/health": "Health check endpoint - returns server status",
+                "/status": "Status endpoint - shows active requests and concurrency info"
+            },
+            "usage": {
+                "mcp_client": "Connect your MCP client to: /mcp",
+                "example": "http://127.0.0.1:3000/mcp"
+            },
+            "documentation": "https://github.com/theterminatorai/terminator",
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        })),
+    )
 }
 
 async fn health_check() -> impl axum::response::IntoResponse {
