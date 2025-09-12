@@ -250,5 +250,34 @@ jobs:
           command: upload
           args: --non-interactive --skip-existing wheels-sdist/* wheels-windows-x64/* wheels-windows-arm64/* wheels-linux-x86_64/* wheels-macos-x86_64/* wheels-macos-arm64/*
 
-      # Note: The 'terminator' package name is already taken on PyPI by another project
-      # We only publish to 'terminator-py' which is our actual package name
+      - name: Checkout code for package rename
+        uses: actions/checkout@v4
+        with:
+          path: terminator-repo
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install wheel and twine
+        run: |
+          pip install wheel twine wheel-filename
+
+      - name: Prepare and update wheels for terminator package
+        run: |
+          mkdir -p terminator-wheels
+          # Copy all wheel files
+          find bindings/python/wheels-* -name "*.whl" -exec cp {} terminator-wheels/ \;
+          
+          # Update metadata inside wheels and rename files
+          cd terminator-wheels
+          python ../terminator-repo/scripts/update_wheel_metadata.py
+          cd ..
+
+      - name: Publish to PyPI (terminator)
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TERMINATOR_PYPI_API_TOKEN }}
+        run: |
+          twine upload --non-interactive --skip-existing terminator-wheels/*
