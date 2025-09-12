@@ -12,7 +12,7 @@ async fn main() {
 
     // Initialize telemetry
     if let Err(e) = terminator_mcp_agent::telemetry::init_telemetry() {
-        eprintln!("Failed to initialize telemetry: {}", e);
+        eprintln!("Failed to initialize telemetry: {e}");
         return;
     }
 
@@ -58,7 +58,7 @@ async fn main() {
         let error = "Element not found: #nonexistent";
         step.set_status(false, Some(error));
         step.end();
-        println!("  ✗ Click failed: {}", error);
+        println!("  ✗ Click failed: {error}");
     }
 
     // Add workflow event

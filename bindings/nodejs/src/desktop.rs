@@ -31,11 +31,12 @@ impl Desktop {
     ) -> Self {
         let use_background_apps = use_background_apps.unwrap_or(false);
         let activate_app = activate_app.unwrap_or(false);
-        let log_level = log_level.unwrap_or_else(|| "info".to_string());
+        let log_level = log_level.unwrap_or_else(|| "warn".to_string());
         static INIT: Once = Once::new();
         INIT.call_once(|| {
             let _ = tracing_subscriber::fmt()
                 .with_env_filter(log_level)
+                .with_ansi(false) // Disable ANSI color codes for cleaner output
                 .try_init();
         });
         let desktop = TerminatorDesktop::new(use_background_apps, activate_app)

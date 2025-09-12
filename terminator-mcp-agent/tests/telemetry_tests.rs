@@ -62,8 +62,7 @@ mod telemetry_tests {
         // Should succeed (or at least not panic)
         assert!(
             result.is_ok(),
-            "Telemetry initialization failed: {:?}",
-            result
+            "Telemetry initialization failed: {result:?}"
         );
 
         // Test shutdown

@@ -78,7 +78,7 @@ mod with_telemetry {
         pub fn new(tool_name: &str, step_id: Option<&str>) -> Self {
             let tracer = global::tracer("terminator-mcp");
             let mut span = tracer
-                .span_builder(format!("step.{}", tool_name))
+                .span_builder(format!("step.{tool_name}"))
                 .with_kind(SpanKind::Internal)
                 .start(&tracer);
 
