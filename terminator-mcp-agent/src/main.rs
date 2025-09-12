@@ -377,7 +377,7 @@ async fn root_handler() -> impl axum::response::IntoResponse {
                 "mcp_client": "Connect your MCP client to: /mcp",
                 "example": "http://127.0.0.1:3000/mcp"
             },
-            "documentation": "https://github.com/theterminatorai/terminator",
+            "documentation": "https://github.com/mediar-ai/terminator",
             "timestamp": chrono::Utc::now().to_rfc3339()
         })),
     )
