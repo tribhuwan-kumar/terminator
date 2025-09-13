@@ -578,7 +578,7 @@ fn parse_step_log(line: &str) -> Option<(String, String, String)> {
                     return Some((
                         step_num.to_string(),
                         "?".to_string(),
-                        format!("[{}]", group_name),
+                        format!("[{group_name}]"),
                     ));
                 }
             }
@@ -967,7 +967,7 @@ pub async fn execute_command_with_progress_and_retry(
                                 "\n{} {} {}",
                                 "🎯".cyan(),
                                 "WORKFLOW START:".bold().cyan(),
-                                format!("{} steps", total_steps).dimmed()
+                                format!("{total_steps} steps").dimmed()
                             );
 
                             // List the steps that will be executed
@@ -986,7 +986,7 @@ pub async fn execute_command_with_progress_and_retry(
                                     total_steps,
                                     tool_name.yellow(),
                                     if !step_id.is_empty() {
-                                        format!("[{}]", step_id).dimmed().to_string()
+                                        format!("[{step_id}]").dimmed().to_string()
                                     } else {
                                         String::new()
                                     }
@@ -1106,7 +1106,7 @@ pub async fn execute_command_with_progress_and_retry(
                                     "\n{} {} {}",
                                     "🎯".cyan(),
                                     "WORKFLOW START:".bold().cyan(),
-                                    format!("{} steps", total_steps).dimmed()
+                                    format!("{total_steps} steps").dimmed()
                                 );
 
                                 // List the steps that will be executed
@@ -1126,7 +1126,7 @@ pub async fn execute_command_with_progress_and_retry(
                                         total_steps,
                                         tool_name.yellow(),
                                         if !step_id.is_empty() {
-                                            format!("[{}]", step_id).dimmed().to_string()
+                                            format!("[{step_id}]").dimmed().to_string()
                                         } else {
                                             String::new()
                                         }

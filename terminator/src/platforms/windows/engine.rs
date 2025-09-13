@@ -270,8 +270,7 @@ impl WindowsEngine {
                     warn!("Virtual display init failed, using memory fallback: {}", e);
                 } else {
                     return Err(AutomationError::PlatformError(format!(
-                        "Virtual display initialization failed: {}",
-                        e
+                        "Virtual display initialization failed: {e}"
                     )));
                 }
             } else {
@@ -296,7 +295,7 @@ impl WindowsEngine {
     pub fn is_virtual_display_active(&self) -> bool {
         self.virtual_display
             .as_ref()
-            .map_or(false, |vd| vd.lock().unwrap().is_available())
+            .is_some_and(|vd| vd.lock().unwrap().is_available())
     }
 
     /// Get virtual display session ID if available

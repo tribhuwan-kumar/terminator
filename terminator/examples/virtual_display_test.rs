@@ -2,7 +2,6 @@ use std::env;
 use terminator::platforms::windows::{HeadlessConfig, VirtualDisplayConfig, WindowsEngine};
 use terminator::{AutomationError, Desktop};
 use tracing::info;
-use tracing_subscriber;
 
 fn main() -> Result<(), AutomationError> {
     // Initialize logging

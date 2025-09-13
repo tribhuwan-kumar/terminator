@@ -128,7 +128,7 @@ async fn process_span(span: &serde_json::Value, tracker: &Arc<Mutex<StepsTracker
                                 "\n{} {} {}",
                                 "🎯".cyan(),
                                 "WORKFLOW STARTED:".bold().cyan(),
-                                format!("{} steps", total).dimmed()
+                                format!("{total} steps").dimmed()
                             );
                         }
                     }
@@ -162,7 +162,7 @@ async fn process_span(span: &serde_json::Value, tracker: &Arc<Mutex<StepsTracker
                             } else {
                                 "✗".red()
                             };
-                            println!("    {} Status: {}", icon, status);
+                            println!("    {icon} Status: {status}");
                         }
                     }
                     "workflow.completed" => {
@@ -260,7 +260,7 @@ async fn process_protobuf_traces(
                                     "\n{} {} {}",
                                     "🎯".cyan(),
                                     "WORKFLOW STARTED:".bold().cyan(),
-                                    format!("{} steps", total).dimmed()
+                                    format!("{total} steps").dimmed()
                                 );
                             }
                         }
@@ -294,7 +294,7 @@ async fn process_protobuf_traces(
                                 } else {
                                     "✗".red()
                                 };
-                                println!("    {} Status: {}", icon, status);
+                                println!("    {icon} Status: {status}");
                             }
                         }
                         "workflow.completed" => {

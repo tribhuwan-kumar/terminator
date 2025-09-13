@@ -120,17 +120,16 @@ impl VirtualDisplayManager {
             info!("Installing virtual display driver from: {}", driver_path);
 
             let output = Command::new("pnputil")
-                .args(&["/add-driver", driver_path, "/install"])
+                .args(["/add-driver", driver_path, "/install"])
                 .output()
                 .map_err(|e| {
-                    AutomationError::PlatformError(format!("Failed to install driver: {}", e))
+                    AutomationError::PlatformError(format!("Failed to install driver: {e}"))
                 })?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(AutomationError::PlatformError(format!(
-                    "Driver installation failed: {}",
-                    stderr
+                    "Driver installation failed: {stderr}"
                 )));
             }
 
