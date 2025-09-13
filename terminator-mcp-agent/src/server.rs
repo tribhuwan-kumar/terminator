@@ -3556,13 +3556,30 @@ Key uses:
 - Analyze page structure: headings, images, element counts
 - Debug accessibility tree gaps
 - Scrape data not available via accessibility APIs
+- Pass data between workflow steps using env/outputs parameters
+
+Parameters:
+- script: JavaScript code to execute (optional if script_file is provided)
+- script_file: Path to JavaScript file to load and execute (optional)
+- env: Environment variables to inject as 'var env = {...}' (optional)
+- outputs: Outputs from previous steps to inject as 'var outputs = {...}' (optional)
+
+Data injection: When env/outputs are provided, they're injected as JavaScript variables at the start of your script. Parse them if they're JSON strings:
+const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
+const parsedOutputs = typeof outputs === 'string' ? JSON.parse(outputs) : outputs;
+
+Returning data: Scripts can set environment variables for subsequent steps:
+return JSON.stringify({
+  set_env: { key: 'value' },
+  result: 'success'
+});
 
 Size limits: Response must be <30KB. For large DOMs, use truncation:
 const html = document.documentElement.outerHTML;
 const max = 30000;
 return html.length > max ? html.substring(0, max) + '...' : html;
 
-Requires Chrome extension to be installed. See browser_dom_extraction.yml for comprehensive examples."
+Requires Chrome extension to be installed. See browser_dom_extraction.yml and demo_bidirectional_vars.yml for examples."
     )]
     async fn execute_browser_script(
         &self,
@@ -3570,8 +3587,69 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml for co
     ) -> Result<CallToolResult, McpError> {
         use serde_json::json;
         let start_instant = std::time::Instant::now();
-        let script_len = args.script.len();
-        let script_preview: String = args.script.chars().take(200).collect();
+
+        // Resolve the script content
+        let script_content = if let Some(script_file) = &args.script_file {
+            // Read script from file
+            tracing::info!(
+                "[execute_browser_script] Reading script from file: {}",
+                script_file
+            );
+            tokio::fs::read_to_string(script_file).await.map_err(|e| {
+                McpError::invalid_params(
+                    "Failed to read script file",
+                    Some(json!({
+                        "file": script_file,
+                        "error": e.to_string()
+                    })),
+                )
+            })?
+        } else if let Some(script) = &args.script {
+            if script.is_empty() {
+                return Err(McpError::invalid_params("Script cannot be empty", None));
+            }
+            script.clone()
+        } else {
+            return Err(McpError::invalid_params(
+                "Either 'script' or 'script_file' must be provided",
+                None,
+            ));
+        };
+
+        // Build the final script with env and outputs prepended if provided
+        let mut final_script = String::new();
+
+        // Inject env variables if provided
+        if let Some(env_data) = &args.env {
+            // Use JSON.stringify to properly escape the data
+            let env_json = serde_json::to_string(&env_data).map_err(|e| {
+                McpError::internal_error(
+                    "Failed to serialize env data",
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
+            final_script.push_str(&format!("var env = {env_json};\n"));
+            tracing::debug!("[execute_browser_script] Injected env variables");
+        }
+
+        // Inject outputs if provided
+        if let Some(outputs_data) = &args.outputs {
+            // Use JSON.stringify to properly escape the data
+            let outputs_json = serde_json::to_string(&outputs_data).map_err(|e| {
+                McpError::internal_error(
+                    "Failed to serialize outputs data",
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
+            final_script.push_str(&format!("var outputs = {outputs_json};\n"));
+            tracing::debug!("[execute_browser_script] Injected outputs variables");
+        }
+
+        // Append the actual script
+        final_script.push_str(&script_content);
+
+        let script_len = final_script.len();
+        let script_preview: String = final_script.chars().take(200).collect();
         tracing::info!(
             "[execute_browser_script] start selector='{}' timeout_ms={:?} retries={:?} script_bytes={}",
             args.selector,
@@ -3584,7 +3662,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml for co
             script_preview
         );
 
-        let script_clone = args.script.clone();
+        let script_clone = final_script.clone();
         let ((script_result, element), successful_selector) =
             crate::utils::find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3611,7 +3689,14 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml for co
                     "Failed to execute browser script",
                     Some(json!({
                         "selector": args.selector,
-                        "script": args.script,
+                        "script": if args.script_file.is_some() { 
+                            "[from file]".to_string() 
+                        } else {
+                            args.script.clone().unwrap_or_else(|| "[no script]".to_string()) 
+                        },
+                        "script_file": args.script_file,
+                        "env_provided": args.env.is_some(),
+                        "outputs_provided": args.outputs.is_some(),
                         "alternative_selectors": args.alternative_selectors,
                         "fallback_selectors": args.fallback_selectors,
                         "error": e.to_string()
@@ -3641,7 +3726,14 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml for co
             "selector_used": successful_selector,
             "selectors_tried": selectors_tried,
             "element": build_element_info(&element),
-            "script": args.script,
+            "script": if args.script_file.is_some() {
+                "[loaded from file]".to_string()
+            } else {
+                args.script.clone().unwrap_or_else(|| "[no script]".to_string())
+            },
+            "script_file": args.script_file,
+            "env_provided": args.env.is_some(),
+            "outputs_provided": args.outputs.is_some(),
             "result": script_result,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "duration_ms": elapsed_ms,

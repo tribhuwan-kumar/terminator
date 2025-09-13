@@ -483,8 +483,18 @@ pub struct ExecuteBrowserScriptArgs {
         description = "A string selector to locate the browser element. Can be chained with ` >> `."
     )]
     pub selector: String,
-    #[schemars(description = "The JavaScript code to execute in the browser console")]
-    pub script: String,
+    #[schemars(
+        description = "The JavaScript code to execute in the browser console. Either this or script_file must be provided."
+    )]
+    pub script: Option<String>,
+    #[schemars(
+        description = "Optional path to JavaScript file to load instead of inline script. Either this or script must be provided."
+    )]
+    pub script_file: Option<String>,
+    #[schemars(description = "Optional environment variables to inject into browser script")]
+    pub env: Option<serde_json::Value>,
+    #[schemars(description = "Optional outputs from previous steps to inject into browser script")]
+    pub outputs: Option<serde_json::Value>,
     #[schemars(
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]
