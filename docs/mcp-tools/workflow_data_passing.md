@@ -6,7 +6,9 @@ This guide explains how to pass data between steps in Terminator MCP workflows u
 
 ## Prerequisites
 
-- **Engine Mode Required**: The `set_env` mechanism ONLY works when using the `engine` parameter with JavaScript or Python in the `run_command` tool
+- **Engine Mode Required**: The `set_env` mechanism works with:
+  - `run_command` tool when using the `engine` parameter with JavaScript or Python
+  - `execute_browser_script` tool (always returns results that can include `set_env`)
 - **Not Available for Shell Commands**: Regular shell commands (using `shell` parameter) cannot use `set_env`
 
 ## How It Works
@@ -87,24 +89,24 @@ steps:
       engine: javascript
       run: |
         const { execSync } = require('child_process');
-        
+
         // Find JSON files
         const folder = 'C:\\Users\\data';
         const psCmd = `Get-ChildItem '${folder}' -Filter '*.json' | Select-Object -First 1 | ConvertTo-Json`;
         const result = execSync(`powershell -Command "${psCmd}"`, { encoding: 'utf8' });
-        
+
         if (!result) {
           return { status: 'no_files_found' };
         }
-        
+
         const fileInfo = JSON.parse(result);
         const filePath = fileInfo.FullName;
         const fileName = fileInfo.Name;
-        
+
         // Read file content
         const content = execSync(`powershell -Command "Get-Content '${filePath}' -Raw"`, { encoding: 'utf8' });
         const data = JSON.parse(content);
-        
+
         // Pass data to next step
         return {
           set_env: {
@@ -125,16 +127,16 @@ steps:
         const filePath = '{{env.file_path}}';
         const fileName = '{{env.file_name}}';
         const entryCount = parseInt('{{env.entry_count}}');
-        
+
         console.log(`Processing ${fileName}`);
         console.log(`Path: ${filePath}`);
         console.log(`Entries to process: ${entryCount}`);
-        
+
         // Process entries...
         for (let i = 0; i < entryCount; i++) {
           console.log(`Processing entry ${i + 1}/${entryCount}`);
         }
-        
+
         // Set status for next step
         return {
           set_env: {
@@ -150,20 +152,20 @@ steps:
       engine: javascript
       run: |
         const { execSync } = require('child_process');
-        
+
         // Get file info from previous steps
         const filePath = '{{env.file_path}}';
         const fileName = '{{env.processed_file}}';
         const status = '{{env.process_status}}';
-        
+
         if (status !== 'completed') {
           return { status: 'skip_move', reason: 'Processing not completed' };
         }
-        
+
         // Move file
         const destination = `C:\\Users\\data\\processed\\${fileName}`;
         execSync(`powershell -Command "Move-Item '${filePath}' -Destination '${destination}' -Force"`);
-        
+
         console.log(`File moved to: ${destination}`);
         return { status: 'moved', file: fileName };
 ```
@@ -178,13 +180,13 @@ steps:
       engine: javascript
       run: |
         const os = require('os');
-        
+
         const systemInfo = {
           hostname: os.hostname(),
           platform: os.platform(),
           memory: Math.round(os.totalmem() / 1024 / 1024 / 1024)
         };
-        
+
         return {
           set_env: {
             system_hostname: systemInfo.hostname,
@@ -207,7 +209,7 @@ steps:
         const hostname = '{{env.system_hostname}}';
         const platform = '{{env.system_platform}}';
         const memory = '{{env.system_memory_gb}}';
-        
+
         const report = {
           timestamp: new Date().toISOString(),
           system: {
@@ -217,10 +219,10 @@ steps:
           },
           status: 'collected'
         };
-        
+
         console.log('System Report:');
         console.log(JSON.stringify(report, null, 2));
-        
+
         return { report: report };
 ```
 
@@ -234,15 +236,15 @@ steps:
 
 ```javascript
 // Original path: C:\Users\file.txt
-const filePath = 'C:\\Users\\file.txt';
+const filePath = "C:\\Users\\file.txt";
 
 // Escape for set_env
-const escapedPath = filePath.replace(/\\/g, '\\\\');
+const escapedPath = filePath.replace(/\\/g, "\\\\");
 
 return {
   set_env: {
-    file_path: escapedPath  // Will be: C:\\Users\\file.txt
-  }
+    file_path: escapedPath, // Will be: C:\\Users\\file.txt
+  },
 };
 ```
 
@@ -254,16 +256,16 @@ return {
 
 ```javascript
 // Step 1: Stringify complex data
-const data = { users: ['Alice', 'Bob'], count: 2 };
+const data = { users: ["Alice", "Bob"], count: 2 };
 return {
   set_env: {
-    user_data: JSON.stringify(data)
-  }
+    user_data: JSON.stringify(data),
+  },
 };
 
 // Step 2: Parse the JSON string
-const userData = JSON.parse('{{env.user_data}}');
-console.log(`Users: ${userData.users.join(', ')}`);
+const userData = JSON.parse("{{env.user_data}}");
+console.log(`Users: ${userData.users.join(", ")}`);
 ```
 
 ### 3. Variable Not Found
@@ -273,12 +275,12 @@ console.log(`Users: ${userData.users.join(', ')}`);
 **Solution**: Check for substitution failure:
 
 ```javascript
-const value = '{{env.might_not_exist}}';
+const value = "{{env.might_not_exist}}";
 
-if (value.startsWith('{{env.')) {
-  console.log('Variable was not set in previous steps');
+if (value.startsWith("{{env.")) {
+  console.log("Variable was not set in previous steps");
   // Use default value or handle error
-  const defaultValue = 'default';
+  const defaultValue = "default";
 } else {
   console.log(`Value: ${value}`);
 }
@@ -313,6 +315,94 @@ if (value.startsWith('{{env.')) {
 
 7. **Error Handling**: Always check if critical variables exist before using them
 
+## Browser Script Example
+
+The `execute_browser_script` tool can also set environment variables:
+
+```javascript
+{
+  "tool_name": "execute_browser_script",
+  "arguments": {
+    "selector": "role:Window",
+    "script": "// Extract data from the page\nconst pageData = {\n  title: document.title,\n  url: window.location.href,\n  formCount: document.forms.length\n};\n\n// Return data and set environment variables\nJSON.stringify({\n  pageData: pageData,\n  set_env: {\n    page_title: pageData.title,\n    page_url: pageData.url,\n    form_count: pageData.formCount.toString()\n  }\n});"
+  }
+}
+```
+
+### Passing Data TO Browser Scripts
+
+The `execute_browser_script` tool can receive data through `env` and `outputs` parameters:
+
+```yaml
+steps:
+  # Step 1: Set some data
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        return {
+          set_env: {
+            search_term: 'automation testing',
+            max_results: '50'
+          }
+        };
+
+  # Step 2: Use the data in browser script
+  - tool_name: execute_browser_script
+    arguments:
+      selector: "role:Window"
+      env:
+        searchTerm: "{{env.search_term}}"
+        maxResults: "{{env.max_results}}"
+      script: |
+        // Parse the injected environment variables
+        const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
+
+        // Use the data
+        const searchBox = document.querySelector('input[type="search"]');
+        searchBox.value = parsedEnv.searchTerm;
+
+        // Return results
+        JSON.stringify({
+          status: 'search_configured',
+          searchTerm: parsedEnv.searchTerm,
+          set_env: {
+            search_executed: 'true'
+          }
+        });
+
+  # Step 3: Check if search was executed
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        const searchExecuted = '{{env.search_executed}}';
+        console.log(`Search executed: ${searchExecuted}`);
+        return { status: 'workflow_complete' };
+```
+
+### Browser Script with Outputs
+
+You can also pass outputs from previous steps:
+
+```yaml
+steps:
+  - tool_name: execute_browser_script
+    arguments:
+      selector: "role:Window"
+      outputs:
+        previousData: "{{outputs.data_extraction}}"
+      script: |
+        const parsedOutputs = typeof outputs === 'string' ? JSON.parse(outputs) : outputs;
+
+        // Use data from previous step
+        if (parsedOutputs.previousData && parsedOutputs.previousData.items) {
+          console.log(`Processing ${parsedOutputs.previousData.items.length} items`);
+        }
+
+        JSON.stringify({ processed: true });
+```
+
 ## Python Example
 
 The `set_env` mechanism also works with Python:
@@ -330,20 +420,36 @@ The `set_env` mechanism also works with Python:
 ## Troubleshooting
 
 ### Issue: Variables not passing between steps
+
 - **Check**: Is `engine` parameter set to "javascript" or "python"?
 - **Check**: Is the return object properly formatted with `set_env` key?
 - **Check**: Are you using the correct substitution syntax `{{env.variable_name}}`?
 
 ### Issue: Backslashes disappearing
+
 - **Solution**: Double-escape backslashes: `path.replace(/\\/g, '\\\\')`
 
 ### Issue: Complex data not passing correctly
+
 - **Solution**: Use `JSON.stringify()` when setting and `JSON.parse()` when reading
 
 ### Issue: Variable shows as literal string
+
 - **Cause**: Variable was not set in any previous step
 - **Solution**: Add error checking or ensure the variable is set
 
 ## Summary
 
-The `set_env` mechanism provides a powerful way to pass data between workflow steps, enabling complex automation scenarios. Remember that it only works with engine mode (JavaScript/Python) and requires careful handling of special characters and complex data structures. When in doubt, consider combining related operations into a single step to avoid data passing complexity.
+The `set_env` mechanism provides a powerful way to pass data between workflow steps, enabling complex automation scenarios. It works with:
+
+- `run_command` tool when using `engine` mode (JavaScript/Python)
+- `execute_browser_script` tool (which can both set and receive environment variables)
+
+Remember to:
+
+- Parse JSON strings when receiving data in browser scripts
+- Handle special characters carefully (especially backslashes)
+- Use JSON.stringify() for complex data structures
+- Consider combining related operations into a single step if data passing becomes too complex
+
+The combination of `run_command` and `execute_browser_script` with environment variables enables sophisticated browser automation workflows with clean data flow between browser and server-side processing.

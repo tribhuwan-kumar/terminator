@@ -134,14 +134,14 @@ steps:
       run: |
         // Example: Find files and pass data to next step
         const { execSync } = require('child_process');
-        
+
         // Get file info (example)
         const filePath = 'C:\\data\\report.pdf';
         const fileSize = 1024;
-        
+
         // Pass data to next step using set_env
         console.log(`Found file: ${filePath}`);
-        
+
         // Method 1: Return set_env object (preferred)
         return {
           set_env: {
@@ -150,7 +150,7 @@ steps:
           },
           status: 'found'
         };
-        
+
         // Method 2: GitHub Actions style (alternative)
         // console.log(`::set-env name=file_path::${filePath}`);
 
@@ -162,13 +162,13 @@ steps:
         // Access environment variables from previous step
         const filePath = '{{env.file_path}}';
         const fileSize = '{{env.file_size}}';
-        
+
         console.log(`Processing: ${filePath} (${fileSize} bytes)`);
-        
+
         // Continue with desktop automation
         const elements = await desktop.locator('role:button').all();
         log(`Found ${elements.length} buttons`);
-        
+
         return {
           file_processed: filePath,
           buttons_found: elements.length
@@ -176,6 +176,7 @@ steps:
 ```
 
 **Important Notes on Data Passing:**
+
 - `set_env` only works with `engine` mode (JavaScript/Python), NOT with shell commands
 - Use `{{env.variable_name}}` syntax to access variables in subsequent steps
 - Watch for backslash escaping issues in Windows paths (may need double escaping)
@@ -269,12 +270,14 @@ The `execute_browser_script` tool enables direct JavaScript execution in browser
 #### When to Use DOM vs Accessibility Tree
 
 **Use Accessibility Tree (default) when:**
+
 - Navigating and interacting with UI elements
 - Working with semantic page structure
 - Building reliable automation workflows
 - Performance is critical (faster, cleaner data)
 
 **Use DOM Inspection when:**
+
 - Extracting data attributes, meta tags, or hidden inputs
 - Debugging why elements aren't appearing in accessibility tree
 - Scraping structured data from specific HTML patterns
@@ -286,19 +289,19 @@ The `execute_browser_script` tool enables direct JavaScript execution in browser
 // Get full HTML DOM (be mindful of size limits)
 execute_browser_script({
   selector: "role:Window|name:Google Chrome",
-  script: "document.documentElement.outerHTML"
-})
+  script: "document.documentElement.outerHTML",
+});
 
 // Get structured page information
 execute_browser_script({
-  selector: "role:Window|name:Google Chrome", 
+  selector: "role:Window|name:Google Chrome",
   script: `({
     url: window.location.href,
     title: document.title,
     html: document.documentElement.outerHTML,
     bodyText: document.body.innerText.substring(0, 1000)
-  })`
-})
+  })`,
+});
 
 // Extract specific data (forms, hidden inputs, meta tags)
 execute_browser_script({
@@ -322,8 +325,8 @@ execute_browser_script({
       name: m.name || m.property,
       content: m.content
     }))
-  })`
-})
+  })`,
+});
 ```
 
 #### Handling Large DOMs
@@ -346,8 +349,8 @@ execute_browser_script({
       totalLength: html.length,
       truncated: html.length > maxLength
     })
-  `
-})
+  `,
+});
 ```
 
 #### Advanced DOM Analysis
@@ -382,8 +385,96 @@ execute_browser_script({
         .map(s => { try { return JSON.parse(s.textContent); } catch { return null; } })
         .filter(Boolean)
     })
-  `
-})
+  `,
+});
+```
+
+#### Passing Data with Environment Variables
+
+The `execute_browser_script` tool now supports passing data through `env` and `outputs` parameters:
+
+```javascript
+// Step 1: Set environment variables in JavaScript
+run_command({
+  engine: "javascript",
+  run: `
+    return {
+      set_env: {
+        userName: 'John Doe',
+        userId: '12345',
+        apiKey: 'secret-key'
+      }
+    };
+  `,
+});
+
+// Step 2: Use environment variables in browser script
+execute_browser_script({
+  selector: "role:Window",
+  env: {
+    userName: "{{env.userName}}",
+    userId: "{{env.userId}}",
+  },
+  script: `
+    // Parse env if it's a JSON string
+    const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
+    
+    // Use the data
+    console.log('Processing user:', parsedEnv.userName);
+    
+    // Fill form with data
+    document.querySelector('#username').value = parsedEnv.userName;
+    document.querySelector('#userid').value = parsedEnv.userId;
+    
+    // Return result and set new variables
+    JSON.stringify({
+      status: 'form_filled',
+      set_env: {
+        form_submitted: 'true',
+        timestamp: new Date().toISOString()
+      }
+    });
+  `,
+});
+```
+
+#### Loading Scripts from Files
+
+You can load JavaScript from external files using the `script_file` parameter:
+
+```javascript
+// browser_scripts/extract_data.js
+const parsedEnv = typeof env === "string" ? JSON.parse(env) : env;
+const parsedOutputs =
+  typeof outputs === "string" ? JSON.parse(outputs) : outputs;
+
+console.log("Script loaded from file");
+console.log("User:", parsedEnv?.userName);
+console.log("Previous result:", parsedOutputs?.previousStep);
+
+// Extract and return data
+JSON.stringify({
+  extractedData: {
+    url: window.location.href,
+    title: document.title,
+    forms: document.forms.length,
+  },
+  set_env: {
+    extraction_complete: "true",
+  },
+});
+
+// In your workflow:
+execute_browser_script({
+  selector: "role:Window",
+  script_file: "browser_scripts/extract_data.js",
+  env: {
+    userName: "{{env.userName}}",
+  },
+  outputs: {
+    previousStep: "{{outputs.step1}}",
+  },
+});
 ```
 
 #### Important Notes
@@ -395,6 +486,8 @@ execute_browser_script({
 3. **Performance**: DOM operations are synchronous and can be slow on large pages. Consider using specific selectors rather than traversing the entire DOM.
 
 4. **Error Handling**: Always wrap complex DOM operations in try-catch blocks and return meaningful error messages.
+
+5. **Data Injection**: When using `env` or `outputs` parameters, they are injected as JavaScript variables at the beginning of your script. Always parse them if they might be JSON strings.
 
 ## Local Development
 
@@ -541,6 +634,7 @@ The agent automatically detects headless environments and initializes a virtual 
 **Activation**:
 
 Virtual display activates automatically when:
+
 - Environment variable `TERMINATOR_HEADLESS=true` is set
 - No console window is available (common in VM/container scenarios)
 - Running as a Windows service or scheduled task
@@ -703,6 +797,7 @@ For additional help, see the [Terminator CLI documentation](../terminator-cli/RE
 1. Ensure the Terminator MCP agent is running (it will auto-start in supported editors).
 2. Send the JSON above as the body of an `execute_sequence` tool call from your LLM or test harness.
 3. Inspect the response: if parsing succeeds you’ll see something like
+
 ### Realtime events (SSE)
 
 When running with the HTTP transport, you can subscribe to realtime workflow events at a separate endpoint outside `/mcp`:
@@ -713,11 +808,10 @@ When running with the HTTP transport, you can subscribe to realtime workflow eve
 Example in Node.js:
 
 ```js
-import EventSource from 'eventsource';
-const es = new EventSource('http://127.0.0.1:3000/events');
-es.onmessage = (e) => console.log('event', e.data);
+import EventSource from "eventsource";
+const es = new EventSource("http://127.0.0.1:3000/events");
+es.onmessage = (e) => console.log("event", e.data);
 ```
-
 
 ```jsonc
 {
