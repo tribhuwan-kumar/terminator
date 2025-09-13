@@ -6,10 +6,10 @@ use rmcp::{
     ServiceExt,
 };
 use std::io::{self, Write};
-use tokio::process::Command;
-use tracing::info;
 use std::time::Duration;
+use tokio::process::Command;
 use tokio::time::sleep;
+use tracing::info;
 
 use anthropic_sdk::{Client as AnthropicClient, ToolChoice};
 use serde_json::json;
@@ -945,7 +945,7 @@ pub async fn execute_command_with_progress_and_retry(
                         version: env!("CARGO_PKG_VERSION").to_string(),
                     },
                 };
-                
+
                 // Connection setup - no retry here as StreamableHttpClientTransport doesn't support cloning
                 // Retries will be handled at the tool call level
                 let service = client_info.serve(transport).await?;
@@ -1001,25 +1001,26 @@ pub async fn execute_command_with_progress_and_retry(
                 let mut retry_count = 0;
                 let max_retries = if no_retry { 0 } else { 3 };
                 let mut _last_error = None;
-                
+
                 let result = loop {
                     match service
                         .call_tool(CallToolRequestParam {
                             name: tool.clone().into(),
                             arguments: arguments.clone(),
                         })
-                        .await {
+                        .await
+                    {
                         Ok(res) => break res,
                         Err(e) => {
                             let error_str = e.to_string();
-                            let is_retryable = error_str.contains("401") || 
-                                              error_str.contains("Unauthorized") ||
-                                              error_str.contains("500") ||
-                                              error_str.contains("502") ||
-                                              error_str.contains("503") ||
-                                              error_str.contains("504") ||
-                                              error_str.contains("timeout");
-                            
+                            let is_retryable = error_str.contains("401")
+                                || error_str.contains("Unauthorized")
+                                || error_str.contains("500")
+                                || error_str.contains("502")
+                                || error_str.contains("503")
+                                || error_str.contains("504")
+                                || error_str.contains("timeout");
+
                             if is_retryable && retry_count < max_retries {
                                 retry_count += 1;
                                 let delay = Duration::from_secs(2u64.pow(retry_count));
@@ -1148,25 +1149,26 @@ pub async fn execute_command_with_progress_and_retry(
                 let mut retry_count = 0;
                 let max_retries = if no_retry { 0 } else { 3 };
                 let mut _last_error = None;
-                
+
                 let result = loop {
                     match service
                         .call_tool(CallToolRequestParam {
                             name: tool.clone().into(),
                             arguments: arguments.clone(),
                         })
-                        .await {
+                        .await
+                    {
                         Ok(res) => break res,
                         Err(e) => {
                             let error_str = e.to_string();
-                            let is_retryable = error_str.contains("401") || 
-                                              error_str.contains("Unauthorized") ||
-                                              error_str.contains("500") ||
-                                              error_str.contains("502") ||
-                                              error_str.contains("503") ||
-                                              error_str.contains("504") ||
-                                              error_str.contains("timeout");
-                            
+                            let is_retryable = error_str.contains("401")
+                                || error_str.contains("Unauthorized")
+                                || error_str.contains("500")
+                                || error_str.contains("502")
+                                || error_str.contains("503")
+                                || error_str.contains("504")
+                                || error_str.contains("timeout");
+
                             if is_retryable && retry_count < max_retries {
                                 retry_count += 1;
                                 let delay = Duration::from_secs(2u64.pow(retry_count));
