@@ -145,7 +145,7 @@ Watch for backslash escaping issues with Windows paths - consider escaping or co
 
 **Browser DOM Inspection with execute_browser_script**
 
-The `execute_browser_script` tool executes JavaScript directly in browser contexts, providing full access to the HTML DOM. This is essential for extracting data not available in the accessibility tree.
+The `execute_browser_script` tool executes JavaScript directly in browser contexts, providing full access to the HTML DOM. It supports bidirectional data flow with workflows through environment variables.
 
 **When to use execute_browser_script:**
 *   Extracting full HTML DOM or specific HTML elements
@@ -153,8 +153,10 @@ The `execute_browser_script` tool executes JavaScript directly in browser contex
 *   Analyzing page structure (forms, links, headings)
 *   Debugging why elements don't appear in accessibility tree
 *   Scraping structured data from HTML patterns
+*   Passing data between workflow steps (set_env support)
+*   Loading reusable scripts from files
 
-**DOM Retrieval Examples:**
+**Basic DOM Extraction:**
 ```javascript
 // Get full HTML (watch size limits ~30KB)
 execute_browser_script({{
@@ -167,15 +169,57 @@ execute_browser_script({{
   selector: \"role:Window|name:Chrome\",
   script: \"({{\\n    url: window.location.href,\\n    title: document.title,\\n    forms: Array.from(document.forms).map(f => ({{\\n      id: f.id,\\n      action: f.action,\\n      inputs: f.elements.length\\n    }})),\\n    hiddenInputs: document.querySelectorAll('input[type=\\\\\"hidden\\\\\"]').length,\\n    bodyText: document.body.innerText.substring(0, 1000)\\n  }})\"
 }})
+```
 
-// Handle large DOMs with truncation
+**Passing Data TO Browser Scripts:**
+```javascript
+// Use env parameter to pass environment variables
 execute_browser_script({{
-  selector: \"role:Window|name:Chrome\",
-  script: \"const html = document.documentElement.outerHTML;\\nconst maxLen = 30000;\\n({{\\n  html: html.length > maxLen ? html.substring(0, maxLen) + '...[truncated]' : html,\\n  totalLength: html.length\\n}})\"
+  selector: \"role:Window\",
+  env: {{
+    searchTerm: \"{{{{env.search_term}}}}\",
+    maxResults: \"{{{{env.max_results}}}}\"
+  }},
+  script: \"const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = parsedEnv.searchTerm;\\nsearchBox.form.submit();\\nJSON.stringify({{ status: 'search_submitted', term: parsedEnv.searchTerm }});\"
+}})
+
+// Use outputs parameter to pass data from previous steps
+execute_browser_script({{
+  selector: \"role:Window\",
+  outputs: {{
+    previousData: \"{{{{outputs.data_extraction}}}}\"
+  }},
+  script: \"const parsedOutputs = typeof outputs === 'string' ? JSON.parse(outputs) : outputs;\\n// Process previous step data\\nif (parsedOutputs.previousData) {{\\n  console.log('Using data from previous step');\\n}}\\nJSON.stringify({{ processed: true }});\"
 }})
 ```
 
-**Important:** Chrome extension must be installed for execute_browser_script to work. The script runs in page context and must return serializable data (strings, numbers, objects, arrays).
+**Returning Data FROM Browser Scripts:**
+```javascript
+// Browser scripts can set environment variables for subsequent steps
+execute_browser_script({{
+  selector: \"role:Window\",
+  script: \"const pageData = {{\\n  title: document.title,\\n  url: window.location.href,\\n  formCount: document.forms.length\\n}};\\n\\n// Return data and set environment variables\\nJSON.stringify({{\\n  pageData: pageData,\\n  set_env: {{\\n    page_title: pageData.title,\\n    page_url: pageData.url,\\n    form_count: pageData.formCount.toString()\\n  }}\\n}});\"
+}})
+```
+
+**Loading Scripts from Files:**
+```javascript
+// Load and execute JavaScript from external file
+execute_browser_script({{
+  selector: \"role:Window\",
+  script_file: \"scripts/extract_table_data.js\",
+  env: {{
+    tableName: \"#data-table\"
+  }}
+}})
+```
+
+**Important Notes:**
+- Chrome extension must be installed for execute_browser_script to work
+- Scripts run in page context and must return serializable data using JSON.stringify()
+- When env/outputs are provided, they're injected as `var env` and `var outputs` at script start
+- Always parse env/outputs in case they're JSON strings: `typeof env === 'string' ? JSON.parse(env) : env`
+- Size limit ~30KB for responses - truncate large DOMs
 
 **Core Desktop APIs:**
 ```javascript
