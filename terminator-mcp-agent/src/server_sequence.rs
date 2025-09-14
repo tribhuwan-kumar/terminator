@@ -18,17 +18,17 @@ impl DesktopWrapper {
             let workflow_path = Path::new(file_path);
             let workflow_dir = workflow_path.parent()?;
             let workflow_name = workflow_path.file_stem()?;
-            
+
             let state_file = workflow_dir
                 .join(".workflow_state")
                 .join(format!("{}.json", workflow_name.to_string_lossy()));
-            
+
             Some(state_file)
         } else {
             None
         }
     }
-    
+
     // Save env state after any step that modifies it
     async fn save_workflow_state(
         workflow_url: &str,
@@ -40,12 +40,12 @@ impl DesktopWrapper {
             if let Some(state_dir) = state_file.parent() {
                 tokio::fs::create_dir_all(state_dir).await.map_err(|e| {
                     McpError::internal_error(
-                        format!("Failed to create state directory: {}", e),
+                        format!("Failed to create state directory: {e}"),
                         None,
                     )
                 })?;
             }
-            
+
             let state = json!({
                 "last_updated": chrono::Utc::now().to_rfc3339(),
                 "last_step_id": step_id,
@@ -55,44 +55,36 @@ impl DesktopWrapper {
                     .and_then(|n| n.to_str()),
                 "env": env,
             });
-            
+
             tokio::fs::write(
                 &state_file,
                 serde_json::to_string_pretty(&state).map_err(|e| {
-                    McpError::internal_error(
-                        format!("Failed to serialize state: {}", e),
-                        None,
-                    )
-                })?
-            ).await.map_err(|e| {
-                McpError::internal_error(
-                    format!("Failed to write state file: {}", e),
-                    None,
-                )
+                    McpError::internal_error(format!("Failed to serialize state: {e}"), None)
+                })?,
+            )
+            .await
+            .map_err(|e| {
+                McpError::internal_error(format!("Failed to write state file: {e}"), None)
             })?;
-            
+
             info!("Saved workflow state to: {:?}", state_file);
         }
         Ok(())
     }
-    
+
     // Load env state when starting from a specific step
-    async fn load_workflow_state(workflow_url: &str) -> Result<Option<serde_json::Value>, McpError> {
+    async fn load_workflow_state(
+        workflow_url: &str,
+    ) -> Result<Option<serde_json::Value>, McpError> {
         if let Some(state_file) = Self::get_state_file_path(workflow_url).await {
             if state_file.exists() {
                 let content = tokio::fs::read_to_string(&state_file).await.map_err(|e| {
-                    McpError::internal_error(
-                        format!("Failed to read state file: {}", e),
-                        None,
-                    )
+                    McpError::internal_error(format!("Failed to read state file: {e}"), None)
                 })?;
                 let state: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-                    McpError::internal_error(
-                        format!("Failed to parse state file: {}", e),
-                        None,
-                    )
+                    McpError::internal_error(format!("Failed to parse state file: {e}"), None)
                 })?;
-                
+
                 if let Some(env) = state.get("env") {
                     info!(
                         "Loaded workflow state from step {} ({})",
@@ -402,10 +394,9 @@ impl DesktopWrapper {
         // NEW: Check if we should start from a specific step
         let start_from_index = if let Some(start_step) = &args.start_from_step {
             // Find the step index by ID
-            args.steps.as_ref()
-                .and_then(|steps| {
-                    steps.iter().position(|s| s.id.as_ref() == Some(start_step))
-                })
+            args.steps
+                .as_ref()
+                .and_then(|steps| steps.iter().position(|s| s.id.as_ref() == Some(start_step)))
                 .unwrap_or(0)
         } else {
             0
@@ -414,10 +405,9 @@ impl DesktopWrapper {
         // NEW: Check if we should end at a specific step
         let end_at_index = if let Some(end_step) = &args.end_at_step {
             // Find the step index by ID (inclusive)
-            args.steps.as_ref()
-                .and_then(|steps| {
-                    steps.iter().position(|s| s.id.as_ref() == Some(end_step))
-                })
+            args.steps
+                .as_ref()
+                .and_then(|steps| steps.iter().position(|s| s.id.as_ref() == Some(end_step)))
                 .unwrap_or_else(|| {
                     // If not found, run to the end
                     args.steps.as_ref().map(|s| s.len() - 1).unwrap_or(0)
@@ -432,7 +422,10 @@ impl DesktopWrapper {
             if let Some(url) = &args.url {
                 if let Some(saved_env) = Self::load_workflow_state(url).await? {
                     execution_context_map.insert("env".to_string(), saved_env);
-                    info!("Loaded saved env state for resuming from step {}", start_from_index);
+                    info!(
+                        "Loaded saved env state for resuming from step {}",
+                        start_from_index
+                    );
                 }
             }
         }
@@ -529,12 +522,15 @@ impl DesktopWrapper {
         let mut current_index: usize = start_from_index;
         let max_iterations = sequence_items.len() * 10; // Prevent infinite fallback loops
         let mut iterations = 0usize;
-        
+
         // Log if we're skipping steps
         if start_from_index > 0 {
-            info!("Skipping first {} steps, starting from index {}", start_from_index, start_from_index);
+            info!(
+                "Skipping first {} steps, starting from index {}",
+                start_from_index, start_from_index
+            );
         }
-        
+
         // Log if we're stopping at a specific step
         if end_at_index < sequence_items.len() - 1 {
             info!("Will stop after step at index {} (inclusive)", end_at_index);
@@ -556,7 +552,10 @@ impl DesktopWrapper {
             }
         }
 
-        while current_index < sequence_items.len() && current_index <= end_at_index && iterations < max_iterations {
+        while current_index < sequence_items.len()
+            && current_index <= end_at_index
+            && iterations < max_iterations
+        {
             iterations += 1;
 
             // Check if the request has been cancelled
@@ -792,7 +791,7 @@ impl DesktopWrapper {
                                     }
                                 }
                             }
-                            
+
                             // NEW: Save state after env update
                             if let Some(url) = &args.url {
                                 if let Some(env_value) = execution_context_map.get("env") {
@@ -800,8 +799,10 @@ impl DesktopWrapper {
                                         url,
                                         original_step.and_then(|s| s.id.as_deref()),
                                         current_index,
-                                        env_value
-                                    ).await.ok(); // Don't fail the workflow if state save fails
+                                        env_value,
+                                    )
+                                    .await
+                                    .ok(); // Don't fail the workflow if state save fails
                                 }
                             }
                         }

@@ -9,8 +9,8 @@ use crate::utils::{
     HighlightElementArgs, ImportWorkflowSequenceArgs, LocatorArgs, MaximizeWindowArgs,
     MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
     RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
-    SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs,
-    ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
