@@ -832,6 +832,14 @@ pub struct ExecuteSequenceArgs {
         description = "Output verbosity level. Options: 'quiet' (minimal), 'normal' (default), 'verbose' (detailed)."
     )]
     pub verbosity: Option<String>,
+    #[schemars(
+        description = "Start execution from a specific step ID (will load saved state)"
+    )]
+    pub start_from_step: Option<String>,
+    #[schemars(
+        description = "Stop execution after a specific step ID (inclusive)"
+    )]
+    pub end_at_step: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]

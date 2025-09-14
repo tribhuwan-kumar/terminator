@@ -9,7 +9,7 @@ use crate::utils::{
     HighlightElementArgs, ImportWorkflowSequenceArgs, LocatorArgs, MaximizeWindowArgs,
     MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
     RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
-    SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, TypeIntoElementArgs,
+    SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs,
     ValidateElementArgs, WaitForElementArgs, ZoomArgs,
 };
 use futures::StreamExt;
@@ -2954,7 +2954,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step and access with {{env.key}} in subsequent steps."
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step and access with {{env.key}} in subsequent steps. Supports partial execution with 'start_from_step' and 'end_at_step' parameters to run specific step ranges. State is automatically persisted to .workflow_state folder when using file:// URLs, allowing workflows to be resumed from any step."
     )]
     pub async fn execute_sequence(
         &self,
@@ -2965,361 +2965,6 @@ impl DesktopWrapper {
         return self
             .execute_sequence_impl(peer, request_context, args)
             .await;
-    }
-
-    pub(crate) async fn dispatch_tool(
-        &self,
-        peer: Peer<RoleServer>,
-        request_context: RequestContext<RoleServer>,
-        tool_name: &str,
-        arguments: &serde_json::Value,
-    ) -> Result<CallToolResult, McpError> {
-        use rmcp::handler::server::wrapper::Parameters;
-        match tool_name {
-            "get_window_tree" => {
-                match serde_json::from_value::<GetWindowTreeArgs>(arguments.clone()) {
-                    Ok(args) => self.get_window_tree(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for get_window_tree",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "get_focused_window_tree" => {
-                match serde_json::from_value::<GetFocusedWindowTreeArgs>(arguments.clone()) {
-                    Ok(args) => self.get_focused_window_tree(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for get_focused_window_tree",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "get_applications" => {
-                match serde_json::from_value::<GetApplicationsArgs>(arguments.clone()) {
-                    Ok(args) => self.get_applications(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for get_applications",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "click_element" => {
-                match serde_json::from_value::<ClickElementArgs>(arguments.clone()) {
-                    Ok(args) => self.click_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for click_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "type_into_element" => {
-                match serde_json::from_value::<TypeIntoElementArgs>(arguments.clone()) {
-                    Ok(args) => self.type_into_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for type_into_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "press_key" => match serde_json::from_value::<PressKeyArgs>(arguments.clone()) {
-                Ok(args) => self.press_key(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for press_key",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "press_key_global" => {
-                match serde_json::from_value::<GlobalKeyArgs>(arguments.clone()) {
-                    Ok(args) => self.press_key_global(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for press_key_global",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "validate_element" => {
-                match serde_json::from_value::<ValidateElementArgs>(arguments.clone()) {
-                    Ok(args) => self.validate_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for validate_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "wait_for_element" => {
-                match serde_json::from_value::<WaitForElementArgs>(arguments.clone()) {
-                    Ok(args) => self.wait_for_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for wait_for_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-
-            "activate_element" => {
-                match serde_json::from_value::<ActivateElementArgs>(arguments.clone()) {
-                    Ok(args) => self.activate_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for activate_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "navigate_browser" => {
-                match serde_json::from_value::<NavigateBrowserArgs>(arguments.clone()) {
-                    Ok(args) => self.navigate_browser(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for navigate_browser",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "execute_browser_script" => {
-                match serde_json::from_value::<ExecuteBrowserScriptArgs>(arguments.clone()) {
-                    Ok(args) => self.execute_browser_script(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for execute_browser_script",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "open_application" => {
-                match serde_json::from_value::<OpenApplicationArgs>(arguments.clone()) {
-                    Ok(args) => self.open_application(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for open_application",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "scroll_element" => {
-                match serde_json::from_value::<ScrollElementArgs>(arguments.clone()) {
-                    Ok(args) => self.scroll_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for scroll_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "delay" => match serde_json::from_value::<DelayArgs>(arguments.clone()) {
-                Ok(args) => self.delay(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for delay",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "run_command" => match serde_json::from_value::<RunCommandArgs>(arguments.clone()) {
-                Ok(args) => {
-                    // Create a child cancellation token from the request context
-                    let cancellation_token = tokio_util::sync::CancellationToken::new();
-                    let child_token = cancellation_token.child_token();
-
-                    // Link it to the request context cancellation
-                    let ct_for_task = request_context.ct.clone();
-                    tokio::spawn(async move {
-                        ct_for_task.cancelled().await;
-                        cancellation_token.cancel();
-                    });
-
-                    self.run_command_impl(args, Some(child_token)).await
-                }
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for run_command",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "mouse_drag" => match serde_json::from_value::<MouseDragArgs>(arguments.clone()) {
-                Ok(args) => self.mouse_drag(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for mouse_drag",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "highlight_element" => {
-                match serde_json::from_value::<HighlightElementArgs>(arguments.clone()) {
-                    Ok(args) => self.highlight_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for highlight_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "close_element" => {
-                match serde_json::from_value::<CloseElementArgs>(arguments.clone()) {
-                    Ok(args) => self.close_element(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for close_element",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "select_option" => {
-                match serde_json::from_value::<SelectOptionArgs>(arguments.clone()) {
-                    Ok(args) => self.select_option(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for select_option",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "list_options" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
-                Ok(args) => self.list_options(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for list_options",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "set_toggled" => match serde_json::from_value::<SetToggledArgs>(arguments.clone()) {
-                Ok(args) => self.set_toggled(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for set_toggled",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "set_range_value" => {
-                match serde_json::from_value::<SetRangeValueArgs>(arguments.clone()) {
-                    Ok(args) => self.set_range_value(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for set_range_value",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "set_selected" => match serde_json::from_value::<SetSelectedArgs>(arguments.clone()) {
-                Ok(args) => self.set_selected(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for set_selected",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "is_toggled" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
-                Ok(args) => self.is_toggled(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for is_toggled",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "get_range_value" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
-                Ok(args) => self.get_range_value(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for get_range_value",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "is_selected" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
-                Ok(args) => self.is_selected(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for is_selected",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "capture_element_screenshot" => {
-                match serde_json::from_value::<ValidateElementArgs>(arguments.clone()) {
-                    Ok(args) => self.capture_element_screenshot(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for capture_element_screenshot",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "invoke_element" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
-                Ok(args) => self.invoke_element(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for invoke_element",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "record_workflow" => {
-                match serde_json::from_value::<RecordWorkflowArgs>(arguments.clone()) {
-                    Ok(args) => self.record_workflow(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for record_workflow",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "maximize_window" => {
-                match serde_json::from_value::<MaximizeWindowArgs>(arguments.clone()) {
-                    Ok(args) => self.maximize_window(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for maximize_window",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "minimize_window" => {
-                match serde_json::from_value::<MinimizeWindowArgs>(arguments.clone()) {
-                    Ok(args) => self.minimize_window(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for minimize_window",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "zoom_in" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
-                Ok(args) => self.zoom_in(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for zoom_in",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "zoom_out" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
-                Ok(args) => self.zoom_out(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for zoom_out",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "set_zoom" => match serde_json::from_value::<SetZoomArgs>(arguments.clone()) {
-                Ok(args) => self.set_zoom(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for set_zoom",
-                    Some(json!({ "error": e.to_string() })),
-                )),
-            },
-            "set_value" => match serde_json::from_value::<SetValueArgs>(arguments.clone()) {
-                Ok(args) => self.set_value(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for set_value",
-                    Some(json!({ "error": e.to_string() })),
-                )),
-            },
-            // run_javascript is deprecated and merged into run_command with engine
-            "export_workflow_sequence" => {
-                match serde_json::from_value::<ExportWorkflowSequenceArgs>(arguments.clone()) {
-                    Ok(args) => self.export_workflow_sequence(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for export_workflow_sequence",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "import_workflow_sequence" => {
-                match serde_json::from_value::<ImportWorkflowSequenceArgs>(arguments.clone()) {
-                    Ok(args) => self.import_workflow_sequence(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for import_workflow_sequence",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "execute_sequence" => {
-                match serde_json::from_value::<ExecuteSequenceArgs>(arguments.clone()) {
-                    Ok(args) => {
-                        self.execute_sequence(peer, request_context, Parameters(args))
-                            .await
-                    }
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for execute_sequence",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            _ => Err(McpError::internal_error(
-                "Unknown tool called",
-                Some(json!({"tool_name": tool_name})),
-            )),
-        }
     }
 
     #[tool(
@@ -3750,6 +3395,366 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         );
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
+
+    pub(crate) async fn dispatch_tool(
+        &self,
+        _peer: Peer<RoleServer>,
+        request_context: RequestContext<RoleServer>,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> Result<CallToolResult, McpError> {
+        use rmcp::handler::server::wrapper::Parameters;
+        match tool_name {
+            "get_window_tree" => {
+                match serde_json::from_value::<GetWindowTreeArgs>(arguments.clone()) {
+                    Ok(args) => self.get_window_tree(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for get_window_tree",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "get_focused_window_tree" => {
+                match serde_json::from_value::<GetFocusedWindowTreeArgs>(arguments.clone()) {
+                    Ok(args) => self.get_focused_window_tree(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for get_focused_window_tree",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "get_applications" => {
+                match serde_json::from_value::<GetApplicationsArgs>(arguments.clone()) {
+                    Ok(args) => self.get_applications(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for get_applications",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "click_element" => {
+                match serde_json::from_value::<ClickElementArgs>(arguments.clone()) {
+                    Ok(args) => self.click_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for click_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "type_into_element" => {
+                match serde_json::from_value::<TypeIntoElementArgs>(arguments.clone()) {
+                    Ok(args) => self.type_into_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for type_into_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "press_key" => match serde_json::from_value::<PressKeyArgs>(arguments.clone()) {
+                Ok(args) => self.press_key(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for press_key",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "press_key_global" => {
+                match serde_json::from_value::<GlobalKeyArgs>(arguments.clone()) {
+                    Ok(args) => self.press_key_global(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for press_key_global",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "validate_element" => {
+                match serde_json::from_value::<ValidateElementArgs>(arguments.clone()) {
+                    Ok(args) => self.validate_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for validate_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "wait_for_element" => {
+                match serde_json::from_value::<WaitForElementArgs>(arguments.clone()) {
+                    Ok(args) => self.wait_for_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for wait_for_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+
+            "activate_element" => {
+                match serde_json::from_value::<ActivateElementArgs>(arguments.clone()) {
+                    Ok(args) => self.activate_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for activate_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "navigate_browser" => {
+                match serde_json::from_value::<NavigateBrowserArgs>(arguments.clone()) {
+                    Ok(args) => self.navigate_browser(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for navigate_browser",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "execute_browser_script" => {
+                match serde_json::from_value::<ExecuteBrowserScriptArgs>(arguments.clone()) {
+                    Ok(args) => self.execute_browser_script(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for execute_browser_script",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "open_application" => {
+                match serde_json::from_value::<OpenApplicationArgs>(arguments.clone()) {
+                    Ok(args) => self.open_application(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for open_application",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "scroll_element" => {
+                match serde_json::from_value::<ScrollElementArgs>(arguments.clone()) {
+                    Ok(args) => self.scroll_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for scroll_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "delay" => match serde_json::from_value::<DelayArgs>(arguments.clone()) {
+                Ok(args) => self.delay(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for delay",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "run_command" => match serde_json::from_value::<RunCommandArgs>(arguments.clone()) {
+                Ok(args) => {
+                    // Create a child cancellation token from the request context
+                    let cancellation_token = tokio_util::sync::CancellationToken::new();
+                    let child_token = cancellation_token.child_token();
+
+                    // Link it to the request context cancellation
+                    let ct_for_task = request_context.ct.clone();
+                    tokio::spawn(async move {
+                        ct_for_task.cancelled().await;
+                        cancellation_token.cancel();
+                    });
+
+                    self.run_command_impl(args, Some(child_token)).await
+                }
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for run_command",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "mouse_drag" => match serde_json::from_value::<MouseDragArgs>(arguments.clone()) {
+                Ok(args) => self.mouse_drag(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for mouse_drag",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "highlight_element" => {
+                match serde_json::from_value::<HighlightElementArgs>(arguments.clone()) {
+                    Ok(args) => self.highlight_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for highlight_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "close_element" => {
+                match serde_json::from_value::<CloseElementArgs>(arguments.clone()) {
+                    Ok(args) => self.close_element(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for close_element",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "select_option" => {
+                match serde_json::from_value::<SelectOptionArgs>(arguments.clone()) {
+                    Ok(args) => self.select_option(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for select_option",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "list_options" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
+                Ok(args) => self.list_options(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for list_options",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "set_toggled" => match serde_json::from_value::<SetToggledArgs>(arguments.clone()) {
+                Ok(args) => self.set_toggled(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for set_toggled",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "set_range_value" => {
+                match serde_json::from_value::<SetRangeValueArgs>(arguments.clone()) {
+                    Ok(args) => self.set_range_value(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for set_range_value",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "set_selected" => match serde_json::from_value::<SetSelectedArgs>(arguments.clone()) {
+                Ok(args) => self.set_selected(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for set_selected",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "is_toggled" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
+                Ok(args) => self.is_toggled(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for is_toggled",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "get_range_value" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
+                Ok(args) => self.get_range_value(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for get_range_value",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "is_selected" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
+                Ok(args) => self.is_selected(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for is_selected",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "capture_element_screenshot" => {
+                match serde_json::from_value::<ValidateElementArgs>(arguments.clone()) {
+                    Ok(args) => self.capture_element_screenshot(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for capture_element_screenshot",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "invoke_element" => match serde_json::from_value::<LocatorArgs>(arguments.clone()) {
+                Ok(args) => self.invoke_element(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for invoke_element",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "record_workflow" => {
+                match serde_json::from_value::<RecordWorkflowArgs>(arguments.clone()) {
+                    Ok(args) => self.record_workflow(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for record_workflow",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "maximize_window" => {
+                match serde_json::from_value::<MaximizeWindowArgs>(arguments.clone()) {
+                    Ok(args) => self.maximize_window(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for maximize_window",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "minimize_window" => {
+                match serde_json::from_value::<MinimizeWindowArgs>(arguments.clone()) {
+                    Ok(args) => self.minimize_window(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for minimize_window",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "zoom_in" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
+                Ok(args) => self.zoom_in(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for zoom_in",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "zoom_out" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
+                Ok(args) => self.zoom_out(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for zoom_out",
+                    Some(json!({"error": e.to_string()})),
+                )),
+            },
+            "set_zoom" => match serde_json::from_value::<SetZoomArgs>(arguments.clone()) {
+                Ok(args) => self.set_zoom(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for set_zoom",
+                    Some(json!({ "error": e.to_string() })),
+                )),
+            },
+            "set_value" => match serde_json::from_value::<SetValueArgs>(arguments.clone()) {
+                Ok(args) => self.set_value(Parameters(args)).await,
+                Err(e) => Err(McpError::invalid_params(
+                    "Invalid arguments for set_value",
+                    Some(json!({ "error": e.to_string() })),
+                )),
+            },
+            // run_javascript is deprecated and merged into run_command with engine
+            "export_workflow_sequence" => {
+                match serde_json::from_value::<ExportWorkflowSequenceArgs>(arguments.clone()) {
+                    Ok(args) => self.export_workflow_sequence(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for export_workflow_sequence",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "import_workflow_sequence" => {
+                match serde_json::from_value::<ImportWorkflowSequenceArgs>(arguments.clone()) {
+                    Ok(args) => self.import_workflow_sequence(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for import_workflow_sequence",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            "execute_sequence" => {
+                // For execute_sequence, we need peer and request_context
+                // Since we don't have them here, this is a special case that should be handled differently
+                Err(McpError::internal_error(
+                    "execute_sequence requires special handling",
+                    Some(json!({"error": "Cannot dispatch execute_sequence through this method"})),
+                ))
+            }
+            "stop_highlighting" => {
+                match serde_json::from_value::<StopHighlightingArgs>(arguments.clone()) {
+                    Ok(args) => self.stop_highlighting(Parameters(args)).await,
+                    Err(e) => Err(McpError::invalid_params(
+                        "Invalid arguments for stop_highlighting",
+                        Some(json!({"error": e.to_string()})),
+                    )),
+                }
+            }
+            _ => Err(McpError::internal_error(
+                "Unknown tool called",
+                Some(json!({"tool_name": tool_name})),
+            )),
+        }
     }
 }
 

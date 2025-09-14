@@ -307,6 +307,46 @@ try {{
 *   Use specific selectors (role:Type|name:Name) over generic ones
 *   Return structured data objects from scripts for output parsing
 
+**Workflow State Persistence & Partial Execution**
+
+The `execute_sequence` tool supports powerful debugging and recovery features:
+
+**Loading Workflows from Files:**
+```json
+{{
+    \"tool_name\": \"execute_sequence\",
+    \"arguments\": {{
+        \"url\": \"file://C:/path/to/workflow.yml\"
+    }}
+}}
+```
+
+**Partial Execution with Step Ranges:**
+Run specific portions of a workflow using `start_from_step` and `end_at_step`:
+```json
+{{
+    \"tool_name\": \"execute_sequence\",
+    \"arguments\": {{
+        \"url\": \"file://workflow.yml\",
+        \"start_from_step\": \"read_data_step\",     // Start from this step ID
+        \"end_at_step\": \"process_data_step\"       // Stop after this step (inclusive)
+    }}
+}}
+```
+
+**Examples:**
+- **Single step:** Set both parameters to the same step ID
+- **Step range:** Set different IDs for start and end  
+- **Resume from step:** Only set `start_from_step`
+- **Run until step:** Only set `end_at_step`
+
+**Automatic State Persistence:**
+When using `file://` URLs, workflow state is automatically saved:
+- State saved to `.workflow_state/<workflow_hash>.json` after each step
+- Environment variables from `set_env` are persisted
+- State automatically loaded when using `start_from_step`
+- Enables debugging individual steps and resuming failed workflows
+
 **Common Pitfalls & Solutions**
 
 *   **Click fails on buttons not in viewport:** Use `invoke_element` instead of `click_element`.

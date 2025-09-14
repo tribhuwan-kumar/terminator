@@ -81,6 +81,12 @@ terminator mcp run workflow.yml --dry-run
 
 # Use specific MCP server version
 terminator mcp run workflow.yml --command "npx -y terminator-mcp-agent@latest"
+
+# Run specific steps (requires step IDs in workflow)
+terminator mcp run workflow.yml --start-from "step_12" --end-at "step_13"
+
+# Run single step
+terminator mcp run workflow.yml --start-from "read_json" --end-at "read_json"
 ```
 
 **Workflow File Formats:**
@@ -792,11 +798,69 @@ For additional help, see the [Terminator CLI documentation](../terminator-cli/RE
 4. **Groups & Control Flow** – Add `group_name`, `skippable`, `if`, or `continue_on_error` to any step for advanced branching.
 5. **Output Parsing** – Always end with a step that includes the UI tree, then use the declarative JSON DSL to mine the data you need.
 
-### 3. Running the Workflow
+### 3. State Persistence & Partial Execution
+
+The `execute_sequence` tool supports powerful features for workflow debugging and resumption:
+
+#### Partial Execution with Step Ranges
+
+You can run specific portions of a workflow using `start_from_step` and `end_at_step` parameters:
+
+```jsonc
+{
+  "tool_name": "execute_sequence",
+  "arguments": {
+    "url": "file://path/to/workflow.yml",
+    "start_from_step": "read_json_file",    // Start from this step ID
+    "end_at_step": "fill_journal_entries"   // Stop after this step (inclusive)
+  }
+}
+```
+
+**Examples:**
+- Run single step: Set both `start_from_step` and `end_at_step` to the same ID
+- Run step range: Set different IDs for start and end
+- Run from step to end: Only set `start_from_step`
+- Run from beginning to step: Only set `end_at_step`
+
+#### Automatic State Persistence
+
+When using `file://` URLs, the workflow state (environment variables) is automatically saved to a `.workflow_state` folder:
+
+1. **State is saved** after each step that modifies environment variables via `set_env`
+2. **State is loaded** when starting from a specific step
+3. **Location**: `.workflow_state/<workflow_hash>.json` in the workflow's directory
+
+This enables:
+- **Debugging**: Run steps individually to inspect state between executions
+- **Recovery**: Resume failed workflows from the last successful step
+- **Testing**: Test specific steps without re-running the entire workflow
+
+#### Data Passing Between Steps
+
+Steps can pass data using the `set_env` mechanism in `run_command` with engine mode:
+
+```javascript
+// Step 12: Read and process data
+return {
+  set_env: {
+    file_path: "C:/data/input.json",
+    journal_entries: JSON.stringify(entries),
+    total_debit: "100.50"
+  }
+};
+
+// Step 13: Use the data
+const filePath = '{{env.file_path}}';
+const entries = JSON.parse('{{env.journal_entries}}');
+const debit = '{{env.total_debit}}';
+```
+
+### 4. Running the Workflow
 
 1. Ensure the Terminator MCP agent is running (it will auto-start in supported editors).
 2. Send the JSON above as the body of an `execute_sequence` tool call from your LLM or test harness.
-3. Inspect the response: if parsing succeeds you’ll see something like
+3. Inspect the response: if parsing succeeds you'll see something like
 
 ### Realtime events (SSE)
 
@@ -821,7 +885,7 @@ es.onmessage = (e) => console.log("event", e.data);
 }
 ```
 
-### 4. Tips for Production Workflows
+### 5. Tips for Production Workflows
 
 - **Never hard-code credentials** – use environment variables or your secret manager.
 - **Keep workflows short** – <100 steps is ideal. Break large tasks into multiple sequences.
