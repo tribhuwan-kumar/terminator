@@ -39,10 +39,7 @@ impl DesktopWrapper {
         if let Some(state_file) = Self::get_state_file_path(workflow_url).await {
             if let Some(state_dir) = state_file.parent() {
                 tokio::fs::create_dir_all(state_dir).await.map_err(|e| {
-                    McpError::internal_error(
-                        format!("Failed to create state directory: {e}"),
-                        None,
-                    )
+                    McpError::internal_error(format!("Failed to create state directory: {e}"), None)
                 })?;
             }
 
