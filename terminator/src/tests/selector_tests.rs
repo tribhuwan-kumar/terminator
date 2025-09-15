@@ -311,7 +311,7 @@ fn test_web_id_stability() {
         let mut browser_window = Some(
             check_url(
                 "https://pages.dataiku.com/guide-to-ai-agents".to_string(),
-                Selector::Name("Get Ahead With Agentic AI".to_string()),
+                Selector::Name("A C-Suite Guide to AI Agents".to_string()),
                 "Dataiku page title".to_string(),
                 "Agents".to_string(), // Expected part of the window title
             )
