@@ -476,9 +476,7 @@ execute_browser_script({
   script_file: "browser_scripts/extract_data.js",
   env: {
     userName: "{{env.userName}}",
-  },
-  outputs: {
-    previousStep: "{{outputs.step1}}",
+    previousStep: "{{env.previousStep}}",
   },
 });
 ```

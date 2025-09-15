@@ -3340,7 +3340,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             ));
         };
 
-        // Build the final script with env and outputs prepended if provided
+        // Build the final script with env prepended if provided
         let mut final_script = String::new();
 
         // Inject env variables if provided
@@ -3354,19 +3354,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             })?;
             final_script.push_str(&format!("var env = {env_json};\n"));
             tracing::debug!("[execute_browser_script] Injected env variables");
-        }
-
-        // Inject outputs if provided
-        if let Some(outputs_data) = &args.outputs {
-            // Use JSON.stringify to properly escape the data
-            let outputs_json = serde_json::to_string(&outputs_data).map_err(|e| {
-                McpError::internal_error(
-                    "Failed to serialize outputs data",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
-            final_script.push_str(&format!("var outputs = {outputs_json};\n"));
-            tracing::debug!("[execute_browser_script] Injected outputs variables");
         }
 
         // Append the actual script
@@ -3420,7 +3407,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                         },
                         "script_file": args.script_file,
                         "env_provided": args.env.is_some(),
-                        "outputs_provided": args.outputs.is_some(),
                         "alternative_selectors": args.alternative_selectors,
                         "fallback_selectors": args.fallback_selectors,
                         "error": e.to_string()
@@ -3457,7 +3443,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             },
             "script_file": args.script_file,
             "env_provided": args.env.is_some(),
-            "outputs_provided": args.outputs.is_some(),
             "result": script_result,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "duration_ms": elapsed_ms,

@@ -331,7 +331,7 @@ The `execute_browser_script` tool can also set environment variables:
 
 ### Passing Data TO Browser Scripts
 
-The `execute_browser_script` tool can receive data through `env` and `outputs` parameters:
+The `execute_browser_script` tool can receive data through the `env` parameter:
 
 ```yaml
 steps:
@@ -379,28 +379,6 @@ steps:
         const searchExecuted = '{{env.search_executed}}';
         console.log(`Search executed: ${searchExecuted}`);
         return { status: 'workflow_complete' };
-```
-
-### Browser Script with Outputs
-
-You can also pass outputs from previous steps:
-
-```yaml
-steps:
-  - tool_name: execute_browser_script
-    arguments:
-      selector: "role:Window"
-      outputs:
-        previousData: "{{outputs.data_extraction}}"
-      script: |
-        const parsedOutputs = typeof outputs === 'string' ? JSON.parse(outputs) : outputs;
-
-        // Use data from previous step
-        if (parsedOutputs.previousData && parsedOutputs.previousData.items) {
-          console.log(`Processing ${parsedOutputs.previousData.items.length} items`);
-        }
-
-        JSON.stringify({ processed: true });
 ```
 
 ## Python Example

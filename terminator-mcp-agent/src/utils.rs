@@ -501,8 +501,6 @@ pub struct ExecuteBrowserScriptArgs {
     pub script_file: Option<String>,
     #[schemars(description = "Optional environment variables to inject into browser script")]
     pub env: Option<serde_json::Value>,
-    #[schemars(description = "Optional outputs from previous steps to inject into browser script")]
-    pub outputs: Option<serde_json::Value>,
     #[schemars(
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
     )]

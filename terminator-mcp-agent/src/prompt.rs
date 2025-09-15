@@ -204,15 +204,6 @@ execute_browser_script({{
   }},
   script: \"const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = parsedEnv.searchTerm;\\nsearchBox.form.submit();\\nJSON.stringify({{ status: 'search_submitted', term: parsedEnv.searchTerm }});\"
 }})
-
-// Use outputs parameter to pass data from previous steps
-execute_browser_script({{
-  selector: \"role:Window\",
-  outputs: {{
-    previousData: \"{{{{outputs.data_extraction}}}}\"
-  }},
-  script: \"const parsedOutputs = typeof outputs === 'string' ? JSON.parse(outputs) : outputs;\\n// Process previous step data\\nif (parsedOutputs.previousData) {{\\n  console.log('Using data from previous step');\\n}}\\nJSON.stringify({{ processed: true }});\"
-}})
 ```
 
 **Returning Data FROM Browser Scripts:**
