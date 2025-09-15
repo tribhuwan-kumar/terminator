@@ -2,6 +2,17 @@ const WS_URL = "ws://127.0.0.1:17373";
 let socket = null;
 let reconnectTimer = null;
 
+// Simple Set to track what we've attached to
+const attachedTabs = new Set();
+// Track which tabs have Runtime and Log domains enabled
+const enabledTabs = new Set();
+
+// Restore on startup
+chrome.storage.session.get('attached').then(data => {
+  if (data.attached) data.attached.forEach(id => attachedTabs.add(id));
+  log(`Restored ${attachedTabs.size} attached debugger sessions`);
+});
+
 // Logging is disabled by default to reduce console noise. Toggle via Service Worker console.
 let debugEnabled = true;
 self.enableTerminatorDebug = () => {
@@ -180,6 +191,27 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   }
 });
 
+// Clean up our tracking when tab closes
+chrome.tabs.onRemoved.addListener(tabId => {
+  if (attachedTabs.has(tabId)) {
+    attachedTabs.delete(tabId);
+    enabledTabs.delete(tabId);  // Also clean enabled domains state
+    chrome.storage.session.set({attached: [...attachedTabs]});
+    log(`Tab ${tabId} closed, removed from attached tabs and enabled domains`);
+  }
+});
+
+// Clean up when debugger is manually detached (user clicked Cancel)
+chrome.debugger.onDetach.addListener((source, reason) => {
+  const tabId = source.tabId;
+  if (attachedTabs.has(tabId)) {
+    attachedTabs.delete(tabId);
+    enabledTabs.delete(tabId);  // Also clean enabled domains state
+    chrome.storage.session.set({attached: [...attachedTabs]});
+    log(`Debugger detached from tab ${tabId}, reason: ${reason}`);
+  }
+});
+
 function scheduleReconnect() {
   if (reconnectTimer) return;
   const delay = currentReconnectDelayMs;
@@ -225,11 +257,54 @@ function formatRemoteObject(obj) {
 }
 
 async function evalInTab(tabId, code, awaitPromise, evalId) {
-  await debuggerAttach(tabId);
+  const perfStart = performance.now();
+  const timings = {};
+  
+  // Only attach if we haven't before
+  if (!attachedTabs.has(tabId)) {
+    const attachStart = performance.now();
+    try {
+      await debuggerAttach(tabId);
+      attachedTabs.add(tabId);
+      // Persist (fire and forget)
+      chrome.storage.session.set({attached: [...attachedTabs]});
+      timings.attach = performance.now() - attachStart;
+      log(`Debugger attached to tab ${tabId} (${timings.attach.toFixed(1)}ms)`);
+    } catch (e) {
+      // Don't care if already attached, just log it
+      log(`Could not attach to tab ${tabId}:`, e.message);
+    }
+  } else {
+    log(`Reusing existing debugger for tab ${tabId}`);
+    timings.attach = 0;
+  }
+  
   let onEvent = null;
   try {
-    await sendCommand(tabId, "Runtime.enable", {});
-    await sendCommand(tabId, "Log.enable", {});
+    // Only enable domains if not already enabled
+    if (!enabledTabs.has(tabId)) {
+      const enableStart = performance.now();
+      try {
+        const runtimeStart = performance.now();
+        await sendCommand(tabId, "Runtime.enable", {});
+        timings.runtimeEnable = performance.now() - runtimeStart;
+        
+        const logStart = performance.now();
+        await sendCommand(tabId, "Log.enable", {});
+        timings.logEnable = performance.now() - logStart;
+        
+        enabledTabs.add(tabId);
+        timings.totalEnable = performance.now() - enableStart;
+        log(`Domains enabled for tab ${tabId} - Runtime: ${timings.runtimeEnable.toFixed(1)}ms, Log: ${timings.logEnable.toFixed(1)}ms, Total: ${timings.totalEnable.toFixed(1)}ms`);
+      } catch (e) {
+        log(`Could not enable domains for tab ${tabId}:`, e.message);
+      }
+    } else {
+      log(`Reusing enabled domains for tab ${tabId}`);
+      timings.runtimeEnable = 0;
+      timings.logEnable = 0;
+      timings.totalEnable = 0;
+    }
 
     // Listen for console/log/exception events for this tab while the eval runs
     onEvent = (source, method, params) => {
@@ -265,6 +340,8 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
       }
     };
     chrome.debugger.onEvent.addListener(onEvent);
+    
+    const evalStart = performance.now();
     const { result, exceptionDetails } = await sendCommand(
       tabId,
       "Runtime.evaluate",
@@ -275,6 +352,8 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
         userGesture: true,
       }
     );
+    timings.evaluate = performance.now() - evalStart;
+    
     if (exceptionDetails) {
       // Build rich error details for MCP side
       const details = {
@@ -309,11 +388,16 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
         })
       );
     }
+    
+    // Log timing summary
+    timings.total = performance.now() - perfStart;
+    log(`[TIMING] Total: ${timings.total.toFixed(1)}ms | Attach: ${timings.attach.toFixed(1)}ms | Enable: ${timings.totalEnable.toFixed(1)}ms | Eval: ${timings.evaluate.toFixed(1)}ms`);
+    
     // Return JSON-serializable value
     return result?.value;
   } finally {
     try {
-      // Best-effort: remove onEvent listener and disable domains
+      // Best-effort: remove onEvent listener
       if (
         onEvent &&
         chrome &&
@@ -323,16 +407,12 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
       ) {
         chrome.debugger.onEvent.removeListener(onEvent);
       }
-      try {
-        await sendCommand(tabId, "Log.disable", {});
-      } catch (_) {}
-      try {
-        await sendCommand(tabId, "Runtime.disable", {});
-      } catch (_) {}
+      // DON'T DISABLE DOMAINS - Keep them enabled for reuse
+      // Removed: await sendCommand(tabId, "Log.disable", {});
+      // Removed: await sendCommand(tabId, "Runtime.disable", {});
     } catch (_) {}
-    try {
-      await debuggerDetach(tabId);
-    } catch (_) {}
+    // DON'T DETACH - Keep debugger attached for reuse
+    // This was: await debuggerDetach(tabId);
   }
 }
 
