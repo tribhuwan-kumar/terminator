@@ -10,11 +10,13 @@ The new syntax follows the [GitHub Actions convention](https://docs.github.com/e
 
 ### Tool Arguments
 
-- **`run`** (required): The command to execute. Can be a single command, multi-line script, or inline code when using `engine` mode.
+- **`run`** (optional): The command to execute. Can be a single command, multi-line script, or inline code when using `engine` mode. Either `run` or `script_file` must be provided.
+- **`script_file`** (optional): Path to a script file to load and execute. Either `run` or `script_file` must be provided. When using `engine`, the file should contain JavaScript or Python code.
+- **`env`** (optional): Environment variables to inject into the script (only works with `engine` mode). Variables are injected as `var env = {...}` at the start of JavaScript or as `env` dict in Python.
 - **`engine`** (optional): High-level engine to execute inline code with SDK bindings. Options:
   - `javascript`, `js`, `node`, `bun` - Execute JavaScript with terminator.js bindings
   - `python` - Execute Python with terminator.py bindings
-  - When set, `run` must contain the inline code to execute
+  - When set, `run` or `script_file` must contain the code to execute
 - **`shell`** (optional): The shell to use for execution (ignored when `engine` is used). Defaults to:
   - Windows: `powershell`
   - Unix/Linux/macOS: `bash`
@@ -78,6 +80,32 @@ The new syntax follows the [GitHub Actions convention](https://docs.github.com/e
 {
   "run": "python --version",
   "shell": "python"
+}
+```
+
+### Loading JavaScript from External File
+
+```json
+{
+  "engine": "javascript",
+  "script_file": "C:\\scripts\\process_data.js",
+  "env": {
+    "input_folder": "C:\\data",
+    "output_folder": "C:\\processed"
+  }
+}
+```
+
+### Using Environment Variables with Inline Code
+
+```json
+{
+  "engine": "javascript",
+  "run": "const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;\nconsole.log(`Processing ${parsedEnv.file_count} files from ${parsedEnv.source_dir}`);\nreturn { set_env: { processed: true, timestamp: new Date().toISOString() } };",
+  "env": {
+    "file_count": 42,
+    "source_dir": "C:\\input"
+  }
 }
 ```
 
@@ -145,11 +173,36 @@ Commands that fail will return:
 
 ## Passing Data Between Workflow Steps (Engine Mode Only)
 
-When using `engine` mode (JavaScript or Python), you can pass data between workflow steps using the `set_env` mechanism. This allows subsequent steps to access data from previous steps.
+When using `engine` mode (JavaScript or Python), you can pass data between workflow steps using the `set_env` mechanism. This allows subsequent steps to access data from previous steps. Additionally, you can now inject environment variables directly into scripts using the `env` parameter.
 
 ### How It Works
 
-**Important:** The `set_env` mechanism only works when using the `engine` parameter with JavaScript or Python. It does NOT work with shell commands.
+**Important:** The `set_env` mechanism and `env` parameter only work when using the `engine` parameter with JavaScript or Python. They do NOT work with shell commands.
+
+### Injecting Environment Variables into Scripts
+
+Use the `env` parameter to pass data into your scripts:
+
+```javascript
+{
+  "engine": "javascript",
+  "script_file": "process.js",
+  "env": {
+    "api_endpoint": "https://api.example.com",
+    "max_retries": 3,
+    "user_data": { "name": "John", "id": 123 }
+  }
+}
+```
+
+In your script, parse the env variable:
+```javascript
+// process.js
+const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
+console.log(`Connecting to ${parsedEnv.api_endpoint}`);
+console.log(`Max retries: ${parsedEnv.max_retries}`);
+console.log(`User: ${parsedEnv.user_data.name}`);
+```
 
 ### Setting Environment Variables
 

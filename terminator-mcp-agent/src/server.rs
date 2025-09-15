@@ -1160,7 +1160,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run'. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps with {{env.key}} substitution."
+        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps with {{env.key}} substitution. NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS) or 'env = {...}' (Python)."
     )]
     async fn run_command(
         &self,

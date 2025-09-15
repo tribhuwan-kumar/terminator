@@ -113,8 +113,10 @@ Your most reliable strategy is to inspect the application's UI structure *before
 
 Use `run_command` with `engine` to execute code directly with SDK bindings:
 
-- engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`). Put your JS in `run`.
-- engine: `python` executes async Python with terminator.py (variable `desktop`). Put your Python in `run`.
+- engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`). Put your JS in `run` or `script_file`.
+- engine: `python` executes async Python with terminator.py (variable `desktop`). Put your Python in `run` or `script_file`.
+- NEW: Use `script_file` to load scripts from external files
+- NEW: Use `env` parameter to inject environment variables as `var env = {...}` (JS) or `env = {...}` (Python)
 
 **Globals/Helpers Available:**
 *   `desktop` - Main Desktop automation instance
@@ -129,6 +131,26 @@ When using `engine` mode, you can pass data to subsequent workflow steps using `
    ```javascript
    return {{ set_env: {{ key: 'value', another_key: 'data' }} }};
    ```
+
+**Example with script_file and env:**
+```javascript
+// Load script from file with environment variables
+run_command({{
+  engine: "javascript",
+  script_file: "C:\\\\scripts\\\\process.js",
+  env: {{
+    input_dir: "C:\\\\data",
+    output_dir: "C:\\\\processed",
+    max_files: 100
+  }}
+}})
+
+// In process.js:
+const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
+console.log(`Processing files from ${{parsedEnv.input_dir}}`);
+// Process files and return results
+return {{ set_env: {{ files_processed: 42 }} }};
+```
 
 2. **GitHub Actions style logging**:
    ```javascript
