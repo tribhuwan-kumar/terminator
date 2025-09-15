@@ -1310,7 +1310,10 @@ impl DesktopWrapper {
             }
 
             // Read script from file
-            tracing::info!("[run_command] Reading shell script from file: {}", script_file);
+            tracing::info!(
+                "[run_command] Reading shell script from file: {}",
+                script_file
+            );
             tokio::fs::read_to_string(script_file).await.map_err(|e| {
                 McpError::invalid_params(
                     "Failed to read script file",
