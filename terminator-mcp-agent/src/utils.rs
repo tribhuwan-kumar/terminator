@@ -320,11 +320,19 @@ pub struct GlobalKeyArgs {
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RunCommandArgs {
     #[schemars(
-        description = "The shell command to run (GitHub Actions-style). When using 'engine', this field contains the inline code to execute."
+        description = "The shell command to run (GitHub Actions-style). When using 'engine', this field contains the inline code to execute. Either this or script_file must be provided."
     )]
     pub run: Option<String>,
     #[schemars(
-        description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'python'. When set, 'run' must contain the inline code to execute."
+        description = "Optional path to script file to load and execute. Either this or 'run' must be provided. When using 'engine', the file should contain JavaScript or Python code."
+    )]
+    pub script_file: Option<String>,
+    #[schemars(
+        description = "Optional environment variables to inject into the script (only works with 'engine' mode). Variables are injected as 'var env = {...}' at the start of JavaScript or as 'env' dict in Python."
+    )]
+    pub env: Option<serde_json::Value>,
+    #[schemars(
+        description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'python'. When set, 'run' or 'script_file' must contain the code to execute."
     )]
     pub engine: Option<String>,
     #[schemars(

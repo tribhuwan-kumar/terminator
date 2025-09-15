@@ -1177,13 +1177,63 @@ impl DesktopWrapper {
         // Engine-based execution path (provides SDK bindings)
         if let Some(engine_value) = args.engine.as_ref() {
             let engine = engine_value.to_ascii_lowercase();
-            // Resolve script content from run (single source of truth)
-            let script_content = args.run.clone().ok_or_else(|| {
-                McpError::invalid_params(
-                    "'run' is required and contains the inline code when using 'engine'",
+
+            // Resolve script content from file or inline
+            let script_content = if let Some(script_file) = &args.script_file {
+                // Check that both run and script_file aren't provided
+                if args.run.is_some() {
+                    return Err(McpError::invalid_params(
+                        "Cannot specify both 'run' and 'script_file'. Use one or the other.",
+                        None,
+                    ));
+                }
+
+                // Read script from file
+                tracing::info!("[run_command] Reading script from file: {}", script_file);
+                tokio::fs::read_to_string(script_file).await.map_err(|e| {
+                    McpError::invalid_params(
+                        "Failed to read script file",
+                        Some(json!({
+                            "file": script_file,
+                            "error": e.to_string()
+                        })),
+                    )
+                })?
+            } else if let Some(run) = &args.run {
+                run.clone()
+            } else {
+                return Err(McpError::invalid_params(
+                    "Either 'run' or 'script_file' must be provided when using 'engine'",
                     None,
-                )
-            })?;
+                ));
+            };
+
+            // Build final script with env injection if provided
+            let mut final_script = String::new();
+
+            // Inject env variables if provided (only for engine mode)
+            if let Some(env_data) = &args.env {
+                // Use JSON.stringify to properly escape the data
+                let env_json = serde_json::to_string(&env_data).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to serialize env data",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?;
+
+                // Inject based on engine type
+                if matches!(engine.as_str(), "node" | "bun" | "javascript" | "js") {
+                    final_script.push_str(&format!("var env = {env_json};\n"));
+                    tracing::debug!("[run_command] Injected env variables for JavaScript");
+                } else if matches!(engine.as_str(), "python" | "py") {
+                    // For Python, inject as a dictionary
+                    final_script.push_str(&format!("env = {env_json}\n"));
+                    tracing::debug!("[run_command] Injected env variables for Python");
+                }
+            }
+
+            // Append the actual script
+            final_script.push_str(&script_content);
 
             // Map engine to executor
             let is_js = matches!(engine.as_str(), "node" | "bun" | "javascript" | "js");
@@ -1191,7 +1241,7 @@ impl DesktopWrapper {
 
             if is_js {
                 let execution_result = scripting_engine::execute_javascript_with_nodejs(
-                    script_content,
+                    final_script,
                     cancellation_token,
                 )
                 .await?;
@@ -1229,7 +1279,7 @@ impl DesktopWrapper {
                 return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_py {
                 let execution_result =
-                    scripting_engine::execute_python_with_bindings(script_content).await?;
+                    scripting_engine::execute_python_with_bindings(final_script).await?;
 
                 // For now, Python doesn't capture logs yet, but we can add it later
                 // Just pass through the result as before
@@ -1249,9 +1299,35 @@ impl DesktopWrapper {
         }
 
         // Shell-based execution path
-        let run_str = args.run.clone().ok_or_else(|| {
-            McpError::invalid_params("'run' is required for shell command execution", None)
-        })?;
+        // For shell mode, we also support script_file but env is ignored
+        let run_str = if let Some(script_file) = &args.script_file {
+            // Check that both run and script_file aren't provided
+            if args.run.is_some() {
+                return Err(McpError::invalid_params(
+                    "Cannot specify both 'run' and 'script_file'. Use one or the other.",
+                    None,
+                ));
+            }
+
+            // Read script from file
+            tracing::info!("[run_command] Reading shell script from file: {}", script_file);
+            tokio::fs::read_to_string(script_file).await.map_err(|e| {
+                McpError::invalid_params(
+                    "Failed to read script file",
+                    Some(json!({
+                        "file": script_file,
+                        "error": e.to_string()
+                    })),
+                )
+            })?
+        } else if let Some(run) = &args.run {
+            run.clone()
+        } else {
+            return Err(McpError::invalid_params(
+                "Either 'run' or 'script_file' must be provided",
+                None,
+            ));
+        };
 
         // Determine which shell to use based on platform and user preference
         let (windows_cmd, unix_cmd) = if cfg!(target_os = "windows") {
