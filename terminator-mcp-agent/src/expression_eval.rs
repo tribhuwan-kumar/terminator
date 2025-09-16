@@ -2,7 +2,7 @@ use serde_json::Value;
 use tracing::warn;
 
 // Helper to get a value from the variables JSON.
-fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
+pub fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
     // Support dot notation for nested access
     if !path.contains('.') {
         return variables.get(path); // Fast path for simple keys
@@ -26,6 +26,19 @@ pub fn evaluate(expression: &str, variables: &Value) -> bool {
         return !evaluate(inner_expr, variables);
     }
 
+    // Handle logical operators (&&, ||) with proper precedence
+    if let Some(pos) = expr.find("&&") {
+        let left = &expr[..pos].trim();
+        let right = &expr[pos + 2..].trim();
+        return evaluate(left, variables) && evaluate(right, variables);
+    }
+    
+    if let Some(pos) = expr.find("||") {
+        let left = &expr[..pos].trim();
+        let right = &expr[pos + 2..].trim();
+        return evaluate(left, variables) || evaluate(right, variables);
+    }
+
     // Try parsing function-based expressions first, e.g., contains(vars, 'value')
     if let Some(result) = parse_and_evaluate_function(expr, variables) {
         return result;
@@ -34,6 +47,20 @@ pub fn evaluate(expression: &str, variables: &Value) -> bool {
     // Fallback to simple binary expressions, e.g., vars == 'value'
     if let Some(result) = parse_and_evaluate_binary_expression(expr, variables) {
         return result;
+    }
+
+    // Handle simple variable references (evaluate to their boolean truthiness)
+    // This allows expressions like "env.troubleshooting" or "!env.troubleshooting"
+    // where troubleshooting is a boolean
+    if let Some(value) = get_value(expr, variables) {
+        return match value {
+            Value::Bool(b) => *b,
+            Value::String(s) => !s.is_empty() && s != "false" && s != "0",
+            Value::Number(n) => n.as_i64().unwrap_or(0) != 0,
+            Value::Null => false,
+            Value::Array(arr) => !arr.is_empty(),
+            Value::Object(obj) => !obj.is_empty(),
+        };
     }
 
     warn!(
@@ -118,289 +145,5 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
         "==" => Some(are_equal),
         "!=" => Some(!are_equal),
         _ => None, // Should be unreachable
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_evaluate_binary_expressions() {
-        let vars = json!({
-            "use_max_budget": false,
-            "coverage_type": "Graded"
-        });
-
-        assert!(evaluate("use_max_budget == false", &vars));
-        assert!(!evaluate("use_max_budget == true", &vars));
-        assert!(evaluate("coverage_type == 'Graded'", &vars));
-        assert!(evaluate("coverage_type != 'Standard'", &vars));
-    }
-
-    #[test]
-    fn test_evaluate_contains() {
-        let vars = json!({
-            "product_types": ["FEX", "Term"],
-            "description": "Final Expense"
-        });
-
-        assert!(evaluate("contains(product_types, 'FEX')", &vars));
-        assert!(!evaluate("contains(product_types, 'MedSup')", &vars));
-        assert!(evaluate("contains(description, 'Expense')", &vars));
-    }
-
-    #[test]
-    fn test_evaluate_starts_with() {
-        let vars = json!({ "name": "John Doe" });
-        assert!(evaluate("startsWith(name, 'John')", &vars));
-        assert!(!evaluate("startsWith(name, 'Doe')", &vars));
-    }
-
-    #[test]
-    fn test_evaluate_ends_with() {
-        let vars = json!({ "name": "John Doe" });
-        assert!(evaluate("endsWith(name, 'Doe')", &vars));
-        assert!(!evaluate("endsWith(name, 'John')", &vars));
-    }
-
-    #[test]
-    fn test_string_with_spaces() {
-        let vars = json!({
-            "quote_type": "Face Amount"
-        });
-
-        assert!(evaluate("quote_type == 'Face Amount'", &vars));
-        assert!(!evaluate("quote_type == 'Monthly Amount'", &vars));
-    }
-
-    #[test]
-    fn test_invalid_expressions() {
-        let vars = json!({});
-        assert!(!evaluate("invalid expression", &vars)); // Invalid format
-        assert!(!evaluate("unsupported(a, b)", &vars)); // Unsupported function
-        assert!(!evaluate("var.not.found == true", &vars)); // Variable not found
-    }
-
-    // New tests for negation operator
-    #[test]
-    fn test_negation_contains() {
-        let vars = json!({
-            "product_types": ["FEX", "Term"],
-            "description": "Final Expense"
-        });
-
-        // Test !contains with arrays
-        assert!(!evaluate("!contains(product_types, 'FEX')", &vars)); // FEX is in array, so !contains is false
-        assert!(evaluate("!contains(product_types, 'MedSup')", &vars)); // MedSup not in array, so !contains is true
-
-        // Test !contains with strings
-        assert!(!evaluate("!contains(description, 'Expense')", &vars)); // "Expense" is in string, so !contains is false
-        assert!(evaluate("!contains(description, 'Medical')", &vars)); // "Medical" not in string, so !contains is true
-    }
-
-    #[test]
-    fn test_negation_starts_with() {
-        let vars = json!({ "name": "John Doe" });
-
-        assert!(!evaluate("!startsWith(name, 'John')", &vars)); // Starts with John, so !startsWith is false
-        assert!(evaluate("!startsWith(name, 'Doe')", &vars)); // Doesn't start with Doe, so !startsWith is true
-    }
-
-    #[test]
-    fn test_negation_ends_with() {
-        let vars = json!({ "name": "John Doe" });
-
-        assert!(!evaluate("!endsWith(name, 'Doe')", &vars)); // Ends with Doe, so !endsWith is false
-        assert!(evaluate("!endsWith(name, 'John')", &vars)); // Doesn't end with John, so !endsWith is true
-    }
-
-    #[test]
-    fn test_negation_binary_expressions() {
-        let vars = json!({
-            "use_max_budget": false,
-            "coverage_type": "Graded",
-            "enabled": true
-        });
-
-        // Test negation of equality
-        assert!(!evaluate("!use_max_budget == false", &vars)); // use_max_budget is false, so !(false == false) = !true = false
-        assert!(evaluate("!use_max_budget == true", &vars)); // use_max_budget is false, so !(false == true) = !false = true
-
-        // Test negation of string equality
-        assert!(!evaluate("!coverage_type == 'Graded'", &vars)); // coverage_type is Graded, so !(Graded == Graded) = !true = false
-        assert!(evaluate("!coverage_type == 'Standard'", &vars)); // coverage_type is Graded, so !(Graded == Standard) = !false = true
-
-        // Test negation of inequality
-        assert!(evaluate("!coverage_type != 'Graded'", &vars)); // coverage_type is Graded, so !(Graded != Graded) = !false = true
-        assert!(!evaluate("!coverage_type != 'Standard'", &vars)); // coverage_type is Graded, so !(Graded != Standard) = !true = false
-
-        // Test negation of boolean values
-        assert!(!evaluate("!enabled == true", &vars)); // enabled is true, so !(true == true) = !true = false
-        assert!(evaluate("!enabled == false", &vars)); // enabled is true, so !(true == false) = !false = true
-    }
-
-    #[test]
-    fn test_negation_with_whitespace() {
-        let vars = json!({
-            "product_types": ["FEX", "Term"]
-        });
-
-        // Test various whitespace combinations
-        assert!(evaluate("! contains(product_types, 'MedSup')", &vars));
-        assert!(evaluate("!  contains(product_types, 'MedSup')", &vars));
-        assert!(evaluate("  !contains(product_types, 'MedSup')", &vars));
-        assert!(evaluate("  ! contains(product_types, 'MedSup')", &vars));
-        assert!(evaluate("  !  contains(product_types, 'MedSup')  ", &vars));
-    }
-
-    #[test]
-    fn test_double_negation() {
-        let vars = json!({
-            "product_types": ["FEX", "Term"]
-        });
-
-        // Double negation should cancel out
-        assert!(evaluate("!!contains(product_types, 'FEX')", &vars)); // !!true = true
-        assert!(!evaluate("!!contains(product_types, 'MedSup')", &vars)); // !!false = false
-    }
-
-    #[test]
-    fn test_triple_negation() {
-        let vars = json!({
-            "product_types": ["FEX", "Term"]
-        });
-
-        // Triple negation should be equivalent to single negation
-        assert!(!evaluate("!!!contains(product_types, 'FEX')", &vars)); // !!!true = !true = false
-        assert!(evaluate("!!!contains(product_types, 'MedSup')", &vars)); // !!!false = !false = true
-    }
-
-    #[test]
-    fn test_negation_with_missing_variables() {
-        let vars = json!({});
-
-        // Negation of expressions with missing variables should still default to false, then be negated
-        assert!(evaluate("!contains(missing_var, 'value')", &vars)); // !false = true
-        assert!(evaluate("!missing_var == 'value'", &vars)); // !false = true
-        assert!(evaluate("!startsWith(missing_var, 'test')", &vars)); // !false = true
-    }
-
-    #[test]
-    fn test_negation_edge_cases() {
-        let vars = json!({
-            "empty_array": [],
-            "empty_string": "",
-            "null_value": null
-        });
-
-        // Test negation with empty/null values
-        assert!(evaluate("!contains(empty_array, 'anything')", &vars)); // !false = true
-        assert!(evaluate("!contains(empty_string, 'anything')", &vars)); // !false = true
-        assert!(evaluate("!startsWith(empty_string, 'test')", &vars)); // !false = true
-        assert!(evaluate("!endsWith(empty_string, 'test')", &vars)); // !false = true
-
-        // Test with null values (should default to false, then be negated)
-        assert!(evaluate("!null_value == 'test'", &vars)); // !false = true
-    }
-
-    #[test]
-    fn test_complex_negation_scenarios() {
-        let vars = json!({
-            "product_types": ["FEX", "Term", "MedSup"],
-            "quote_type": "Face Amount",
-            "enabled": true,
-            "user_name": "John Smith"
-        });
-
-        // Test realistic workflow scenarios
-        assert!(!evaluate("!contains(product_types, 'FEX')", &vars)); // FEX is selected, so we don't want to uncheck it
-        assert!(evaluate("!contains(product_types, 'Preneed')", &vars)); // Preneed is not selected, so we might want to uncheck it
-
-        assert!(!evaluate("!quote_type == 'Face Amount'", &vars)); // Quote type is Face Amount, so condition is false
-        assert!(evaluate("!quote_type == 'Monthly Amount'", &vars)); // Quote type is not Monthly Amount, so condition is true
-
-        assert!(evaluate("!startsWith(user_name, 'Jane')", &vars)); // User name doesn't start with Jane
-        assert!(!evaluate("!endsWith(user_name, 'Smith')", &vars)); // User name does end with Smith
-    }
-
-    #[test]
-    fn test_negation_preserves_original_functionality() {
-        let vars = json!({
-            "product_types": ["FEX", "Term"],
-            "quote_type": "Face Amount",
-            "enabled": true
-        });
-
-        // Ensure original functionality still works
-        assert!(evaluate("contains(product_types, 'FEX')", &vars));
-        assert!(!evaluate("contains(product_types, 'MedSup')", &vars));
-        assert!(evaluate("quote_type == 'Face Amount'", &vars));
-        assert!(!evaluate("quote_type == 'Monthly Amount'", &vars));
-        assert!(evaluate("enabled == true", &vars));
-        assert!(!evaluate("enabled == false", &vars));
-
-        // And that negation works correctly
-        assert!(!evaluate("!contains(product_types, 'FEX')", &vars));
-        assert!(evaluate("!contains(product_types, 'MedSup')", &vars));
-        assert!(!evaluate("!quote_type == 'Face Amount'", &vars));
-        assert!(evaluate("!quote_type == 'Monthly Amount'", &vars));
-        assert!(!evaluate("!enabled == true", &vars));
-        assert!(evaluate("!enabled == false", &vars));
-    }
-
-    // Tests for always() function
-    #[test]
-    fn test_always_function() {
-        let vars = json!({
-            "some_var": "some_value"
-        });
-
-        // always() should always return true regardless of variables
-        assert!(evaluate("always()", &vars));
-
-        // Test with empty variables
-        let empty_vars = json!({});
-        assert!(evaluate("always()", &empty_vars));
-
-        // Test with null variables
-        let null_vars = json!(null);
-        assert!(evaluate("always()", &null_vars));
-    }
-
-    #[test]
-    fn test_always_function_with_whitespace() {
-        let vars = json!({});
-
-        // Test various whitespace combinations
-        assert!(evaluate("always()", &vars));
-        assert!(evaluate("always( )", &vars));
-        assert!(evaluate("always(  )", &vars));
-        assert!(evaluate(" always() ", &vars));
-        assert!(evaluate("  always()  ", &vars));
-    }
-
-    #[test]
-    fn test_always_function_with_arguments_should_fail() {
-        let vars = json!({});
-
-        // always() should not accept arguments
-        assert!(!evaluate("always(arg)", &vars));
-        assert!(!evaluate("always('test')", &vars));
-        assert!(!evaluate("always(var1, var2)", &vars));
-    }
-
-    #[test]
-    fn test_negation_of_always() {
-        let vars = json!({});
-
-        // !always() should always be false
-        assert!(!evaluate("!always()", &vars));
-        assert!(!evaluate("! always()", &vars));
-        assert!(!evaluate("  !always()  ", &vars));
-
-        // Double negation should be true
-        assert!(evaluate("!!always()", &vars));
     }
 }

@@ -235,11 +235,14 @@ impl DesktopWrapper {
         };
 
         // Handle verbosity levels
+        // quiet: minimal output (just success/failure)
+        // normal: moderate output (no step definitions/content)
+        // verbose: full output (includes step definitions/content)
         let include_detailed = match args.verbosity.as_deref() {
             Some("quiet") => false,
             Some("verbose") => true,
-            Some("normal") | None => args.include_detailed_results.unwrap_or(true),
-            _ => args.include_detailed_results.unwrap_or(true),
+            Some("normal") | None => args.include_detailed_results.unwrap_or(false), // Changed default to false
+            _ => args.include_detailed_results.unwrap_or(false), // Changed default to false
         };
 
         // Re-enabling validation logic
@@ -1107,9 +1110,17 @@ impl DesktopWrapper {
 
                 let content_count = result.content.len();
                 let content_summary = if include_detailed {
+                    // Verbose mode: include full content/step definitions
                     json!({ "type": "tool_result", "content_count": content_count, "content": extracted_content })
                 } else {
-                    json!({ "type": "summary", "content": "Tool executed successfully", "content_count": content_count })
+                    // Normal/quiet mode: just summary without step definitions
+                    // Include only essential info like step_id and status
+                    json!({ 
+                        "type": "summary", 
+                        "status": "success",
+                        "content_count": content_count,
+                        "message": "Tool executed successfully"
+                    })
                 };
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
                 let mut result_json = json!({
