@@ -3400,11 +3400,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     "Failed to execute browser script",
                     Some(json!({
                         "selector": args.selector,
-                        "script": if args.script_file.is_some() { 
-                            "[from file]".to_string() 
-                        } else {
-                            args.script.clone().unwrap_or_else(|| "[no script]".to_string()) 
-                        },
+                        "script": "[script content omitted to reduce verbosity]",
                         "script_file": args.script_file,
                         "env_provided": args.env.is_some(),
                         "alternative_selectors": args.alternative_selectors,
@@ -3436,11 +3432,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             "selector_used": successful_selector,
             "selectors_tried": selectors_tried,
             "element": build_element_info(&element),
-            "script": if args.script_file.is_some() {
-                "[loaded from file]".to_string()
-            } else {
-                args.script.clone().unwrap_or_else(|| "[no script]".to_string())
-            },
+            "script": "[script content omitted to reduce verbosity]",
             "script_file": args.script_file,
             "env_provided": args.env.is_some(),
             "result": script_result,
