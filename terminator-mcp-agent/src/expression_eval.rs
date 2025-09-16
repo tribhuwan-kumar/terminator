@@ -3,8 +3,16 @@ use tracing::warn;
 
 // Helper to get a value from the variables JSON.
 fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
-    // Only access top-level keys. No more dot notation for nested objects.
-    variables.get(path)
+    // Support dot notation for nested access
+    if !path.contains('.') {
+        return variables.get(path);  // Fast path for simple keys
+    }
+    
+    let mut current = variables;
+    for part in path.split('.') {
+        current = current.get(part)?;
+    }
+    Some(current)
 }
 
 // Main evaluation function.
