@@ -13,6 +13,22 @@ use uuid::Uuid;
 
 use crate::AutomationError;
 
+#[derive(Debug, thiserror::Error)]
+pub enum ExtensionBridgeError {
+    #[error("Failed to bind to port {port}: {source}")]
+    PortBindError {
+        port: u16,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("Port {port} is in use by another process (PID: {pid})")]
+    PortInUse { port: u16, pid: u32 },
+    #[error("Failed to kill existing process: {0}")]
+    ProcessKillError(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
 const DEFAULT_WS_ADDR: &str = "127.0.0.1:17373";
 
 // Reduce type complexity for Clippy
@@ -116,9 +132,28 @@ impl ExtensionBridge {
                     tracing::info!("Creating initial extension bridge...");
                 }
 
-                let new_bridge = Arc::new(ExtensionBridge::start(DEFAULT_WS_ADDR).await);
-                *guard = Some(new_bridge.clone());
-                return new_bridge;
+                match ExtensionBridge::start(DEFAULT_WS_ADDR).await {
+                    Ok(bridge) => {
+                        let new_bridge = Arc::new(bridge);
+                        *guard = Some(new_bridge.clone());
+                        return new_bridge;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to create extension bridge: {}", e);
+                        // Return a non-functional bridge that will report errors properly
+                        let fallback = ExtensionBridge {
+                            _server_task: tokio::spawn(async move {
+                                // Keep alive but do nothing
+                                tokio::time::sleep(Duration::from_secs(3600)).await;
+                            }),
+                            clients: Arc::new(Mutex::new(Vec::new())),
+                            pending: Arc::new(Mutex::new(HashMap::new())),
+                        };
+                        let fallback_arc = Arc::new(fallback);
+                        *guard = Some(fallback_arc.clone());
+                        return fallback_arc;
+                    }
+                }
             }
         }
 
@@ -126,10 +161,17 @@ impl ExtensionBridge {
         supervisor.read().await.as_ref().unwrap().clone()
     }
 
-    async fn start(addr: &str) -> ExtensionBridge {
+    async fn start(addr: &str) -> Result<ExtensionBridge, ExtensionBridgeError> {
         let clients: Clients = Arc::new(Mutex::new(Vec::new()));
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
-        // Try to bind the websocket listener; avoid panicking if the port is already in use.
+        // Extract port from address string
+        let port: u16 = addr
+            .split(':')
+            .last()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(17373);
+
+        // Try to bind the websocket listener; handle port conflicts properly
         let listener = match TcpListener::bind(addr).await {
             Ok(l) => l,
             Err(e) => {
@@ -138,34 +180,37 @@ impl ExtensionBridge {
                     tracing::warn!(
                         %addr,
                         ?e,
-                        "Port in use, waiting 2 seconds and retrying once..."
+                        "Port in use, checking for existing terminator process..."
                     );
-                    // Wait a bit for the port to be released
-                    tokio::time::sleep(Duration::from_secs(2)).await;
 
-                    // Try one more time
+                    // Try to find and kill existing terminator process
+                    if let Some(pid) = Self::find_process_on_port(port).await {
+                        tracing::info!("Found process {} on port {}, attempting to kill...", pid, port);
+                        if let Err(kill_err) = Self::kill_process(pid).await {
+                            tracing::warn!("Failed to kill process {}: {}", pid, kill_err);
+                        } else {
+                            tracing::info!("Successfully killed process {}, waiting for port to be released...", pid);
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+
+                    // Try binding again after cleanup attempt
                     match TcpListener::bind(addr).await {
                         Ok(l) => l,
                         Err(e2) => {
                             tracing::error!(
                                 %addr,
                                 ?e2,
-                                "Failed to bind after retry. Extension bridge will be non-functional."
+                                "Failed to bind after cleanup attempt"
                             );
-                            return ExtensionBridge {
-                                _server_task: tokio::spawn(async move {}),
-                                clients,
-                                pending,
-                            };
+                            return Err(ExtensionBridgeError::PortBindError {
+                                port,
+                                source: e2,
+                            });
                         }
                     }
                 } else {
-                    tracing::warn!(%addr, ?e, "failed to bind ws");
-                    return ExtensionBridge {
-                        _server_task: tokio::spawn(async move {}),
-                        clients,
-                        pending,
-                    };
+                    return Err(ExtensionBridgeError::IoError(e));
                 }
             }
         };
@@ -313,10 +358,126 @@ impl ExtensionBridge {
             }
         });
 
-        ExtensionBridge {
+        Ok(ExtensionBridge {
             _server_task: server_task,
             clients,
             pending,
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn find_process_on_port(port: u16) -> Option<u32> {
+        use tokio::process::Command;
+
+        // Use netstat to find the process
+        let output = Command::new("cmd")
+            .args(&["/C", &format!("netstat -ano | findstr :{} | findstr LISTENING", port)])
+            .output()
+            .await
+            .ok()?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        // Parse output like: "  TCP    127.0.0.1:17373        0.0.0.0:0              LISTENING       6728"
+        for line in output_str.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if let Some(pid_str) = parts.last() {
+                if let Ok(pid) = pid_str.parse::<u32>() {
+                    // Verify it's a terminator process
+                    if Self::is_terminator_process(pid).await {
+                        return Some(pid);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    async fn find_process_on_port(port: u16) -> Option<u32> {
+        use tokio::process::Command;
+
+        // Use lsof on Unix-like systems
+        let output = Command::new("lsof")
+            .args(&["-i", &format!(":{}", port), "-t"])
+            .output()
+            .await
+            .ok()?;
+
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        output_str.trim().parse::<u32>().ok()
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn is_terminator_process(pid: u32) -> bool {
+        use tokio::process::Command;
+
+        let output = Command::new("wmic")
+            .args(&["process", "where", &format!("ProcessID={}", pid), "get", "Name"])
+            .output()
+            .await
+            .ok();
+
+        if let Some(output) = output {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            output_str.contains("terminator-mcp-agent")
+        } else {
+            false
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    async fn is_terminator_process(pid: u32) -> bool {
+        use tokio::process::Command;
+
+        let output = Command::new("ps")
+            .args(&["-p", &pid.to_string(), "-o", "comm="])
+            .output()
+            .await
+            .ok();
+
+        if let Some(output) = output {
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            output_str.contains("terminator")
+        } else {
+            false
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn kill_process(pid: u32) -> Result<(), ExtensionBridgeError> {
+        use tokio::process::Command;
+
+        let output = Command::new("wmic")
+            .args(&["process", "where", &format!("ProcessID={}", pid), "delete"])
+            .output()
+            .await
+            .map_err(|e| ExtensionBridgeError::ProcessKillError(e.to_string()))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(ExtensionBridgeError::ProcessKillError(
+                String::from_utf8_lossy(&output.stderr).to_string()
+            ))
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    async fn kill_process(pid: u32) -> Result<(), ExtensionBridgeError> {
+        use tokio::process::Command;
+
+        let output = Command::new("kill")
+            .args(&["-9", &pid.to_string()])
+            .output()
+            .await
+            .map_err(|e| ExtensionBridgeError::ProcessKillError(e.to_string()))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            Err(ExtensionBridgeError::ProcessKillError(
+                String::from_utf8_lossy(&output.stderr).to_string()
+            ))
         }
     }
 
@@ -358,10 +519,12 @@ impl ExtensionBridge {
         code: &str,
         timeout: Duration,
     ) -> Result<Option<String>, AutomationError> {
-        if self.clients.lock().await.is_empty() {
-            tracing::info!("ExtensionBridge: no clients connected; skipping extension path");
+        let client_count = self.clients.lock().await.len();
+        if client_count == 0 {
+            tracing::warn!("ExtensionBridge: no clients connected; extension not available");
             return Ok(None);
         }
+        tracing::debug!("ExtensionBridge: {} client(s) connected", client_count);
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel::<BridgeResult>();
         self.pending.lock().await.insert(id.clone(), tx);
@@ -418,5 +581,9 @@ pub async fn try_eval_via_extension(
     timeout: Duration,
 ) -> Result<Option<String>, AutomationError> {
     let bridge = ExtensionBridge::global().await;
+    if bridge._server_task.is_finished() {
+        tracing::error!("Extension bridge server task is not running - WebSocket server unavailable");
+        return Ok(None);
+    }
     bridge.eval_in_active_tab(code, timeout).await
 }

@@ -9,7 +9,7 @@ use rmcp::ErrorData as McpError;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 impl DesktopWrapper {
     // Get the state file path for a workflow
@@ -428,7 +428,7 @@ impl DesktopWrapper {
         }
 
         let execution_context = serde_json::Value::Object(execution_context_map.clone());
-        info!(
+        debug!(
             "Executing sequence with context: {}",
             serde_json::to_string_pretty(&execution_context).unwrap_or_default()
         );
