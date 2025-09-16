@@ -5,9 +5,9 @@ use tracing::warn;
 fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
     // Support dot notation for nested access
     if !path.contains('.') {
-        return variables.get(path);  // Fast path for simple keys
+        return variables.get(path); // Fast path for simple keys
     }
-    
+
     let mut current = variables;
     for part in path.split('.') {
         current = current.get(part)?;
