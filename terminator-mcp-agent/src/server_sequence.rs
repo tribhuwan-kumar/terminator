@@ -236,8 +236,8 @@ impl DesktopWrapper {
 
         // Handle verbosity levels
         // quiet: minimal output (just success/failure)
-        // normal: moderate output (no step definitions/content)
-        // verbose: full output (includes step definitions/content)
+        // normal: moderate output (includes tool results/logs but may omit some metadata)
+        // verbose: full output (includes all details and metadata)
         let include_detailed = match args.verbosity.as_deref() {
             Some("quiet") => false,
             Some("verbose") => true,
@@ -1113,13 +1113,13 @@ impl DesktopWrapper {
                     // Verbose mode: include full content/step definitions
                     json!({ "type": "tool_result", "content_count": content_count, "content": extracted_content })
                 } else {
-                    // Normal/quiet mode: just summary without step definitions
-                    // Include only essential info like step_id and status
+                    // Normal/quiet mode: include extracted content (logs/output) but not step definitions
+                    // The extracted_content already contains just the results, not the tool arguments/definitions
                     json!({
-                        "type": "summary",
+                        "type": "tool_result",
                         "status": "success",
                         "content_count": content_count,
-                        "message": "Tool executed successfully"
+                        "content": extracted_content
                     })
                 };
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
