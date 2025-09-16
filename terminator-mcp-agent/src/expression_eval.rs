@@ -32,7 +32,7 @@ pub fn evaluate(expression: &str, variables: &Value) -> bool {
         let right = &expr[pos + 2..].trim();
         return evaluate(left, variables) && evaluate(right, variables);
     }
-    
+
     if let Some(pos) = expr.find("||") {
         let left = &expr[..pos].trim();
         let right = &expr[pos + 2..].trim();

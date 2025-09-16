@@ -26,7 +26,7 @@ async fn test_wait_for_element_on_webpage() {
     use terminator::{Desktop, Selector};
 
     let (server_url, _server) = start_test_server();
-    println!("Test server started at: {}", server_url);
+    println!("Test server started at: {server_url}");
 
     let desktop = Desktop::new(false, false).unwrap();
 
@@ -70,7 +70,10 @@ async fn test_wait_for_element_on_webpage() {
         if let Ok(locator) = direct_find {
             // Try to find with immediate timeout
             if let Ok(elem) = locator.first(None).await {
-                println!("Element WAS found after extra wait! Name: {:?}", elem.name());
+                println!(
+                    "Element WAS found after extra wait! Name: {:?}",
+                    elem.name()
+                );
             } else {
                 println!("Element still not found even after extra wait");
             }

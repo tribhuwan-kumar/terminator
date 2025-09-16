@@ -261,8 +261,14 @@ fn test_simple_boolean_variables() {
     assert!(evaluate("!disabled", &vars));
     assert!(!evaluate("env.troubleshooting", &vars));
     assert!(evaluate("!env.troubleshooting", &vars));
-    assert!(evaluate("env.needs_login == 'true' && !env.troubleshooting", &vars));
-    assert!(!evaluate("env.needs_login == 'true' && env.troubleshooting", &vars));
+    assert!(evaluate(
+        "env.needs_login == 'true' && !env.troubleshooting",
+        &vars
+    ));
+    assert!(!evaluate(
+        "env.needs_login == 'true' && env.troubleshooting",
+        &vars
+    ));
 }
 
 #[test]

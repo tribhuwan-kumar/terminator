@@ -1115,8 +1115,8 @@ impl DesktopWrapper {
                 } else {
                     // Normal/quiet mode: just summary without step definitions
                     // Include only essential info like step_id and status
-                    json!({ 
-                        "type": "summary", 
+                    json!({
+                        "type": "summary",
                         "status": "success",
                         "content_count": content_count,
                         "message": "Tool executed successfully"
