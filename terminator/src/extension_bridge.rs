@@ -140,18 +140,15 @@ impl ExtensionBridge {
                     }
                     Err(e) => {
                         tracing::error!("Failed to create extension bridge: {}", e);
-                        // Return a non-functional bridge that will report errors properly
-                        let fallback = ExtensionBridge {
-                            _server_task: tokio::spawn(async move {
-                                // Keep alive but do nothing
-                                tokio::time::sleep(Duration::from_secs(3600)).await;
-                            }),
+                        // Don't store anything in the supervisor so we'll retry next time
+                        *guard = None;
+                        // Create a minimal bridge that will properly report it's not functional
+                        // This bridge has no server task and no clients
+                        return Arc::new(ExtensionBridge {
+                            _server_task: tokio::spawn(async {}), // Immediately finished task
                             clients: Arc::new(Mutex::new(Vec::new())),
                             pending: Arc::new(Mutex::new(HashMap::new())),
-                        };
-                        let fallback_arc = Arc::new(fallback);
-                        *guard = Some(fallback_arc.clone());
-                        return fallback_arc;
+                        });
                     }
                 }
             }
