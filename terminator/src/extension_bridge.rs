@@ -167,7 +167,7 @@ impl ExtensionBridge {
         // Extract port from address string
         let port: u16 = addr
             .split(':')
-            .last()
+            .next_back()
             .and_then(|p| p.parse().ok())
             .unwrap_or(17373);
 
@@ -185,7 +185,11 @@ impl ExtensionBridge {
 
                     // Try to find and kill existing terminator process
                     if let Some(pid) = Self::find_process_on_port(port).await {
-                        tracing::info!("Found process {} on port {}, attempting to kill...", pid, port);
+                        tracing::info!(
+                            "Found process {} on port {}, attempting to kill...",
+                            pid,
+                            port
+                        );
                         if let Err(kill_err) = Self::kill_process(pid).await {
                             tracing::warn!("Failed to kill process {}: {}", pid, kill_err);
                         } else {
@@ -203,10 +207,7 @@ impl ExtensionBridge {
                                 ?e2,
                                 "Failed to bind after cleanup attempt"
                             );
-                            return Err(ExtensionBridgeError::PortBindError {
-                                port,
-                                source: e2,
-                            });
+                            return Err(ExtensionBridgeError::PortBindError { port, source: e2 });
                         }
                     }
                 } else {
@@ -371,7 +372,10 @@ impl ExtensionBridge {
 
         // Use netstat to find the process
         let output = Command::new("cmd")
-            .args(&["/C", &format!("netstat -ano | findstr :{} | findstr LISTENING", port)])
+            .args([
+                "/C",
+                &format!("netstat -ano | findstr :{port} | findstr LISTENING"),
+            ])
             .output()
             .await
             .ok()?;
@@ -412,7 +416,13 @@ impl ExtensionBridge {
         use tokio::process::Command;
 
         let output = Command::new("wmic")
-            .args(&["process", "where", &format!("ProcessID={}", pid), "get", "Name"])
+            .args([
+                "process",
+                "where",
+                &format!("ProcessID={pid}"),
+                "get",
+                "Name",
+            ])
             .output()
             .await
             .ok();
@@ -448,7 +458,7 @@ impl ExtensionBridge {
         use tokio::process::Command;
 
         let output = Command::new("wmic")
-            .args(&["process", "where", &format!("ProcessID={}", pid), "delete"])
+            .args(["process", "where", &format!("ProcessID={pid}"), "delete"])
             .output()
             .await
             .map_err(|e| ExtensionBridgeError::ProcessKillError(e.to_string()))?;
@@ -457,7 +467,7 @@ impl ExtensionBridge {
             Ok(())
         } else {
             Err(ExtensionBridgeError::ProcessKillError(
-                String::from_utf8_lossy(&output.stderr).to_string()
+                String::from_utf8_lossy(&output.stderr).to_string(),
             ))
         }
     }
@@ -476,7 +486,7 @@ impl ExtensionBridge {
             Ok(())
         } else {
             Err(ExtensionBridgeError::ProcessKillError(
-                String::from_utf8_lossy(&output.stderr).to_string()
+                String::from_utf8_lossy(&output.stderr).to_string(),
             ))
         }
     }
@@ -582,7 +592,9 @@ pub async fn try_eval_via_extension(
 ) -> Result<Option<String>, AutomationError> {
     let bridge = ExtensionBridge::global().await;
     if bridge._server_task.is_finished() {
-        tracing::error!("Extension bridge server task is not running - WebSocket server unavailable");
+        tracing::error!(
+            "Extension bridge server task is not running - WebSocket server unavailable"
+        );
         return Ok(None);
     }
     bridge.eval_in_active_tab(code, timeout).await
