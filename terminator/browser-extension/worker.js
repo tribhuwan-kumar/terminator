@@ -7,10 +7,9 @@ const attachedTabs = new Set();
 // Track which tabs have Runtime and Log domains enabled
 const enabledTabs = new Set();
 
-// Restore on startup
-chrome.storage.session.get('attached').then(data => {
-  if (data.attached) data.attached.forEach(id => attachedTabs.add(id));
-  log(`Restored ${attachedTabs.size} attached debugger sessions`);
+// Clear stored tabs on startup since debugger sessions don't persist across restarts
+chrome.storage.session.remove('attached').then(() => {
+  log('Cleared stale debugger session data on startup');
 });
 
 // Logging is disabled by default to reduce console noise. Toggle via Service Worker console.
@@ -271,12 +270,35 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
       timings.attach = performance.now() - attachStart;
       log(`Debugger attached to tab ${tabId} (${timings.attach.toFixed(1)}ms)`);
     } catch (e) {
-      // Don't care if already attached, just log it
+      // If we can't attach, we can't continue - throw the error
       log(`Could not attach to tab ${tabId}:`, e.message);
+      throw new Error(`Failed to attach debugger: ${e.message}`);
     }
   } else {
-    log(`Reusing existing debugger for tab ${tabId}`);
-    timings.attach = 0;
+    // Verify the debugger is actually still attached
+    try {
+      // Try a simple command to verify connection
+      await sendCommand(tabId, "Runtime.evaluate", { expression: "1", returnByValue: true });
+      log(`Reusing existing debugger for tab ${tabId}`);
+      timings.attach = 0;
+    } catch (e) {
+      // Debugger was detached, need to reattach
+      log(`Debugger was detached from tab ${tabId}, reattaching...`);
+      attachedTabs.delete(tabId);
+      enabledTabs.delete(tabId);
+
+      const attachStart = performance.now();
+      try {
+        await debuggerAttach(tabId);
+        attachedTabs.add(tabId);
+        chrome.storage.session.set({attached: [...attachedTabs]});
+        timings.attach = performance.now() - attachStart;
+        log(`Debugger reattached to tab ${tabId} (${timings.attach.toFixed(1)}ms)`);
+      } catch (attachError) {
+        log(`Failed to reattach to tab ${tabId}:`, attachError.message);
+        throw new Error(`Failed to reattach debugger: ${attachError.message}`);
+      }
+    }
   }
   
   let onEvent = null;
