@@ -100,7 +100,29 @@ fn kill_previous_mcp_instances() {
 
     if killed_count > 0 {
         eprintln!("Killed {} previous instance(s), waiting for ports to be released...", killed_count);
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        // Increase wait time to 2 seconds for Windows to properly release ports
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+
+        // Verify port 17373 is available
+        let mut retries = 0;
+        while retries < 5 {
+            match std::net::TcpListener::bind("127.0.0.1:17373") {
+                Ok(listener) => {
+                    drop(listener); // Immediately release the port
+                    eprintln!("Port 17373 is now available");
+                    break;
+                },
+                Err(_) => {
+                    retries += 1;
+                    if retries < 5 {
+                        eprintln!("Port 17373 still unavailable, waiting... (attempt {}/5)", retries);
+                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                    } else {
+                        eprintln!("WARNING: Port 17373 is still not available after 5 attempts");
+                    }
+                }
+            }
+        }
     }
 }
 

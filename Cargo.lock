@@ -2110,7 +2110,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "system-configuration",
  "tokio",
  "tower-service",
@@ -2130,7 +2130,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -3726,7 +3726,7 @@ dependencies = [
  "nix 0.30.1",
  "tokio",
  "tracing",
- "windows",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -3960,7 +3960,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "thiserror 2.0.16",
  "tokio",
  "tracing",
@@ -3997,7 +3997,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -4808,6 +4808,20 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
+version = "0.33.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4fc858248ea01b66f19d8e8a6d55f41deaf91e9d495246fd01368d99935c6c01"
+dependencies = [
+ "core-foundation-sys 0.8.7",
+ "libc",
+ "memchr",
+ "ntapi",
+ "rayon",
+ "windows 0.57.0",
+]
+
+[[package]]
+name = "sysinfo"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252800745060e7b9ffb7b2badbd8b31cfa4aa2e61af879d0a3bf2a317c20217d"
@@ -4817,7 +4831,7 @@ dependencies = [
  "ntapi",
  "objc2-core-foundation",
  "objc2-io-kit",
- "windows",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -4932,6 +4946,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sysinfo 0.33.1",
  "tempfile",
  "terminator-rs",
  "terminator-workflow-recorder",
@@ -4997,7 +5012,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.36.1",
  "thiserror 2.0.16",
  "tiny_http",
  "tokio",
@@ -5010,7 +5025,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "warp",
- "windows",
+ "windows 0.61.3",
  "xcap",
  "zbus",
 ]
@@ -5030,7 +5045,7 @@ dependencies = [
  "rdev",
  "serde",
  "serde_json",
- "sysinfo",
+ "sysinfo 0.36.1",
  "tempfile",
  "terminator-mcp-agent",
  "terminator-rs",
@@ -5040,7 +5055,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uiautomation",
- "windows",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -5547,8 +5562,8 @@ checksum = "69aeef90dc81842d583d8d39714e5a8e7ec86dcea0c3000ee5d48eb6fbc1f330"
 dependencies = [
  "chrono",
  "uiautomation_derive",
- "windows",
- "windows-core",
+ "windows 0.61.3",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -5580,7 +5595,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "windows",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -6017,12 +6032,22 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12342cb4d8e3b046f3d80effd474a7a02447231330ef77d71daa6fbc40681143"
+dependencies = [
+ "windows-core 0.57.0",
+ "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows"
 version = "0.61.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9babd3a767a4c1aef6900409f85f5d53ce2544ccdfaa86dad48c91782c6d6893"
 dependencies = [
  "windows-collections",
- "windows-core",
+ "windows-core 0.61.2",
  "windows-future",
  "windows-link",
  "windows-numerics",
@@ -6034,7 +6059,19 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3beeceb5e5cfd9eb1d76b381630e82c4241ccd0d27f1a39ed41b2760b255c5e8"
 dependencies = [
- "windows-core",
+ "windows-core 0.61.2",
+]
+
+[[package]]
+name = "windows-core"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2ed2439a290666cd67ecce2b0ffaad89c2a56b976b736e6ece670297897832d"
+dependencies = [
+ "windows-implement 0.57.0",
+ "windows-interface 0.57.0",
+ "windows-result 0.1.2",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -6043,10 +6080,10 @@ version = "0.61.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0fdd3ddb90610c7638aa2b3a3ab2904fb9e5cdbecc643ddb3647212781c4ae3"
 dependencies = [
- "windows-implement",
- "windows-interface",
+ "windows-implement 0.60.0",
+ "windows-interface 0.59.1",
  "windows-link",
- "windows-result",
+ "windows-result 0.3.4",
  "windows-strings",
 ]
 
@@ -6056,9 +6093,20 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc6a41e98427b19fe4b73c550f060b59fa592d7d686537eebf9385621bfbad8e"
 dependencies = [
- "windows-core",
+ "windows-core 0.61.2",
  "windows-link",
  "windows-threading",
+]
+
+[[package]]
+name = "windows-implement"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9107ddc059d5b6fbfbffdfa7a7fe3e22a226def0b2608f72e9d552763d3e1ad7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -6066,6 +6114,17 @@ name = "windows-implement"
 version = "0.60.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a47fddd13af08290e67f4acabf4b459f647552718f683a7b415d290ac744a836"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "windows-interface"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29bee4b38ea3cde66011baa44dba677c432a78593e202392d1e9070cf2a7fca7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6095,7 +6154,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9150af68066c4c5c07ddc0ce30421554771e528bde427614c61038bc2c92c2b1"
 dependencies = [
- "windows-core",
+ "windows-core 0.61.2",
  "windows-link",
 ]
 
@@ -6106,8 +6165,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b8a9ed28765efc97bbc954883f4e6796c33a06546ebafacbabee9696967499e"
 dependencies = [
  "windows-link",
- "windows-result",
+ "windows-result 0.3.4",
  "windows-strings",
+]
+
+[[package]]
+name = "windows-result"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e383302e8ec8515204254685643de10811af0ed97ea37210dc26fb0032647f8"
+dependencies = [
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -6368,7 +6436,7 @@ dependencies = [
  "thiserror 2.0.16",
  "url",
  "widestring",
- "windows",
+ "windows 0.61.3",
  "xcb",
  "zbus",
 ]
