@@ -77,21 +77,33 @@ fn kill_previous_mcp_instances() {
 
         // Kill other terminator-mcp-agent processes
         if process_name.contains("terminator-mcp-agent") && pid.as_u32() != current_pid {
-            eprintln!("Found existing MCP agent with PID {}, killing it...", pid.as_u32());
+            eprintln!(
+                "Found existing MCP agent with PID {}, killing it...",
+                pid.as_u32()
+            );
             if process.kill() {
                 killed_count += 1;
                 eprintln!("Successfully killed MCP agent with PID {}", pid.as_u32());
             } else {
-                eprintln!("Failed to kill MCP agent with PID {} (may require elevated permissions)", pid.as_u32());
+                eprintln!(
+                    "Failed to kill MCP agent with PID {} (may require elevated permissions)",
+                    pid.as_u32()
+                );
             }
         }
 
         // Also kill any bridge service processes
         if process_name.contains("terminator-bridge-service") {
-            eprintln!("Found bridge service with PID {}, killing it...", pid.as_u32());
+            eprintln!(
+                "Found bridge service with PID {}, killing it...",
+                pid.as_u32()
+            );
             if process.kill() {
                 killed_count += 1;
-                eprintln!("Successfully killed bridge service with PID {}", pid.as_u32());
+                eprintln!(
+                    "Successfully killed bridge service with PID {}",
+                    pid.as_u32()
+                );
             } else {
                 eprintln!("Failed to kill bridge service with PID {}", pid.as_u32());
             }
@@ -99,7 +111,9 @@ fn kill_previous_mcp_instances() {
     }
 
     if killed_count > 0 {
-        eprintln!("Killed {} previous instance(s), waiting for ports to be released...", killed_count);
+        eprintln!(
+            "Killed {killed_count} previous instance(s), waiting for ports to be released..."
+        );
         // Increase wait time to 2 seconds for Windows to properly release ports
         std::thread::sleep(std::time::Duration::from_millis(2000));
 
@@ -111,11 +125,13 @@ fn kill_previous_mcp_instances() {
                     drop(listener); // Immediately release the port
                     eprintln!("Port 17373 is now available");
                     break;
-                },
+                }
                 Err(_) => {
                     retries += 1;
                     if retries < 5 {
-                        eprintln!("Port 17373 still unavailable, waiting... (attempt {}/5)", retries);
+                        eprintln!(
+                            "Port 17373 still unavailable, waiting... (attempt {retries}/5)"
+                        );
                         std::thread::sleep(std::time::Duration::from_millis(1000));
                     } else {
                         eprintln!("WARNING: Port 17373 is still not available after 5 attempts");
