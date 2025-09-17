@@ -129,9 +129,7 @@ fn kill_previous_mcp_instances() {
                 Err(_) => {
                     retries += 1;
                     if retries < 5 {
-                        eprintln!(
-                            "Port 17373 still unavailable, waiting... (attempt {retries}/5)"
-                        );
+                        eprintln!("Port 17373 still unavailable, waiting... (attempt {retries}/5)");
                         std::thread::sleep(std::time::Duration::from_millis(1000));
                     } else {
                         eprintln!("WARNING: Port 17373 is still not available after 5 attempts");
