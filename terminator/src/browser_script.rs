@@ -60,7 +60,7 @@ pub async fn execute_script(
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Execute via extension bridge
-    match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(360)).await {
+    match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(120)).await {
         Ok(Some(result)) => {
             info!("✅ Script executed successfully via extension");
             if result.trim_start().starts_with("ERROR:") {
