@@ -590,9 +590,25 @@ pub async fn try_eval_via_extension(
     let bridge = ExtensionBridge::global().await;
     if bridge._server_task.is_finished() {
         tracing::error!(
-            "Extension bridge server task is not running - WebSocket server unavailable"
+            "Extension bridge server task is not running - attempting to recreate bridge"
         );
-        return Ok(None);
+
+        // Clear the broken bridge from supervisor
+        let supervisor = BRIDGE_SUPERVISOR.get_or_init(|| Arc::new(RwLock::new(None)));
+        {
+            let mut guard = supervisor.write().await;
+            *guard = None;
+        }
+
+        // Try to create a new bridge
+        let new_bridge = ExtensionBridge::global().await;
+        if new_bridge._server_task.is_finished() {
+            tracing::error!("Failed to recreate extension bridge - WebSocket server still unavailable");
+            return Ok(None);
+        }
+
+        tracing::info!("Successfully recreated extension bridge");
+        return new_bridge.eval_in_active_tab(code, timeout).await;
     }
     bridge.eval_in_active_tab(code, timeout).await
 }
