@@ -24,6 +24,7 @@ use std::{
         Arc, Mutex,
     },
 };
+use sysinfo::{ProcessesToUpdate, System};
 use terminator_mcp_agent::cancellation::RequestManager;
 use terminator_mcp_agent::server;
 use terminator_mcp_agent::utils::init_logging;
@@ -65,9 +66,50 @@ enum TransportMode {
     Http,
 }
 
+fn kill_previous_mcp_instances() {
+    let current_pid = std::process::id();
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut killed_count = 0;
+    for (pid, process) in system.processes() {
+        let process_name = process.name().to_string_lossy().to_lowercase();
+
+        // Kill other terminator-mcp-agent processes
+        if process_name.contains("terminator-mcp-agent") && pid.as_u32() != current_pid {
+            eprintln!("Found existing MCP agent with PID {}, killing it...", pid.as_u32());
+            if process.kill() {
+                killed_count += 1;
+                eprintln!("Successfully killed MCP agent with PID {}", pid.as_u32());
+            } else {
+                eprintln!("Failed to kill MCP agent with PID {} (may require elevated permissions)", pid.as_u32());
+            }
+        }
+
+        // Also kill any bridge service processes
+        if process_name.contains("terminator-bridge-service") {
+            eprintln!("Found bridge service with PID {}, killing it...", pid.as_u32());
+            if process.kill() {
+                killed_count += 1;
+                eprintln!("Successfully killed bridge service with PID {}", pid.as_u32());
+            } else {
+                eprintln!("Failed to kill bridge service with PID {}", pid.as_u32());
+            }
+        }
+    }
+
+    if killed_count > 0 {
+        eprintln!("Killed {} previous instance(s), waiting for ports to be released...", killed_count);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    // Kill any previous MCP instances before starting
+    kill_previous_mcp_instances();
 
     // Initialize OpenTelemetry if telemetry feature is enabled
     terminator_mcp_agent::telemetry::init_telemetry()?;
