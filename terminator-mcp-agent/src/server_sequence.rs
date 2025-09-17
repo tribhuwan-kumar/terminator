@@ -894,7 +894,8 @@ impl DesktopWrapper {
                         // Check for success using both 'status' and 'success' fields
                         if result["status"] == "success"
                             || result["success"] == true
-                            || (result["status"].is_null() && result["success"] != false) {
+                            || (result["status"].is_null() && result["success"] != false)
+                        {
                             break;
                         }
 

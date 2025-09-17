@@ -603,7 +603,9 @@ pub async fn try_eval_via_extension(
         // Try to create a new bridge
         let new_bridge = ExtensionBridge::global().await;
         if new_bridge._server_task.is_finished() {
-            tracing::error!("Failed to recreate extension bridge - WebSocket server still unavailable");
+            tracing::error!(
+                "Failed to recreate extension bridge - WebSocket server still unavailable"
+            );
             return Ok(None);
         }
 
