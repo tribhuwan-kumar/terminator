@@ -547,17 +547,21 @@ impl ExtensionBridge {
             }
 
             // Log retry attempt
-            tracing::info!("ExtensionBridge: no clients connected, retrying in {}ms... (elapsed: {:.1}s)",
+            tracing::info!(
+                "ExtensionBridge: no clients connected, retrying in {}ms... (elapsed: {:.1}s)",
                 RETRY_INTERVAL.as_millis(),
-                start_time.elapsed().as_secs_f32());
+                start_time.elapsed().as_secs_f32()
+            );
 
             // Wait before retrying
             tokio::time::sleep(RETRY_INTERVAL).await;
         }
 
         // Now we have clients, continue with original logic
-        tracing::debug!("ExtensionBridge: proceeding with evaluation after {:.1}s",
-            start_time.elapsed().as_secs_f32());
+        tracing::debug!(
+            "ExtensionBridge: proceeding with evaluation after {:.1}s",
+            start_time.elapsed().as_secs_f32()
+        );
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel::<BridgeResult>();
         self.pending.lock().await.insert(id.clone(), tx);
