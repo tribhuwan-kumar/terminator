@@ -801,6 +801,11 @@ pub struct ExecuteSequenceArgs {
     #[serde(default)]
     pub steps: Option<Vec<SequenceStep>>,
     #[schemars(
+        description = "Optional troubleshooting steps that can be jumped to via fallback_id. These steps are not executed in normal flow."
+    )]
+    #[serde(default)]
+    pub troubleshooting: Option<Vec<SequenceStep>>,
+    #[schemars(
         description = "A key-value map defining the schema for dynamic variables (e.g., for UI generation)."
     )]
     pub variables: Option<HashMap<String, VariableDefinition>>,

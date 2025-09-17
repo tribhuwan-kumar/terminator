@@ -510,6 +510,64 @@ impl DesktopWrapper {
             sequence_items.push(item);
         }
 
+        // Add troubleshooting steps to the sequence (they won't execute unless jumped to via fallback_id)
+        if let Some(troubleshooting) = &args.troubleshooting {
+            info!(
+                "Adding {} troubleshooting steps to workflow (accessible only via fallback_id)",
+                troubleshooting.len()
+            );
+            for step in troubleshooting {
+                let item = if let Some(tool_name) = &step.tool_name {
+                    // Parse delay from either delay_ms or human-readable delay field
+                    let delay_ms = if let Some(delay_str) = &step.delay {
+                        match crate::duration_parser::parse_duration(delay_str) {
+                            Ok(ms) => Some(ms),
+                            Err(e) => {
+                                warn!("Failed to parse delay '{}': {}", delay_str, e);
+                                step.delay_ms // Fall back to delay_ms
+                            }
+                        }
+                    } else {
+                        step.delay_ms
+                    };
+
+                    let tool_call = ToolCall {
+                        tool_name: tool_name.clone(),
+                        arguments: step.arguments.clone().unwrap_or(serde_json::json!({})),
+                        continue_on_error: step.continue_on_error,
+                        delay_ms,
+                        id: step.id.clone(),
+                    };
+                    SequenceItem::Tool { tool_call }
+                } else if let Some(group_name) = &step.group_name {
+                    let tool_group = ToolGroup {
+                        group_name: group_name.clone(),
+                        steps: step
+                            .steps
+                            .clone()
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(|s| ToolCall {
+                                tool_name: s.tool_name,
+                                arguments: s.arguments,
+                                continue_on_error: s.continue_on_error,
+                                delay_ms: s.delay_ms,
+                                id: s.id,
+                            })
+                            .collect(),
+                        skippable: step.skippable,
+                    };
+                    SequenceItem::Group { tool_group }
+                } else {
+                    return Err(McpError::invalid_params(
+                        "Each troubleshooting step must have either tool_name (for single tools) or group_name (for groups)",
+                        Some(json!({"invalid_step": step})),
+                    ));
+                };
+                sequence_items.push(item);
+            }
+        }
+
         // ---------------------------
         // Fallback-enabled execution loop (while-based)
         // ---------------------------
@@ -552,6 +610,22 @@ impl DesktopWrapper {
             }
         }
 
+        // Add troubleshooting steps to the id map (they come after main steps)
+        if let Some(troubleshooting) = &args.troubleshooting {
+            let main_steps_len = args.steps.as_ref().map(|s| s.len()).unwrap_or(0);
+            for (idx, step) in troubleshooting.iter().enumerate() {
+                if let Some(id) = &step.id {
+                    let global_idx = main_steps_len + idx;
+                    if id_to_index.insert(id.clone(), global_idx).is_some() {
+                        warn!(
+                            "Duplicate step id '{}' found in troubleshooting; later occurrence overrides earlier.",
+                            id
+                        );
+                    }
+                }
+            }
+        }
+
         while current_index < sequence_items.len()
             && current_index <= end_at_index
             && iterations < max_iterations
@@ -567,7 +641,15 @@ impl DesktopWrapper {
                 ));
             }
 
-            let original_step = args.steps.as_ref().and_then(|s| s.get(current_index));
+            // Get the original step from either main steps or troubleshooting steps
+            let main_steps_len = args.steps.as_ref().map(|s| s.len()).unwrap_or(0);
+            let original_step = if current_index < main_steps_len {
+                args.steps.as_ref().and_then(|s| s.get(current_index))
+            } else {
+                args.troubleshooting
+                    .as_ref()
+                    .and_then(|t| t.get(current_index - main_steps_len))
+            };
             if let Some(step) = original_step {
                 if let Some(tool_name) = &step.tool_name {
                     info!(
