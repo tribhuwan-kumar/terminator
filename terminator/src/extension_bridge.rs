@@ -526,12 +526,38 @@ impl ExtensionBridge {
         code: &str,
         timeout: Duration,
     ) -> Result<Option<String>, AutomationError> {
-        let client_count = self.clients.lock().await.len();
-        if client_count == 0 {
-            tracing::warn!("ExtensionBridge: no clients connected; extension not available");
-            return Ok(None);
+        // Auto-retry logic: retry for up to 10 seconds if no clients connected
+        const MAX_RETRY_DURATION: Duration = Duration::from_secs(10);
+        const RETRY_INTERVAL: Duration = Duration::from_millis(500);
+        let start_time = tokio::time::Instant::now();
+
+        loop {
+            let client_count = self.clients.lock().await.len();
+            if client_count > 0 {
+                // Clients connected, proceed with evaluation
+                tracing::debug!("ExtensionBridge: {} client(s) connected", client_count);
+                break;
+            }
+
+            // No clients connected yet
+            if start_time.elapsed() >= MAX_RETRY_DURATION {
+                tracing::warn!("ExtensionBridge: no clients connected after {} seconds; extension not available",
+                    MAX_RETRY_DURATION.as_secs());
+                return Ok(None);
+            }
+
+            // Log retry attempt
+            tracing::info!("ExtensionBridge: no clients connected, retrying in {}ms... (elapsed: {:.1}s)",
+                RETRY_INTERVAL.as_millis(),
+                start_time.elapsed().as_secs_f32());
+
+            // Wait before retrying
+            tokio::time::sleep(RETRY_INTERVAL).await;
         }
-        tracing::debug!("ExtensionBridge: {} client(s) connected", client_count);
+
+        // Now we have clients, continue with original logic
+        tracing::debug!("ExtensionBridge: proceeding with evaluation after {:.1}s",
+            start_time.elapsed().as_secs_f32());
         let id = Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel::<BridgeResult>();
         self.pending.lock().await.insert(id.clone(), tx);
