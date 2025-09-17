@@ -900,22 +900,43 @@ impl DesktopWrapper {
                         }
 
                         if error_occurred {
-                            critical_error_occurred = true;
-                            if let Some(id) = original_step.and_then(|s| s.id.as_deref()) {
-                                tracing::warn!(
-                                    step_id = %id,
-                                    tool = %tool_call.tool_name,
-                                    attempt = attempt + 1,
-                                    skippable = %tool_call.continue_on_error.unwrap_or(false),
-                                    "Tool failed with unrecoverable error"
-                                );
+                            // Only mark as critical if there's no fallback to handle it
+                            if fallback_id_opt.is_none() {
+                                critical_error_occurred = true;
+                                if let Some(id) = original_step.and_then(|s| s.id.as_deref()) {
+                                    tracing::warn!(
+                                        step_id = %id,
+                                        tool = %tool_call.tool_name,
+                                        attempt = attempt + 1,
+                                        skippable = %tool_call.continue_on_error.unwrap_or(false),
+                                        has_fallback = false,
+                                        "Tool failed with unrecoverable error (no fallback)"
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        tool = %tool_call.tool_name,
+                                        attempt = attempt + 1,
+                                        skippable = %tool_call.continue_on_error.unwrap_or(false),
+                                        has_fallback = false,
+                                        "Tool failed with unrecoverable error (no fallback)"
+                                    );
+                                }
                             } else {
-                                tracing::warn!(
-                                    tool = %tool_call.tool_name,
-                                    attempt = attempt + 1,
-                                    skippable = %tool_call.continue_on_error.unwrap_or(false),
-                                    "Tool failed with unrecoverable error"
-                                );
+                                // Has fallback, log but don't mark as critical
+                                if let Some(id) = original_step.and_then(|s| s.id.as_deref()) {
+                                    tracing::info!(
+                                        step_id = %id,
+                                        tool = %tool_call.tool_name,
+                                        fallback_id = %fallback_id_opt.as_ref().unwrap(),
+                                        "Tool failed but has fallback configured"
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        tool = %tool_call.tool_name,
+                                        fallback_id = %fallback_id_opt.as_ref().unwrap(),
+                                        "Tool failed but has fallback configured"
+                                    );
+                                }
                             }
                         }
                         step_error_occurred = true;
@@ -969,7 +990,10 @@ impl DesktopWrapper {
                                 group_had_errors = true;
                                 if error_occurred || is_skippable {
                                     if error_occurred && !is_skippable {
-                                        critical_error_occurred = true;
+                                        // Only mark as critical if there's no fallback to handle it
+                                        if fallback_id_opt.is_none() {
+                                            critical_error_occurred = true;
+                                        }
                                     }
                                     tracing::warn!(
                                         group = %tool_group.group_name,
@@ -977,6 +1001,7 @@ impl DesktopWrapper {
                                         step_index = step_index,
                                         step_id = %step_tool_call.id.clone().unwrap_or_default(),
                                         skippable = %is_skippable,
+                                        has_fallback = fallback_id_opt.is_some(),
                                         "Group step failed; breaking out of group"
                                     );
                                     break;
@@ -996,7 +1021,10 @@ impl DesktopWrapper {
                         }
 
                         if group_had_errors && !is_skippable && stop_on_error {
-                            critical_error_occurred = true;
+                            // Only mark as critical if there's no fallback to handle it
+                            if fallback_id_opt.is_none() {
+                                critical_error_occurred = true;
+                            }
                         }
 
                         final_result = json!({
