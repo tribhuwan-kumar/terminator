@@ -690,7 +690,10 @@ impl DesktopWrapper {
                         final_result = result.clone();
 
                         // Update step span status and end it
-                        let success = result["status"] == "success";
+                        // Support both 'status' field and 'success' field
+                        let success = result["status"] == "success"
+                            || result["success"] == true
+                            || (result["status"].is_null() && result["success"] != false);
                         step_span.set_status(
                             success,
                             if !success {
@@ -806,7 +809,10 @@ impl DesktopWrapper {
                                 }
                             }
                         }
-                        if result["status"] == "success" {
+                        // Check for success using both 'status' and 'success' fields
+                        if result["status"] == "success"
+                            || result["success"] == true
+                            || (result["status"].is_null() && result["success"] != false) {
                             break;
                         }
 
@@ -872,7 +878,10 @@ impl DesktopWrapper {
                                 }
                             }
 
-                            let tool_failed = result["status"] != "success";
+                            // Check for failure using both 'status' and 'success' fields
+                            let tool_failed = !(result["status"] == "success"
+                                || result["success"] == true
+                                || (result["status"].is_null() && result["success"] != false));
                             if tool_failed {
                                 group_had_errors = true;
                                 if error_occurred || is_skippable {
