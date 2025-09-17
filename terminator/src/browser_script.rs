@@ -31,10 +31,10 @@ pub async fn execute_script(
     let ext = crate::extension_bridge::ExtensionBridge::global().await;
     if !ext.is_client_connected().await {
         info!("Waiting for extension client to connect...");
-        // Wait up to ~60s total for the client to connect. The MV3 service worker
-        // will be auto-woken by the content-script handshake on page load/navigation.
+        // Wait up to ~30s total for the client to connect after Chrome restart
+        // The MV3 service worker will be auto-woken by the content-script handshake on page load/navigation.
         let mut connected = false;
-        for i in 0..120 {
+        for i in 0..60 {  // 30 seconds (60 * 500ms)
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             if ext.is_client_connected().await {
@@ -51,7 +51,14 @@ pub async fn execute_script(
             }
         }
         if !connected {
-            warn!("Extension still not connected after waiting; proceeding (will error if eval is required)");
+            // Don't proceed if not connected - return error immediately
+            error!("Extension client failed to connect after 30 seconds of waiting");
+            if let Some(prev) = previously_focused {
+                let _ = prev.activate_window();
+            }
+            return Err(AutomationError::PlatformError(
+                "Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.".into(),
+            ));
         }
     }
 
@@ -59,56 +66,65 @@ pub async fn execute_script(
     let _ = browser_element.focus();
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Execute via extension bridge
-    match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(120)).await {
-        Ok(Some(result)) => {
-            info!("✅ Script executed successfully via extension");
-            if result.trim_start().starts_with("ERROR:") {
-                let raw = result.trim_start().trim_start_matches("ERROR:").trim();
-                // Try to parse structured JSON error
-                match serde_json::from_str::<serde_json::Value>(raw) {
-                    Ok(val) => {
-                        let msg = val.get("message").and_then(|v| v.as_str()).unwrap_or("");
-                        let details = val
-                            .get("details")
-                            .cloned()
-                            .unwrap_or(serde_json::Value::Null);
-                        error!(message = %msg, details = %details, "Browser script error (structured)");
-                    }
-                    Err(_) => {
-                        warn!(
-                            error_head = %result.lines().next().unwrap_or("ERROR"),
-                            "Browser script returned an error payload"
-                        );
+    // Execute via extension bridge with retry on connection issues
+    // The extension might disconnect and reconnect during execution, so retry a few times
+    let mut last_error = None;
+    for attempt in 0..3 {
+        if attempt > 0 {
+            info!("Retrying browser script execution (attempt {}/3)", attempt + 1);
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+        }
+
+        match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(120)).await {
+            Ok(Some(result)) => {
+                info!("✅ Script executed successfully via extension");
+                if result.trim_start().starts_with("ERROR:") {
+                    let raw = result.trim_start().trim_start_matches("ERROR:").trim();
+                    // Try to parse structured JSON error
+                    match serde_json::from_str::<serde_json::Value>(raw) {
+                        Ok(val) => {
+                            let msg = val.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                            let details = val
+                                .get("details")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
+                            error!(message = %msg, details = %details, "Browser script error (structured)");
+                        }
+                        Err(_) => {
+                            warn!(
+                                error_head = %result.lines().next().unwrap_or("ERROR"),
+                                "Browser script returned an error payload"
+                            );
+                        }
                     }
                 }
+                return Ok(result);  // Success - return immediately
             }
-            Ok(result)
-        }
-        Ok(None) => {
-            error!(
-                "Extension eval returned None (no client?). Ensure extension is installed and connected"
-            );
-            // Best-effort: restore original focus before returning error
-            if let Some(prev) = previously_focused {
-                let _ = prev.activate_window();
+            Ok(None) => {
+                // Extension not connected, will retry
+                warn!("Extension eval returned None (attempt {}/3) - extension may be reconnecting", attempt + 1);
+                last_error = Some(AutomationError::PlatformError(
+                    "Extension bridge not connected. Retrying...".into(),
+                ));
             }
-            Err(AutomationError::PlatformError(
-                "Extension bridge not connected. Make sure Chrome extension is installed.".into(),
-            ))
-        }
-        Err(e) => {
-            error!(
-                error = %e,
-                "Extension bridge error while executing browser script"
-            );
-            // Best-effort: restore original focus before returning error
-            if let Some(prev) = previously_focused.clone() {
-                let _ = prev.activate_window();
+            Err(e) => {
+                // Other error, save it but continue retrying
+                warn!("Extension eval failed (attempt {}/3): {}", attempt + 1, e);
+                last_error = Some(AutomationError::PlatformError(format!(
+                    "Extension bridge error: {e}"
+                )));
             }
-            Err(AutomationError::PlatformError(format!(
-                "Extension bridge error: {e}"
-            )))
         }
     }
+
+    // All retries failed, return the last error
+    error!("All browser script execution attempts failed");
+    if let Some(prev) = previously_focused {
+        let _ = prev.activate_window();
+    }
+    Err(last_error.unwrap_or_else(|| {
+        AutomationError::PlatformError(
+            "Extension bridge not connected after 3 attempts. Make sure Chrome extension is installed.".into(),
+        )
+    }))
 }
