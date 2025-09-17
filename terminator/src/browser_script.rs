@@ -78,27 +78,67 @@ pub async fn execute_script(
         match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(120)).await {
             Ok(Some(result)) => {
                 info!("✅ Script executed successfully via extension");
+
+                // Fix 1: Handle JavaScript Promise rejections (ERROR: prefix)
                 if result.trim_start().starts_with("ERROR:") {
                     let raw = result.trim_start().trim_start_matches("ERROR:").trim();
                     // Try to parse structured JSON error
                     match serde_json::from_str::<serde_json::Value>(raw) {
                         Ok(val) => {
-                            let msg = val.get("message").and_then(|v| v.as_str()).unwrap_or("");
-                            let details = val
-                                .get("details")
-                                .cloned()
-                                .unwrap_or(serde_json::Value::Null);
-                            error!(message = %msg, details = %details, "Browser script error (structured)");
+                            let msg = val.get("message").and_then(|v| v.as_str()).unwrap_or("JavaScript execution error");
+                            let code = val.get("code").and_then(|v| v.as_str()).unwrap_or("EVAL_ERROR");
+                            let _details = val.get("details").and_then(|v| serde_json::to_string(v).ok());
+                            error!(message = %msg, code = %code, "Browser script error (Promise rejection)");
+
+                            // Return an actual error for Promise rejections
+                            return Err(AutomationError::PlatformError(format!(
+                                "JavaScript execution failed: {} ({})",
+                                msg,
+                                code
+                            )));
                         }
                         Err(_) => {
-                            warn!(
-                                error_head = %result.lines().next().unwrap_or("ERROR"),
-                                "Browser script returned an error payload"
-                            );
+                            error!("Browser script error: {}", result);
+                            return Err(AutomationError::PlatformError(format!(
+                                "JavaScript execution error: {}",
+                                result
+                            )));
                         }
                     }
                 }
-                return Ok(result);  // Success - return immediately
+
+                // Fix 2: Handle structured error responses (success: false or status: 'failed')
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&result) {
+                    // Check for explicit failure indicators in the JSON response
+                    let is_failure = json.get("success") == Some(&serde_json::Value::Bool(false))
+                        || json.get("status").and_then(|v| v.as_str()) == Some("failed")
+                        || json.get("status").and_then(|v| v.as_str()) == Some("error");
+
+                    if is_failure {
+                        // Extract error message from various possible fields
+                        let error_msg = json.get("message")
+                            .or_else(|| json.get("error"))
+                            .or_else(|| json.get("reason"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("JavaScript returned failure status");
+
+                        // Log additional context if available
+                        if let Some(details) = json.get("set_env") {
+                            debug!("Error context from JavaScript: {:?}", details);
+                        }
+
+                        error!("Browser script returned failure: {}", error_msg);
+
+                        // Return an actual error for structured failures
+                        return Err(AutomationError::PlatformError(format!(
+                            "JavaScript operation failed: {}",
+                            error_msg
+                        )));
+                    }
+                }
+
+                // If no errors detected, return the result as success
+                return Ok(result);
             }
             Ok(None) => {
                 // Extension not connected, will retry
