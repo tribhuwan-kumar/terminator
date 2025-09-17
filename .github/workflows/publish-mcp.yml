@@ -6,6 +6,9 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write              # Required to create GitHub releases
+
 jobs:
   build:
     strategy:
@@ -110,11 +113,39 @@ jobs:
             }
           }
 
+      - name: Prepare release archive
+        run: |
+          mkdir -p release
+          cp terminator-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }} release/
+        shell: bash
+
+      - name: Create release archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd release
+          tar -czf ../terminator-mcp-agent-${{ matrix.settings.npm_dir }}.tar.gz ${{ matrix.settings.bin_name }}
+
+      - name: Create release archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Push-Location release
+          Compress-Archive -Path "${{ matrix.settings.bin_name }}" -DestinationPath "../terminator-mcp-agent-${{ matrix.settings.npm_dir }}.zip" -Force
+          Pop-Location
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.settings.npm_dir }}-binary
           path: terminator-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.settings.npm_dir }}
+          path: |
+            terminator-mcp-agent-${{ matrix.settings.npm_dir }}.tar.gz
+            terminator-mcp-agent-${{ matrix.settings.npm_dir }}.zip
 
   publish:
     name: Publish MCP NPM packages
@@ -165,3 +196,54 @@ jobs:
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  github-release:
+    name: Publish GitHub Release for MCP Agent
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -la release-artifacts/
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release-files
+          for dir in release-artifacts/release-*; do
+            if [ -d "$dir" ]; then
+              mv "$dir"/* release-files/ 2>/dev/null || true
+            fi
+          done
+          ls -la release-files/
+
+      - name: Create GitHub Release & Upload MCP Agent Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MCP Agent Release ${{ github.ref_name }}
+          body: |
+            ## Terminator MCP Agent Binaries
+
+            This release contains the Terminator MCP Agent standalone binaries for various platforms.
+
+            ### Available Downloads:
+            - **Linux x64**: `terminator-mcp-agent-linux-x64-gnu.tar.gz`
+            - **macOS x64**: `terminator-mcp-agent-darwin-x64.tar.gz`
+            - **macOS ARM64**: `terminator-mcp-agent-darwin-arm64.tar.gz`
+            - **Windows x64**: `terminator-mcp-agent-win32-x64-msvc.zip`
+
+            ### Installation
+            1. Download the appropriate archive for your platform
+            2. Extract the binary
+            3. Make it executable (Unix/macOS): `chmod +x terminator-mcp-agent`
+            4. Run the agent: `./terminator-mcp-agent --transport http --port 3000`
+
+            ### NPM Package
+            The MCP agent is also available as an NPM package: `npm install -g @terminator/terminator-mcp-agent`
+          files: release-files/*
+          fail_on_unmatched_files: false
