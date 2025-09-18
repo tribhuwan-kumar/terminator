@@ -295,10 +295,92 @@ function formatRemoteObject(obj) {
   }
 }
 
+// Helper function to detect if code has top-level return statements
+function hasTopLevelReturn(code) {
+  // Quick check if 'return' keyword exists at all
+  if (!code.includes('return')) {
+    return false;
+  }
+
+  // Simple heuristic: if code starts with return or has return after newline/semicolon
+  // but NOT inside a function body
+  // This is a simplified check that covers most common cases
+
+  // First, check for some patterns that definitely DON'T need wrapping
+  // 1. Already wrapped in IIFE
+  if (/^\s*\(\s*function\s*\(/.test(code) || /^\s*\(\s*\(\s*\)/.test(code)) {
+    return false;
+  }
+
+  // 2. Is just an expression (no statements)
+  if (!code.includes(';') && !code.includes('\n') && !code.includes('return')) {
+    return false;
+  }
+
+  // Remove strings and comments for cleaner analysis
+  let cleanCode = code
+    // Remove single-line comments
+    .replace(/\/\/.*$/gm, '')
+    // Remove multi-line comments
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    // Remove strings (simplified - doesn't handle escaped quotes)
+    .replace(/"[^"]*"/g, '""')
+    .replace(/'[^']*'/g, "''")
+    .replace(/`[^`]*`/g, '``');
+
+  // Look for return statements that are likely at the top level
+  // Common patterns:
+  // 1. return at start of code (with optional whitespace)
+  // 2. return after a semicolon or closing brace
+  // 3. return on a new line
+  const returnPatterns = [
+    /^\s*return\s+/,           // starts with return
+    /;\s*return\s+/,            // return after semicolon
+    /}\s*return\s+/,            // return after closing brace (like after if block)
+    /\n\s*return\s+/            // return on new line
+  ];
+
+  // Check if any of these patterns exist
+  const hasReturn = returnPatterns.some(pattern => pattern.test(cleanCode));
+
+  if (!hasReturn) {
+    return false;
+  }
+
+  // Additional check: if it looks like it's inside a function, don't wrap
+  // Look for function keyword before the return
+  const beforeReturn = cleanCode.substring(0, cleanCode.indexOf('return'));
+
+  // Count unmatched opening braces before return
+  const openBraces = (beforeReturn.match(/{/g) || []).length;
+  const closeBraces = (beforeReturn.match(/}/g) || []).length;
+
+  // If we have unclosed braces and a function declaration, the return is likely inside it
+  if (openBraces > closeBraces && /function\s*\(|=>\s*{/.test(beforeReturn)) {
+    return false;
+  }
+
+  // Likely has top-level return
+  return true;
+}
+
+// Helper function to wrap code in IIFE if it has top-level returns
+function wrapCodeIfNeeded(code) {
+  if (hasTopLevelReturn(code)) {
+    log("Detected top-level return statement, wrapping in IIFE");
+    return `(function() {\n${code}\n})()`;
+  }
+  return code;
+}
+
 async function evalInTab(tabId, code, awaitPromise, evalId) {
   const perfStart = performance.now();
   const timings = {};
-  
+
+  // Auto-detect and wrap code with top-level returns
+  const originalCode = code;
+  code = wrapCodeIfNeeded(code);
+
   // Only attach if we haven't before
   if (!attachedTabs.has(tabId)) {
     const attachStart = performance.now();
@@ -429,18 +511,66 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
     chrome.debugger.onEvent.addListener(onEvent);
     
     const evalStart = performance.now();
-    const { result, exceptionDetails } = await sendCommand(
-      tabId,
-      "Runtime.evaluate",
-      {
-        expression: code,
-        awaitPromise: !!awaitPromise,
-        returnByValue: true,
-        userGesture: true,
-      }
-    );
+    let evalResult;
+    let retryWithWrapper = false;
+
+    try {
+      evalResult = await sendCommand(
+        tabId,
+        "Runtime.evaluate",
+        {
+          expression: code,
+          awaitPromise: !!awaitPromise,
+          returnByValue: true,
+          userGesture: true,
+        }
+      );
+    } catch (error) {
+      // If sendCommand itself fails (not script error), re-throw
+      throw error;
+    }
+
+    let { result, exceptionDetails } = evalResult;
     timings.evaluate = performance.now() - evalStart;
-    
+
+    // Check if we got "Illegal return statement" error and haven't wrapped yet
+    if (exceptionDetails &&
+        code !== originalCode && // Already wrapped, don't retry
+        (exceptionDetails.text?.includes("Illegal return statement") ||
+         exceptionDetails.exception?.description?.includes("Illegal return statement"))) {
+      // This shouldn't happen since we already wrapped, but log it
+      log("Still got 'Illegal return statement' after wrapping, not retrying");
+    } else if (exceptionDetails &&
+               code === originalCode && // Not wrapped yet
+               (exceptionDetails.text?.includes("Illegal return statement") ||
+                exceptionDetails.exception?.description?.includes("Illegal return statement"))) {
+      // Our detection missed it, retry with wrapper
+      log("Got 'Illegal return statement' error, retrying with IIFE wrapper");
+      retryWithWrapper = true;
+    }
+
+    // Retry with wrapper if needed
+    if (retryWithWrapper) {
+      const wrappedCode = `(function() {\n${originalCode}\n})()`;
+      const retryStart = performance.now();
+
+      evalResult = await sendCommand(
+        tabId,
+        "Runtime.evaluate",
+        {
+          expression: wrappedCode,
+          awaitPromise: !!awaitPromise,
+          returnByValue: true,
+          userGesture: true,
+        }
+      );
+
+      ({ result, exceptionDetails } = evalResult);
+      timings.evaluateRetry = performance.now() - retryStart;
+      timings.evaluate += timings.evaluateRetry;
+      log(`Retry with wrapper took ${timings.evaluateRetry.toFixed(1)}ms`);
+    }
+
     if (exceptionDetails) {
       // Build rich error details for MCP side
       const details = {
