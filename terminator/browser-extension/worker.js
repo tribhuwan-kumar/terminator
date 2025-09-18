@@ -88,6 +88,11 @@ function connect() {
       }
     } else if (msg.action === "ping") {
       safeSend({ type: "pong" });
+    } else if (msg.action === "reset") {
+      // Force reset all debugger state
+      log("Received reset command");
+      await forceResetDebuggerState();
+      safeSend({ type: "reset_complete", ok: true });
     }
   };
 }
@@ -225,6 +230,39 @@ function scheduleReconnect() {
   }, delay);
 }
 
+async function forceResetDebuggerState() {
+  log("Force resetting all debugger state...");
+
+  // 1. Clear in-memory state
+  const previousSize = attachedTabs.size;
+  attachedTabs.clear();
+  enabledTabs.clear();
+
+  // 2. Clear session storage
+  await chrome.storage.session.remove('attached');
+
+  // 3. Detach from all tabs (best effort)
+  try {
+    const tabs = await chrome.tabs.query({});
+    let detachedCount = 0;
+    for (const tab of tabs) {
+      if (tab.id != null) {
+        try {
+          await debuggerDetach(tab.id);
+          detachedCount++;
+        } catch (e) {
+          // Ignore - tab might not be attached or might be special page
+        }
+      }
+    }
+    log(`Reset complete: cleared ${previousSize} tracked tabs, attempted to detach from ${detachedCount} tabs`);
+  } catch (e) {
+    log("Error during tab cleanup (continuing anyway):", e.message || e);
+  }
+
+  log("Debugger state reset complete");
+}
+
 function safeSend(obj) {
   try {
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -310,16 +348,25 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
         const runtimeStart = performance.now();
         await sendCommand(tabId, "Runtime.enable", {});
         timings.runtimeEnable = performance.now() - runtimeStart;
-        
+
         const logStart = performance.now();
         await sendCommand(tabId, "Log.enable", {});
         timings.logEnable = performance.now() - logStart;
-        
+
         enabledTabs.add(tabId);
         timings.totalEnable = performance.now() - enableStart;
         log(`Domains enabled for tab ${tabId} - Runtime: ${timings.runtimeEnable.toFixed(1)}ms, Log: ${timings.logEnable.toFixed(1)}ms, Total: ${timings.totalEnable.toFixed(1)}ms`);
       } catch (e) {
         log(`Could not enable domains for tab ${tabId}:`, e.message);
+        // Clear the tab from tracking since it's in a bad state
+        attachedTabs.delete(tabId);
+        enabledTabs.delete(tabId);
+        // Try to detach and clean up
+        try {
+          await debuggerDetach(tabId);
+        } catch (_) {}
+        // Throw the error to trigger retry logic at the higher level
+        throw new Error(`Failed to enable debugger domains: ${e.message}`);
       }
     } else {
       log(`Reusing enabled domains for tab ${tabId}`);
