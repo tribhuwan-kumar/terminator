@@ -11,7 +11,7 @@ use std::time::Duration;
 use terminator::{AutomationError, Desktop, UIElement};
 use tokio::sync::Mutex;
 use tracing::{warn, Level};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 // Validation helpers for better type safety
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -1037,8 +1037,6 @@ pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), Validati
 // Removed: RunJavascriptArgs (merged into RunCommandArgs via engine + script)
 
 pub fn init_logging() -> Result<Option<LogCapture>> {
-    use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
 
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {

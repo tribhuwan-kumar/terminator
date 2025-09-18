@@ -1268,6 +1268,29 @@ impl DesktopWrapper {
                     }
                 }
 
+                // Check if the JavaScript result indicates a failure
+                // This makes run_command consistent with execute_browser_script behavior
+                if let Some(obj) = actual_result.as_object() {
+                    if let Some(status) = obj.get("status") {
+                        if let Some(status_str) = status.as_str() {
+                            if status_str == "failed" || status_str == "error" {
+                                // Extract error message if provided
+                                let message = obj.get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("Script returned failure status");
+
+                                info!("[run_command] Script returned status: '{}', treating as error", status_str);
+
+                                // Return an error to trigger fallback_id in workflows
+                                return Err(McpError::internal_error(
+                                    format!("JavaScript execution failed: {}", message),
+                                    Some(actual_result)
+                                ));
+                            }
+                        }
+                    }
+                }
+
                 // Build response with logs
                 let mut response = json!({
                     "action": "run_command",
@@ -1285,6 +1308,28 @@ impl DesktopWrapper {
             } else if is_py {
                 let execution_result =
                     scripting_engine::execute_python_with_bindings(final_script).await?;
+
+                // Check if the Python result indicates a failure (same as JavaScript)
+                if let Some(obj) = execution_result.as_object() {
+                    if let Some(status) = obj.get("status") {
+                        if let Some(status_str) = status.as_str() {
+                            if status_str == "failed" || status_str == "error" {
+                                // Extract error message if provided
+                                let message = obj.get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("Script returned failure status");
+
+                                info!("[run_command] Python script returned status: '{}', treating as error", status_str);
+
+                                // Return an error to trigger fallback_id in workflows
+                                return Err(McpError::internal_error(
+                                    format!("Python execution failed: {}", message),
+                                    Some(execution_result)
+                                ));
+                            }
+                        }
+                    }
+                }
 
                 // For now, Python doesn't capture logs yet, but we can add it later
                 // Just pass through the result as before

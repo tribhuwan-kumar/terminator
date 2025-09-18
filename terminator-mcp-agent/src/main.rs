@@ -230,7 +230,7 @@ async fn main() -> Result<()> {
             tracing::info!("Starting stdio transport...");
 
             // Initialize with error recovery (pattern used by other MCP servers)
-            let desktop = match server::DesktopWrapper::new() {
+            let desktop = match server::DesktopWrapper::new_with_log_capture(log_capture.clone()) {
                 Ok(d) => d,
                 Err(e) => {
                     tracing::error!("Failed to initialize desktop wrapper: {}", e);
@@ -275,7 +275,7 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
-            let desktop = server::DesktopWrapper::new()?;
+            let desktop = server::DesktopWrapper::new_with_log_capture(log_capture.clone())?;
             let ct = SseServer::serve(addr)
                 .await?
                 .with_service(move || desktop.clone());
@@ -296,8 +296,12 @@ async fn main() -> Result<()> {
 
             // Lazy-initialize DesktopWrapper on first /mcp use so that /health can succeed on CI
             let service = StreamableHttpService::new(
-                move || {
-                    server::DesktopWrapper::new().map_err(|e| std::io::Error::other(e.to_string()))
+                {
+                    let log_capture = log_capture.clone();
+                    move || {
+                        server::DesktopWrapper::new_with_log_capture(log_capture.clone())
+                            .map_err(|e| std::io::Error::other(e.to_string()))
+                    }
                 },
                 LocalSessionManager::default().into(),
                 Default::default(),
