@@ -8,6 +8,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use chrono::{DateTime, Utc};
 use clap::{Parser, ValueEnum};
 use rmcp::{
     transport::sse_server::SseServer,
@@ -23,6 +24,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
     },
+    time::SystemTime,
 };
 use sysinfo::{ProcessesToUpdate, System};
 use terminator_mcp_agent::cancellation::RequestManager;
@@ -174,6 +176,43 @@ async fn main() -> Result<()> {
 
     init_logging()?;
 
+    // Add binary identification logging
+    tracing::info!("========================================");
+    tracing::info!("Terminator MCP Server v{}", env!("CARGO_PKG_VERSION"));
+    tracing::info!("Build profile: {}", if cfg!(debug_assertions) { "debug" } else { "release" });
+
+    // Get executable path and timestamp
+    if let Ok(exe_path) = std::env::current_exe() {
+        tracing::info!("Binary path: {}", exe_path.display());
+
+        // Get binary modification time
+        if let Ok(metadata) = std::fs::metadata(&exe_path) {
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(duration) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+                    let datetime = DateTime::<Utc>::from_timestamp(
+                        duration.as_secs() as i64, 0
+                    ).unwrap_or_default();
+                    tracing::info!("Binary built: {} UTC", datetime.format("%Y-%m-%d %H:%M:%S"));
+                }
+            }
+
+            // File size can help distinguish builds
+            tracing::info!("Binary size: {} bytes", metadata.len());
+        }
+    }
+
+    // Add git and build info if available
+    if let Some(git_hash) = option_env!("GIT_HASH") {
+        tracing::info!("Git commit: {}", git_hash);
+    }
+    if let Some(git_branch) = option_env!("GIT_BRANCH") {
+        tracing::info!("Git branch: {}", git_branch);
+    }
+    if let Some(build_time) = option_env!("BUILD_TIMESTAMP") {
+        tracing::info!("Build timestamp: {}", build_time);
+    }
+
+    tracing::info!("========================================");
     tracing::info!("Initializing Terminator MCP server...");
     tracing::info!("Transport mode: {:?}", args.transport);
     if args.cors {

@@ -66,6 +66,9 @@ arboard = "3.6.0"
 rdev = "0.5.3"
 
 
+[build-dependencies]
+chrono = { workspace = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 rand = "0.8"
