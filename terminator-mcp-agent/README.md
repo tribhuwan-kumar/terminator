@@ -890,4 +890,57 @@ es.onmessage = (e) => console.log("event", e.data);
 - **Capture errors** – `continue_on_error` is useful, but also log `result.status` codes to catch silent failures.
 - **Version control** – Store workflow JSON in a repo and use PR reviews just like regular code.
 
+## 🔍 Troubleshooting & Debugging
+
+### Finding MCP Server Logs
+
+MCP logs are saved to:
+- **Windows:** `%LOCALAPPDATA%\claude-cli-nodejs\Cache\<encoded-project-path>\mcp-logs-terminator-mcp-agent\`
+- **macOS/Linux:** `~/.local/share/claude-cli-nodejs/Cache/<encoded-project-path>/mcp-logs-terminator-mcp-agent/`
+
+Where `<encoded-project-path>` is your project path with special chars replaced (e.g., `C--Users-username-project`).
+
+**Find logs:**
+```bash
+# Windows PowerShell
+Get-ChildItem "$env:LOCALAPPDATA\claude-cli-nodejs\Cache" -Directory -Recurse | Where-Object Name -eq 'mcp-logs-terminator-mcp-agent'
+
+# macOS/Linux
+find ~/.local/share/claude-cli-nodejs/Cache -type d -name "mcp-logs-terminator-mcp-agent"
+```
+
+### Enable Debug Logging
+
+In your Claude MCP configuration (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "terminator-mcp-agent": {
+      "command": "path/to/terminator-mcp-agent",
+      "env": {
+        "LOG_LEVEL": "debug",  // or "info", "warn", "error"
+        "RUST_BACKTRACE": "1"   // for stack traces on errors
+      }
+    }
+  }
+}
+```
+
+### Common Debug Scenarios
+
+| Issue | What to Look For in Logs |
+|-------|--------------------------|
+| Workflow failures | Search for `fallback_id` triggers and `critical_error_occurred` |
+| Element not found | Look for selector resolution attempts, `find_element` timeouts |
+| Browser script errors | Check for `EVAL_ERROR`, Promise rejections, JavaScript exceptions |
+| Binary version issues | Startup logs show binary path and build timestamp |
+| MCP connection lost | Check for panic messages, ensure binary path is correct |
+
+### Fallback Mechanism
+
+Workflows support `fallback_id` to handle errors gracefully:
+- If a step fails and has `fallback_id`, it jumps to that step instead of stopping
+- Without `fallback_id`, errors may set `critical_error_occurred` and skip remaining steps
+- Use `troubleshooting:` section for recovery steps only accessed via fallback
+
 > Need more help? Browse the examples under `examples/` in this repo or open a discussion on GitHub.

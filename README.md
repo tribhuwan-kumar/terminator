@@ -181,6 +181,50 @@ You can build and debug selector paths incrementally using `.locator()` chaining
 
 - [https://github.com/mediar-ai/terminator/examples](https://github.com/mediar-ai/terminator/tree/main/examples)
 
+## Troubleshooting
+
+### Finding MCP Server Logs
+
+MCP logs location:
+- **Windows:** `%LOCALAPPDATA%\claude-cli-nodejs\Cache\<encoded-project-path>\mcp-logs-terminator-mcp-agent\`
+- **macOS/Linux:** `~/.local/share/claude-cli-nodejs/Cache/<encoded-project-path>/mcp-logs-terminator-mcp-agent/`
+
+Where `<encoded-project-path>` is your project path with special chars replaced (e.g., `C--Users-username-project`).
+
+**Find logs:**
+```bash
+# Windows PowerShell
+Get-ChildItem "$env:LOCALAPPDATA\claude-cli-nodejs\Cache" -Directory -Recurse | Where-Object Name -eq 'mcp-logs-terminator-mcp-agent'
+
+# macOS/Linux
+find ~/.local/share/claude-cli-nodejs/Cache -type d -name "mcp-logs-terminator-mcp-agent"
+```
+
+### Enabling Debug Logs
+
+Set the `LOG_LEVEL` environment variable in your Claude MCP configuration:
+```json
+{
+  "mcpServers": {
+    "terminator-mcp-agent": {
+      "command": "terminator-mcp-agent",
+      "env": {
+        "LOG_LEVEL": "debug",
+        "RUST_BACKTRACE": "1"
+      }
+    }
+  }
+}
+```
+
+### Common Issues
+
+- **Workflow failures:** Check logs for `fallback_id` triggers and `critical_error_occurred` states
+- **Element not found:** Look for selector resolution attempts and UI tree snapshots in logs
+- **Browser script errors:** Check for JavaScript execution failures and Promise rejections
+- **Binary version confusion:** Logs show the running binary path and build timestamp at startup
+- **MCP connection issues:** Ensure the binary path in your Claude config is correct
+
 ## contributing
 
 contributions are welcome! please feel free to submit issues and pull requests. many parts are experimental, and help is appreciated. join our [discord](https://discord.gg/dU9EBuw7Uq) to discuss.

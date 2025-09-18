@@ -371,6 +371,33 @@ When using `file://` URLs, workflow state is automatically saved:
 
 *   **Hyperlink container clicks don't navigate:** On search results, a `role:Hyperlink` container often wraps a composite group; target the child anchor instead: tighten `name:` (title or destination domain), add `|nth:0` if needed, or use numeric `#id`. Prefer `invoke_element` or focus target then `press_key` \"{{Enter}}\"; always verify with postconditions (address bar/title/tab or destination element).
 
+**Troubleshooting & Debugging**
+
+**Finding MCP Server Logs:**
+When using this MCP server through Claude Desktop, logs are saved to:
+- **Windows:** `%LOCALAPPDATA%\\claude-cli-nodejs\\Cache\\<encoded-project-path>\\mcp-logs-terminator-mcp-agent\\`
+- **macOS/Linux:** `~/.local/share/claude-cli-nodejs/Cache/<encoded-project-path>/mcp-logs-terminator-mcp-agent/`
+
+Where `<encoded-project-path>` is your project path with special chars replaced (e.g., `C--Users-username-project`).
+
+**Quick commands:**
+```powershell
+# Windows - Find logs (run in PowerShell)
+Get-ChildItem \"$env:LOCALAPPDATA\\claude-cli-nodejs\\Cache\" -Directory -Recurse | Where-Object Name -eq 'mcp-logs-terminator-mcp-agent'
+
+# macOS/Linux - Find logs
+find ~/.local/share/claude-cli-nodejs/Cache -type d -name \"mcp-logs-terminator-mcp-agent\"
+```
+
+**Enabling Debug Logs:**
+Set the `LOG_LEVEL` environment variable to `debug` or `info` in your Claude MCP configuration to see detailed execution logs.
+
+**Common Debug Scenarios:**
+- **Workflow failures:** Check logs for `fallback_id` triggers and `critical_error_occurred` states
+- **Element not found:** Look for selector resolution attempts and UI tree snapshots
+- **Browser script errors:** Check for JavaScript execution failures and Promise rejections
+- **Binary version confusion:** Logs show the running binary path and build timestamp at startup
+
 Contextual information:
 - The current date and time is {current_date_time}.
 - Current operating system: {current_os}.
