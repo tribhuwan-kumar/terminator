@@ -198,7 +198,12 @@ impl DesktopWrapper {
                 args.steps = remote_workflow.steps;
             }
             // Also merge troubleshooting steps if not provided locally
-            if args.troubleshooting.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
+            if args
+                .troubleshooting
+                .as_ref()
+                .map(|t| t.is_empty())
+                .unwrap_or(true)
+            {
                 args.troubleshooting = remote_workflow.troubleshooting;
             }
             if args.variables.is_none() {

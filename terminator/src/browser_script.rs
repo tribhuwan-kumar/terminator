@@ -34,7 +34,8 @@ pub async fn execute_script(
         // Wait up to ~30s total for the client to connect after Chrome restart
         // The MV3 service worker will be auto-woken by the content-script handshake on page load/navigation.
         let mut connected = false;
-        for i in 0..60 {  // 30 seconds (60 * 500ms)
+        for i in 0..60 {
+            // 30 seconds (60 * 500ms)
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             if ext.is_client_connected().await {
@@ -71,11 +72,16 @@ pub async fn execute_script(
     let mut last_error = None;
     for attempt in 0..3 {
         if attempt > 0 {
-            info!("Retrying browser script execution (attempt {}/3)", attempt + 1);
+            info!(
+                "Retrying browser script execution (attempt {}/3)",
+                attempt + 1
+            );
             tokio::time::sleep(Duration::from_millis(1000)).await;
         }
 
-        match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(120)).await {
+        match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(120))
+            .await
+        {
             Ok(Some(result)) => {
                 info!("✅ Script executed successfully via extension");
 
@@ -85,23 +91,28 @@ pub async fn execute_script(
                     // Try to parse structured JSON error
                     match serde_json::from_str::<serde_json::Value>(raw) {
                         Ok(val) => {
-                            let msg = val.get("message").and_then(|v| v.as_str()).unwrap_or("JavaScript execution error");
-                            let code = val.get("code").and_then(|v| v.as_str()).unwrap_or("EVAL_ERROR");
-                            let _details = val.get("details").and_then(|v| serde_json::to_string(v).ok());
+                            let msg = val
+                                .get("message")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("JavaScript execution error");
+                            let code = val
+                                .get("code")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("EVAL_ERROR");
+                            let _details = val
+                                .get("details")
+                                .and_then(|v| serde_json::to_string(v).ok());
                             error!(message = %msg, code = %code, "Browser script error (Promise rejection)");
 
                             // Return an actual error for Promise rejections
                             return Err(AutomationError::PlatformError(format!(
-                                "JavaScript execution failed: {} ({})",
-                                msg,
-                                code
+                                "JavaScript execution failed: {msg} ({code})"
                             )));
                         }
                         Err(_) => {
                             error!("Browser script error: {}", result);
                             return Err(AutomationError::PlatformError(format!(
-                                "JavaScript execution error: {}",
-                                result
+                                "JavaScript execution error: {result}"
                             )));
                         }
                     }
@@ -116,7 +127,8 @@ pub async fn execute_script(
 
                     if is_failure {
                         // Extract error message from various possible fields
-                        let error_msg = json.get("message")
+                        let error_msg = json
+                            .get("message")
                             .or_else(|| json.get("error"))
                             .or_else(|| json.get("reason"))
                             .and_then(|v| v.as_str())
@@ -131,8 +143,7 @@ pub async fn execute_script(
 
                         // Return an actual error for structured failures
                         return Err(AutomationError::PlatformError(format!(
-                            "JavaScript operation failed: {}",
-                            error_msg
+                            "JavaScript operation failed: {error_msg}"
                         )));
                     }
                 }
@@ -142,7 +153,10 @@ pub async fn execute_script(
             }
             Ok(None) => {
                 // Extension not connected, will retry
-                warn!("Extension eval returned None (attempt {}/3) - extension may be reconnecting", attempt + 1);
+                warn!(
+                    "Extension eval returned None (attempt {}/3) - extension may be reconnecting",
+                    attempt + 1
+                );
                 last_error = Some(AutomationError::PlatformError(
                     "Extension bridge not connected. Retrying...".into(),
                 ));

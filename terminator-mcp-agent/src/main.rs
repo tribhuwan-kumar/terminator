@@ -179,7 +179,14 @@ async fn main() -> Result<()> {
     // Add binary identification logging
     tracing::info!("========================================");
     tracing::info!("Terminator MCP Server v{}", env!("CARGO_PKG_VERSION"));
-    tracing::info!("Build profile: {}", if cfg!(debug_assertions) { "debug" } else { "release" });
+    tracing::info!(
+        "Build profile: {}",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
+    );
 
     // Get executable path and timestamp
     if let Ok(exe_path) = std::env::current_exe() {
@@ -189,9 +196,8 @@ async fn main() -> Result<()> {
         if let Ok(metadata) = std::fs::metadata(&exe_path) {
             if let Ok(modified) = metadata.modified() {
                 if let Ok(duration) = modified.duration_since(SystemTime::UNIX_EPOCH) {
-                    let datetime = DateTime::<Utc>::from_timestamp(
-                        duration.as_secs() as i64, 0
-                    ).unwrap_or_default();
+                    let datetime = DateTime::<Utc>::from_timestamp(duration.as_secs() as i64, 0)
+                        .unwrap_or_default();
                     tracing::info!("Binary built: {} UTC", datetime.format("%Y-%m-%d %H:%M:%S"));
                 }
             }
