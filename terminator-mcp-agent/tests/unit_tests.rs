@@ -31,6 +31,7 @@ fn test_execute_sequence_args_serialization() {
         inputs: None,
         selectors: None,
         start_from_step: None,
+        follow_fallback: None,
         end_at_step: None,
         troubleshooting: None,
     };

@@ -142,11 +142,11 @@ impl tracing::field::Visit for FieldVisitor {
 
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
-            self.message = Some(format!("{:?}", value));
+            self.message = Some(format!("{value:?}"));
         } else {
             self.fields.insert(
                 field.name().to_string(),
-                serde_json::Value::String(format!("{:?}", value)),
+                serde_json::Value::String(format!("{value:?}")),
             );
         }
     }
