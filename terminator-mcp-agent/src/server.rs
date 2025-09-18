@@ -3432,7 +3432,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         let script_clone = final_script.clone();
         let ((script_result, element), successful_selector) =
-            crate::utils::find_and_execute_with_retry_with_fallback(
+            match crate::utils::find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
                 args.alternative_selectors.as_deref(),
@@ -3445,27 +3445,24 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                 },
             )
             .await
-            .map_err(|e| {
-                tracing::error!(
-                    "[execute_browser_script] failed selector='{}' alt='{:?}' fallback='{:?}' error={}",
-                    args.selector,
-                    args.alternative_selectors,
-                    args.fallback_selectors,
-                    e
-                );
-                McpError::internal_error(
-                    "Failed to execute browser script",
-                    Some(json!({
-                        "selector": args.selector,
-                        "script": "[script content omitted to reduce verbosity]",
-                        "script_file": args.script_file,
-                        "env_provided": args.env.is_some(),
-                        "alternative_selectors": args.alternative_selectors,
-                        "fallback_selectors": args.fallback_selectors,
-                        "error": e.to_string()
-                    })),
-                )
-            })?;
+            {
+                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Err(e) => {
+                    tracing::error!(
+                        "[execute_browser_script] failed selector='{}' alt='{:?}' fallback='{:?}' error={}",
+                        args.selector,
+                        args.alternative_selectors,
+                        args.fallback_selectors,
+                        e
+                    );
+                    Err(build_element_not_found_error(
+                        &args.selector,
+                        args.alternative_selectors.as_deref(),
+                        args.fallback_selectors.as_deref(),
+                        e,
+                    ))
+                }
+            }?;
         let elapsed_ms = start_instant.elapsed().as_millis() as u64;
         tracing::info!(
             "[execute_browser_script] target resolved selector='{}' role='{}' name='{}' pid={} in {}ms",
