@@ -190,14 +190,24 @@ MCP logs location:
 - **macOS/Linux:** `~/.local/share/claude-cli-nodejs/Cache/<encoded-project-path>/mcp-logs-terminator-mcp-agent/`
 
 Where `<encoded-project-path>` is your project path with special chars replaced (e.g., `C--Users-username-project`).
+Note: Logs are saved as `.txt` files, not `.log` files.
 
-**Find logs:**
-```bash
-# Windows PowerShell
-Get-ChildItem "$env:LOCALAPPDATA\claude-cli-nodejs\Cache" -Directory -Recurse | Where-Object Name -eq 'mcp-logs-terminator-mcp-agent'
+**Find and read logs:**
+```powershell
+# Windows - Find and read latest logs (run in PowerShell)
+Get-ChildItem (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'claude-cli-nodejs\Cache\*\mcp-logs-terminator-mcp-agent\*.txt') | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content -Tail 50
 
-# macOS/Linux
+# Windows - Find log directories
+Get-ChildItem (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'claude-cli-nodejs\Cache') -Directory -Recurse | Where-Object Name -eq 'mcp-logs-terminator-mcp-agent'
+
+# Windows - Search logs for specific errors
+Get-ChildItem (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'claude-cli-nodejs\Cache\*\mcp-logs-terminator-mcp-agent\*.txt') | Where-Object Length -gt 10000 | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content | Select-String 'ERROR|failed|timeout' | Select-Object -First 20
+
+# macOS/Linux - Find logs
 find ~/.local/share/claude-cli-nodejs/Cache -type d -name "mcp-logs-terminator-mcp-agent"
+
+# macOS/Linux - Read latest logs
+find ~/.local/share/claude-cli-nodejs/Cache -name "*.txt" -path "*/mcp-logs-terminator-mcp-agent/*" | xargs ls -t | head -1 | xargs tail -50
 ```
 
 ### Enabling Debug Logs
