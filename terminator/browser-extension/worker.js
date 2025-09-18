@@ -233,18 +233,13 @@ function scheduleReconnect() {
 async function forceResetDebuggerState() {
   log("Force resetting all debugger state...");
 
-  // 1. Clear in-memory state
+  // Store the previous size for logging
   const previousSize = attachedTabs.size;
-  attachedTabs.clear();
-  enabledTabs.clear();
 
-  // 2. Clear session storage
-  await chrome.storage.session.remove('attached');
-
-  // 3. Detach from all tabs (best effort)
+  // 1. FIRST: Detach from all tabs (must happen before clearing state)
+  let detachedCount = 0;
   try {
     const tabs = await chrome.tabs.query({});
-    let detachedCount = 0;
     for (const tab of tabs) {
       if (tab.id != null) {
         try {
@@ -255,11 +250,18 @@ async function forceResetDebuggerState() {
         }
       }
     }
-    log(`Reset complete: cleared ${previousSize} tracked tabs, attempted to detach from ${detachedCount} tabs`);
   } catch (e) {
     log("Error during tab cleanup (continuing anyway):", e.message || e);
   }
 
+  // 2. THEN: Clear in-memory state (after detachment completes)
+  attachedTabs.clear();
+  enabledTabs.clear();
+
+  // 3. Clear session storage
+  await chrome.storage.session.remove('attached');
+
+  log(`Reset complete: cleared ${previousSize} tracked tabs, detached from ${detachedCount} tabs`);
   log("Debugger state reset complete");
 }
 
@@ -308,9 +310,17 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
       timings.attach = performance.now() - attachStart;
       log(`Debugger attached to tab ${tabId} (${timings.attach.toFixed(1)}ms)`);
     } catch (e) {
-      // If we can't attach, we can't continue - throw the error
-      log(`Could not attach to tab ${tabId}:`, e.message);
-      throw new Error(`Failed to attach debugger: ${e.message}`);
+      // If already attached by another concurrent operation, treat as attached
+      if (e.message && e.message.includes("already attached")) {
+        log(`Tab ${tabId} already attached by another operation, treating as success`);
+        attachedTabs.add(tabId);
+        chrome.storage.session.set({attached: [...attachedTabs]});
+        timings.attach = performance.now() - attachStart;
+      } else {
+        // If we can't attach, we can't continue - throw the error
+        log(`Could not attach to tab ${tabId}:`, e.message);
+        throw new Error(`Failed to attach debugger: ${e.message}`);
+      }
     }
   } else {
     // Verify the debugger is actually still attached
@@ -333,8 +343,16 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
         timings.attach = performance.now() - attachStart;
         log(`Debugger reattached to tab ${tabId} (${timings.attach.toFixed(1)}ms)`);
       } catch (attachError) {
-        log(`Failed to reattach to tab ${tabId}:`, attachError.message);
-        throw new Error(`Failed to reattach debugger: ${attachError.message}`);
+        // If already attached by another concurrent operation, treat as attached
+        if (attachError.message && attachError.message.includes("already attached")) {
+          log(`Tab ${tabId} already attached by another operation, treating as success`);
+          attachedTabs.add(tabId);
+          chrome.storage.session.set({attached: [...attachedTabs]});
+          timings.attach = performance.now() - attachStart;
+        } else {
+          log(`Failed to reattach to tab ${tabId}:`, attachError.message);
+          throw new Error(`Failed to reattach debugger: ${attachError.message}`);
+        }
       }
     }
   }
