@@ -46,6 +46,11 @@ struct EvalRequest {
     await_promise: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct ResetRequest {
+    action: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum BridgeIncoming {
@@ -519,6 +524,24 @@ impl ExtensionBridge {
                 })
             }
         }
+    }
+
+    pub async fn send_reset_command(&self) -> Result<(), AutomationError> {
+        let req = ResetRequest {
+            action: "reset".into(),
+        };
+        let payload = serde_json::to_string(&req)
+            .map_err(|e| AutomationError::PlatformError(format!("serialize reset: {e}")))?;
+
+        let clients = self.clients.lock().await;
+        if let Some(c) = clients.first() {
+            if c.sender.send(Message::Text(payload)).is_ok() {
+                tracing::info!("Sent reset command to extension");
+                // Give the extension time to reset
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+        Ok(())
     }
 
     pub async fn eval_in_active_tab(

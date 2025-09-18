@@ -174,7 +174,7 @@ async fn main() -> Result<()> {
         eprintln!("Set Windows console to UTF-8 mode");
     }
 
-    init_logging()?;
+    let log_capture = init_logging()?;
 
     // Add binary identification logging
     tracing::info!("========================================");

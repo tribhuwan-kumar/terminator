@@ -76,7 +76,15 @@ pub async fn execute_script(
                 "Retrying browser script execution (attempt {}/3)",
                 attempt + 1
             );
-            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            // Send reset command before retry to clear any stale debugger state
+            info!("Sending reset command to clear debugger state before retry");
+            if let Err(e) = ext.send_reset_command().await {
+                warn!("Failed to send reset command: {}", e);
+            }
+
+            // Wait a bit longer after reset for state to fully clear
+            tokio::time::sleep(Duration::from_millis(1500)).await;
         }
 
         match crate::extension_bridge::try_eval_via_extension(script, Duration::from_secs(120))
@@ -160,6 +168,12 @@ pub async fn execute_script(
                 last_error = Some(AutomationError::PlatformError(
                     "Extension bridge not connected. Retrying...".into(),
                 ));
+
+                // Proactively reset on connection issues
+                if attempt < 2 {
+                    info!("Attempting to reset debugger state due to connection issue");
+                    let _ = ext.send_reset_command().await;
+                }
             }
             Err(e) => {
                 // Other error, save it but continue retrying

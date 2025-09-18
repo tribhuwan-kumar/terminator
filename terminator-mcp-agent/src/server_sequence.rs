@@ -1235,6 +1235,13 @@ impl DesktopWrapper {
             .strip_prefix("mcp_terminator-mcp-agent_")
             .unwrap_or(tool_name);
 
+        // Start log capture if in verbose mode
+        if include_detailed {
+            if let Some(ref log_capture) = self.log_capture {
+                log_capture.start_capture();
+            }
+        }
+
         // The substitution is handled in `execute_sequence_impl`.
         let tool_result = self
             .dispatch_tool(peer, request_context, tool_name_short, arguments)
@@ -1285,6 +1292,18 @@ impl DesktopWrapper {
                     }
                 }
 
+                // Capture server logs if in verbose mode
+                if include_detailed {
+                    if let Some(ref log_capture) = self.log_capture {
+                        let captured_logs = log_capture.stop_capture();
+                        if !captured_logs.is_empty() {
+                            if let Some(obj) = result_json.as_object_mut() {
+                                obj.insert("server_logs".to_string(), json!(captured_logs));
+                            }
+                        }
+                    }
+                }
+
                 // Extract and add logs if present (for run_command)
                 if tool_name_short == "run_command" {
                     // Debug: log what's in extracted content
@@ -1317,6 +1336,17 @@ impl DesktopWrapper {
                 (result_json, false)
             }
             Err(e) => {
+                // Stop log capture on error and collect logs
+                let captured_logs = if include_detailed {
+                    if let Some(ref log_capture) = self.log_capture {
+                        Some(log_capture.stop_capture())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let duration_ms = (chrono::Utc::now() - tool_start_time).num_milliseconds();
                 let mut error_result = json!({
                     "tool_name": tool_name,
@@ -1325,6 +1355,15 @@ impl DesktopWrapper {
                     "duration_ms": duration_ms,
                     "error": format!("{}", e),
                 });
+
+                // Include server logs in error result if captured
+                if let Some(logs) = captured_logs {
+                    if !logs.is_empty() {
+                        if let Some(obj) = error_result.as_object_mut() {
+                            obj.insert("server_logs".to_string(), json!(logs));
+                        }
+                    }
+                }
 
                 // Add step_id if provided
                 if let Some(id) = step_id {

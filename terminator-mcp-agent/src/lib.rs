@@ -2,6 +2,7 @@ pub mod cancellation;
 pub mod duration_parser;
 pub mod expression_eval;
 pub mod helpers;
+pub mod log_capture;
 pub mod mcp_converter;
 pub mod mcp_types;
 pub mod output_parser;

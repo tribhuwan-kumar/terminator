@@ -197,6 +197,10 @@ impl DesktopWrapper {
         None
     }
     pub fn new() -> Result<Self, McpError> {
+        Self::new_with_log_capture(None)
+    }
+
+    pub fn new_with_log_capture(log_capture: Option<crate::log_capture::LogCapture>) -> Result<Self, McpError> {
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         let desktop = match Desktop::new(false, false) {
             Ok(d) => d,
@@ -225,6 +229,7 @@ impl DesktopWrapper {
             request_manager: crate::cancellation::RequestManager::new(),
             recorder: Arc::new(Mutex::new(None)),
             active_highlights: Arc::new(Mutex::new(Vec::new())),
+            log_capture,
         })
     }
 

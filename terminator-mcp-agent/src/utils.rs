@@ -1,4 +1,5 @@
 use crate::cancellation::RequestManager;
+use crate::log_capture::{LogCapture, LogCaptureLayer};
 use crate::mcp_types::{FontStyle, TextPosition};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
@@ -54,6 +55,8 @@ pub struct DesktopWrapper {
     pub recorder: Arc<Mutex<Option<terminator_workflow_recorder::WorkflowRecorder>>>,
     #[serde(skip)]
     pub active_highlights: Arc<Mutex<Vec<terminator::HighlightHandle>>>,
+    #[serde(skip)]
+    pub log_capture: Option<LogCapture>,
 }
 
 impl Default for DesktopWrapper {
@@ -1033,7 +1036,10 @@ pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), Validati
 
 // Removed: RunJavascriptArgs (merged into RunCommandArgs via engine + script)
 
-pub fn init_logging() -> Result<()> {
+pub fn init_logging() -> Result<Option<LogCapture>> {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
             "error" => Level::ERROR,
@@ -1044,13 +1050,22 @@ pub fn init_logging() -> Result<()> {
         })
         .unwrap_or(Level::INFO);
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive(log_level.into()))
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
+    // Create log capture instance (max 1000 entries to prevent unbounded growth)
+    let log_capture = LogCapture::new(1000);
+    let capture_layer = LogCaptureLayer::new(log_capture.clone());
+
+    // Build the subscriber with both stderr output and log capture
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_ansi(false)
+                .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+        )
+        .with(capture_layer)
         .init();
 
-    Ok(())
+    Ok(Some(log_capture))
 }
 
 pub fn get_timeout(timeout_ms: Option<u64>) -> Option<Duration> {
