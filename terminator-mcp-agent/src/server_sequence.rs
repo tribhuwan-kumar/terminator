@@ -197,6 +197,10 @@ impl DesktopWrapper {
             if args.steps.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
                 args.steps = remote_workflow.steps;
             }
+            // Also merge troubleshooting steps if not provided locally
+            if args.troubleshooting.as_ref().map(|t| t.is_empty()).unwrap_or(true) {
+                args.troubleshooting = remote_workflow.troubleshooting;
+            }
             if args.variables.is_none() {
                 args.variables = remote_workflow.variables;
             }
@@ -581,6 +585,10 @@ impl DesktopWrapper {
         let max_iterations = sequence_items.len() * 10; // Prevent infinite fallback loops
         let mut iterations = 0usize;
 
+        // Track main steps boundary and whether we've jumped to troubleshooting
+        let main_steps_len = args.steps.as_ref().map(|s| s.len()).unwrap_or(0);
+        let mut jumped_to_troubleshooting = false;
+
         // Log if we're skipping steps
         if start_from_index > 0 {
             info!(
@@ -612,7 +620,7 @@ impl DesktopWrapper {
 
         // Add troubleshooting steps to the id map (they come after main steps)
         if let Some(troubleshooting) = &args.troubleshooting {
-            let main_steps_len = args.steps.as_ref().map(|s| s.len()).unwrap_or(0);
+            // Use the main_steps_len we already defined above
             for (idx, step) in troubleshooting.iter().enumerate() {
                 if let Some(id) = &step.id {
                     let global_idx = main_steps_len + idx;
@@ -627,7 +635,7 @@ impl DesktopWrapper {
         }
 
         while current_index < sequence_items.len()
-            && current_index <= end_at_index
+            && (current_index <= end_at_index || jumped_to_troubleshooting)
             && iterations < max_iterations
         {
             iterations += 1;
@@ -642,7 +650,6 @@ impl DesktopWrapper {
             }
 
             // Get the original step from either main steps or troubleshooting steps
-            let main_steps_len = args.steps.as_ref().map(|s| s.len()).unwrap_or(0);
             let original_step = if current_index < main_steps_len {
                 args.steps.as_ref().and_then(|s| s.get(current_index))
             } else {
@@ -1073,6 +1080,13 @@ impl DesktopWrapper {
             }
 
             if step_succeeded {
+                // For successful steps, check if we're about to enter troubleshooting section
+                if !jumped_to_troubleshooting && current_index >= main_steps_len - 1 {
+                    // We're at or past the last main step and haven't jumped to troubleshooting
+                    // Exit the loop to prevent entering troubleshooting during normal flow
+                    info!("Completed all main workflow steps successfully");
+                    break;
+                }
                 current_index += 1;
             } else if let Some(fb_id) = fallback_id_opt {
                 if let Some(&fb_idx) = id_to_index.get(&fb_id) {
@@ -1080,6 +1094,13 @@ impl DesktopWrapper {
                         "Step {} failed. Jumping to fallback step with id '{}' (index {}).",
                         current_index, fb_id, fb_idx
                     );
+
+                    // Check if we're jumping into the troubleshooting section
+                    if fb_idx >= main_steps_len {
+                        jumped_to_troubleshooting = true;
+                        info!("Entered troubleshooting section via fallback");
+                    }
+
                     current_index = fb_idx;
                 } else {
                     warn!(
@@ -1089,6 +1110,7 @@ impl DesktopWrapper {
                     current_index += 1;
                 }
             } else {
+                // Step failed with no fallback
                 current_index += 1;
             }
         }
