@@ -342,16 +342,18 @@ Run specific portions of a workflow using `start_from_step` and `end_at_step`:
     \"arguments\": {{
         \"url\": \"file://workflow.yml\",
         \"start_from_step\": \"read_data_step\",     // Start from this step ID
-        \"end_at_step\": \"process_data_step\"       // Stop after this step (inclusive)
+        \"end_at_step\": \"process_data_step\",      // Stop after this step (inclusive)
+        \"follow_fallback\": false                  // Don't follow fallback_id beyond end_at_step (default: false)
     }}
 }}
 ```
 
 **Examples:**
 - **Single step:** Set both parameters to the same step ID
-- **Step range:** Set different IDs for start and end  
+- **Step range:** Set different IDs for start and end
 - **Resume from step:** Only set `start_from_step`
 - **Run until step:** Only set `end_at_step`
+- **Debug without fallback:** Use `follow_fallback: false` to prevent jumping to troubleshooting steps
 
 **Automatic State Persistence:**
 When using `file://` URLs, workflow state is automatically saved:

@@ -318,6 +318,12 @@ pub struct GlobalKeyArgs {
         description = "The key or key combination to press (e.g., '{PageDown}', '{Ctrl}{V}')"
     )]
     pub key: String,
+    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
+    pub include_tree: Option<bool>,
+    #[schemars(
+        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
+    )]
+    pub include_detailed_attributes: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -850,6 +856,10 @@ pub struct ExecuteSequenceArgs {
     pub start_from_step: Option<String>,
     #[schemars(description = "Stop execution after a specific step ID (inclusive)")]
     pub end_at_step: Option<String>,
+    #[schemars(
+        description = "Whether to follow fallback_id when end_at_step is specified. When false (default), execution stops at end_at_step regardless of failures. When true, allows following fallback_id even beyond end_at_step boundary."
+    )]
+    pub follow_fallback: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
@@ -1037,7 +1047,6 @@ pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), Validati
 // Removed: RunJavascriptArgs (merged into RunCommandArgs via engine + script)
 
 pub fn init_logging() -> Result<Option<LogCapture>> {
-
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
             "error" => Level::ERROR,

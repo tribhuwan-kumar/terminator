@@ -594,6 +594,12 @@ impl DesktopWrapper {
         let main_steps_len = args.steps.as_ref().map(|s| s.len()).unwrap_or(0);
         let mut jumped_to_troubleshooting = false;
 
+        // Get follow_fallback setting (default to false when end_at_step is specified)
+        let follow_fallback = args.follow_fallback.unwrap_or(false);
+        if args.end_at_step.is_some() {
+            info!("follow_fallback={} for bounded execution", follow_fallback);
+        }
+
         // Log if we're skipping steps
         if start_from_index > 0 {
             info!(
@@ -640,7 +646,7 @@ impl DesktopWrapper {
         }
 
         while current_index < sequence_items.len()
-            && (current_index <= end_at_index || jumped_to_troubleshooting)
+            && (current_index <= end_at_index || (follow_fallback && jumped_to_troubleshooting))
             && iterations < max_iterations
         {
             iterations += 1;
@@ -1101,18 +1107,50 @@ impl DesktopWrapper {
                 current_index += 1;
             } else if let Some(fb_id) = fallback_id_opt {
                 if let Some(&fb_idx) = id_to_index.get(&fb_id) {
-                    info!(
-                        "Step {} failed. Jumping to fallback step with id '{}' (index {}).",
-                        current_index, fb_id, fb_idx
-                    );
+                    // Check if we should follow this fallback based on end_at_step and follow_fallback setting
+                    let should_follow_fallback = if args.end_at_step.is_some()
+                        && current_index >= end_at_index
+                    {
+                        // We're at or past end_at_step boundary
+                        if follow_fallback {
+                            info!(
+                                "Step {} failed at end_at_step boundary. Following fallback to '{}' (follow_fallback=true).",
+                                current_index, fb_id
+                            );
+                            true
+                        } else {
+                            info!(
+                                "Step {} failed at end_at_step boundary. NOT following fallback '{}' (follow_fallback=false).",
+                                current_index, fb_id
+                            );
+                            false
+                        }
+                    } else {
+                        // Normal execution, always follow fallback
+                        true
+                    };
 
-                    // Check if we're jumping into the troubleshooting section
-                    if fb_idx >= main_steps_len {
-                        jumped_to_troubleshooting = true;
-                        info!("Entered troubleshooting section via fallback");
+                    if should_follow_fallback {
+                        info!(
+                            "Step {} failed. Jumping to fallback step with id '{}' (index {}).",
+                            current_index, fb_id, fb_idx
+                        );
+
+                        // Check if we're jumping into the troubleshooting section
+                        if fb_idx >= main_steps_len {
+                            jumped_to_troubleshooting = true;
+                            info!("Entered troubleshooting section via fallback");
+                        }
+
+                        current_index = fb_idx;
+                    } else {
+                        // Don't follow fallback, treat as normal failure
+                        // Break the loop since we're at end_at_step and not following fallback
+                        info!(
+                            "Stopping execution at end_at_step boundary without following fallback"
+                        );
+                        break;
                     }
-
-                    current_index = fb_idx;
                 } else {
                     warn!(
                         "fallback_id '{}' for step {} not found. Continuing to next step.",
@@ -1344,11 +1382,9 @@ impl DesktopWrapper {
             Err(e) => {
                 // Stop log capture on error and collect logs
                 let captured_logs = if include_detailed {
-                    if let Some(ref log_capture) = self.log_capture {
-                        Some(log_capture.stop_capture())
-                    } else {
-                        None
-                    }
+                    self.log_capture
+                        .as_ref()
+                        .map(|log_capture| log_capture.stop_capture())
                 } else {
                     None
                 };

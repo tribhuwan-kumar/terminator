@@ -200,7 +200,9 @@ impl DesktopWrapper {
         Self::new_with_log_capture(None)
     }
 
-    pub fn new_with_log_capture(log_capture: Option<crate::log_capture::LogCapture>) -> Result<Self, McpError> {
+    pub fn new_with_log_capture(
+        log_capture: Option<crate::log_capture::LogCapture>,
+    ) -> Result<Self, McpError> {
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         let desktop = match Desktop::new(false, false) {
             Ok(d) => d,
@@ -1107,7 +1109,7 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            Self::get_include_tree_default(None), // press_key_global does not have include_tree option
+            Self::get_include_tree_default(args.include_tree),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1155,8 +1157,8 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            Self::get_include_tree_default(None), // press_key_global does not have include_tree option
-            None, // GlobalKeyArgs doesn't have include_detailed_attributes
+            Self::get_include_tree_default(args.include_tree),
+            args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
         );
@@ -1275,16 +1277,20 @@ impl DesktopWrapper {
                         if let Some(status_str) = status.as_str() {
                             if status_str == "failed" || status_str == "error" {
                                 // Extract error message if provided
-                                let message = obj.get("message")
+                                let message = obj
+                                    .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("Script returned failure status");
 
-                                info!("[run_command] Script returned status: '{}', treating as error", status_str);
+                                info!(
+                                    "[run_command] Script returned status: '{}', treating as error",
+                                    status_str
+                                );
 
                                 // Return an error to trigger fallback_id in workflows
                                 return Err(McpError::internal_error(
-                                    format!("JavaScript execution failed: {}", message),
-                                    Some(actual_result)
+                                    format!("JavaScript execution failed: {message}"),
+                                    Some(actual_result),
                                 ));
                             }
                         }
@@ -1315,7 +1321,8 @@ impl DesktopWrapper {
                         if let Some(status_str) = status.as_str() {
                             if status_str == "failed" || status_str == "error" {
                                 // Extract error message if provided
-                                let message = obj.get("message")
+                                let message = obj
+                                    .get("message")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("Script returned failure status");
 
@@ -1323,8 +1330,8 @@ impl DesktopWrapper {
 
                                 // Return an error to trigger fallback_id in workflows
                                 return Err(McpError::internal_error(
-                                    format!("Python execution failed: {}", message),
-                                    Some(execution_result)
+                                    format!("Python execution failed: {message}"),
+                                    Some(execution_result),
                                 ));
                             }
                         }

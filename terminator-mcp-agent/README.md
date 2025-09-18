@@ -810,7 +810,8 @@ You can run specific portions of a workflow using `start_from_step` and `end_at_
   "arguments": {
     "url": "file://path/to/workflow.yml",
     "start_from_step": "read_json_file",    // Start from this step ID
-    "end_at_step": "fill_journal_entries"   // Stop after this step (inclusive)
+    "end_at_step": "fill_journal_entries",  // Stop after this step (inclusive)
+    "follow_fallback": false                // Don't follow fallback_id beyond end_at_step (default: false)
   }
 }
 ```
@@ -820,6 +821,7 @@ You can run specific portions of a workflow using `start_from_step` and `end_at_
 - Run step range: Set different IDs for start and end
 - Run from step to end: Only set `start_from_step`
 - Run from beginning to step: Only set `end_at_step`
+- Debug without fallback: Use `follow_fallback: false` to prevent jumping to troubleshooting steps when a bounded step fails
 
 #### Automatic State Persistence
 
