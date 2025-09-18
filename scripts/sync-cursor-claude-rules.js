@@ -53,12 +53,11 @@ function syncRules() {
     process.exit(1);
   }
 
-  // Create Claude rules configuration
+  // Create Claude rules configuration without timestamp first
   const claudeRules = {
     version: "1.0",
     description:
       "Auto-synced from .cursor/rules - Terminator project workspace rules",
-    last_sync: new Date().toISOString(),
     sync_source: ".cursor/rules/*.mdc",
     total_rules: ruleFiles.length,
     rules: {},
@@ -77,15 +76,42 @@ function syncRules() {
     };
   });
 
-  // Write Claude rules file
+  // Check if content has actually changed
   const claudeRulesPath = path.join(claudeDir, "rules.json");
+  let contentChanged = true;
+
+  if (fs.existsSync(claudeRulesPath)) {
+    const existingContent = JSON.parse(fs.readFileSync(claudeRulesPath, "utf8"));
+    // Remove timestamp from comparison
+    delete existingContent.last_sync;
+    const newContent = { ...claudeRules };
+
+    // Compare without timestamps
+    if (JSON.stringify(existingContent) === JSON.stringify(newContent)) {
+      contentChanged = false;
+      console.log("ℹ️  No changes detected in rule content, skipping timestamp update");
+    }
+  }
+
+  // Only add timestamp if content has changed
+  if (contentChanged) {
+    claudeRules.last_sync = new Date().toISOString();
+  } else if (fs.existsSync(claudeRulesPath)) {
+    // Preserve existing timestamp if no changes
+    const existingContent = JSON.parse(fs.readFileSync(claudeRulesPath, "utf8"));
+    claudeRules.last_sync = existingContent.last_sync;
+  }
+
+  // Write Claude rules file
   fs.writeFileSync(claudeRulesPath, JSON.stringify(claudeRules, null, 2));
 
   // Create human-readable summary
   const summaryPath = path.join(claudeDir, "rules-summary.md");
+  const syncDate = contentChanged ? new Date().toLocaleString() :
+    (claudeRules.last_sync ? new Date(claudeRules.last_sync).toLocaleString() : new Date().toLocaleString());
   const summary = `# Claude Rules Summary
 
-Auto-synced from \`.cursor/rules\` on ${new Date().toLocaleString()}
+Auto-synced from \`.cursor/rules\` on ${syncDate}
 
 ## Available Rules (${ruleFiles.length} total)
 
@@ -112,7 +138,7 @@ ${ruleFiles.map((rule) => `- \`${rule.name}\`: ${rule.title}`).join("\n")}
 ## Sync Information
 
 - **Total rules synced**: ${ruleFiles.length}
-- **Last sync**: ${new Date().toLocaleString()}
+- **Last sync**: ${syncDate}
 - **Source directory**: \`.cursor/rules/\`
 - **Target directory**: \`.claude/\`
 - **Auto-sync**: Enabled via GitHub Actions on rule changes
@@ -125,7 +151,12 @@ node scripts/sync-cursor-claude-rules.js
 \`\`\`
 `;
 
-  fs.writeFileSync(summaryPath, summary);
+  // Only write summary if it has changed
+  if (!fs.existsSync(summaryPath) || fs.readFileSync(summaryPath, "utf8") !== summary) {
+    fs.writeFileSync(summaryPath, summary);
+  } else {
+    console.log("ℹ️  Summary file unchanged, skipping write");
+  }
 
   // Create .gitignore for .claude if needed
   const gitignorePath = path.join(claudeDir, ".gitignore");
