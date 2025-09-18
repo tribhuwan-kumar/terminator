@@ -908,6 +908,12 @@ impl DesktopWrapper {
                             || result["success"] == true
                             || (result["status"].is_null() && result["success"] != false)
                         {
+                            // Apply delay after successful execution
+                            if let Some(delay_ms) = tool_call.delay_ms {
+                                if delay_ms > 0 {
+                                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                                }
+                            }
                             break;
                         }
 
