@@ -357,7 +357,7 @@ Run specific portions of a workflow using `start_from_step` and `end_at_step`:
 
 **Automatic State Persistence:**
 When using `file://` URLs, workflow state is automatically saved:
-- State saved to `.workflow_state/<workflow_hash>.json` after each step
+- State saved to `.workflow_state/<workflow_name>.json` in workflow's directory after each step
 - Environment variables from `set_env` are persisted
 - State automatically loaded when using `start_from_step`
 - Enables debugging individual steps and resuming failed workflows
