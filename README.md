@@ -59,7 +59,13 @@ We achieve this by pre-training workflows as deterministic code, and calling AI 
 
 ## ⚡ Quick start: MCP
 
-We recommend using [MCP](https://github.com/mediar-ai/terminator/tree/main/terminator-mcp-agent) as AI's IQ is far higher than the programmer.
+Install the Terminator MCP in Claude Code with one command:
+
+```bash
+claude mcp add terminator "npx -y terminator-mcp-agent" -s user
+```
+
+Or install via the [MCP directory](https://github.com/mediar-ai/terminator/tree/main/terminator-mcp-agent) for other clients.
 
 ## ⚡ Quick start: programmatic control
 

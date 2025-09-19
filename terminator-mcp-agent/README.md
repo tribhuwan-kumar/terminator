@@ -11,6 +11,14 @@ A Model Context Protocol (MCP) server that provides desktop GUI automation capab
 
 ## Quick Install
 
+### Claude Code
+
+Install with a single command:
+
+```bash
+claude mcp add terminator "npx -y terminator-mcp-agent" -s user
+```
+
 ### Cursor
 
 Copy and paste this URL into your browser's address bar:
