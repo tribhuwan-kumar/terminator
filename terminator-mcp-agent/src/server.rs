@@ -1248,60 +1248,76 @@ impl DesktopWrapper {
             // Build final script with env injection if provided
             let mut final_script = String::new();
 
-            // Extract workflow variables from special env key
+            // Extract workflow variables and accumulated env from special env keys
             let mut variables_json = "{}".to_string();
+            let mut accumulated_env_json = "{}".to_string();
             let mut env_data = args.env.clone();
 
             if let Some(env) = &env_data {
                 if let Some(env_obj) = env.as_object() {
+                    // Extract workflow variables
                     if let Some(vars) = env_obj.get("_workflow_variables") {
                         variables_json = serde_json::to_string(vars)
+                            .unwrap_or_else(|_| "{}".to_string());
+                    }
+                    // Extract accumulated env
+                    if let Some(acc_env) = env_obj.get("_accumulated_env") {
+                        accumulated_env_json = serde_json::to_string(acc_env)
                             .unwrap_or_else(|_| "{}".to_string());
                     }
                 }
             }
 
-            // Remove _workflow_variables from env before normal processing
+            // Remove special keys from env before normal processing
             if let Some(env) = &mut env_data {
                 if let Some(env_obj) = env.as_object_mut() {
                     env_obj.remove("_workflow_variables");
+                    env_obj.remove("_accumulated_env");
                 }
             }
 
-            // Inject env variables if provided (only for engine mode)
-            if let Some(env) = &env_data {
-                // Use JSON.stringify to properly escape the data
-                let env_json = serde_json::to_string(&env).map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to serialize env data",
-                        Some(json!({"error": e.to_string()})),
-                    )
-                })?;
-
-                // Inject based on engine type
-                if matches!(engine.as_str(), "node" | "bun" | "javascript" | "js") {
-                    final_script.push_str(&format!("var env = {env_json};\n"));
-                    final_script.push_str(&format!("var variables = {variables_json};\n"));
-                    tracing::debug!("[run_command] Injected env and workflow variables for JavaScript");
-                } else if matches!(engine.as_str(), "python" | "py") {
-                    // For Python, inject as dictionaries
-                    final_script.push_str(&format!("env = {env_json}\n"));
-                    final_script.push_str(&format!("variables = {variables_json}\n"));
-                    tracing::debug!("[run_command] Injected env and workflow variables for Python");
+            // Prepare explicit env if provided
+            let explicit_env_json = if let Some(env) = &env_data {
+                if env.as_object().map_or(false, |o| !o.is_empty()) {
+                    serde_json::to_string(&env).map_err(|e| {
+                        McpError::internal_error(
+                            "Failed to serialize env data",
+                            Some(json!({"error": e.to_string()})),
+                        )
+                    })?
+                } else {
+                    "{}".to_string()
                 }
             } else {
-                // Even if no env, inject variables if they exist
-                if variables_json != "{}" {
-                    if matches!(engine.as_str(), "node" | "bun" | "javascript" | "js") {
-                        final_script.push_str("var env = {};\n");
-                        final_script.push_str(&format!("var variables = {variables_json};\n"));
-                        tracing::debug!("[run_command] Injected workflow variables for JavaScript");
-                    } else if matches!(engine.as_str(), "python" | "py") {
-                        final_script.push_str("env = {}\n");
-                        final_script.push_str(&format!("variables = {variables_json}\n"));
-                        tracing::debug!("[run_command] Injected workflow variables for Python");
-                    }
+                "{}".to_string()
+            };
+
+            // Inject based on engine type
+            if matches!(engine.as_str(), "node" | "bun" | "javascript" | "js") {
+                // First inject accumulated env
+                final_script.push_str(&format!("var env = {accumulated_env_json};\n"));
+
+                // Merge explicit env if provided
+                if explicit_env_json != "{}" {
+                    final_script.push_str(&format!(
+                        "env = Object.assign(env, {explicit_env_json});\n"
+                    ));
                 }
+
+                // Inject variables
+                final_script.push_str(&format!("var variables = {variables_json};\n"));
+                tracing::debug!("[run_command] Injected accumulated env, explicit env, and workflow variables for JavaScript");
+            } else if matches!(engine.as_str(), "python" | "py") {
+                // For Python, inject as dictionaries
+                final_script.push_str(&format!("env = {accumulated_env_json}\n"));
+
+                // Merge explicit env if provided
+                if explicit_env_json != "{}" {
+                    final_script.push_str(&format!("env.update({explicit_env_json})\n"));
+                }
+
+                final_script.push_str(&format!("variables = {variables_json}\n"));
+                tracing::debug!("[run_command] Injected accumulated env, explicit env, and workflow variables for Python");
             }
 
             // Append the actual script
@@ -3522,44 +3538,63 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         // Build the final script with env prepended if provided
         let mut final_script = String::new();
 
-        // Extract workflow variables from special env key
+        // Extract workflow variables and accumulated env from special env keys
         let mut variables_json = "{}".to_string();
+        let mut accumulated_env_json = "{}".to_string();
         let mut env_data = args.env.clone();
 
         if let Some(env) = &env_data {
             if let Some(env_obj) = env.as_object() {
+                // Extract workflow variables
                 if let Some(vars) = env_obj.get("_workflow_variables") {
                     variables_json = serde_json::to_string(vars)
+                        .unwrap_or_else(|_| "{}".to_string());
+                }
+                // Extract accumulated env
+                if let Some(acc_env) = env_obj.get("_accumulated_env") {
+                    accumulated_env_json = serde_json::to_string(acc_env)
                         .unwrap_or_else(|_| "{}".to_string());
                 }
             }
         }
 
-        // Remove _workflow_variables from env before normal processing
+        // Remove special keys from env before normal processing
         if let Some(env) = &mut env_data {
             if let Some(env_obj) = env.as_object_mut() {
                 env_obj.remove("_workflow_variables");
+                env_obj.remove("_accumulated_env");
             }
         }
 
-        // Inject env variables if provided
-        if let Some(env) = &env_data {
-            // Use JSON.stringify to properly escape the data
-            let env_json = serde_json::to_string(&env).map_err(|e| {
-                McpError::internal_error(
-                    "Failed to serialize env data",
-                    Some(json!({"error": e.to_string()})),
-                )
-            })?;
-            final_script.push_str(&format!("var env = {env_json};\n"));
-            final_script.push_str(&format!("var variables = {variables_json};\n"));
-            tracing::debug!("[execute_browser_script] Injected env and workflow variables");
-        } else if variables_json != "{}" {
-            // Even if no env, inject variables if they exist
-            final_script.push_str("var env = {};\n");
-            final_script.push_str(&format!("var variables = {variables_json};\n"));
-            tracing::debug!("[execute_browser_script] Injected workflow variables");
+        // Prepare explicit env if provided
+        let explicit_env_json = if let Some(env) = &env_data {
+            if env.as_object().map_or(false, |o| !o.is_empty()) {
+                serde_json::to_string(&env).map_err(|e| {
+                    McpError::internal_error(
+                        "Failed to serialize env data",
+                        Some(json!({"error": e.to_string()})),
+                    )
+                })?
+            } else {
+                "{}".to_string()
+            }
+        } else {
+            "{}".to_string()
+        };
+
+        // Inject accumulated env first
+        final_script.push_str(&format!("var env = {accumulated_env_json};\n"));
+
+        // Merge explicit env if provided
+        if explicit_env_json != "{}" {
+            final_script.push_str(&format!(
+                "env = Object.assign(env, {explicit_env_json});\n"
+            ));
         }
+
+        // Inject variables
+        final_script.push_str(&format!("var variables = {variables_json};\n"));
+        tracing::debug!("[execute_browser_script] Injected accumulated env, explicit env, and workflow variables");
 
         // Append the actual script
         final_script.push_str(&script_content);

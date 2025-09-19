@@ -786,7 +786,7 @@ impl DesktopWrapper {
                         let mut substituted_args = tool_call.arguments.clone();
                         substitute_variables(&mut substituted_args, &execution_context);
 
-                        // Inject workflow variables for run_command and execute_browser_script
+                        // Inject workflow variables and accumulated env for run_command and execute_browser_script
                         if matches!(tool_call.tool_name.as_str(), "run_command" | "execute_browser_script") {
                             // Get env object or create empty one
                             let mut env_obj = substituted_args
@@ -800,6 +800,14 @@ impl DesktopWrapper {
                                 env_obj.insert(
                                     "_workflow_variables".to_string(),
                                     json!(workflow_vars)
+                                );
+                            }
+
+                            // Add accumulated env from execution context as special key
+                            if let Some(accumulated_env) = execution_context.get("env") {
+                                env_obj.insert(
+                                    "_accumulated_env".to_string(),
+                                    accumulated_env.clone()
                                 );
                             }
 
