@@ -57,6 +57,8 @@ pub struct DesktopWrapper {
     pub active_highlights: Arc<Mutex<Vec<terminator::HighlightHandle>>>,
     #[serde(skip)]
     pub log_capture: Option<LogCapture>,
+    #[serde(skip)]
+    pub current_workflow_dir: Arc<Mutex<Option<std::path::PathBuf>>>,
 }
 
 impl Default for DesktopWrapper {

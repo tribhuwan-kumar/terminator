@@ -119,6 +119,15 @@ impl DesktopWrapper {
                 // Handle local file URLs
                 let file_path = url.strip_prefix("file://").unwrap_or(url);
                 info!("Reading file from path: {}", file_path);
+
+                // Store the workflow directory for relative path resolution
+                let workflow_path = Path::new(file_path);
+                if let Some(parent_dir) = workflow_path.parent() {
+                    let mut workflow_dir_guard = self.current_workflow_dir.lock().await;
+                    *workflow_dir_guard = Some(parent_dir.to_path_buf());
+                    info!("Stored workflow directory: {:?}", parent_dir);
+                }
+
                 let content = std::fs::read_to_string(file_path).map_err(|e| {
                     McpError::invalid_params(
                         format!("Failed to read local workflow file: {e}"),

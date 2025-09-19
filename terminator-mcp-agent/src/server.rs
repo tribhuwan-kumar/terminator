@@ -232,6 +232,7 @@ impl DesktopWrapper {
             recorder: Arc::new(Mutex::new(None)),
             active_highlights: Arc::new(Mutex::new(Vec::new())),
             log_capture,
+            current_workflow_dir: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -1193,13 +1194,44 @@ impl DesktopWrapper {
                     ));
                 }
 
-                // Read script from file
-                tracing::info!("[run_command] Reading script from file: {}", script_file);
-                tokio::fs::read_to_string(script_file).await.map_err(|e| {
+                // Resolve relative paths against workflow directory
+                let resolved_path = {
+                    let workflow_dir_guard = self.current_workflow_dir.lock().await;
+                    let script_path = std::path::Path::new(script_file);
+
+                    // Check if path is relative (not absolute)
+                    if script_path.is_relative() {
+                        if let Some(ref workflow_dir) = *workflow_dir_guard {
+                            let resolved = workflow_dir.join(script_file);
+                            tracing::info!(
+                                "[run_command] Resolved relative path: {} -> {}",
+                                script_file,
+                                resolved.display()
+                            );
+                            resolved
+                        } else {
+                            tracing::info!(
+                                "[run_command] No workflow directory set, using path as-is: {}",
+                                script_file
+                            );
+                            script_path.to_path_buf()
+                        }
+                    } else {
+                        tracing::info!(
+                            "[run_command] Using absolute path: {}",
+                            script_file
+                        );
+                        script_path.to_path_buf()
+                    }
+                };
+
+                // Read script from resolved file path
+                tokio::fs::read_to_string(&resolved_path).await.map_err(|e| {
                     McpError::invalid_params(
                         "Failed to read script file",
                         Some(json!({
                             "file": script_file,
+                            "resolved_path": resolved_path.to_string_lossy(),
                             "error": e.to_string()
                         })),
                     )
@@ -1365,15 +1397,44 @@ impl DesktopWrapper {
             }
 
             // Read script from file
-            tracing::info!(
-                "[run_command] Reading shell script from file: {}",
-                script_file
-            );
-            tokio::fs::read_to_string(script_file).await.map_err(|e| {
+            // Resolve relative paths against workflow directory
+            let resolved_path = {
+                let workflow_dir_guard = self.current_workflow_dir.lock().await;
+                let script_path = std::path::Path::new(script_file);
+
+                // Check if path is relative (not absolute)
+                if script_path.is_relative() {
+                    if let Some(ref workflow_dir) = *workflow_dir_guard {
+                        let resolved = workflow_dir.join(script_file);
+                        tracing::info!(
+                            "[run_command] Resolved relative path: {} -> {}",
+                            script_file,
+                            resolved.display()
+                        );
+                        resolved
+                    } else {
+                        tracing::info!(
+                            "[run_command] No workflow directory set, using path as-is: {}",
+                            script_file
+                        );
+                        script_path.to_path_buf()
+                    }
+                } else {
+                    tracing::info!(
+                        "[run_command] Using absolute path: {}",
+                        script_file
+                    );
+                    script_path.to_path_buf()
+                }
+            };
+
+            // Read script from resolved file path
+            tokio::fs::read_to_string(&resolved_path).await.map_err(|e| {
                 McpError::invalid_params(
                     "Failed to read script file",
                     Some(json!({
                         "file": script_file,
+                        "resolved_path": resolved_path.to_string_lossy(),
                         "error": e.to_string()
                     })),
                 )
@@ -3369,16 +3430,44 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         // Resolve the script content
         let script_content = if let Some(script_file) = &args.script_file {
-            // Read script from file
-            tracing::info!(
-                "[execute_browser_script] Reading script from file: {}",
-                script_file
-            );
-            tokio::fs::read_to_string(script_file).await.map_err(|e| {
+            // Resolve relative paths against workflow directory
+            let resolved_path = {
+                let workflow_dir_guard = self.current_workflow_dir.lock().await;
+                let script_path = std::path::Path::new(script_file);
+
+                // Check if path is relative (not absolute)
+                if script_path.is_relative() {
+                    if let Some(ref workflow_dir) = *workflow_dir_guard {
+                        let resolved = workflow_dir.join(script_file);
+                        tracing::info!(
+                            "[execute_browser_script] Resolved relative path: {} -> {}",
+                            script_file,
+                            resolved.display()
+                        );
+                        resolved
+                    } else {
+                        tracing::info!(
+                            "[execute_browser_script] No workflow directory set, using path as-is: {}",
+                            script_file
+                        );
+                        script_path.to_path_buf()
+                    }
+                } else {
+                    tracing::info!(
+                        "[execute_browser_script] Using absolute path: {}",
+                        script_file
+                    );
+                    script_path.to_path_buf()
+                }
+            };
+
+            // Read script from resolved file path
+            tokio::fs::read_to_string(&resolved_path).await.map_err(|e| {
                 McpError::invalid_params(
                     "Failed to read script file",
                     Some(json!({
                         "file": script_file,
+                        "resolved_path": resolved_path.to_string_lossy(),
                         "error": e.to_string()
                     })),
                 )
