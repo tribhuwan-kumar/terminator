@@ -878,6 +878,9 @@ impl DesktopWrapper {
                             ],
                         );
 
+                        // Define reserved keys that shouldn't auto-merge
+                        const RESERVED_KEYS: &[&str] = &["status", "error", "logs", "duration_ms", "set_env"];
+
                         // Merge env updates from engine/script-based steps into the internal context
                         if (tool_name_normalized == "execute_browser_script"
                             || tool_name_normalized == "run_command")
@@ -915,12 +918,25 @@ impl DesktopWrapper {
                                     match serde_json::from_str::<serde_json::Value>(result_str) {
                                         Ok(parsed_json) => {
                                             info!("[execute_browser_script] Successfully parsed browser result as JSON");
-                                            // Check if the parsed JSON contains set_env
+
+                                            // First handle explicit set_env for backward compatibility
                                             if let Some(set_env) = parsed_json.get("set_env") {
                                                 info!("[execute_browser_script] Found set_env in browser script result, merging into context");
                                                 merge_env_obj(set_env);
-                                            } else {
-                                                info!("[execute_browser_script] No set_env field found in parsed JSON");
+                                            }
+
+                                            // Then auto-merge non-reserved fields
+                                            if let Some(obj) = parsed_json.as_object() {
+                                                if let Some(env_value) = execution_context_map.get_mut("env") {
+                                                    if let Some(env_map) = env_value.as_object_mut() {
+                                                        for (k, v) in obj {
+                                                            if !RESERVED_KEYS.contains(&k.as_str()) {
+                                                                env_map.insert(k.clone(), v.clone());
+                                                                info!("[execute_browser_script] Auto-merged field '{}' to env", k);
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                         Err(e) => {
@@ -940,6 +956,7 @@ impl DesktopWrapper {
                                     for item in content_arr {
                                         // Typical engine payload is under item.result
                                         if let Some(res) = item.get("result") {
+                                            // First handle explicit set_env/env for backward compatibility
                                             if let Some(v) =
                                                 res.get("set_env").or_else(|| res.get("env"))
                                             {
@@ -951,6 +968,24 @@ impl DesktopWrapper {
                                             item.get("set_env").or_else(|| item.get("env"))
                                         {
                                             merge_env_obj(v);
+                                        }
+                                    }
+
+                                    // Auto-merge non-reserved fields from run_command results
+                                    for item in content_arr {
+                                        if let Some(res) = item.get("result") {
+                                            if let Some(obj) = res.as_object() {
+                                                if let Some(env_value) = execution_context_map.get_mut("env") {
+                                                    if let Some(env_map) = env_value.as_object_mut() {
+                                                        for (k, v) in obj {
+                                                            if !RESERVED_KEYS.contains(&k.as_str()) {
+                                                                env_map.insert(k.clone(), v.clone());
+                                                                info!("[run_command] Auto-merged field '{}' to env", k);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
