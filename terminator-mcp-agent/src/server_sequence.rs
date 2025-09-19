@@ -406,7 +406,19 @@ impl DesktopWrapper {
             args.steps
                 .as_ref()
                 .and_then(|steps| steps.iter().position(|s| s.id.as_ref() == Some(start_step)))
-                .unwrap_or(0)
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!("start_from_step '{start_step}' not found in workflow steps"),
+                        Some(json!({
+                            "requested_step": start_step,
+                            "available_steps": args.steps.as_ref().map(|steps|
+                                steps.iter()
+                                    .filter_map(|s| s.id.as_ref())
+                                    .collect::<Vec<_>>()
+                            ).unwrap_or_default()
+                        })),
+                    )
+                })?
         } else {
             0
         };
@@ -417,10 +429,19 @@ impl DesktopWrapper {
             args.steps
                 .as_ref()
                 .and_then(|steps| steps.iter().position(|s| s.id.as_ref() == Some(end_step)))
-                .unwrap_or_else(|| {
-                    // If not found, run to the end
-                    args.steps.as_ref().map(|s| s.len() - 1).unwrap_or(0)
-                })
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        format!("end_at_step '{end_step}' not found in workflow steps"),
+                        Some(json!({
+                            "requested_step": end_step,
+                            "available_steps": args.steps.as_ref().map(|steps|
+                                steps.iter()
+                                    .filter_map(|s| s.id.as_ref())
+                                    .collect::<Vec<_>>()
+                            ).unwrap_or_default()
+                        })),
+                    )
+                })?
         } else {
             // No end_at_step specified, run to the end
             args.steps.as_ref().map(|s| s.len() - 1).unwrap_or(0)
