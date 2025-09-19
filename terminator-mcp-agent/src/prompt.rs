@@ -116,53 +116,71 @@ Use `run_command` with `engine` to execute code directly with SDK bindings:
 - engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`). Put your JS in `run` or `script_file`.
 - engine: `python` executes async Python with terminator.py (variable `desktop`). Put your Python in `run` or `script_file`.
 - NEW: Use `script_file` to load scripts from external files
-- NEW: Use `env` parameter to inject environment variables as `var env = {{...}}` (JS) or `env = {{...}}` (Python)
+- Auto-injected: `env` (accumulated from previous steps) and `variables` (from workflow definition) are automatically available
 
 **Globals/Helpers Available:**
 *   `desktop` - Main Desktop automation instance
+*   `env` - Accumulated environment from previous steps (auto-injected, no setup needed)
+*   `variables` - Workflow-defined variables (auto-injected, read-only)
 *   `log(message)` - Console logging function
 *   `sleep(ms)` - Async delay function (returns Promise)
 
 **Passing Data Between Workflow Steps (Engine Mode Only):**
 
-When using `engine` mode, you can pass data to subsequent workflow steps using `set_env`:
+When using `engine` mode, data automatically flows between steps:
 
-1. **Return set_env object** (preferred):
+1. **Direct return (NEW - simplest):**
+   ```javascript
+   // Non-reserved fields auto-merge into env for next steps
+   return {{
+     status: 'success',
+     file_path: '/data/file.txt',  // Becomes env.file_path
+     item_count: 42                 // Becomes env.item_count
+   }};
+   ```
+
+2. **Explicit set_env (backward compatible):**
    ```javascript
    return {{ set_env: {{ key: 'value', another_key: 'data' }} }};
    ```
 
-**Example with script_file and env:**
+**Example with script_file:**
 ```javascript
-// Load script from file with environment variables
+// Scripts automatically get env and variables
 run_command({{
   engine: \"javascript\",
-  script_file: \"C:\\\\\\\\scripts\\\\\\\\process.js\",
-  env: {{
-    input_dir: \"C:\\\\\\\\data\",
-    output_dir: \"C:\\\\\\\\processed\",
-    max_files: 100
-  }}
+  script_file: \"C:\\\\\\\\scripts\\\\\\\\process.js\"
+  // No env parameter needed - accumulated env is auto-injected
 }})
 
 // In process.js:
-const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-console.log(`Processing files from ${{parsedEnv.input_dir}}`);
-// Process files and return results
-return {{ set_env: {{ files_processed: 42 }} }};
+// env and variables are automatically available
+console.log(`Processing files from ${{env.input_dir}}`);  // From previous step
+console.log(`Config: ${{variables.max_retries}}`);        // From workflow definition
+
+// Return data directly (auto-merges to env)
+return {{
+  status: 'success',
+  files_processed: 42,    // Becomes env.files_processed
+  output_path: '/data'    // Becomes env.output_path
+}};
 ```
 
-2. **GitHub Actions style logging**:
+3. **GitHub Actions style logging (alternative):**
    ```javascript
    console.log('::set-env name=key::value');
    ```
 
-3. **Access in next step** using `{{{{env.key}}}}` substitution:
+4. **Access in next step** - env is automatically available:
    ```javascript
-   const value = '{{{{env.key}}}}';
+   // Direct access - no template substitution needed
+   const value = env.key;
+   const config = variables.some_config;
    ```
 
-**Important:** `set_env` ONLY works with engine mode (JavaScript/Python), NOT with shell commands.
+**Reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
+
+**Important:** Data passing ONLY works with engine mode (JavaScript/Python), NOT with shell commands.
 Watch for backslash escaping issues with Windows paths - consider escaping or combining steps.
 
 **Browser DOM Inspection with execute_browser_script**
@@ -193,25 +211,21 @@ execute_browser_script({{
 }})
 ```
 
-**Passing Data TO Browser Scripts:**
+**Accessing Data in Browser Scripts:**
 ```javascript
-// Use env parameter to pass environment variables
+// env and variables are automatically available
 execute_browser_script({{
   selector: \"role:Window\",
-  env: {{
-    searchTerm: \"{{{{env.search_term}}}}\",
-    maxResults: \"{{{{env.max_results}}}}\"
-  }},
-  script: \"const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = parsedEnv.searchTerm;\\nsearchBox.form.submit();\\nJSON.stringify({{ status: 'search_submitted', term: parsedEnv.searchTerm }});\"
+  script: \"// env and variables auto-injected\\nconst searchTerm = env.search_term;  // From previous steps\\nconst config = variables.app_config;  // From workflow\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
 }})
 ```
 
 **Returning Data FROM Browser Scripts:**
 ```javascript
-// Browser scripts can set environment variables for subsequent steps
+// Return fields directly - they auto-merge into env
 execute_browser_script({{
   selector: \"role:Window\",
-  script: \"const pageData = {{\\n  title: document.title,\\n  url: window.location.href,\\n  formCount: document.forms.length\\n}};\\n\\n// Return data and set environment variables\\nJSON.stringify({{\\n  pageData: pageData,\\n  set_env: {{\\n    page_title: pageData.title,\\n    page_url: pageData.url,\\n    form_count: pageData.formCount.toString()\\n  }}\\n}});\"
+  script: \"const pageData = {{\\n  title: document.title,\\n  url: window.location.href,\\n  formCount: document.forms.length\\n}};\\n\\n// Return data directly (no set_env wrapper needed)\\nJSON.stringify({{\\n  status: 'success',\\n  page_title: pageData.title,     // Becomes env.page_title\\n  page_url: pageData.url,         // Becomes env.page_url\\n  form_count: pageData.formCount  // Becomes env.form_count\\n}});\"
 }})
 ```
 

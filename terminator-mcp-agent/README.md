@@ -137,62 +137,57 @@ Execute custom JavaScript or Python with access to desktop automation APIs via `
 
 **Passing Data Between Workflow Steps:**
 
-When using `engine` mode, you can pass data between steps using the `set_env` mechanism:
+When using `engine` mode, data automatically flows between steps:
 
 ```yaml
 steps:
-  # Step 1: Set environment variables for next step
+  # Step 1: Return data directly (NEW - simplified!)
   - tool_name: run_command
     arguments:
       engine: "javascript"
       run: |
-        // Example: Find files and pass data to next step
-        const { execSync } = require('child_process');
-
         // Get file info (example)
         const filePath = 'C:\\data\\report.pdf';
         const fileSize = 1024;
 
-        // Pass data to next step using set_env
         console.log(`Found file: ${filePath}`);
 
-        // Method 1: Return set_env object (preferred)
+        // Just return fields directly - they auto-merge into env
         return {
-          set_env: {
-            file_path: filePath,
-            file_size: fileSize.toString()
-          },
-          status: 'found'
+          status: 'success',
+          file_path: filePath,      // Becomes env.file_path
+          file_size: fileSize        // Becomes env.file_size
         };
 
-        // Method 2: GitHub Actions style (alternative)
-        // console.log(`::set-env name=file_path::${filePath}`);
-
-  # Step 2: Access data from previous step
+  # Step 2: Access data automatically
   - tool_name: run_command
     arguments:
       engine: "javascript"
       run: |
-        // Access environment variables from previous step
-        const filePath = '{{env.file_path}}';
-        const fileSize = '{{env.file_size}}';
+        // env is automatically available - no setup needed!
+        console.log(`Processing: ${env.file_path} (${env.file_size} bytes)`);
 
-        console.log(`Processing: ${filePath} (${fileSize} bytes)`);
+        // Workflow variables also auto-available
+        console.log(`Config: ${variables.max_retries}`);
 
         // Continue with desktop automation
         const elements = await desktop.locator('role:button').all();
-        log(`Found ${elements.length} buttons`);
 
+        // Return more data (auto-merges to env)
         return {
-          file_processed: filePath,
+          status: 'success',
+          file_processed: env.file_path,
           buttons_found: elements.length
         };
 ```
 
 **Important Notes on Data Passing:**
 
-- `set_env` only works with `engine` mode (JavaScript/Python), NOT with shell commands
-- Use `{{env.variable_name}}` syntax to access variables in subsequent steps
+- **NEW:** `env` and `variables` are automatically injected into all scripts
+- **NEW:** Non-reserved fields in return values auto-merge into env (no `set_env` wrapper needed)
+- Reserved fields that don't auto-merge: `status`, `error`, `logs`, `duration_ms`, `set_env`
+- Data passing only works with `engine` mode (JavaScript/Python), NOT with shell commands
+- Backward compatible: explicit `set_env` still works if needed
 - Watch for backslash escaping issues in Windows paths (may need double escaping)
 - Consider combining related operations in a single step if data passing becomes complex
 
