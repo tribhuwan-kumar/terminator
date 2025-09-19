@@ -786,6 +786,29 @@ impl DesktopWrapper {
                         let mut substituted_args = tool_call.arguments.clone();
                         substitute_variables(&mut substituted_args, &execution_context);
 
+                        // Inject workflow variables for run_command and execute_browser_script
+                        if matches!(tool_call.tool_name.as_str(), "run_command" | "execute_browser_script") {
+                            // Get env object or create empty one
+                            let mut env_obj = substituted_args
+                                .get("env")
+                                .and_then(|v| v.as_object())
+                                .cloned()
+                                .unwrap_or_else(|| serde_json::Map::new());
+
+                            // Add workflow variables as special env key
+                            if let Some(workflow_vars) = &args.variables {
+                                env_obj.insert(
+                                    "_workflow_variables".to_string(),
+                                    json!(workflow_vars)
+                                );
+                            }
+
+                            // Update the arguments
+                            if let Some(args_obj) = substituted_args.as_object_mut() {
+                                args_obj.insert("env".to_string(), json!(env_obj));
+                            }
+                        }
+
                         // Start step telemetry span
                         let step_id = original_step.and_then(|s| s.id.as_deref());
                         let mut step_span = StepSpan::new(&tool_call.tool_name, step_id);
