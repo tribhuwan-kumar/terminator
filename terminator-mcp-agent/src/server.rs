@@ -69,13 +69,59 @@ impl DesktopWrapper {
     fn is_valid_js_identifier(name: &str) -> bool {
         // Reserved words and globals we don't want to override
         const RESERVED: &[&str] = &[
-            "env", "variables", "desktop", "console", "log", "sleep", "require",
-            "process", "global", "window", "document", "alert", "prompt",
-            "undefined", "null", "true", "false", "NaN", "Infinity",
-            "var", "let", "const", "function", "return", "if", "else", "for", "while",
-            "do", "switch", "case", "break", "continue", "throw", "try", "catch", "finally",
-            "new", "delete", "typeof", "instanceof", "in", "of", "this", "super",
-            "class", "extends", "static", "async", "await", "yield", "import", "export"
+            "env",
+            "variables",
+            "desktop",
+            "console",
+            "log",
+            "sleep",
+            "require",
+            "process",
+            "global",
+            "window",
+            "document",
+            "alert",
+            "prompt",
+            "undefined",
+            "null",
+            "true",
+            "false",
+            "NaN",
+            "Infinity",
+            "var",
+            "let",
+            "const",
+            "function",
+            "return",
+            "if",
+            "else",
+            "for",
+            "while",
+            "do",
+            "switch",
+            "case",
+            "break",
+            "continue",
+            "throw",
+            "try",
+            "catch",
+            "finally",
+            "new",
+            "delete",
+            "typeof",
+            "instanceof",
+            "in",
+            "of",
+            "this",
+            "super",
+            "class",
+            "extends",
+            "static",
+            "async",
+            "await",
+            "yield",
+            "import",
+            "export",
         ];
 
         if RESERVED.contains(&name) {
@@ -1248,25 +1294,24 @@ impl DesktopWrapper {
                             script_path.to_path_buf()
                         }
                     } else {
-                        tracing::info!(
-                            "[run_command] Using absolute path: {}",
-                            script_file
-                        );
+                        tracing::info!("[run_command] Using absolute path: {}", script_file);
                         script_path.to_path_buf()
                     }
                 };
 
                 // Read script from resolved file path
-                tokio::fs::read_to_string(&resolved_path).await.map_err(|e| {
-                    McpError::invalid_params(
-                        "Failed to read script file",
-                        Some(json!({
-                            "file": script_file,
-                            "resolved_path": resolved_path.to_string_lossy(),
-                            "error": e.to_string()
-                        })),
-                    )
-                })?
+                tokio::fs::read_to_string(&resolved_path)
+                    .await
+                    .map_err(|e| {
+                        McpError::invalid_params(
+                            "Failed to read script file",
+                            Some(json!({
+                                "file": script_file,
+                                "resolved_path": resolved_path.to_string_lossy(),
+                                "error": e.to_string()
+                            })),
+                        )
+                    })?
             } else if let Some(run) = &args.run {
                 run.clone()
             } else {
@@ -1288,13 +1333,13 @@ impl DesktopWrapper {
                 if let Some(env_obj) = env.as_object() {
                     // Extract workflow variables
                     if let Some(vars) = env_obj.get("_workflow_variables") {
-                        variables_json = serde_json::to_string(vars)
-                            .unwrap_or_else(|_| "{}".to_string());
+                        variables_json =
+                            serde_json::to_string(vars).unwrap_or_else(|_| "{}".to_string());
                     }
                     // Extract accumulated env
                     if let Some(acc_env) = env_obj.get("_accumulated_env") {
-                        accumulated_env_json = serde_json::to_string(acc_env)
-                            .unwrap_or_else(|_| "{}".to_string());
+                        accumulated_env_json =
+                            serde_json::to_string(acc_env).unwrap_or_else(|_| "{}".to_string());
                     }
                 }
             }
@@ -1309,7 +1354,7 @@ impl DesktopWrapper {
 
             // Prepare explicit env if provided
             let explicit_env_json = if let Some(env) = &env_data {
-                if env.as_object().map_or(false, |o| !o.is_empty()) {
+                if env.as_object().is_some_and(|o| !o.is_empty()) {
                     serde_json::to_string(&env).map_err(|e| {
                         McpError::internal_error(
                             "Failed to serialize env data",
@@ -1330,9 +1375,8 @@ impl DesktopWrapper {
 
                 // Merge explicit env if provided
                 if explicit_env_json != "{}" {
-                    final_script.push_str(&format!(
-                        "env = Object.assign(env, {explicit_env_json});\n"
-                    ));
+                    final_script
+                        .push_str(&format!("env = Object.assign(env, {explicit_env_json});\n"));
                 }
 
                 // Inject individual variables from env
@@ -1343,12 +1387,17 @@ impl DesktopWrapper {
                     accumulated_env_json.clone()
                 };
 
-                if let Ok(env_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env) {
+                if let Ok(env_obj) =
+                    serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env)
+                {
                     for (key, value) in env_obj {
                         if Self::is_valid_js_identifier(&key) {
                             if let Ok(value_json) = serde_json::to_string(&value) {
                                 final_script.push_str(&format!("var {key} = {value_json};\n"));
-                                tracing::debug!("[run_command] Injected env.{} as individual variable", key);
+                                tracing::debug!(
+                                    "[run_command] Injected env.{} as individual variable",
+                                    key
+                                );
                             }
                         }
                     }
@@ -1371,7 +1420,10 @@ impl DesktopWrapper {
                     // For Python, we need to merge differently
                     let mut base: serde_json::Map<String, serde_json::Value> =
                         serde_json::from_str(&accumulated_env_json).unwrap_or_default();
-                    if let Ok(explicit) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&explicit_env_json) {
+                    if let Ok(explicit) = serde_json::from_str::<
+                        serde_json::Map<String, serde_json::Value>,
+                    >(&explicit_env_json)
+                    {
                         base.extend(explicit);
                     }
                     serde_json::to_string(&base).unwrap_or_else(|_| "{}".to_string())
@@ -1379,12 +1431,17 @@ impl DesktopWrapper {
                     accumulated_env_json.clone()
                 };
 
-                if let Ok(env_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env) {
+                if let Ok(env_obj) =
+                    serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env)
+                {
                     for (key, value) in env_obj {
                         if Self::is_valid_js_identifier(&key) {
                             if let Ok(value_json) = serde_json::to_string(&value) {
                                 final_script.push_str(&format!("{key} = {value_json}\n"));
-                                tracing::debug!("[run_command] Injected env.{} as individual variable", key);
+                                tracing::debug!(
+                                    "[run_command] Injected env.{} as individual variable",
+                                    key
+                                );
                             }
                         }
                     }
@@ -1545,25 +1602,24 @@ impl DesktopWrapper {
                         script_path.to_path_buf()
                     }
                 } else {
-                    tracing::info!(
-                        "[run_command] Using absolute path: {}",
-                        script_file
-                    );
+                    tracing::info!("[run_command] Using absolute path: {}", script_file);
                     script_path.to_path_buf()
                 }
             };
 
             // Read script from resolved file path
-            tokio::fs::read_to_string(&resolved_path).await.map_err(|e| {
-                McpError::invalid_params(
-                    "Failed to read script file",
-                    Some(json!({
-                        "file": script_file,
-                        "resolved_path": resolved_path.to_string_lossy(),
-                        "error": e.to_string()
-                    })),
-                )
-            })?
+            tokio::fs::read_to_string(&resolved_path)
+                .await
+                .map_err(|e| {
+                    McpError::invalid_params(
+                        "Failed to read script file",
+                        Some(json!({
+                            "file": script_file,
+                            "resolved_path": resolved_path.to_string_lossy(),
+                            "error": e.to_string()
+                        })),
+                    )
+                })?
         } else if let Some(run) = &args.run {
             run.clone()
         } else {
@@ -3587,16 +3643,18 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             };
 
             // Read script from resolved file path
-            tokio::fs::read_to_string(&resolved_path).await.map_err(|e| {
-                McpError::invalid_params(
-                    "Failed to read script file",
-                    Some(json!({
-                        "file": script_file,
-                        "resolved_path": resolved_path.to_string_lossy(),
-                        "error": e.to_string()
-                    })),
-                )
-            })?
+            tokio::fs::read_to_string(&resolved_path)
+                .await
+                .map_err(|e| {
+                    McpError::invalid_params(
+                        "Failed to read script file",
+                        Some(json!({
+                            "file": script_file,
+                            "resolved_path": resolved_path.to_string_lossy(),
+                            "error": e.to_string()
+                        })),
+                    )
+                })?
         } else if let Some(script) = &args.script {
             if script.is_empty() {
                 return Err(McpError::invalid_params("Script cannot be empty", None));
@@ -3621,13 +3679,13 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             if let Some(env_obj) = env.as_object() {
                 // Extract workflow variables
                 if let Some(vars) = env_obj.get("_workflow_variables") {
-                    variables_json = serde_json::to_string(vars)
-                        .unwrap_or_else(|_| "{}".to_string());
+                    variables_json =
+                        serde_json::to_string(vars).unwrap_or_else(|_| "{}".to_string());
                 }
                 // Extract accumulated env
                 if let Some(acc_env) = env_obj.get("_accumulated_env") {
-                    accumulated_env_json = serde_json::to_string(acc_env)
-                        .unwrap_or_else(|_| "{}".to_string());
+                    accumulated_env_json =
+                        serde_json::to_string(acc_env).unwrap_or_else(|_| "{}".to_string());
                 }
             }
         }
@@ -3642,7 +3700,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         // Prepare explicit env if provided
         let explicit_env_json = if let Some(env) = &env_data {
-            if env.as_object().map_or(false, |o| !o.is_empty()) {
+            if env.as_object().is_some_and(|o| !o.is_empty()) {
                 serde_json::to_string(&env).map_err(|e| {
                     McpError::internal_error(
                         "Failed to serialize env data",
@@ -3661,9 +3719,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         // Merge explicit env if provided
         if explicit_env_json != "{}" {
-            final_script.push_str(&format!(
-                "env = Object.assign(env, {explicit_env_json});\n"
-            ));
+            final_script.push_str(&format!("env = Object.assign(env, {explicit_env_json});\n"));
         }
 
         // Inject individual variables from env (browser scripts are always JavaScript)
@@ -3674,12 +3730,17 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             accumulated_env_json.clone()
         };
 
-        if let Ok(env_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env) {
+        if let Ok(env_obj) =
+            serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env)
+        {
             for (key, value) in env_obj {
                 if Self::is_valid_js_identifier(&key) {
                     if let Ok(value_json) = serde_json::to_string(&value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
-                        tracing::debug!("[execute_browser_script] Injected env.{} as individual variable", key);
+                        tracing::debug!(
+                            "[execute_browser_script] Injected env.{} as individual variable",
+                            key
+                        );
                     }
                 }
             }

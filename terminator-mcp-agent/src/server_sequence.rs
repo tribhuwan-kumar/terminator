@@ -787,19 +787,22 @@ impl DesktopWrapper {
                         substitute_variables(&mut substituted_args, &execution_context);
 
                         // Inject workflow variables and accumulated env for run_command and execute_browser_script
-                        if matches!(tool_call.tool_name.as_str(), "run_command" | "execute_browser_script") {
+                        if matches!(
+                            tool_call.tool_name.as_str(),
+                            "run_command" | "execute_browser_script"
+                        ) {
                             // Get env object or create empty one
                             let mut env_obj = substituted_args
                                 .get("env")
                                 .and_then(|v| v.as_object())
                                 .cloned()
-                                .unwrap_or_else(|| serde_json::Map::new());
+                                .unwrap_or_else(serde_json::Map::new);
 
                             // Add workflow variables as special env key
                             if let Some(workflow_vars) = &args.variables {
                                 env_obj.insert(
                                     "_workflow_variables".to_string(),
-                                    json!(workflow_vars)
+                                    json!(workflow_vars),
                                 );
                             }
 
@@ -807,7 +810,7 @@ impl DesktopWrapper {
                             if let Some(accumulated_env) = execution_context.get("env") {
                                 env_obj.insert(
                                     "_accumulated_env".to_string(),
-                                    accumulated_env.clone()
+                                    accumulated_env.clone(),
                                 );
                             }
 
@@ -879,7 +882,8 @@ impl DesktopWrapper {
                         );
 
                         // Define reserved keys that shouldn't auto-merge
-                        const RESERVED_KEYS: &[&str] = &["status", "error", "logs", "duration_ms", "set_env"];
+                        const RESERVED_KEYS: &[&str] =
+                            &["status", "error", "logs", "duration_ms", "set_env"];
 
                         // Merge env updates from engine/script-based steps into the internal context
                         if (tool_name_normalized == "execute_browser_script"
@@ -927,11 +931,16 @@ impl DesktopWrapper {
 
                                             // Then auto-merge non-reserved fields
                                             if let Some(obj) = parsed_json.as_object() {
-                                                if let Some(env_value) = execution_context_map.get_mut("env") {
-                                                    if let Some(env_map) = env_value.as_object_mut() {
+                                                if let Some(env_value) =
+                                                    execution_context_map.get_mut("env")
+                                                {
+                                                    if let Some(env_map) = env_value.as_object_mut()
+                                                    {
                                                         for (k, v) in obj {
-                                                            if !RESERVED_KEYS.contains(&k.as_str()) {
-                                                                env_map.insert(k.clone(), v.clone());
+                                                            if !RESERVED_KEYS.contains(&k.as_str())
+                                                            {
+                                                                env_map
+                                                                    .insert(k.clone(), v.clone());
                                                                 info!("[execute_browser_script] Auto-merged field '{}' to env", k);
                                                             }
                                                         }
@@ -975,11 +984,16 @@ impl DesktopWrapper {
                                     for item in content_arr {
                                         if let Some(res) = item.get("result") {
                                             if let Some(obj) = res.as_object() {
-                                                if let Some(env_value) = execution_context_map.get_mut("env") {
-                                                    if let Some(env_map) = env_value.as_object_mut() {
+                                                if let Some(env_value) =
+                                                    execution_context_map.get_mut("env")
+                                                {
+                                                    if let Some(env_map) = env_value.as_object_mut()
+                                                    {
                                                         for (k, v) in obj {
-                                                            if !RESERVED_KEYS.contains(&k.as_str()) {
-                                                                env_map.insert(k.clone(), v.clone());
+                                                            if !RESERVED_KEYS.contains(&k.as_str())
+                                                            {
+                                                                env_map
+                                                                    .insert(k.clone(), v.clone());
                                                                 info!("[run_command] Auto-merged field '{}' to env", k);
                                                             }
                                                         }

@@ -96,9 +96,6 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                 client_info: Implementation {
                     name: "terminator-cli".to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
-                    title: None,
-                    website_url: None,
-                    icons: None,
                 },
             };
             let service = client_info.serve(transport).await?;
@@ -199,14 +196,18 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                         let json_str = serde_json::to_string(a).unwrap_or_default();
                         // Truncate very long arguments to avoid verbose output
                         if json_str.len() > 500 {
-                            format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                            format!(
+                                "{}... (truncated, {} total chars)",
+                                &json_str[..500],
+                                json_str.len()
+                            )
                         } else {
                             json_str
                         }
                     })
                     .unwrap_or_else(|| "{}".to_string());
 
-                println!("\n⚡ Calling {} with args: {}", tool_name, args_str);
+                println!("\n⚡ Calling {tool_name} with args: {args_str}");
 
                 match service
                     .call_tool(CallToolRequestParam {
@@ -360,14 +361,18 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                         let json_str = serde_json::to_string(a).unwrap_or_default();
                         // Truncate very long arguments to avoid verbose output
                         if json_str.len() > 500 {
-                            format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                            format!(
+                                "{}... (truncated, {} total chars)",
+                                &json_str[..500],
+                                json_str.len()
+                            )
                         } else {
                             json_str
                         }
                     })
                     .unwrap_or_else(|| "{}".to_string());
 
-                println!("\n⚡ Calling {} with args: {}", tool_name, args_str);
+                println!("\n⚡ Calling {tool_name} with args: {args_str}");
 
                 match service
                     .call_tool(CallToolRequestParam {
@@ -432,9 +437,6 @@ pub async fn execute_command(
                 client_info: Implementation {
                     name: "terminator-cli".to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
-                    title: None,
-                    website_url: None,
-                    icons: None,
                 },
             };
             let service = client_info.serve(transport).await?;
@@ -453,14 +455,18 @@ pub async fn execute_command(
                     let json_str = serde_json::to_string(a).unwrap_or_default();
                     // Truncate very long arguments to avoid verbose output
                     if json_str.len() > 500 {
-                        format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                        format!(
+                            "{}... (truncated, {} total chars)",
+                            &json_str[..500],
+                            json_str.len()
+                        )
                     } else {
                         json_str
                     }
                 })
                 .unwrap_or_else(|| "{}".to_string());
 
-            println!("⚡ Calling {} with args: {}", tool, args_str);
+            println!("⚡ Calling {tool} with args: {args_str}");
 
             let result = service
                 .call_tool(CallToolRequestParam {
@@ -525,14 +531,18 @@ pub async fn execute_command(
                     let json_str = serde_json::to_string(a).unwrap_or_default();
                     // Truncate very long arguments to avoid verbose output
                     if json_str.len() > 500 {
-                        format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                        format!(
+                            "{}... (truncated, {} total chars)",
+                            &json_str[..500],
+                            json_str.len()
+                        )
                     } else {
                         json_str
                     }
                 })
                 .unwrap_or_else(|| "{}".to_string());
 
-            println!("⚡ Calling {} with args: {}", tool, args_str);
+            println!("⚡ Calling {tool} with args: {args_str}");
 
             let result = service
                 .call_tool(CallToolRequestParam {
@@ -662,9 +672,6 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                 client_info: Implementation {
                     name: "terminator-cli-ai".to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
-                    title: None,
-                    website_url: None,
-                    icons: None,
                 },
             };
             client_info.serve(transport).await?
@@ -689,9 +696,6 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
                 client_info: Implementation {
                     name: "terminator-cli-ai".to_string(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
-                    title: None,
-                    website_url: None,
-                    icons: None,
                 },
             };
             client_info.serve(transport).await?
@@ -979,9 +983,6 @@ pub async fn execute_command_with_progress_and_retry(
                     client_info: Implementation {
                         name: "terminator-cli".to_string(),
                         version: env!("CARGO_PKG_VERSION").to_string(),
-                        title: None,
-                        website_url: None,
-                        icons: None,
                     },
                 };
 

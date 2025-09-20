@@ -1804,8 +1804,12 @@ impl UIElementImpl for WindowsUIElement {
                 None,
             )
             .map_err(|e| {
-                debug!("Failed to create Edit condition for URL fallback at {}:{}: {:?}",
-                       file!(), line!(), e);
+                debug!(
+                    "Failed to create Edit condition for URL fallback at {}:{}: {:?}",
+                    file!(),
+                    line!(),
+                    e
+                );
                 e
             })
             .ok()?;

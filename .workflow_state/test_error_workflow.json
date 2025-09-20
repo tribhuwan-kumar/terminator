@@ -1,0 +1,10 @@
+{
+  "last_updated": "2025-09-20T02:40:58.636834800+00:00",
+  "last_step_id": "test_invalid_element",
+  "last_step_index": 3,
+  "workflow_file": "test_error_workflow.yml",
+  "env": {
+    "error_message": "(await desktop.application(\"Chrome\")).findElement is not a function. (In '(await desktop.application(\"Chrome\")).findElement(\"name:ThisElementDoesNotExist12345\")', '(await desktop.application(\"Chrome\")).findElement' is undefined)",
+    "test": "invalid_element"
+  }
+}

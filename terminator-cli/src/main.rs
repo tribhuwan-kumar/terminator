@@ -993,21 +993,36 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
             workflow_args.insert("stop_on_error".to_string(), serde_json::Value::Bool(false));
         }
         if args.no_detailed_results {
-            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(false));
+            workflow_args.insert(
+                "include_detailed_results".to_string(),
+                serde_json::Value::Bool(false),
+            );
         } else {
             // Default to true for detailed results
-            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(true));
+            workflow_args.insert(
+                "include_detailed_results".to_string(),
+                serde_json::Value::Bool(true),
+            );
         }
 
         // Add step control parameters if provided
         if let Some(start_step) = &args.start_from_step {
-            workflow_args.insert("start_from_step".to_string(), serde_json::Value::String(start_step.clone()));
+            workflow_args.insert(
+                "start_from_step".to_string(),
+                serde_json::Value::String(start_step.clone()),
+            );
         }
         if let Some(end_step) = &args.end_at_step {
-            workflow_args.insert("end_at_step".to_string(), serde_json::Value::String(end_step.clone()));
+            workflow_args.insert(
+                "end_at_step".to_string(),
+                serde_json::Value::String(end_step.clone()),
+            );
         }
         if let Some(follow) = args.follow_fallback {
-            workflow_args.insert("follow_fallback".to_string(), serde_json::Value::Bool(follow));
+            workflow_args.insert(
+                "follow_fallback".to_string(),
+                serde_json::Value::Bool(follow),
+            );
         }
 
         serde_json::to_string(&workflow_args)?
@@ -1230,20 +1245,35 @@ async fn run_workflow_once(
             workflow_args.insert("stop_on_error".to_string(), serde_json::Value::Bool(false));
         }
         if args.no_detailed_results {
-            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(false));
+            workflow_args.insert(
+                "include_detailed_results".to_string(),
+                serde_json::Value::Bool(false),
+            );
         } else {
-            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(true));
+            workflow_args.insert(
+                "include_detailed_results".to_string(),
+                serde_json::Value::Bool(true),
+            );
         }
 
         // Add step control parameters if provided
         if let Some(start_step) = &args.start_from_step {
-            workflow_args.insert("start_from_step".to_string(), serde_json::Value::String(start_step.clone()));
+            workflow_args.insert(
+                "start_from_step".to_string(),
+                serde_json::Value::String(start_step.clone()),
+            );
         }
         if let Some(end_step) = &args.end_at_step {
-            workflow_args.insert("end_at_step".to_string(), serde_json::Value::String(end_step.clone()));
+            workflow_args.insert(
+                "end_at_step".to_string(),
+                serde_json::Value::String(end_step.clone()),
+            );
         }
         if let Some(follow) = args.follow_fallback {
-            workflow_args.insert("follow_fallback".to_string(), serde_json::Value::Bool(follow));
+            workflow_args.insert(
+                "follow_fallback".to_string(),
+                serde_json::Value::Bool(follow),
+            );
         }
 
         serde_json::to_string(&workflow_args)?
