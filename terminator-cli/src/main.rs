@@ -135,6 +135,18 @@ struct McpRunArgs {
     /// Skip retry logic on errors (default: false, will retry on errors)
     #[clap(long)]
     no_retry: bool,
+
+    /// Start execution from a specific step ID
+    #[clap(long)]
+    start_from_step: Option<String>,
+
+    /// End execution at a specific step ID (inclusive)
+    #[clap(long)]
+    end_at_step: Option<String>,
+
+    /// Follow fallback_id even beyond end_at_step boundary (default: false when end_at_step is specified)
+    #[clap(long)]
+    follow_fallback: Option<bool>,
 }
 
 #[derive(Subcommand)]
@@ -987,6 +999,17 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
             workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(true));
         }
 
+        // Add step control parameters if provided
+        if let Some(start_step) = &args.start_from_step {
+            workflow_args.insert("start_from_step".to_string(), serde_json::Value::String(start_step.clone()));
+        }
+        if let Some(end_step) = &args.end_at_step {
+            workflow_args.insert("end_at_step".to_string(), serde_json::Value::String(end_step.clone()));
+        }
+        if let Some(follow) = args.follow_fallback {
+            workflow_args.insert("follow_fallback".to_string(), serde_json::Value::Bool(follow));
+        }
+
         serde_json::to_string(&workflow_args)?
     } else {
         // For remote sources, send the entire parsed content
@@ -1210,6 +1233,17 @@ async fn run_workflow_once(
             workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(false));
         } else {
             workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(true));
+        }
+
+        // Add step control parameters if provided
+        if let Some(start_step) = &args.start_from_step {
+            workflow_args.insert("start_from_step".to_string(), serde_json::Value::String(start_step.clone()));
+        }
+        if let Some(end_step) = &args.end_at_step {
+            workflow_args.insert("end_at_step".to_string(), serde_json::Value::String(end_step.clone()));
+        }
+        if let Some(follow) = args.follow_fallback {
+            workflow_args.insert("follow_fallback".to_string(), serde_json::Value::Bool(follow));
         }
 
         serde_json::to_string(&workflow_args)?
