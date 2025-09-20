@@ -170,6 +170,10 @@ steps:
         // Workflow variables also auto-available
         console.log(`Config: ${variables.max_retries}`);
 
+        // NEW: Direct variable access also works!
+        console.log(`Processing: ${file_path} (${file_size} bytes)`);
+        console.log(`Config: ${max_retries}`);
+
         // Continue with desktop automation
         const elements = await desktop.locator('role:button').all();
 
@@ -185,9 +189,11 @@ steps:
 
 - **NEW:** `env` and `variables` are automatically injected into all scripts
 - **NEW:** Non-reserved fields in return values auto-merge into env (no `set_env` wrapper needed)
+- **NEW:** Valid env fields are also available as individual variables (e.g., `file_path` instead of `env.file_path`)
 - Reserved fields that don't auto-merge: `status`, `error`, `logs`, `duration_ms`, `set_env`
 - Data passing only works with `engine` mode (JavaScript/Python), NOT with shell commands
 - Backward compatible: explicit `set_env` still works if needed
+- Individual variable names must be valid JavaScript identifiers (no spaces, special chars, or reserved keywords)
 - Watch for backslash escaping issues in Windows paths (may need double escaping)
 - Consider combining related operations in a single step if data passing becomes complex
 
@@ -425,15 +431,19 @@ execute_browser_script({
     userId: "{{env.userId}}",
   },
   script: `
-    // Parse env if it's a JSON string
+    // Parse env if it's a JSON string (for backward compatibility)
     const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-    
-    // Use the data
+
+    // Use the data - traditional way
     console.log('Processing user:', parsedEnv.userName);
-    
+
+    // NEW: Direct variable access also works!
+    console.log('Processing user:', userName);  // Direct access
+    console.log('User ID:', userId);            // No env prefix needed
+
     // Fill form with data
-    document.querySelector('#username').value = parsedEnv.userName;
-    document.querySelector('#userid').value = parsedEnv.userId;
+    document.querySelector('#username').value = userName;
+    document.querySelector('#userid').value = userId;
     
     // Return result and set new variables
     JSON.stringify({

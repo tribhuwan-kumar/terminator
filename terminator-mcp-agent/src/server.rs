@@ -65,6 +65,37 @@ pub fn extract_content_json(content: &Content) -> Result<serde_json::Value, serd
 
 #[tool_router]
 impl DesktopWrapper {
+    /// Check if a string is a valid JavaScript identifier and not a reserved word
+    fn is_valid_js_identifier(name: &str) -> bool {
+        // Reserved words and globals we don't want to override
+        const RESERVED: &[&str] = &[
+            "env", "variables", "desktop", "console", "log", "sleep", "require",
+            "process", "global", "window", "document", "alert", "prompt",
+            "undefined", "null", "true", "false", "NaN", "Infinity",
+            "var", "let", "const", "function", "return", "if", "else", "for", "while",
+            "do", "switch", "case", "break", "continue", "throw", "try", "catch", "finally",
+            "new", "delete", "typeof", "instanceof", "in", "of", "this", "super",
+            "class", "extends", "static", "async", "await", "yield", "import", "export"
+        ];
+
+        if RESERVED.contains(&name) {
+            return false;
+        }
+
+        // Check if it's a valid identifier: starts with letter/underscore/$,
+        // continues with letters/digits/underscore/$
+        if name.is_empty() {
+            return false;
+        }
+
+        let mut chars = name.chars();
+        let first = chars.next().unwrap();
+        if !first.is_alphabetic() && first != '_' && first != '$' {
+            return false;
+        }
+
+        chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    }
     /// Helper function to determine include_tree value
     /// Checks the INCLUDE_TREE environment variable
     /// If not present, defaults to true
@@ -1304,9 +1335,28 @@ impl DesktopWrapper {
                     ));
                 }
 
+                // Inject individual variables from env
+                let merged_env = if explicit_env_json != "{}" {
+                    // Merge accumulated and explicit env for individual vars
+                    format!("Object.assign({{}}, {accumulated_env_json}, {explicit_env_json})")
+                } else {
+                    accumulated_env_json.clone()
+                };
+
+                if let Ok(env_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env) {
+                    for (key, value) in env_obj {
+                        if Self::is_valid_js_identifier(&key) {
+                            if let Ok(value_json) = serde_json::to_string(&value) {
+                                final_script.push_str(&format!("var {key} = {value_json};\n"));
+                                tracing::debug!("[run_command] Injected env.{} as individual variable", key);
+                            }
+                        }
+                    }
+                }
+
                 // Inject variables
                 final_script.push_str(&format!("var variables = {variables_json};\n"));
-                tracing::debug!("[run_command] Injected accumulated env, explicit env, and workflow variables for JavaScript");
+                tracing::debug!("[run_command] Injected accumulated env, explicit env, individual vars, and workflow variables for JavaScript");
             } else if matches!(engine.as_str(), "python" | "py") {
                 // For Python, inject as dictionaries
                 final_script.push_str(&format!("env = {accumulated_env_json}\n"));
@@ -1316,8 +1366,32 @@ impl DesktopWrapper {
                     final_script.push_str(&format!("env.update({explicit_env_json})\n"));
                 }
 
+                // Inject individual variables from env
+                let merged_env = if explicit_env_json != "{}" {
+                    // For Python, we need to merge differently
+                    let mut base: serde_json::Map<String, serde_json::Value> =
+                        serde_json::from_str(&accumulated_env_json).unwrap_or_default();
+                    if let Ok(explicit) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&explicit_env_json) {
+                        base.extend(explicit);
+                    }
+                    serde_json::to_string(&base).unwrap_or_else(|_| "{}".to_string())
+                } else {
+                    accumulated_env_json.clone()
+                };
+
+                if let Ok(env_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env) {
+                    for (key, value) in env_obj {
+                        if Self::is_valid_js_identifier(&key) {
+                            if let Ok(value_json) = serde_json::to_string(&value) {
+                                final_script.push_str(&format!("{key} = {value_json}\n"));
+                                tracing::debug!("[run_command] Injected env.{} as individual variable", key);
+                            }
+                        }
+                    }
+                }
+
                 final_script.push_str(&format!("variables = {variables_json}\n"));
-                tracing::debug!("[run_command] Injected accumulated env, explicit env, and workflow variables for Python");
+                tracing::debug!("[run_command] Injected accumulated env, explicit env, individual vars, and workflow variables for Python");
             }
 
             // Append the actual script
@@ -3592,9 +3666,28 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             ));
         }
 
+        // Inject individual variables from env (browser scripts are always JavaScript)
+        let merged_env = if explicit_env_json != "{}" {
+            // Merge accumulated and explicit env for individual vars
+            format!("Object.assign({{}}, {accumulated_env_json}, {explicit_env_json})")
+        } else {
+            accumulated_env_json.clone()
+        };
+
+        if let Ok(env_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env) {
+            for (key, value) in env_obj {
+                if Self::is_valid_js_identifier(&key) {
+                    if let Ok(value_json) = serde_json::to_string(&value) {
+                        final_script.push_str(&format!("var {key} = {value_json};\n"));
+                        tracing::debug!("[execute_browser_script] Injected env.{} as individual variable", key);
+                    }
+                }
+            }
+        }
+
         // Inject variables
         final_script.push_str(&format!("var variables = {variables_json};\n"));
-        tracing::debug!("[execute_browser_script] Injected accumulated env, explicit env, and workflow variables");
+        tracing::debug!("[execute_browser_script] Injected accumulated env, explicit env, individual vars, and workflow variables");
 
         // Append the actual script
         final_script.push_str(&script_content);

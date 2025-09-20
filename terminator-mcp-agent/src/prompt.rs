@@ -122,6 +122,7 @@ Use `run_command` with `engine` to execute code directly with SDK bindings:
 *   `desktop` - Main Desktop automation instance
 *   `env` - Accumulated environment from previous steps (auto-injected, no setup needed)
 *   `variables` - Workflow-defined variables (auto-injected, read-only)
+*   Individual env fields - Valid env fields are also available as direct variables (e.g., `file_path` instead of `env.file_path`)
 *   `log(message)` - Console logging function
 *   `sleep(ms)` - Async delay function (returns Promise)
 
@@ -155,14 +156,18 @@ run_command({{
 
 // In process.js:
 // env and variables are automatically available
-console.log(`Processing files from ${{env.input_dir}}`);  // From previous step
+console.log(`Processing files from ${{env.input_dir}}`);  // Traditional way
 console.log(`Config: ${{variables.max_retries}}`);        // From workflow definition
+
+// NEW: Direct variable access also works
+console.log(`Processing files from ${{input_dir}}`);      // Direct access
+console.log(`Config: ${{max_retries}}`);                  // Direct from variables
 
 // Return data directly (auto-merges to env)
 return {{
   status: 'success',
-  files_processed: 42,    // Becomes env.files_processed
-  output_path: '/data'    // Becomes env.output_path
+  files_processed: 42,    // Becomes env.files_processed (and files_processed)
+  output_path: '/data'    // Becomes env.output_path (and output_path)
 }};
 ```
 
@@ -174,8 +179,12 @@ return {{
 4. **Access in next step** - env is automatically available:
    ```javascript
    // Direct access - no template substitution needed
-   const value = env.key;
-   const config = variables.some_config;
+   const value = env.key;                  // Traditional way
+   const config = variables.some_config;   // From workflow definition
+
+   // NEW: Individual variables also work directly
+   console.log(key);                       // Direct access without env prefix
+   console.log(some_config);               // Direct access from variables
    ```
 
 **Reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
