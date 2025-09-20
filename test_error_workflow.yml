@@ -1,0 +1,93 @@
+name: test_error_conditions
+description: Test workflow to trigger error conditions and verify proper error handling
+
+steps:
+  - name: Get all applications
+    tool_name: get_applications
+    id: get_apps
+    arguments:
+      include_tree: false
+
+  - name: Try to find non-existent application
+    tool_name: run_command
+    id: test_invalid_app
+    arguments:
+      engine: javascript
+      run: |
+        console.log('[Error Test] Testing application error handling...');
+
+        try {
+          // This should trigger an error - app doesn't exist
+          const fakeApp = await desktop.application("ThisAppDefinitelyDoesNotExist12345");
+          console.log('ERROR: Should not reach here - found fake app:', fakeApp);
+          return { status: 'unexpected_success' };
+        } catch (e) {
+          console.log('[Expected] Error caught for non-existent app:', e.message);
+          return {
+            status: 'error_caught_successfully',
+            error_message: e.message,
+            test: 'non_existent_app'
+          };
+        }
+
+  - name: Try invalid PID lookup
+    tool_name: run_command
+    id: test_invalid_pid
+    arguments:
+      engine: javascript
+      run: |
+        console.log('[Error Test] Testing PID lookup error handling...');
+
+        try {
+          // This should trigger an error - invalid PID
+          const appByPid = await desktop.applicationByPid(99999999);
+          console.log('ERROR: Should not reach here - found app by invalid PID:', appByPid);
+          return { status: 'unexpected_success' };
+        } catch (e) {
+          console.log('[Expected] Error caught for invalid PID:', e.message);
+          return {
+            status: 'error_caught_successfully',
+            error_message: e.message,
+            test: 'invalid_pid'
+          };
+        }
+
+  - name: Try to get element from non-existent window
+    tool_name: run_command
+    id: test_invalid_element
+    arguments:
+      engine: javascript
+      run: |
+        console.log('[Error Test] Testing element error handling...');
+
+        try {
+          // First check if any Chrome exists
+          const apps = await desktop.applications();
+          const chromeApps = [];
+          for (const app of apps) {
+            const name = await app.name();
+            if (name && name.toLowerCase().includes('chrome')) {
+              chromeApps.push(name);
+            }
+          }
+
+          if (chromeApps.length === 0) {
+            console.log('No Chrome windows found - will try to get element anyway');
+            // This should error - no Chrome window
+            const chromeWindow = await desktop.application("Chrome");
+            const element = await chromeWindow.findElement("name:NonExistentElement");
+            return { status: 'unexpected_success' };
+          } else {
+            console.log('Chrome found, testing non-existent element');
+            const chromeWindow = await desktop.application("Chrome");
+            const element = await chromeWindow.findElement("name:ThisElementDoesNotExist12345");
+            return { status: 'unexpected_success' };
+          }
+        } catch (e) {
+          console.log('[Expected] Error caught for element operation:', e.message);
+          return {
+            status: 'error_caught_successfully',
+            error_message: e.message,
+            test: 'invalid_element'
+          };
+        }

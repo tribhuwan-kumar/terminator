@@ -1,0 +1,125 @@
+name: test_com_errors
+description: Test Windows COM error handling that previously caused panics
+
+steps:
+  - name: Test finding application by invalid PID
+    tool_name: run_command
+    id: test_pid_lookup
+    arguments:
+      engine: javascript
+      run: |
+        console.log('[COM Error Test] Testing PID lookup that would trigger COM error...');
+
+        // Get all applications to test PID operations
+        const apps = await desktop.applications();
+        console.log(`Found ${apps.length} applications`);
+
+        // Try to find app by very large PID that doesn't exist
+        // This should trigger the Windows COM E_FAIL error we fixed
+        try {
+          const invalidPids = [99999999, -1, 0];
+          for (const pid of invalidPids) {
+            console.log(`Testing PID ${pid}...`);
+            try {
+              // This would previously panic with unwrap() on COM error
+              const result = await desktop.findApplicationByPid(pid);
+              console.log(`Unexpected: Found app for PID ${pid}:`, result);
+            } catch (e) {
+              console.log(`✅ Expected error for PID ${pid}: ${e.message}`);
+            }
+          }
+        } catch (e) {
+          console.log('Error during PID test:', e.message);
+        }
+
+        return { status: 'completed', test: 'pid_lookup' };
+
+  - name: Test element operations that trigger COM errors
+    tool_name: run_command
+    id: test_element_ops
+    arguments:
+      engine: javascript
+      run: |
+        console.log('[COM Error Test] Testing element operations that would trigger COM errors...');
+
+        try {
+          // Get Chrome or any available app
+          const apps = await desktop.applications();
+          let testApp = null;
+          for (const app of apps) {
+            const name = await app.name();
+            if (name) {
+              testApp = app;
+              console.log(`Using app for testing: ${name}`);
+              break;
+            }
+          }
+
+          if (testApp) {
+            // Try to get elements with invalid selectors
+            // These would previously panic with unwrap() on COM errors
+            const invalidSelectors = [
+              "role:INVALID_ROLE_12345",
+              "automationid:",  // Empty automation ID
+              "name:\x00\x00",  // Null characters
+              "processid:99999999"
+            ];
+
+            for (const selector of invalidSelectors) {
+              console.log(`Testing selector: "${selector}"`);
+              try {
+                const element = await testApp.select(selector);
+                if (element) {
+                  console.log(`Unexpected: Found element for selector: ${selector}`);
+                } else {
+                  console.log(`✅ No element found for selector: ${selector} (expected)`);
+                }
+              } catch (e) {
+                console.log(`✅ Expected error for selector "${selector}": ${e.message}`);
+              }
+            }
+          } else {
+            console.log('No applications found to test element operations');
+          }
+        } catch (e) {
+          console.log('Error during element test:', e.message);
+        }
+
+        return { status: 'completed', test: 'element_operations' };
+
+  - name: Test browser search that could trigger COM errors
+    tool_name: run_command
+    id: test_browser_search
+    arguments:
+      engine: javascript
+      run: |
+        console.log('[COM Error Test] Testing browser search operations...');
+
+        try {
+          // Try to find browser tabs with various conditions
+          // These operations previously had unwrap() calls that could panic
+          const browsers = ['Chrome', 'Firefox', 'Edge', 'Safari'];
+
+          for (const browser of browsers) {
+            console.log(`Searching for ${browser}...`);
+            try {
+              const app = await desktop.application(browser);
+              if (app) {
+                console.log(`Found ${browser}`);
+                // Try to get tree - this had unwrap() calls
+                try {
+                  const tree = await app.tree();
+                  console.log(`✅ Got tree for ${browser}`);
+                } catch (e) {
+                  console.log(`✅ Expected error getting tree: ${e.message}`);
+                }
+              }
+            } catch (e) {
+              console.log(`${browser} not found or error: ${e.message}`);
+            }
+          }
+        } catch (e) {
+          console.log('Error during browser search:', e.message);
+        }
+
+        return { status: 'completed', test: 'browser_search' };
