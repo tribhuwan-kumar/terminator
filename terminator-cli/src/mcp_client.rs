@@ -190,14 +190,20 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                     None
                 };
 
-                println!(
-                    "\n⚡ Calling {} with args: {}",
-                    tool_name,
-                    arguments
-                        .as_ref()
-                        .map(|a| serde_json::to_string(a).unwrap_or_default())
-                        .unwrap_or_else(|| "{}".to_string())
-                );
+                let args_str = arguments
+                    .as_ref()
+                    .map(|a| {
+                        let json_str = serde_json::to_string(a).unwrap_or_default();
+                        // Truncate very long arguments to avoid verbose output
+                        if json_str.len() > 500 {
+                            format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                        } else {
+                            json_str
+                        }
+                    })
+                    .unwrap_or_else(|| "{}".to_string());
+
+                println!("\n⚡ Calling {} with args: {}", tool_name, args_str);
 
                 match service
                     .call_tool(CallToolRequestParam {
@@ -345,14 +351,20 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
                     None
                 };
 
-                println!(
-                    "\n⚡ Calling {} with args: {}",
-                    tool_name,
-                    arguments
-                        .as_ref()
-                        .map(|a| serde_json::to_string(a).unwrap_or_default())
-                        .unwrap_or_else(|| "{}".to_string())
-                );
+                let args_str = arguments
+                    .as_ref()
+                    .map(|a| {
+                        let json_str = serde_json::to_string(a).unwrap_or_default();
+                        // Truncate very long arguments to avoid verbose output
+                        if json_str.len() > 500 {
+                            format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                        } else {
+                            json_str
+                        }
+                    })
+                    .unwrap_or_else(|| "{}".to_string());
+
+                println!("\n⚡ Calling {} with args: {}", tool_name, args_str);
 
                 match service
                     .call_tool(CallToolRequestParam {
@@ -429,14 +441,20 @@ pub async fn execute_command(
                 None
             };
 
-            println!(
-                "⚡ Calling {} with args: {}",
-                tool,
-                arguments
-                    .as_ref()
-                    .map(|a| serde_json::to_string(a).unwrap_or_default())
-                    .unwrap_or_else(|| "{}".to_string())
-            );
+            let args_str = arguments
+                .as_ref()
+                .map(|a| {
+                    let json_str = serde_json::to_string(a).unwrap_or_default();
+                    // Truncate very long arguments to avoid verbose output
+                    if json_str.len() > 500 {
+                        format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                    } else {
+                        json_str
+                    }
+                })
+                .unwrap_or_else(|| "{}".to_string());
+
+            println!("⚡ Calling {} with args: {}", tool, args_str);
 
             let result = service
                 .call_tool(CallToolRequestParam {
@@ -495,14 +513,20 @@ pub async fn execute_command(
                 None
             };
 
-            println!(
-                "⚡ Calling {} with args: {}",
-                tool,
-                arguments
-                    .as_ref()
-                    .map(|a| serde_json::to_string(a).unwrap_or_default())
-                    .unwrap_or_else(|| "{}".to_string())
-            );
+            let args_str = arguments
+                .as_ref()
+                .map(|a| {
+                    let json_str = serde_json::to_string(a).unwrap_or_default();
+                    // Truncate very long arguments to avoid verbose output
+                    if json_str.len() > 500 {
+                        format!("{}... (truncated, {} total chars)", &json_str[..500], json_str.len())
+                    } else {
+                        json_str
+                    }
+                })
+                .unwrap_or_else(|| "{}".to_string());
+
+            println!("⚡ Calling {} with args: {}", tool, args_str);
 
             let result = service
                 .call_tool(CallToolRequestParam {

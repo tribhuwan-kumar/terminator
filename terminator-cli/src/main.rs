@@ -961,7 +961,37 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
 
     info!("Executing workflow with {steps_count} steps via MCP");
 
-    let workflow_str = serde_json::to_string(&workflow_val)?;
+    // For local files, use file:// URL to avoid verbose logging
+    let workflow_str = if resolved_type == InputType::File {
+        info!("Using file:// URL for local file");
+
+        // Convert to absolute path and create file:// URL
+        let abs_path = std::fs::canonicalize(&args.input)
+            .with_context(|| format!("Failed to resolve path: {}", args.input))?;
+        let file_url = format!("file://{}", abs_path.display());
+
+        info!("File URL: {}", file_url);
+
+        // Build minimal execute_sequence args with just the URL
+        let mut workflow_args = serde_json::Map::new();
+        workflow_args.insert("url".to_string(), serde_json::Value::String(file_url));
+
+        // Apply overrides
+        if args.no_stop_on_error {
+            workflow_args.insert("stop_on_error".to_string(), serde_json::Value::Bool(false));
+        }
+        if args.no_detailed_results {
+            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(false));
+        } else {
+            // Default to true for detailed results
+            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(true));
+        }
+
+        serde_json::to_string(&workflow_args)?
+    } else {
+        // For remote sources, send the entire parsed content
+        serde_json::to_string(&workflow_val)?
+    };
 
     let result_json = mcp_client::execute_command_with_progress_and_retry(
         transport,
@@ -1161,7 +1191,32 @@ async fn run_workflow_once(
     }
 
     // For cron jobs, use simple execution to avoid connection spam
-    let workflow_str = serde_json::to_string(&workflow_val)?;
+    // For local files, use file:// URL to avoid verbose logging
+    let workflow_str = if resolved_type == InputType::File {
+        // Convert to absolute path and create file:// URL
+        let abs_path = std::fs::canonicalize(&args.input)
+            .with_context(|| format!("Failed to resolve path: {}", args.input))?;
+        let file_url = format!("file://{}", abs_path.display());
+
+        // Build minimal execute_sequence args with just the URL
+        let mut workflow_args = serde_json::Map::new();
+        workflow_args.insert("url".to_string(), serde_json::Value::String(file_url));
+
+        // Apply overrides
+        if args.no_stop_on_error {
+            workflow_args.insert("stop_on_error".to_string(), serde_json::Value::Bool(false));
+        }
+        if args.no_detailed_results {
+            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(false));
+        } else {
+            workflow_args.insert("include_detailed_results".to_string(), serde_json::Value::Bool(true));
+        }
+
+        serde_json::to_string(&workflow_args)?
+    } else {
+        // For remote sources, send the entire parsed content
+        serde_json::to_string(&workflow_val)?
+    };
     let result_json = mcp_client::execute_command_with_progress_and_retry(
         transport,
         "execute_sequence".to_string(),
