@@ -1803,7 +1803,12 @@ impl UIElementImpl for WindowsUIElement {
                 Variant::from(ControlType::Edit as i32),
                 None,
             )
-            .unwrap();
+            .map_err(|e| {
+                debug!("Failed to create Edit condition for URL fallback at {}:{}: {:?}",
+                       file!(), line!(), e);
+                e
+            })
+            .ok()?;
         if let Ok(candidates) = search_root.find_all(TreeScope::Descendants, &edit_condition) {
             for candidate in candidates {
                 if let Ok(value_pattern) = candidate.get_pattern::<patterns::UIValuePattern>() {
@@ -1850,7 +1855,10 @@ impl UIElementImpl for WindowsUIElement {
                         option_name.into(),
                         None,
                     )
-                    .unwrap(),
+                    .map_err(|e| AutomationError::PlatformError(
+                        format!("Failed to create Name condition for option '{}' at {}:{}: {:?}",
+                               option_name, file!(), line!(), e)
+                    ))?,
             )
             .map_err(|e| {
                 AutomationError::ElementNotFound(format!(

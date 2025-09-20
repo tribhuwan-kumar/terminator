@@ -448,7 +448,11 @@ impl WindowsEngine {
 #[async_trait::async_trait]
 impl AccessibilityEngine for WindowsEngine {
     fn get_root_element(&self) -> UIElement {
-        let root = self.automation.0.get_root_element().unwrap();
+        let root = self.automation.0.get_root_element()
+            .unwrap_or_else(|e| {
+                panic!("Failed to get UI root element at {}:{} - Windows UI Automation may be unavailable: {:?}",
+                       file!(), line!(), e)
+            });
         let arc_root = ThreadSafeWinUIElement(Arc::new(root));
         UIElement::new(Box::new(WindowsUIElement {
             element: arc_root,
@@ -457,12 +461,17 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     fn get_element_by_id(&self, id: i32) -> Result<UIElement, AutomationError> {
-        let root_element = self.automation.0.get_root_element().unwrap();
+        let root_element = self.automation.0.get_root_element()
+            .map_err(|e| AutomationError::PlatformError(
+                format!("Failed to get root element for ID lookup at {}:{}: {:?}", file!(), line!(), e)
+            ))?;
         let condition = self
             .automation
             .0
             .create_property_condition(UIProperty::ProcessId, Variant::from(id), None)
-            .unwrap();
+            .map_err(|e| AutomationError::PlatformError(
+                format!("Failed to create ProcessId condition for ID {} at {}:{}: {:?}", id, file!(), line!(), e)
+            ))?;
         let ele = root_element
             .find_first(TreeScope::Subtree, &condition)
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
@@ -489,7 +498,10 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     fn get_applications(&self) -> Result<Vec<UIElement>, AutomationError> {
-        let root = self.automation.0.get_root_element().unwrap();
+        let root = self.automation.0.get_root_element()
+            .map_err(|e| AutomationError::PlatformError(
+                format!("Failed to get root element for applications at {}:{}: {:?}", file!(), line!(), e)
+            ))?;
 
         // OPTIMIZATION: Use Children scope instead of Subtree to avoid deep tree traversal
         // Most applications are direct children of the desktop
@@ -501,7 +513,9 @@ impl AccessibilityEngine for WindowsEngine {
                 Variant::from(ControlType::Window as i32),
                 None,
             )
-            .unwrap();
+            .map_err(|e| AutomationError::PlatformError(
+                format!("Failed to create Window condition at {}:{}: {:?}", file!(), line!(), e)
+            ))?;
 
         let condition_pane = self
             .automation
@@ -511,13 +525,17 @@ impl AccessibilityEngine for WindowsEngine {
                 Variant::from(ControlType::Pane as i32),
                 None,
             )
-            .unwrap();
+            .map_err(|e| AutomationError::PlatformError(
+                format!("Failed to create Pane condition at {}:{}: {:?}", file!(), line!(), e)
+            ))?;
 
         let condition = self
             .automation
             .0
             .create_or_condition(condition_win, condition_pane)
-            .unwrap();
+            .map_err(|e| AutomationError::PlatformError(
+                format!("Failed to create OR condition at {}:{}: {:?}", file!(), line!(), e)
+            ))?;
 
         let elements = root
             .find_all(TreeScope::Children, &condition)
@@ -585,10 +603,16 @@ impl AccessibilityEngine for WindowsEngine {
             if let Some(ele) = el.as_any().downcast_ref::<WindowsUIElement>() {
                 &ele.element.0
             } else {
-                &Arc::new(self.automation.0.get_root_element().unwrap())
+                &Arc::new(self.automation.0.get_root_element()
+                    .map_err(|e| AutomationError::PlatformError(
+                        format!("Failed to get root element for selector search at {}:{}: {:?}", file!(), line!(), e)
+                    ))?)
             }
         } else {
-            &Arc::new(self.automation.0.get_root_element().unwrap())
+            &Arc::new(self.automation.0.get_root_element()
+                .map_err(|e| AutomationError::PlatformError(
+                    format!("Failed to get root element for selector search at {}:{}: {:?}", file!(), line!(), e)
+                ))?)
         };
 
         let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
@@ -1184,10 +1208,16 @@ impl AccessibilityEngine for WindowsEngine {
             if let Some(ele) = el.as_any().downcast_ref::<WindowsUIElement>() {
                 &ele.element.0
             } else {
-                &Arc::new(self.automation.0.get_root_element().unwrap())
+                &Arc::new(self.automation.0.get_root_element()
+                    .map_err(|e| AutomationError::PlatformError(
+                        format!("Failed to get root element for selector search at {}:{}: {:?}", file!(), line!(), e)
+                    ))?)
             }
         } else {
-            &Arc::new(self.automation.0.get_root_element().unwrap())
+            &Arc::new(self.automation.0.get_root_element()
+                .map_err(|e| AutomationError::PlatformError(
+                    format!("Failed to get root element for selector search at {}:{}: {:?}", file!(), line!(), e)
+                ))?)
         };
 
         let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
@@ -1373,7 +1403,10 @@ impl AccessibilityEngine for WindowsEngine {
                             Variant::from(segment.control_type as i32),
                             None,
                         )
-                        .unwrap();
+                        .map_err(|e| AutomationError::PlatformError(
+                            format!("Failed to create ControlType condition for path segment at {}:{}: {:?}",
+                                    file!(), line!(), e)
+                        ))?;
 
                     // avoid using matcher, for no depth limit
                     // & traverse only Children instead of whole Subtree
@@ -1591,7 +1624,11 @@ impl AccessibilityEngine for WindowsEngine {
                                 // For now, we'll treat this as getting all children of any type
 
                                 // Get all direct children (using a generic matcher)
-                                let condition = self.automation.0.create_true_condition().unwrap();
+                                let condition = self.automation.0.create_true_condition()
+                                    .map_err(|e| AutomationError::PlatformError(
+                                        format!("Failed to create true condition for Nth selector at step {} - {}:{}: {:?}",
+                                                step_idx + 2, file!(), line!(), e)
+                                    ))?;
 
                                 let win_element = current_element
                                     .as_any()
@@ -1999,7 +2036,14 @@ impl AccessibilityEngine for WindowsEngine {
                     }
                 };
 
-                let root = automation.get_root_element().unwrap();
+                let root = automation.get_root_element()
+                    .map_err(|e| {
+                        error!("Failed to get root element for browser search: {:?}", e);
+                        e
+                    })
+                    .unwrap_or_else(|_| {
+                        panic!("Failed to get root element for browser window search at {}:{}", file!(), line!())
+                    });
                 let search_keywords: String = title
                     .split_whitespace()
                     .take(5)
@@ -2218,7 +2262,14 @@ impl AccessibilityEngine for WindowsEngine {
                         }
                     };
 
-                    let root = automation.get_root_element().unwrap();
+                    let root = automation.get_root_element()
+                    .map_err(|e| {
+                        error!("Failed to get root element for browser search: {:?}", e);
+                        e
+                    })
+                    .unwrap_or_else(|_| {
+                        panic!("Failed to get root element for browser window search at {}:{}", file!(), line!())
+                    });
                     let browser_search_name_cloned = browser_search_name.clone();
                     let search_keywords: String = title
                         .split_whitespace()

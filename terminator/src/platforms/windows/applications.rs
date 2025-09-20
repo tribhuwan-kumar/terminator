@@ -133,8 +133,15 @@ pub fn get_application_by_name(
                 .automation
                 .0
                 .create_property_condition(UIProperty::ProcessId, Variant::from(pid), None)
-                .unwrap();
-            let root_ele = engine.automation.0.get_root_element().unwrap();
+                .map_err(|e| AutomationError::PlatformError(
+                    format!("Failed to create ProcessId condition for PID {} at {}:{}: {:?}",
+                            pid, file!(), line!(), e)
+                ))?;
+            let root_ele = engine.automation.0.get_root_element()
+                .map_err(|e| AutomationError::PlatformError(
+                    format!("Failed to get root element for PID {} lookup at {}:{}: {:?}",
+                            pid, file!(), line!(), e)
+                ))?;
 
             // Try direct window lookup by PID
             if let Ok(ele) = root_ele.find_first(TreeScope::Children, &condition) {
@@ -151,7 +158,11 @@ pub fn get_application_by_name(
 
     // For browsers and fallback: Use window title search
     debug!("Using window title search for: {}", search_name);
-    let root_ele = engine.automation.0.get_root_element().unwrap();
+    let root_ele = engine.automation.0.get_root_element()
+        .map_err(|e| AutomationError::PlatformError(
+            format!("Failed to get root element for browser search '{}' at {}:{}: {:?}",
+                    search_name, file!(), line!(), e)
+        ))?;
 
     let matcher = engine
         .automation
@@ -238,7 +249,11 @@ pub fn get_application_by_pid(
     pid: i32,
     timeout: Option<Duration>,
 ) -> Result<UIElement, AutomationError> {
-    let root_ele = engine.automation.0.get_root_element().unwrap();
+    let root_ele = engine.automation.0.get_root_element()
+        .map_err(|e| AutomationError::PlatformError(
+            format!("Failed to get root element for PID {} wait at {}:{}: {:?}",
+                    pid, file!(), line!(), e)
+        ))?;
     let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u64;
 
     // Create a matcher with timeout
