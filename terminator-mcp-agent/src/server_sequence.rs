@@ -853,6 +853,48 @@ impl DesktopWrapper {
 
                         final_result = result.clone();
 
+                        // NEW: Store tool result in env if step has an ID (for ALL tools, not just scripts)
+                        if let Some(step_id) = original_step.and_then(|s| s.id.as_deref()) {
+                            if let Some(env_value) = execution_context_map.get_mut("env") {
+                                if let Some(env_map) = env_value.as_object_mut() {
+                                    // Store the result with {step_id}_result pattern
+                                    let result_key = format!("{}_result", step_id);
+                                    let status_key = format!("{}_status", step_id);
+
+                                    // Extract the meaningful content from the result
+                                    let result_content = if let Some(result_obj) = final_result.get("result") {
+                                        // For tools, extract the actual content
+                                        if let Some(content) = result_obj.get("content") {
+                                            content.clone()
+                                        } else {
+                                            result_obj.clone()
+                                        }
+                                    } else {
+                                        // Fallback to the entire result if no nested structure
+                                        final_result.clone()
+                                    };
+
+                                    // Store both result and status
+                                    env_map.insert(result_key.clone(), result_content);
+                                    env_map.insert(status_key.clone(), final_result["status"].clone());
+
+                                    info!("Stored tool result for step '{}' in env as '{}'", step_id, result_key);
+
+                                    // Save state after storing tool result
+                                    if let Some(url) = &args.url {
+                                        Self::save_workflow_state(
+                                            url,
+                                            Some(step_id),
+                                            current_index,
+                                            env_value,
+                                        )
+                                        .await
+                                        .ok(); // Don't fail the workflow if state save fails
+                                    }
+                                }
+                            }
+                        }
+
                         // Update step span status and end it
                         // Support both 'status' field and 'success' field
                         let success = result["status"] == "success"
