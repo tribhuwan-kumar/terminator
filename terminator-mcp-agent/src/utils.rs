@@ -756,7 +756,9 @@ pub struct ToolCall {
         description = "An optional delay in milliseconds to wait after this tool call completes."
     )]
     pub delay_ms: Option<u64>,
-    #[schemars(description = "Optional unique identifier for this step.")]
+    #[schemars(
+        description = "Optional unique identifier for this step. If provided, the tool's result will be stored as {step_id}_result and its status as {step_id}_status in the environment for use in subsequent steps."
+    )]
     pub id: Option<String>,
 }
 
@@ -785,7 +787,7 @@ pub struct SequenceStep {
     #[schemars(description = "Number of times to retry this step or group on failure.")]
     pub retries: Option<u32>,
     #[schemars(
-        description = "Optional unique identifier for this step (string). If provided, it can be a target for other steps' fallback_id."
+        description = "Optional unique identifier for this step (string). If provided, it can be a target for other steps' fallback_id. Additionally, the tool's result will be stored as {step_id}_result and its status as {step_id}_status in the environment, making it accessible to subsequent steps."
     )]
     pub id: Option<String>,
     #[schemars(

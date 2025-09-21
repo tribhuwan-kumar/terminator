@@ -840,9 +840,10 @@ You can run specific portions of a workflow using `start_from_step` and `end_at_
 
 When using `file://` URLs, the workflow state (environment variables) is automatically saved to a `.workflow_state` folder:
 
-1. **State is saved** after each step that modifies environment variables via `set_env`
+1. **State is saved** after each step that modifies environment variables via `set_env` or has a tool result with an ID
 2. **State is loaded** when starting from a specific step
 3. **Location**: `.workflow_state/<workflow_hash>.json` in the workflow's directory
+4. **Tool results** from all tools (not just scripts) are automatically stored as `{step_id}_result` and `{step_id}_status`
 
 This enables:
 - **Debugging**: Run steps individually to inspect state between executions
@@ -850,6 +851,33 @@ This enables:
 - **Testing**: Test specific steps without re-running the entire workflow
 
 #### Data Passing Between Steps
+
+Steps can pass data using multiple methods:
+
+##### 1. Tool Result Storage (NEW)
+
+ALL tools with an `id` field automatically store their results in the environment:
+
+```yaml
+steps:
+  # Any tool with an ID stores its result
+  - id: check_apps
+    tool_name: get_applications
+    arguments:
+      include_tree: false
+
+  # Access the result in JavaScript
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        // Direct variable access - auto-injected!
+        const apps = check_apps_result || [];
+        const status = check_apps_status; // "success" or "error"
+        console.log(`Found ${apps[0]?.applications?.length} apps`);
+```
+
+##### 2. Script Return Values
 
 Steps can pass data using the `set_env` mechanism in `run_command` with engine mode:
 
@@ -863,10 +891,10 @@ return {
   }
 };
 
-// Step 13: Use the data
-const filePath = '{{env.file_path}}';
-const entries = JSON.parse('{{env.journal_entries}}');
-const debit = '{{env.total_debit}}';
+// Step 13: Use the data (NEW - simplified access!)
+const filePath = file_path;  // Direct access, no {{env.}} needed!
+const entries = JSON.parse(journal_entries);
+const debit = total_debit;
 ```
 
 ### 4. Running the Workflow
@@ -898,12 +926,53 @@ es.onmessage = (e) => console.log("event", e.data);
 }
 ```
 
-### 5. Tips for Production Workflows
+### 5. Working with Tool Results
+
+Every tool that has an `id` field automatically stores its result for use in later steps:
+
+```yaml
+steps:
+  # Capture browser DOM
+  - id: capture_dom
+    tool_name: execute_browser_script
+    arguments:
+      selector: "role:Window"
+      script: "return document.documentElement.innerHTML;"
+
+  # Validate an element exists
+  - id: check_button
+    tool_name: validate_element
+    arguments:
+      selector: "role:Button|name:Submit"
+
+  # Use both results in script
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        // All tool results are auto-injected as variables
+        const dom = capture_dom_result?.content || '';
+        const buttonExists = check_button_status === 'success';
+
+        if (buttonExists) {
+          const button = check_button_result[0]?.element;
+          console.log(`Submit button at: ${button?.bounds?.x}, ${button?.bounds?.y}`);
+        }
+
+        return { dom_length: dom.length, has_button: buttonExists };
+```
+
+Tool results are accessible as:
+- `{step_id}_result`: The tool's return value (content, element info, etc.)
+- `{step_id}_status`: Either "success" or "error"
+
+### 6. Tips for Production Workflows
 
 - **Never hard-code credentials** – use environment variables or your secret manager.
 - **Keep workflows short** – <100 steps is ideal. Break large tasks into multiple sequences.
-- **Capture errors** – `continue_on_error` is useful, but also log `result.status` codes to catch silent failures.
+- **Capture errors** – `continue_on_error` is useful, but also check `{step_id}_status` for tool failures.
 - **Version control** – Store workflow JSON in a repo and use PR reviews just like regular code.
+- **Use step IDs** – Give meaningful IDs to steps whose results you'll need later.
 
 ## 🔍 Troubleshooting & Debugging
 

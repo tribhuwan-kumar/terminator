@@ -189,6 +189,33 @@ return {{
 
 **Reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
 
+**Accessing Tool Results from Previous Steps:**
+All tools with an `id` field now store their results in env for access in later steps:
+- `{{step_id}}_result` - Contains the tool's output data
+- `{{step_id}}_status` - Contains the tool's execution status (\"success\", \"error\", etc.)
+
+Example:
+```yaml
+- tool_name: get_applications
+  id: check_apps
+- tool_name: validate_element
+  id: validate_login
+  arguments:
+    selector: \"role:button|name:Login\"
+- tool_name: run_command
+  arguments:
+    engine: javascript
+    run: |
+      // Access previous tool results directly
+      const apps = check_apps_result;           // Array of applications
+      const appsStatus = check_apps_status;     // \\\"success\\\" or \\\"error\\\"
+      const loginExists = validate_login_status === 'success';
+
+      console.log(`Found ${{{{apps.length}}}} apps, login button: ${{{{loginExists}}}}`);
+```
+
+This works for ALL tools (get_applications, validate_element, click_element, take_screenshot, etc.), not just script tools.
+
 **Important:** Data passing ONLY works with engine mode (JavaScript/Python), NOT with shell commands.
 Watch for backslash escaping issues with Windows paths - consider escaping or combining steps.
 
@@ -204,6 +231,7 @@ The `execute_browser_script` tool executes JavaScript directly in browser contex
 *   Scraping structured data from HTML patterns
 *   Passing data between workflow steps (set_env support)
 *   Loading reusable scripts from files
+*   Accessing results from previous non-script tools via {{step_id}}_result pattern
 
 **Basic DOM Extraction:**
 ```javascript
