@@ -166,7 +166,7 @@ impl DesktopWrapper {
             };
 
             // Debug: Log the raw YAML content
-            info!(
+            debug!(
                 "Raw YAML content (first 500 chars): {}",
                 workflow_content.chars().take(500).collect::<String>()
             );
