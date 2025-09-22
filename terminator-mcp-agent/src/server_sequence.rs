@@ -64,7 +64,7 @@ impl DesktopWrapper {
                 McpError::internal_error(format!("Failed to write state file: {e}"), None)
             })?;
 
-            info!("Saved workflow state to: {:?}", state_file);
+            debug!("Saved workflow state to: {:?}", state_file);
         }
         Ok(())
     }
@@ -83,7 +83,7 @@ impl DesktopWrapper {
                 })?;
 
                 if let Some(env) = state.get("env") {
-                    info!(
+                    debug!(
                         "Loaded workflow state from step {} ({})",
                         state["last_step_index"],
                         state["last_step_id"].as_str().unwrap_or("unknown")
@@ -91,7 +91,7 @@ impl DesktopWrapper {
                     return Ok(Some(env.clone()));
                 }
             } else {
-                info!("No saved workflow state found at: {:?}", state_file);
+                debug!("No saved workflow state found at: {:?}", state_file);
             }
         }
         Ok(None)
@@ -451,7 +451,7 @@ impl DesktopWrapper {
             if let Some(url) = &args.url {
                 if let Some(saved_env) = Self::load_workflow_state(url).await? {
                     execution_context_map.insert("env".to_string(), saved_env);
-                    info!(
+                    debug!(
                         "Loaded saved env state for resuming from step {}",
                         start_from_index
                     );
