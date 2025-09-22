@@ -1557,7 +1557,10 @@ const setEnv = (updates: Record<string, any>) => {{
             // Attach env updates to result
             if !env_updates.is_empty() {
                 if let serde_json::Value::Object(ref mut obj) = r {
-                    obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                    obj.insert(
+                        "set_env".to_string(),
+                        serde_json::Value::Object(env_updates.clone()),
+                    );
                 } else {
                     r = serde_json::json!({
                         "output": r,

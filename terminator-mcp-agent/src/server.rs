@@ -1369,7 +1369,10 @@ impl DesktopWrapper {
             };
 
             // Inject based on engine type
-            if matches!(engine.as_str(), "node" | "bun" | "javascript" | "js" | "typescript" | "ts") {
+            if matches!(
+                engine.as_str(),
+                "node" | "bun" | "javascript" | "js" | "typescript" | "ts"
+            ) {
                 // First inject accumulated env
                 final_script.push_str(&format!("var env = {accumulated_env_json};\n"));
 
