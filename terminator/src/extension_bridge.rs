@@ -410,7 +410,13 @@ impl ExtensionBridge {
             .ok()?;
 
         let output_str = String::from_utf8_lossy(&output.stdout);
-        output_str.trim().parse::<u32>().ok()
+        if let Ok(pid) = output_str.trim().parse::<u32>() {
+            // Verify it's a terminator process
+            if Self::is_terminator_process(pid).await {
+                return Some(pid);
+            }
+        }
+        None
     }
 
     #[cfg(target_os = "windows")]
