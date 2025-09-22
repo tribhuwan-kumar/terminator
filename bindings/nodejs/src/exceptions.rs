@@ -32,5 +32,9 @@ pub fn map_error(err: AutomationError) -> napi::Error {
         AutomationError::InvalidSelector(e) => {
             napi::Error::new(Status::InvalidArg, format!("INVALID_SELECTOR: {e}"))
         }
+        AutomationError::UIAutomationAPIError { message, .. } => napi::Error::new(
+            Status::GenericFailure,
+            format!("UI_AUTOMATION_API_ERROR: {message}"),
+        ),
     }
 }

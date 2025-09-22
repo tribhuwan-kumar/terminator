@@ -50,5 +50,6 @@ pub fn automation_error_to_pyerr(e: AutomationError) -> pyo3::PyErr {
         AutomationError::InvalidArgument(_) => InvalidArgumentError::new_err(msg),
         AutomationError::Internal(_) => InternalError::new_err(msg),
         AutomationError::InvalidSelector(_) => InvalidSelectorError::new_err(msg),
+        AutomationError::UIAutomationAPIError { .. } => PlatformError::new_err(msg),
     }
 }

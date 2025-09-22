@@ -195,7 +195,9 @@ fn extract_com_error_code(error_str: &str) -> Option<i32> {
     // Look for hex patterns like "0x80004005" or "0x80070005"
     if let Some(hex_start) = error_str.find("0x") {
         let hex_str = &error_str[hex_start + 2..];
-        let hex_end = hex_str.find(|c: char| !c.is_ascii_hexdigit()).unwrap_or(hex_str.len());
+        let hex_end = hex_str
+            .find(|c: char| !c.is_ascii_hexdigit())
+            .unwrap_or(hex_str.len());
         if hex_end > 0 {
             if let Ok(val) = i32::from_str_radix(&hex_str[..hex_end], 16) {
                 return Some(val);
@@ -416,7 +418,10 @@ impl WindowsEngine {
             match self.automation.0.get_root_element() {
                 Ok(root) => {
                     if attempt > 0 {
-                        debug!("Successfully got root element after {} attempts", attempt + 1);
+                        debug!(
+                            "Successfully got root element after {} attempts",
+                            attempt + 1
+                        );
                     }
                     return Ok(Arc::new(root));
                 }
@@ -443,8 +448,7 @@ impl WindowsEngine {
         if let Some(hresult) = com_error_code {
             Err(AutomationError::UIAutomationAPIError {
                 message: format!(
-                    "Windows UI Automation service temporarily unavailable after {} attempts. This is a transient Windows issue.",
-                    MAX_ATTEMPTS
+                    "Windows UI Automation service temporarily unavailable after {MAX_ATTEMPTS} attempts. This is a transient Windows issue."
                 ),
                 com_error: Some(hresult),
                 operation: "get_root_element".to_string(),
@@ -452,8 +456,8 @@ impl WindowsEngine {
             })
         } else {
             Err(AutomationError::PlatformError(format!(
-                "Failed to get root element after {} attempts: {:?}",
-                MAX_ATTEMPTS, last_error.as_ref().unwrap()
+                "Failed to get root element after {MAX_ATTEMPTS} attempts: {:?}",
+                last_error.as_ref().unwrap()
             )))
         }
     }
@@ -713,15 +717,20 @@ impl AccessibilityEngine for WindowsEngine {
                 &ele.element.0
             } else {
                 &Arc::new(self.get_root_element_with_retry().map_err(|e| {
-                    let error_str = format!("{:?}", e);
+                    let error_str = format!("{e:?}");
                     let com_error_code = extract_com_error_code(&error_str);
 
                     if let Some(hresult) = com_error_code {
                         AutomationError::UIAutomationAPIError {
-                            message: format!("Windows UI Automation API failed to get root element: {:?}", e),
+                            message: format!(
+                                "Windows UI Automation API failed to get root element: {e:?}"
+                            ),
                             com_error: Some(hresult),
                             operation: "get_root_element".to_string(),
-                            is_retryable: matches!(hresult, -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */),
+                            is_retryable: matches!(
+                                hresult,
+                                -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */
+                            ),
                         }
                     } else {
                         AutomationError::PlatformError(format!(
@@ -735,15 +744,20 @@ impl AccessibilityEngine for WindowsEngine {
             }
         } else {
             &Arc::new(self.get_root_element_with_retry().map_err(|e| {
-                let error_str = format!("{:?}", e);
+                let error_str = format!("{e:?}");
                 let com_error_code = extract_com_error_code(&error_str);
 
                 if let Some(hresult) = com_error_code {
                     AutomationError::UIAutomationAPIError {
-                        message: format!("Windows UI Automation API failed to get root element: {:?}", e),
+                        message: format!(
+                            "Windows UI Automation API failed to get root element: {e:?}"
+                        ),
                         com_error: Some(hresult),
                         operation: "get_root_element".to_string(),
-                        is_retryable: matches!(hresult, -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */),
+                        is_retryable: matches!(
+                            hresult,
+                            -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */
+                        ),
                     }
                 } else {
                     AutomationError::PlatformError(format!(
@@ -1350,15 +1364,20 @@ impl AccessibilityEngine for WindowsEngine {
                 &ele.element.0
             } else {
                 &Arc::new(self.get_root_element_with_retry().map_err(|e| {
-                    let error_str = format!("{:?}", e);
+                    let error_str = format!("{e:?}");
                     let com_error_code = extract_com_error_code(&error_str);
 
                     if let Some(hresult) = com_error_code {
                         AutomationError::UIAutomationAPIError {
-                            message: format!("Windows UI Automation API failed to get root element: {:?}", e),
+                            message: format!(
+                                "Windows UI Automation API failed to get root element: {e:?}"
+                            ),
                             com_error: Some(hresult),
                             operation: "get_root_element".to_string(),
-                            is_retryable: matches!(hresult, -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */),
+                            is_retryable: matches!(
+                                hresult,
+                                -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */
+                            ),
                         }
                     } else {
                         AutomationError::PlatformError(format!(
@@ -1372,15 +1391,20 @@ impl AccessibilityEngine for WindowsEngine {
             }
         } else {
             &Arc::new(self.get_root_element_with_retry().map_err(|e| {
-                let error_str = format!("{:?}", e);
+                let error_str = format!("{e:?}");
                 let com_error_code = extract_com_error_code(&error_str);
 
                 if let Some(hresult) = com_error_code {
                     AutomationError::UIAutomationAPIError {
-                        message: format!("Windows UI Automation API failed to get root element: {:?}", e),
+                        message: format!(
+                            "Windows UI Automation API failed to get root element: {e:?}"
+                        ),
                         com_error: Some(hresult),
                         operation: "get_root_element".to_string(),
-                        is_retryable: matches!(hresult, -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */),
+                        is_retryable: matches!(
+                            hresult,
+                            -2147467259 /* E_FAIL */ | -2147467262 /* E_NOINTERFACE */
+                        ),
                     }
                 } else {
                     AutomationError::PlatformError(format!(
