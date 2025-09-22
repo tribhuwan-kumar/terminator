@@ -1,9 +1,0 @@
-{
-  "last_updated": "2025-09-20T02:41:55.609268600+00:00",
-  "last_step_id": "test_browser_search",
-  "last_step_index": 2,
-  "workflow_file": "test_com_errors.yml",
-  "env": {
-    "test": "browser_search"
-  }
-}
