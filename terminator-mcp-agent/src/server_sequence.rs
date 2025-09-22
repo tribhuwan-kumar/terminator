@@ -855,7 +855,7 @@ impl DesktopWrapper {
                                     let status_key = format!("{step_id}_status");
 
                                     // Extract the meaningful content from the result
-                                    let result_content =
+                                    let mut result_content =
                                         if let Some(result_obj) = final_result.get("result") {
                                             // For tools, extract the actual content
                                             if let Some(content) = result_obj.get("content") {
@@ -867,6 +867,21 @@ impl DesktopWrapper {
                                             // Fallback to the entire result if no nested structure
                                             final_result.clone()
                                         };
+
+                                    // REMOVE server_logs before storing in env (they're debug data, not operational data)
+                                    if let Some(obj) = result_content.as_object_mut() {
+                                        if obj.contains_key("server_logs") {
+                                            let log_count = obj.get("server_logs")
+                                                .and_then(|logs| logs.as_array())
+                                                .map(|arr| arr.len())
+                                                .unwrap_or(0);
+                                            obj.remove("server_logs");
+                                            debug!(
+                                                "Removed {} server_logs from {}_result before storing in env",
+                                                log_count, step_id
+                                            );
+                                        }
+                                    }
 
                                     // Store both result and status
                                     env_map.insert(result_key.clone(), result_content);
