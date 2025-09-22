@@ -370,7 +370,16 @@ function wrapCodeIfNeeded(code) {
     log("Detected top-level return statement, wrapping in IIFE");
     return `(function() {\n${code}\n})()`;
   }
-  return code;
+
+  // For code without top-level returns, use eval to capture last expression
+  // while still providing a clean scope
+  log("Wrapping code in clean scope using eval for last expression capture");
+  return `(function() {
+  'use strict';
+  // Use eval to capture the last expression value
+  // This provides a clean scope and returns the last expression
+  return eval(${JSON.stringify(code)});
+})()`;
 }
 
 async function evalInTab(tabId, code, awaitPromise, evalId) {
