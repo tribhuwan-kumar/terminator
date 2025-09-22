@@ -1,6 +1,7 @@
 use crate::helpers::*;
 use crate::scripting_engine;
 use crate::utils::find_and_execute_with_retry_with_fallback;
+use regex::Regex;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
@@ -3788,6 +3789,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             accumulated_env_json.clone()
         };
 
+        // Track which variables will be injected
+        let mut injected_vars = std::collections::HashSet::new();
+
         if let Ok(env_obj) =
             serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env)
         {
@@ -3795,6 +3799,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                 if Self::is_valid_js_identifier(&key) {
                     if let Ok(value_json) = serde_json::to_string(&value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
+                        injected_vars.insert(key.clone());  // Track this variable
                         tracing::debug!(
                             "[execute_browser_script] Injected env.{} as individual variable",
                             key
@@ -3808,8 +3813,46 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         final_script.push_str(&format!("var variables = {variables_json};\n"));
         tracing::debug!("[execute_browser_script] Injected accumulated env, explicit env, individual vars, and workflow variables");
 
-        // Append the actual script
-        final_script.push_str(&script_content);
+        // Smart replacement of declarations with assignments for already-injected variables
+        let mut modified_script = script_content.clone();
+        if !injected_vars.is_empty() {
+            tracing::debug!(
+                "[execute_browser_script] Checking for variable declarations to replace. Injected vars: {:?}",
+                injected_vars
+            );
+
+            for var_name in &injected_vars {
+                // Create regex to match declarations of this variable
+                // Matches: const varName =, let varName =, var varName =
+                // With optional whitespace, handling line start
+                let pattern = format!(
+                    r"(?m)^(\s*)(const|let|var)\s+{}\s*=",
+                    regex::escape(var_name)
+                );
+
+                if let Ok(re) = Regex::new(&pattern) {
+                    let before = modified_script.clone();
+                    modified_script = re.replace_all(&modified_script, format!("${{1}}{} =", var_name)).to_string();
+
+                    if before != modified_script {
+                        tracing::info!(
+                            "[execute_browser_script] Replaced declaration of '{}' with assignment to avoid redeclaration error",
+                            var_name
+                        );
+                    }
+                }
+            }
+
+            // Log first 500 chars of modified script for debugging
+            let preview: String = modified_script.chars().take(500).collect();
+            tracing::debug!(
+                "[execute_browser_script] Modified script preview after replacements: {}...",
+                preview
+            );
+        }
+
+        // Append the modified script
+        final_script.push_str(&modified_script);
 
         let script_len = final_script.len();
         let script_preview: String = final_script.chars().take(200).collect();
