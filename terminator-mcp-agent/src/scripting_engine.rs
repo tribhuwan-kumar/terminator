@@ -530,10 +530,18 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     let _ = child.kill().await;
                                     // Print collected output on timeout
                                     if !stdout_lines.is_empty() {
-                                        error!("[{}] npm stdout:\n{}", runtime, stdout_lines.join("\n"));
+                                        error!(
+                                            "[{}] npm stdout:\n{}",
+                                            runtime,
+                                            stdout_lines.join("\n")
+                                        );
                                     }
                                     if !stderr_lines.is_empty() {
-                                        error!("[{}] npm stderr:\n{}", runtime, stderr_lines.join("\n"));
+                                        error!(
+                                            "[{}] npm stderr:\n{}",
+                                            runtime,
+                                            stderr_lines.join("\n")
+                                        );
                                     }
                                     return Err(McpError::internal_error(
                                         "npm install timed out",
