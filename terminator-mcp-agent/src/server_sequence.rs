@@ -233,16 +233,6 @@ impl DesktopWrapper {
                 "Successfully loaded workflow from URL with {} steps",
                 args.steps.as_ref().map(|s| s.len()).unwrap_or(0)
             );
-
-            // Debug: Log the loaded steps
-            if let Some(steps) = &args.steps {
-                for (i, step) in steps.iter().enumerate() {
-                    info!(
-                        "Loaded step {}: tool_name={:?}, group_name={:?}",
-                        i, step.tool_name, step.group_name
-                    );
-                }
-            }
         }
 
         // Handle backward compatibility: 'continue' is opposite of 'stop_on_error'
@@ -798,20 +788,23 @@ impl DesktopWrapper {
                                 .cloned()
                                 .unwrap_or_else(serde_json::Map::new);
 
-                            // Add workflow variables as special env key
-                            if let Some(workflow_vars) = &args.variables {
-                                env_obj.insert(
-                                    "_workflow_variables".to_string(),
-                                    json!(workflow_vars),
-                                );
-                            }
+                            // Only inject state if explicitly in verbose/debug mode
+                            if args.include_detailed_results.unwrap_or(false) {
+                                // Add workflow variables as special env key
+                                if let Some(workflow_vars) = &args.variables {
+                                    env_obj.insert(
+                                        "_workflow_variables".to_string(),
+                                        json!(workflow_vars),
+                                    );
+                                }
 
-                            // Add accumulated env from execution context as special key
-                            if let Some(accumulated_env) = execution_context.get("env") {
-                                env_obj.insert(
-                                    "_accumulated_env".to_string(),
-                                    accumulated_env.clone(),
-                                );
+                                // Add accumulated env from execution context as special key
+                                if let Some(accumulated_env) = execution_context.get("env") {
+                                    env_obj.insert(
+                                        "_accumulated_env".to_string(),
+                                        accumulated_env.clone(),
+                                    );
+                                }
                             }
 
                             // Update the arguments

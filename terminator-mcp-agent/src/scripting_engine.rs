@@ -374,21 +374,21 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         .iter(),
                     );
                     cmd_args.extend(command_args.iter().map(|s| s.as_str()));
-                    info!(
+                    debug!(
                         "[{}] Running npm via cmd.exe: cmd {:?} in directory {}",
                         runtime,
                         cmd_args,
                         script_dir.display()
                     );
 
-                    info!("[{}] About to spawn cmd.exe process...", runtime);
+                    debug!("[{}] About to spawn cmd.exe process...", runtime);
 
                     // First, let's test if npm is working at all with a simple version check
                     // Debug: show what's in the directory and what we're trying to install
-                    info!("[{}] Debugging directory contents...", runtime);
+                    debug!("[{}] Debugging directory contents...", runtime);
                     if let Ok(entries) = std::fs::read_dir(&script_dir) {
                         for entry in entries.flatten() {
-                            info!(
+                            debug!(
                                 "[{}] Directory contains: {}",
                                 runtime,
                                 entry.file_name().to_string_lossy()
@@ -399,12 +399,12 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     if let Ok(package_json) =
                         std::fs::read_to_string(script_dir.join("package.json"))
                     {
-                        info!("[{}] package.json contents:\n{}", runtime, package_json);
+                        debug!("[{}] package.json contents:\n{}", runtime, package_json);
                     } else {
-                        error!("[{}] Could not read package.json!", runtime);
+                        debug!("[{}] Could not read package.json", runtime);
                     }
 
-                    info!("[{}] Testing npm connectivity first...", runtime);
+                    debug!("[{}] Testing npm connectivity first...", runtime);
                     let test_result = tokio::process::Command::new("cmd")
                         .current_dir(&script_dir)
                         .args(["/c", "npm", "--version"])
@@ -414,7 +414,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     match test_result {
                         Ok(output) if output.status.success() => {
                             let version = String::from_utf8_lossy(&output.stdout);
-                            info!(
+                            debug!(
                                 "[{}] npm version test successful: {}",
                                 runtime,
                                 version.trim()
@@ -423,7 +423,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         Ok(output) => {
                             let stderr = String::from_utf8_lossy(&output.stderr);
                             error!("[{}] npm version test failed: {}", runtime, stderr);
-                            info!(
+                            error!(
                                 "[{}] npm stdout: {}",
                                 runtime,
                                 String::from_utf8_lossy(&output.stdout)
@@ -435,7 +435,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     }
 
                     // Now test npm registry connectivity
-                    info!("[{}] Testing npm registry connectivity...", runtime);
+                    debug!("[{}] Testing npm registry connectivity...", runtime);
                     let registry_test = tokio::process::Command::new("cmd")
                         .current_dir(&script_dir)
                         .args(["/c", "npm", "ping"])
@@ -445,7 +445,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     match registry_test {
                         Ok(output) if output.status.success() => {
                             let ping_result = String::from_utf8_lossy(&output.stdout);
-                            info!(
+                            debug!(
                                 "[{}] npm registry ping successful: {}",
                                 runtime,
                                 ping_result.trim()
@@ -454,7 +454,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         Ok(output) => {
                             let stderr = String::from_utf8_lossy(&output.stderr);
                             error!("[{}] npm registry ping failed: {}", runtime, stderr);
-                            info!(
+                            error!(
                                 "[{}] npm ping stdout: {}",
                                 runtime,
                                 String::from_utf8_lossy(&output.stdout)
@@ -497,12 +497,12 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
                     match spawn_result {
                         Ok(mut child) => {
-                            info!(
+                            debug!(
                                 "[{}] cmd.exe process spawned successfully, PID: {:?}",
                                 runtime,
                                 child.id()
                             );
-                            info!("[{}] Waiting for npm install to complete...", runtime);
+                            info!("[{}] Installing terminator.js dependencies...", runtime);
 
                             // Read stdout and stderr in real-time
                             use tokio::io::{AsyncBufReadExt, BufReader};
@@ -512,6 +512,10 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
                             let mut stdout_reader = BufReader::new(stdout).lines();
                             let mut stderr_reader = BufReader::new(stderr).lines();
+
+                            // Collect output for error reporting
+                            let mut stdout_lines = Vec::new();
+                            let mut stderr_lines = Vec::new();
 
                             let timeout_duration = std::time::Duration::from_secs(300); // 5 minutes
                             let start_time = std::time::Instant::now();
@@ -524,6 +528,13 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                         runtime, timeout_duration
                                     );
                                     let _ = child.kill().await;
+                                    // Print collected output on timeout
+                                    if !stdout_lines.is_empty() {
+                                        error!("[{}] npm stdout:\n{}", runtime, stdout_lines.join("\n"));
+                                    }
+                                    if !stderr_lines.is_empty() {
+                                        error!("[{}] npm stderr:\n{}", runtime, stderr_lines.join("\n"));
+                                    }
                                     return Err(McpError::internal_error(
                                         "npm install timed out",
                                         Some(json!({"timeout_secs": timeout_duration.as_secs()})),
@@ -535,14 +546,15 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stdout_line = stdout_reader.next_line() => {
                                         match stdout_line {
                                             Ok(Some(line)) => {
-                                                info!("[{}] npm stdout: {}", runtime, line);
+                                                debug!("[{}] npm stdout: {}", runtime, line);
+                                                stdout_lines.push(line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                info!("[{}] npm stdout stream ended", runtime);
+                                                debug!("[{}] npm stdout stream ended", runtime);
                                             }
                                             Err(e) => {
-                                                error!("[{}] Error reading npm stdout: {}", runtime, e);
+                                                debug!("[{}] Error reading npm stdout: {}", runtime, e);
                                             }
                                         }
                                     }
@@ -551,14 +563,15 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     stderr_line = stderr_reader.next_line() => {
                                         match stderr_line {
                                             Ok(Some(line)) => {
-                                                info!("[{}] npm stderr: {}", runtime, line);
+                                                debug!("[{}] npm stderr: {}", runtime, line);
+                                                stderr_lines.push(line);
                                                 last_progress_time = std::time::Instant::now(); // Reset progress timer on output
                                             }
                                             Ok(None) => {
-                                                info!("[{}] npm stderr stream ended", runtime);
+                                                debug!("[{}] npm stderr stream ended", runtime);
                                             }
                                             Err(e) => {
-                                                error!("[{}] Error reading npm stderr: {}", runtime, e);
+                                                debug!("[{}] Error reading npm stderr: {}", runtime, e);
                                             }
                                         }
                                     }
@@ -567,38 +580,45 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                     _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {
                                         match child.try_wait() {
                                             Ok(Some(status)) => {
-                                                info!("[{}] npm process completed with status: {:?}", runtime, status);
+                                                debug!("[{}] npm process completed with status: {:?}", runtime, status);
 
                                                 // Read any remaining output
                                                 while let Ok(Some(line)) = stdout_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        info!("[{}] npm stdout (final): {}", runtime, line);
+                                                        debug!("[{}] npm stdout (final): {}", runtime, line);
+                                                        stdout_lines.push(line);
                                                     }
                                                 }
                                                 while let Ok(Some(line)) = stderr_reader.next_line().await {
                                                     if !line.is_empty() {
-                                                        info!("[{}] npm stderr (final): {}", runtime, line);
+                                                        debug!("[{}] npm stderr (final): {}", runtime, line);
+                                                        stderr_lines.push(line);
                                                     }
                                                 }
 
-                                                break if status.success() {
-                                                    Ok(std::process::Output {
-                                                        status,
-                                                        stdout: Vec::new(), // We already logged the output
-                                                        stderr: Vec::new(),
-                                                    })
+                                                // Only log output if there was an error
+                                                if !status.success() {
+                                                    error!("[{}] npm install failed with exit code {:?}", runtime, status.code());
+                                                    if !stdout_lines.is_empty() {
+                                                        error!("[{}] npm stdout:\n{}", runtime, stdout_lines.join("\n"));
+                                                    }
+                                                    if !stderr_lines.is_empty() {
+                                                        error!("[{}] npm stderr:\n{}", runtime, stderr_lines.join("\n"));
+                                                    }
                                                 } else {
-                                                    Ok(std::process::Output {
-                                                        status,
-                                                        stdout: Vec::new(),
-                                                        stderr: format!("npm exited with code {:?}", status.code()).into_bytes(),
-                                                    })
-                                                };
+                                                    info!("[{}] Dependencies installed successfully", runtime);
+                                                }
+
+                                                break Ok(std::process::Output {
+                                                    status,
+                                                    stdout: stdout_lines.join("\n").into_bytes(),
+                                                    stderr: stderr_lines.join("\n").into_bytes(),
+                                                });
                                             }
                                             Ok(None) => {
                                                 // Still running - show progress occasionally
                                                 if last_progress_time.elapsed().as_secs() >= 10 {
-                                                    info!(
+                                                    debug!(
                                                         "[{}] npm still running... ({:.1}s elapsed, waiting for output...)",
                                                         runtime,
                                                         start_time.elapsed().as_secs_f32()
@@ -627,7 +647,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                         "[{}] Running npm directly: {} {:?}",
                         runtime, installer_exe, command_args
                     );
-                    info!("[{}] Spawning npm process...", runtime);
+                    debug!("[{}] Spawning npm process...", runtime);
                     let child = match tokio::process::Command::new(&installer_exe)
                         .current_dir(&script_dir)
                         .args(command_args.iter())
@@ -758,7 +778,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
                                         match upgrade_result {
                                             Ok(out) if out.status.success() => {
-                                                info!("[{}] Successfully upgraded terminator.js and platform package to latest", runtime);
+                                                debug!("[{}] Successfully upgraded terminator.js and platform package to latest", runtime);
                                             }
                                             Ok(out) => {
                                                 let stderr = String::from_utf8_lossy(&out.stderr);
