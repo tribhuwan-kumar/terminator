@@ -301,3 +301,89 @@ fn test_truthiness_of_different_types() {
     assert!(evaluate("non_empty_object", &vars));
     assert!(!evaluate("null_value", &vars));
 }
+
+#[test]
+fn test_smart_quotes_normalization() {
+    let vars = json!({
+        "env": {
+            "needs_login": "true",
+            "status": "active"
+        }
+    });
+
+    // Test with smart single quotes (common from copy-paste)
+    assert!(evaluate("env.needs_login == \u{2018}true\u{2019}", &vars)); // Left and right smart singles
+    assert!(evaluate("env.needs_login == \u{2019}true\u{2018}", &vars)); // Mixed smart singles
+    assert!(evaluate("env.status == \u{2018}active\u{2019}", &vars)); // Smart singles
+
+    // Test with regular quotes still work
+    assert!(evaluate("env.needs_login == 'true'", &vars));
+    assert!(evaluate("env.status == 'active'", &vars));
+}
+
+#[test]
+fn test_double_quotes_support() {
+    let vars = json!({
+        "env": {
+            "needs_login": "true",
+            "status": "active"
+        }
+    });
+
+    // Test with double quotes
+    assert!(evaluate("env.needs_login == \"true\"", &vars));
+    assert!(evaluate("env.status == \"active\"", &vars));
+
+    // Test with smart double quotes
+    assert!(evaluate("env.needs_login == \u{201C}true\u{201D}", &vars));
+    assert!(evaluate("env.status == \u{201C}active\u{201D}", &vars));
+}
+
+#[test]
+fn test_type_coercion_string_bool() {
+    let vars = json!({
+        "string_true": "true",
+        "string_false": "false",
+        "bool_true": true,
+        "bool_false": false,
+        "string_one": "1",
+        "string_zero": "0"
+    });
+
+    // String "true" compared with boolean
+    assert!(evaluate("string_true == 'true'", &vars));
+    assert!(evaluate("string_false == 'false'", &vars));
+
+    // Boolean compared with string (smart comparison)
+    assert!(evaluate("bool_true == 'true'", &vars));
+    assert!(evaluate("bool_false == 'false'", &vars));
+    assert!(evaluate("bool_true == '1'", &vars));
+    assert!(evaluate("bool_false == '0'", &vars));
+}
+
+#[test]
+fn test_backticks_normalized() {
+    let vars = json!({
+        "env": {
+            "needs_login": "true"
+        }
+    });
+
+    // Test backticks are converted to single quotes
+    assert!(evaluate("env.needs_login == `true`", &vars));
+}
+
+#[test]
+fn test_unicode_spaces_normalized() {
+    let vars = json!({
+        "env": {
+            "status": "active"
+        }
+    });
+
+    // Test with non-breaking space (common from web copy)
+    assert!(evaluate("env.status\u{00A0}==\u{00A0}'active'", &vars));
+
+    // Test with thin space
+    assert!(evaluate("env.status\u{2009}==\u{2009}'active'", &vars));
+}

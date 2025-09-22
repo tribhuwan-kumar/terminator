@@ -1,6 +1,20 @@
 use serde_json::Value;
 use tracing::warn;
 
+/// Normalizes an expression by replacing smart quotes and other Unicode characters
+/// with their ASCII equivalents to handle copy-paste from various sources.
+fn normalize_expression(expr: &str) -> String {
+    expr
+        // Normalize smart quotes to straight quotes
+        .replace(['\u{2018}', '\u{2019}'], "'") // Smart single quotes
+        .replace(['\u{201C}', '\u{201D}'], "\"") // Smart double quotes
+        .replace('`', "'") // Backticks to single quotes
+        // Normalize Unicode spaces
+        .replace(['\u{00A0}', '\u{2009}', '\u{202F}'], " ") // Various Unicode spaces
+        .trim()
+        .to_string()
+}
+
 // Helper to get a value from the variables JSON.
 pub fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
     // Support dot notation for nested access
@@ -17,26 +31,33 @@ pub fn get_value<'a>(path: &str, variables: &'a Value) -> Option<&'a Value> {
 
 // Main evaluation function.
 pub fn evaluate(expression: &str, variables: &Value) -> bool {
+    // Normalize the expression to handle smart quotes and other Unicode characters
+    let normalized = normalize_expression(expression);
+    evaluate_internal(&normalized, variables)
+}
+
+// Internal evaluation function that works with normalized expressions
+fn evaluate_internal(expression: &str, variables: &Value) -> bool {
     // Trim whitespace
     let expr = expression.trim();
 
     // Handle negation operator
     if let Some(inner_expr) = expr.strip_prefix('!') {
         let inner_expr = inner_expr.trim();
-        return !evaluate(inner_expr, variables);
+        return !evaluate_internal(inner_expr, variables);
     }
 
     // Handle logical operators (&&, ||) with proper precedence
     if let Some(pos) = expr.find("&&") {
         let left = &expr[..pos].trim();
         let right = &expr[pos + 2..].trim();
-        return evaluate(left, variables) && evaluate(right, variables);
+        return evaluate_internal(left, variables) && evaluate_internal(right, variables);
     }
 
     if let Some(pos) = expr.find("||") {
         let left = &expr[..pos].trim();
         let right = &expr[pos + 2..].trim();
-        return evaluate(left, variables) || evaluate(right, variables);
+        return evaluate_internal(left, variables) || evaluate_internal(right, variables);
     }
 
     // Try parsing function-based expressions first, e.g., contains(vars, 'value')
@@ -136,7 +157,11 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
         "false" => lhs.as_bool() == Some(false),
         _ if raw_rhs.starts_with('\'') && raw_rhs.ends_with('\'') => {
             let rhs_str = raw_rhs.trim_matches('\'');
-            lhs.as_str() == Some(rhs_str)
+            compare_values_smart(lhs, rhs_str)
+        }
+        _ if raw_rhs.starts_with('"') && raw_rhs.ends_with('"') => {
+            let rhs_str = raw_rhs.trim_matches('"');
+            compare_values_smart(lhs, rhs_str)
         }
         _ => return None, // Invalid RHS
     };
@@ -145,5 +170,16 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
         "==" => Some(are_equal),
         "!=" => Some(!are_equal),
         _ => None, // Should be unreachable
+    }
+}
+
+// Smart comparison that handles type coercion between strings and booleans
+fn compare_values_smart(lhs: &Value, rhs_str: &str) -> bool {
+    match lhs {
+        Value::String(s) => s == rhs_str,
+        Value::Bool(true) => rhs_str == "true" || rhs_str == "1",
+        Value::Bool(false) => rhs_str == "false" || rhs_str == "0",
+        Value::Number(n) => rhs_str.parse::<f64>().ok() == Some(n.as_f64().unwrap_or(0.0)),
+        _ => false,
     }
 }
