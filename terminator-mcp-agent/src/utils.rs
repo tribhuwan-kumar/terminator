@@ -343,7 +343,7 @@ pub struct RunCommandArgs {
     )]
     pub env: Option<serde_json::Value>,
     #[schemars(
-        description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'python'. When set, 'run' or 'script_file' must contain the code to execute."
+        description = "Optional high-level engine to execute inline code with SDK bindings. One of: 'node', 'bun', 'javascript', 'js', 'typescript', 'ts', 'python'. When set, 'run' or 'script_file' must contain the code to execute."
     )]
     pub engine: Option<String>,
     #[schemars(

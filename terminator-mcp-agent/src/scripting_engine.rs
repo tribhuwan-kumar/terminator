@@ -138,11 +138,14 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
   "name": "terminator-mcp-persistent",
   "version": "1.0.0",
   "dependencies": {
-    "terminator.js": "latest"
+    "terminator.js": "latest",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.0.0"
   },
   "optionalDependencies": {
     "terminator.js-darwin-arm64": "latest",
-    "terminator.js-darwin-x64": "latest", 
+    "terminator.js-darwin-x64": "latest",
     "terminator.js-linux-x64-gnu": "latest",
     "terminator.js-win32-arm64-msvc": "latest",
     "terminator.js-win32-x64-msvc": "latest"
@@ -1277,6 +1280,276 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                     "stderr": stderr_combined,
                     "script_path": script_path.to_string_lossy(),
                     "working_directory": script_dir.to_string_lossy()
+                })),
+            ))
+        }
+    }
+}
+
+/// Execute TypeScript using tsx/ts-node with terminator.js bindings available
+pub async fn execute_typescript_with_nodejs(
+    script: String,
+    cancellation_token: Option<tokio_util::sync::CancellationToken>,
+) -> Result<serde_json::Value, McpError> {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
+    info!("[TypeScript] Starting TypeScript execution with terminator.js bindings");
+    info!("[TypeScript] Script to execute ({} bytes)", script.len());
+    debug!(
+        preview = %script.chars().take(200).collect::<String>(),
+        "[TypeScript] Script preview"
+    );
+
+    // Check if bun is available (it has native TypeScript support)
+    let (runtime, use_tsx) = if let Some(bun_exe) = find_executable("bun") {
+        match Command::new(&bun_exe).arg("--version").output().await {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout);
+                info!(
+                    "[TypeScript] Found bun at: {} (version: {}) - using native TypeScript support",
+                    bun_exe,
+                    version.trim()
+                );
+                ("bun", false)
+            }
+            _ => {
+                info!("[TypeScript] Bun not available, will use tsx with node");
+                ("node", true)
+            }
+        }
+    } else {
+        info!("[TypeScript] Bun not found, will use tsx with node");
+        ("node", true)
+    };
+
+    // Ensure terminator.js and tsx are installed
+    let script_dir = ensure_terminator_js_installed(runtime).await?;
+    log_terminator_js_version(&script_dir, runtime).await;
+
+    // Create TypeScript script file
+    let script_filename = format!("script_{}.ts", std::process::id());
+    let script_path = script_dir.join(&script_filename);
+
+    // Wrap the script with terminator.js imports and helpers (TypeScript version)
+    let wrapped_script = format!(
+        r#"
+import {{ Desktop }} from 'terminator.js';
+
+const desktop = new Desktop();
+const log = console.log;
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper to set environment variables
+const setEnv = (updates: Record<string, any>) => {{
+    for (const [key, value] of Object.entries(updates)) {{
+        console.log(`::set-env name=${{key}}::${{value}}`);
+    }}
+}};
+
+(async () => {{
+    try {{
+        // User script starts here
+        {}
+        // User script ends here
+    }} catch (error: any) {{
+        console.error('__ERROR__' + JSON.stringify({{
+            message: error?.message || String(error),
+            stack: error?.stack
+        }}) + '__END__');
+        process.exit(1);
+    }}
+}})();
+"#,
+        script
+    );
+
+    tokio::fs::write(&script_path, wrapped_script)
+        .await
+        .map_err(|e| {
+            McpError::internal_error(
+                "Failed to write TypeScript file",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+
+    info!(
+        "[TypeScript] Created script file: {}",
+        script_path.to_string_lossy()
+    );
+
+    // Build the command based on runtime
+    let mut cmd = if runtime == "bun" {
+        // Bun can run TypeScript directly
+        let mut c = Command::new(runtime);
+        c.arg(&script_path);
+        c
+    } else if use_tsx {
+        // Use tsx to run TypeScript with Node.js
+        let mut c = Command::new("npx");
+        c.args(["tsx", script_path.to_string_lossy().as_ref()]);
+        c.current_dir(&script_dir);
+        c
+    } else {
+        // Fallback to node (shouldn't happen)
+        let mut c = Command::new(runtime);
+        c.arg(&script_path);
+        c
+    };
+
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    cmd.current_dir(&script_dir);
+
+    info!("[TypeScript] Executing command: {:?}", cmd);
+
+    let mut child = cmd.spawn().map_err(|e| {
+        McpError::internal_error(
+            "Failed to spawn TypeScript process",
+            Some(json!({"error": e.to_string()})),
+        )
+    })?;
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let mut stdout_reader = BufReader::new(stdout).lines();
+    let mut stderr_reader = BufReader::new(stderr).lines();
+
+    let mut result: Option<serde_json::Value> = None;
+    let mut captured_logs: Vec<String> = Vec::new();
+    let mut stderr_output: Vec<String> = Vec::new();
+    let mut env_updates = serde_json::Map::new();
+
+    // Process output with optional cancellation support
+    let process_fut = async {
+        loop {
+            tokio::select! {
+                line = stdout_reader.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            debug!("[TypeScript] stdout: {}", line);
+
+                            // Check for result marker
+                            if let Some(result_json) = line.strip_prefix("__RESULT__").and_then(|s| s.strip_suffix("__END__")) {
+                                match serde_json::from_str(result_json) {
+                                    Ok(v) => {
+                                        info!("[TypeScript] Got result from script");
+                                        result = Some(v);
+                                        break;
+                                    }
+                                    Err(e) => {
+                                        error!("[TypeScript] Failed to parse result: {}", e);
+                                    }
+                                }
+                            } else if let Some(error_json) = line.strip_prefix("__ERROR__").and_then(|s| s.strip_suffix("__END__")) {
+                                error!("[TypeScript] Script error: {}", error_json);
+                                return Err(McpError::internal_error(
+                                    "TypeScript execution error",
+                                    serde_json::from_str(error_json).ok(),
+                                ));
+                            } else if line.starts_with("::set-env name=") && line.contains("::") {
+                                // Parse GitHub Actions-style env var setting
+                                if let Some(rest) = line.strip_prefix("::set-env name=") {
+                                    if let Some(colon_pos) = rest.find("::") {
+                                        let key = &rest[..colon_pos];
+                                        let value = &rest[colon_pos + 2..];
+                                        info!("[TypeScript] Setting env var: {} = {}", key, value);
+                                        env_updates.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+                                    }
+                                }
+                            } else {
+                                captured_logs.push(line);
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(e) => {
+                            error!("[TypeScript] Error reading stdout: {}", e);
+                            break;
+                        }
+                    }
+                }
+
+                line = stderr_reader.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            debug!("[TypeScript] stderr: {}", line);
+                            stderr_output.push(line);
+                        }
+                        Ok(None) => {},
+                        Err(e) => {
+                            error!("[TypeScript] Error reading stderr: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Wait for process to exit
+        let status = child.wait().await.map_err(|e| {
+            McpError::internal_error(
+                "Failed to wait for TypeScript process",
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+
+        info!("[TypeScript] Process exited with status: {}", status);
+        Ok(())
+    };
+
+    // Handle cancellation if token provided
+    let process_result = if let Some(ct) = cancellation_token {
+        tokio::select! {
+            res = process_fut => res,
+            _ = ct.cancelled() => {
+                info!("[TypeScript] Cancellation requested, killing process");
+                let _ = child.kill().await;
+                return Err(McpError::internal_error(
+                    "TypeScript execution cancelled",
+                    None,
+                ));
+            }
+        }
+    } else {
+        process_fut.await
+    };
+
+    // Clean up script file
+    let _ = tokio::fs::remove_file(&script_path).await;
+
+    // Check for errors
+    if let Err(e) = process_result {
+        return Err(e);
+    }
+
+    // Process and return result
+    match result {
+        Some(mut r) => {
+            // Attach env updates to result
+            if !env_updates.is_empty() {
+                if let serde_json::Value::Object(ref mut obj) = r {
+                    obj.insert("set_env".to_string(), serde_json::Value::Object(env_updates.clone()));
+                } else {
+                    r = serde_json::json!({
+                        "output": r,
+                        "set_env": env_updates
+                    });
+                }
+            }
+
+            Ok(json!({
+                "result": r,
+                "logs": captured_logs
+            }))
+        }
+        None => {
+            let stderr_combined = stderr_output.join("\n");
+            Err(McpError::internal_error(
+                "No result received from TypeScript process",
+                Some(json!({
+                    "stderr": stderr_combined,
+                    "script_path": script_path.to_string_lossy()
                 })),
             ))
         }

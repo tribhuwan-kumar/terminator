@@ -1243,7 +1243,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript' for JS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps with {{env.key}} substitution. NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS) or 'env = {...}' (Python)."
+        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript'/'typescript'/'ts' for JS/TS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. TypeScript is supported with automatic transpilation. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps with {{env.key}} substitution. NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS/TS) or 'env = {...}' (Python)."
     )]
     async fn run_command(
         &self,
@@ -1369,7 +1369,7 @@ impl DesktopWrapper {
             };
 
             // Inject based on engine type
-            if matches!(engine.as_str(), "node" | "bun" | "javascript" | "js") {
+            if matches!(engine.as_str(), "node" | "bun" | "javascript" | "js" | "typescript" | "ts") {
                 // First inject accumulated env
                 final_script.push_str(&format!("var env = {accumulated_env_json};\n"));
 
@@ -1456,6 +1456,7 @@ impl DesktopWrapper {
 
             // Map engine to executor
             let is_js = matches!(engine.as_str(), "node" | "bun" | "javascript" | "js");
+            let is_ts = matches!(engine.as_str(), "typescript" | "ts");
             let is_py = matches!(engine.as_str(), "python" | "py");
 
             if is_js {
@@ -1523,6 +1524,60 @@ impl DesktopWrapper {
                 }
 
                 return Ok(CallToolResult::success(vec![Content::json(response)?]));
+            } else if is_ts {
+                let execution_result = scripting_engine::execute_typescript_with_nodejs(
+                    final_script,
+                    cancellation_token,
+                )
+                .await?;
+
+                // Extract logs and actual result (same as JS)
+                let logs = execution_result.get("logs").cloned();
+                let actual_result = execution_result
+                    .get("result")
+                    .cloned()
+                    .unwrap_or(execution_result.clone());
+
+                // Check if the TypeScript result indicates a failure
+                if let Some(obj) = actual_result.as_object() {
+                    if let Some(status) = obj.get("status") {
+                        if let Some(status_str) = status.as_str() {
+                            if status_str == "failed" || status_str == "error" {
+                                // Extract error message if provided
+                                let message = obj
+                                    .get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("Script returned failure status");
+
+                                info!(
+                                    "[run_command] TypeScript script returned status: '{}', treating as error",
+                                    status_str
+                                );
+
+                                // Return an error to trigger fallback_id in workflows
+                                return Err(McpError::internal_error(
+                                    format!("TypeScript execution failed: {message}"),
+                                    Some(actual_result),
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                // Build response with logs
+                let mut response = json!({
+                    "action": "run_command",
+                    "mode": "engine",
+                    "engine": engine,
+                    "status": "success",
+                    "result": actual_result
+                });
+
+                if let Some(logs) = logs {
+                    response["logs"] = logs;
+                }
+
+                return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_py {
                 let execution_result =
                     scripting_engine::execute_python_with_bindings(final_script).await?;
@@ -1561,7 +1616,7 @@ impl DesktopWrapper {
                 }))?]));
             } else {
                 return Err(McpError::invalid_params(
-                    "Unsupported engine. Use 'node'/'bun'/'javascript' or 'python'",
+                    "Unsupported engine. Use 'node'/'bun'/'javascript'/'typescript'/'ts' or 'python'",
                     Some(json!({"engine": engine_value})),
                 ));
             }
