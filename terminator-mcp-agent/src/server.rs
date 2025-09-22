@@ -1,7 +1,6 @@
 use crate::helpers::*;
 use crate::scripting_engine;
 use crate::utils::find_and_execute_with_retry_with_fallback;
-use regex::Regex;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
@@ -15,6 +14,7 @@ use crate::utils::{
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
+use regex::Regex;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
     CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
@@ -3799,7 +3799,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                 if Self::is_valid_js_identifier(&key) {
                     if let Ok(value_json) = serde_json::to_string(&value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
-                        injected_vars.insert(key.clone());  // Track this variable
+                        injected_vars.insert(key.clone()); // Track this variable
                         tracing::debug!(
                             "[execute_browser_script] Injected env.{} as individual variable",
                             key
@@ -3832,7 +3832,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
                 if let Ok(re) = Regex::new(&pattern) {
                     let before = modified_script.clone();
-                    modified_script = re.replace_all(&modified_script, format!("${{1}}{} =", var_name)).to_string();
+                    modified_script = re
+                        .replace_all(&modified_script, format!("${{1}}{var_name} ="))
+                        .to_string();
 
                     if before != modified_script {
                         tracing::info!(

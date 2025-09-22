@@ -98,10 +98,7 @@ pub fn build_element_not_found_error(
             }
         });
 
-        return McpError::invalid_params(
-            "Windows UI Automation API failure",
-            Some(error_details),
-        );
+        return McpError::invalid_params("Windows UI Automation API failure", Some(error_details));
     }
 
     let selectors_tried = get_selectors_tried_all(primary_selector, alternatives, fallback);

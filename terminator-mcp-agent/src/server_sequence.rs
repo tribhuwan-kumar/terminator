@@ -871,7 +871,8 @@ impl DesktopWrapper {
                                     // REMOVE server_logs before storing in env (they're debug data, not operational data)
                                     if let Some(obj) = result_content.as_object_mut() {
                                         if obj.contains_key("server_logs") {
-                                            let log_count = obj.get("server_logs")
+                                            let log_count = obj
+                                                .get("server_logs")
                                                 .and_then(|logs| logs.as_array())
                                                 .map(|arr| arr.len())
                                                 .unwrap_or(0);
