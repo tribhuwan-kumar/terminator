@@ -77,35 +77,31 @@ pub fn build_element_not_found_error(
     original_error: anyhow::Error,
 ) -> McpError {
     // Check if the underlying error is UIAutomationAPIError
-    if let Some(ui_error) = original_error.downcast_ref::<AutomationError>() {
-        match ui_error {
-            AutomationError::UIAutomationAPIError {
-                message,
-                com_error,
-                operation,
-                is_retryable,
-            } => {
-                let error_details = json!({
-                    "error_type": "ui_automation_api_failure",
-                    "message": format!("Windows UI Automation API failure: {}", message),
-                    "com_error": com_error,
-                    "operation": operation,
-                    "is_retryable": is_retryable,
-                    "selector": primary_selector,
-                    "suggestion": if *is_retryable {
-                        "This is likely a transient Windows API error. Retry usually succeeds."
-                    } else {
-                        "Check if the application is responding and Windows UI Automation is working."
-                    }
-                });
-
-                return McpError::invalid_params(
-                    "Windows UI Automation API failure",
-                    Some(error_details),
-                );
+    if let Some(AutomationError::UIAutomationAPIError {
+        message,
+        com_error,
+        operation,
+        is_retryable,
+    }) = original_error.downcast_ref::<AutomationError>()
+    {
+        let error_details = json!({
+            "error_type": "ui_automation_api_failure",
+            "message": format!("Windows UI Automation API failure: {}", message),
+            "com_error": com_error,
+            "operation": operation,
+            "is_retryable": is_retryable,
+            "selector": primary_selector,
+            "suggestion": if *is_retryable {
+                "This is likely a transient Windows API error. Retry usually succeeds."
+            } else {
+                "Check if the application is responding and Windows UI Automation is working."
             }
-            _ => {}
-        }
+        });
+
+        return McpError::invalid_params(
+            "Windows UI Automation API failure",
+            Some(error_details),
+        );
     }
 
     let selectors_tried = get_selectors_tried_all(primary_selector, alternatives, fallback);

@@ -3852,25 +3852,25 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     );
 
                     // Check if this is a JavaScript execution error
-                    if let Some(platform_error) = e.downcast_ref::<AutomationError>() {
-                        if let AutomationError::PlatformError(msg) = platform_error {
-                            if msg.contains("JavaScript") || msg.contains("script") {
-                                // Return JavaScript-specific error, not "Element not found"
-                                return Err(McpError::invalid_params(
-                                    "Browser script execution failed",
-                                    Some(json!({
-                                        "error_type": "script_execution_failure",
-                                        "message": msg.clone(),
-                                        "selector": args.selector,
-                                        "selectors_tried": get_selectors_tried_all(
-                                            &args.selector,
-                                            args.alternative_selectors.as_deref(),
-                                            args.fallback_selectors.as_deref(),
-                                        ),
-                                        "suggestion": "Check the browser console for JavaScript errors. The script may have timed out or encountered an error."
-                                    }))
-                                ));
-                            }
+                    if let Some(AutomationError::PlatformError(msg)) =
+                        e.downcast_ref::<AutomationError>()
+                    {
+                        if msg.contains("JavaScript") || msg.contains("script") {
+                            // Return JavaScript-specific error, not "Element not found"
+                            return Err(McpError::invalid_params(
+                                "Browser script execution failed",
+                                Some(json!({
+                                    "error_type": "script_execution_failure",
+                                    "message": msg.clone(),
+                                    "selector": args.selector,
+                                    "selectors_tried": get_selectors_tried_all(
+                                        &args.selector,
+                                        args.alternative_selectors.as_deref(),
+                                        args.fallback_selectors.as_deref(),
+                                    ),
+                                    "suggestion": "Check the browser console for JavaScript errors. The script may have timed out or encountered an error."
+                                })),
+                            ));
                         }
                     }
 
