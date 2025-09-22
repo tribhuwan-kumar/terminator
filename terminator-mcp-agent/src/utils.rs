@@ -1251,6 +1251,17 @@ pub async fn find_element_with_fallbacks(
                 }
             }
             Ok(Err((selector, error))) => {
+                // Check if this is a UIAutomationAPIError - if so, return immediately
+                if let terminator::AutomationError::UIAutomationAPIError { .. } = error {
+                    // This is a system-level failure that affects all selectors
+                    // No point trying alternatives - abort remaining tasks
+                    for task in remaining_tasks {
+                        task.abort();
+                    }
+                    // Return the UIAutomationAPIError directly
+                    return Err(error);
+                }
+                // For other errors, continue collecting them as strings
                 errors.push(format!("'{selector}': {error}"));
                 completed_tasks = remaining_tasks;
             }

@@ -28,4 +28,12 @@ pub enum AutomationError {
 
     #[error("Invalid selector: {0}")]
     InvalidSelector(String),
+
+    #[error("UI Automation API error: {message}")]
+    UIAutomationAPIError {
+        message: String,
+        com_error: Option<i32>,
+        operation: String,
+        is_retryable: bool,
+    },
 }

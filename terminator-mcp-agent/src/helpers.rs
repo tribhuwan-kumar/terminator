@@ -4,7 +4,7 @@ use regex::Regex;
 use rmcp::ErrorData as McpError;
 use serde_json::{json, Value};
 use std::time::Duration;
-use terminator::{Desktop, Selector, UIElement}; // NEW: import expression evaluator
+use terminator::{AutomationError, Desktop, Selector, UIElement}; // NEW: import expression evaluator
 
 /// Helper function to parse comma-separated alternative selectors into a Vec<String>
 pub fn parse_alternative_selectors(alternatives: Option<&str>) -> Vec<String> {
@@ -76,6 +76,33 @@ pub fn build_element_not_found_error(
     fallback: Option<&str>,
     original_error: anyhow::Error,
 ) -> McpError {
+    // Check if the underlying error is UIAutomationAPIError
+    if let Some(ui_error) = original_error.downcast_ref::<AutomationError>() {
+        match ui_error {
+            AutomationError::UIAutomationAPIError { message, com_error, operation, is_retryable } => {
+                let error_details = json!({
+                    "error_type": "ui_automation_api_failure",
+                    "message": format!("Windows UI Automation API failure: {}", message),
+                    "com_error": com_error,
+                    "operation": operation,
+                    "is_retryable": is_retryable,
+                    "selector": primary_selector,
+                    "suggestion": if *is_retryable {
+                        "This is likely a transient Windows API error. Retry usually succeeds."
+                    } else {
+                        "Check if the application is responding and Windows UI Automation is working."
+                    }
+                });
+
+                return McpError::invalid_params(
+                    "Windows UI Automation API failure",
+                    Some(error_details)
+                );
+            }
+            _ => {}
+        }
+    }
+
     let selectors_tried = get_selectors_tried_all(primary_selector, alternatives, fallback);
     let error_payload = json!({
         "error_type": "ElementNotFound",
