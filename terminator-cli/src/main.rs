@@ -867,17 +867,68 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
         std::env::set_var("RUST_LOG", "debug,rmcp=warn");
     }
 
-    // Initialize simple logging (only if not already initialized)
+    // Initialize logging with file output (only if not already initialized)
     {
+        use std::env;
+        use tracing_appender::rolling;
         use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-        let _ = tracing_subscriber::registry()
+
+        // Determine log directory - check for override first
+        let log_dir = if let Ok(custom_dir) = env::var("TERMINATOR_LOG_DIR") {
+            // User-specified log directory via environment variable
+            std::path::PathBuf::from(custom_dir)
+        } else if cfg!(target_os = "windows") {
+            // Windows: Use %LOCALAPPDATA%\terminator\logs or fallback to %TEMP%\terminator\logs
+            env::var("LOCALAPPDATA")
+                .map(|p| std::path::PathBuf::from(p).join("terminator").join("logs"))
+                .or_else(|_| {
+                    env::var("TEMP")
+                        .map(|p| std::path::PathBuf::from(p).join("terminator").join("logs"))
+                })
+                .unwrap_or_else(|_| std::path::PathBuf::from("C:\\temp\\terminator\\logs"))
+        } else {
+            // Unix/Linux/macOS: Use ~/.local/share/terminator/logs or /tmp/terminator/logs
+            env::var("HOME")
+                .map(|p| {
+                    std::path::PathBuf::from(p)
+                        .join(".local")
+                        .join("share")
+                        .join("terminator")
+                        .join("logs")
+                })
+                .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/terminator/logs"))
+        };
+
+        // Create log directory if it doesn't exist
+        let _ = std::fs::create_dir_all(&log_dir);
+
+        // Create a daily rolling file appender
+        let file_appender = rolling::daily(&log_dir, "terminator-cli.log");
+
+        let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+            // Suppress noisy rmcp info logs by default while keeping our own at info
+            .unwrap_or_else(|_| "info,rmcp=warn".into());
+
+        let init_result = tracing_subscriber::registry()
+            .with(filter)
             .with(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    // Suppress noisy rmcp info logs by default while keeping our own at info
-                    .unwrap_or_else(|_| "info,rmcp=warn".into()),
+                // Console layer
+                tracing_subscriber::fmt::layer().with_writer(std::io::stderr),
             )
-            .with(tracing_subscriber::fmt::layer())
-            .try_init(); // Use try_init instead of init to avoid panics on duplicate initialization
+            .with(
+                // File layer with more details
+                tracing_subscriber::fmt::layer()
+                    .with_writer(file_appender)
+                    .with_ansi(false)
+                    .with_target(true)
+                    .with_file(true)
+                    .with_line_number(true),
+            )
+            .try_init();
+
+        if init_result.is_ok() {
+            info!("Log files will be written to: {}", log_dir.display());
+        }
     }
 
     info!("Starting workflow execution via terminator CLI");

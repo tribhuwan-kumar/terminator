@@ -582,14 +582,58 @@ pub async fn execute_command(
 }
 
 fn init_logging() {
+    use std::env;
+    use tracing_appender::rolling;
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    // Determine log directory - check for override first
+    let log_dir = if let Ok(custom_dir) = env::var("TERMINATOR_LOG_DIR") {
+        // User-specified log directory via environment variable
+        std::path::PathBuf::from(custom_dir)
+    } else if cfg!(target_os = "windows") {
+        env::var("LOCALAPPDATA")
+            .map(|p| std::path::PathBuf::from(p).join("terminator").join("logs"))
+            .or_else(|_| {
+                env::var("TEMP")
+                    .map(|p| std::path::PathBuf::from(p).join("terminator").join("logs"))
+            })
+            .unwrap_or_else(|_| std::path::PathBuf::from("C:\\temp\\terminator\\logs"))
+    } else {
+        env::var("HOME")
+            .map(|p| {
+                std::path::PathBuf::from(p)
+                    .join(".local")
+                    .join("share")
+                    .join("terminator")
+                    .join("logs")
+            })
+            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/terminator/logs"))
+    };
+
+    // Create log directory if it doesn't exist
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    // Create a daily rolling file appender
+    let file_appender = rolling::daily(&log_dir, "terminator-mcp-client.log");
 
     let _ = tracing_subscriber::registry()
         .with(
             // Respect RUST_LOG if provided, else default to info
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            // Console layer
+            tracing_subscriber::fmt::layer().with_writer(std::io::stderr),
+        )
+        .with(
+            // File layer
+            tracing_subscriber::fmt::layer()
+                .with_writer(file_appender)
+                .with_ansi(false)
+                .with_target(true)
+                .with_file(true)
+                .with_line_number(true),
+        )
         .try_init();
 }
 

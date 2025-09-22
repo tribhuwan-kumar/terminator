@@ -1051,6 +1051,8 @@ pub fn validate_output_parser(parser: &serde_json::Value) -> Result<(), Validati
 // Removed: RunJavascriptArgs (merged into RunCommandArgs via engine + script)
 
 pub fn init_logging() -> Result<Option<LogCapture>> {
+    use tracing_appender::rolling;
+
     let log_level = env::var("LOG_LEVEL")
         .map(|level| match level.to_lowercase().as_str() {
             "error" => Level::ERROR,
@@ -1061,20 +1063,70 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
         })
         .unwrap_or(Level::INFO);
 
+    // Determine log directory - check for override first
+    let log_dir = if let Ok(custom_dir) = env::var("TERMINATOR_LOG_DIR") {
+        // User-specified log directory via environment variable
+        std::path::PathBuf::from(custom_dir)
+    } else if cfg!(target_os = "windows") {
+        // Windows: Use %LOCALAPPDATA%\terminator\logs or fallback to %TEMP%\terminator\logs
+        env::var("LOCALAPPDATA")
+            .map(|p| std::path::PathBuf::from(p).join("terminator").join("logs"))
+            .or_else(|_| {
+                env::var("TEMP")
+                    .map(|p| std::path::PathBuf::from(p).join("terminator").join("logs"))
+            })
+            .unwrap_or_else(|_| std::path::PathBuf::from("C:\\temp\\terminator\\logs"))
+    } else {
+        // Unix/Linux/macOS: Use ~/.local/share/terminator/logs or /tmp/terminator/logs
+        env::var("HOME")
+            .map(|p| {
+                std::path::PathBuf::from(p)
+                    .join(".local")
+                    .join("share")
+                    .join("terminator")
+                    .join("logs")
+            })
+            .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/terminator/logs"))
+    };
+
+    // Create log directory if it doesn't exist
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        warn!("Failed to create log directory: {}", e);
+    }
+
+    // Create a daily rolling file appender
+    let file_appender = rolling::daily(&log_dir, "terminator-mcp-agent.log");
+
     // Create log capture instance (max 1000 entries to prevent unbounded growth)
     let log_capture = LogCapture::new(1000);
     let capture_layer = LogCaptureLayer::new(log_capture.clone());
 
-    // Build the subscriber with both stderr output and log capture
+    // Build the subscriber with stderr output, file output, and log capture
     tracing_subscriber::registry()
         .with(
+            // Console/stderr layer
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
                 .with_ansi(false)
                 .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
         )
+        .with(
+            // File layer with timestamps
+            tracing_subscriber::fmt::layer()
+                .with_writer(file_appender)
+                .with_ansi(false)
+                .with_target(true)
+                .with_thread_ids(true)
+                .with_thread_names(false)
+                .with_file(true)
+                .with_line_number(true)
+                .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+        )
         .with(capture_layer)
         .init();
+
+    // Log the log directory location on startup
+    tracing::info!("Log files will be written to: {}", log_dir.display());
 
     Ok(Some(log_capture))
 }
