@@ -1379,7 +1379,7 @@ const setEnv = (updates: Record<string, any>) => {{
 (async () => {{
     try {{
         // User script starts here
-        {}
+        {script}
         // User script ends here
     }} catch (error: any) {{
         console.error('__ERROR__' + JSON.stringify({{
@@ -1389,8 +1389,7 @@ const setEnv = (updates: Record<string, any>) => {{
         process.exit(1);
     }}
 }})();
-"#,
-        script
+"#
     );
 
     tokio::fs::write(&script_path, wrapped_script)
@@ -1547,9 +1546,7 @@ const setEnv = (updates: Record<string, any>) => {{
     let _ = tokio::fs::remove_file(&script_path).await;
 
     // Check for errors
-    if let Err(e) = process_result {
-        return Err(e);
-    }
+    process_result?;
 
     // Process and return result
     match result {
