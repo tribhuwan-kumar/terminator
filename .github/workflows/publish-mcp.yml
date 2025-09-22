@@ -167,14 +167,34 @@ jobs:
 
       - name: Move binaries to package locations
         run: |
+          echo "Contents of artifacts directory:"
+          ls -la artifacts/ || echo "No artifacts directory found"
+
           for dir in artifacts/*; do
-            if [ -f "$dir"/* ]; then
+            echo "Processing directory: $dir"
+            if [ -d "$dir" ] && [ "$(basename $dir)" != "*" ]; then
               platform=$(echo $(basename "$dir") | sed 's/-binary//')
-              binary=$(ls "$dir")
-              echo "Moving $binary to terminator-mcp-agent/npm/$platform/"
-              mv "$dir"/* "terminator-mcp-agent/npm/$platform/"
+              echo "Platform: $platform"
+
+              # Check if directory has files
+              if ls "$dir"/* 1> /dev/null 2>&1; then
+                binary=$(ls "$dir"/*)
+                echo "Found binary: $binary"
+                echo "Creating directory: terminator-mcp-agent/npm/$platform/"
+                mkdir -p "terminator-mcp-agent/npm/$platform/"
+                echo "Moving binary to terminator-mcp-agent/npm/$platform/"
+                mv "$dir"/* "terminator-mcp-agent/npm/$platform/"
+                echo "Successfully moved binary for $platform"
+              else
+                echo "No files found in $dir"
+              fi
+            else
+              echo "Skipping non-directory or glob pattern: $dir"
             fi
           done
+
+          echo "Final structure:"
+          ls -la terminator-mcp-agent/npm/ || echo "npm directory not created"
 
       - name: Publish platform packages
         run: |
