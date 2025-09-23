@@ -249,6 +249,8 @@ fn event_type_name(event: &WorkflowEvent) -> &'static str {
         WorkflowEvent::TextInputCompleted(_) => "TextInputCompleted",
         WorkflowEvent::ApplicationSwitch(_) => "ApplicationSwitch",
         WorkflowEvent::BrowserTabNavigation(_) => "BrowserTabNavigation",
+        WorkflowEvent::BrowserClick(_) => "BrowserClick",
+        WorkflowEvent::BrowserTextInput(_) => "BrowserTextInput",
     }
 }
 

@@ -5082,6 +5082,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uiautomation",
+ "uuid",
  "windows 0.61.3",
 ]
 

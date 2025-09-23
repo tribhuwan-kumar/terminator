@@ -1337,6 +1337,8 @@ pub enum SerializableWorkflowEvent {
     ApplicationSwitch(SerializableApplicationSwitchEvent),
     BrowserTabNavigation(SerializableBrowserTabNavigationEvent),
     Click(SerializableClickEvent),
+    BrowserClick(BrowserClickEvent),
+    BrowserTextInput(BrowserTextInputEvent),
 }
 
 impl From<&WorkflowEvent> for SerializableWorkflowEvent {
@@ -1358,6 +1360,8 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
                 SerializableWorkflowEvent::BrowserTabNavigation(e.into())
             }
             WorkflowEvent::Click(e) => SerializableWorkflowEvent::Click(e.into()),
+            WorkflowEvent::BrowserClick(e) => SerializableWorkflowEvent::BrowserClick(e.clone()),
+            WorkflowEvent::BrowserTextInput(e) => SerializableWorkflowEvent::BrowserTextInput(e.clone()),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::events::{WorkflowEvent, Position};
+use crate::events::Position;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
