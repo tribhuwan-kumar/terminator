@@ -219,6 +219,12 @@ async fn main() -> Result<()> {
     }
 
     tracing::info!("========================================");
+
+    // Check for Visual C++ Redistributables on Windows (one-time at startup)
+    if cfg!(windows) {
+        terminator_mcp_agent::vcredist_check::check_vcredist_installed();
+    }
+
     tracing::info!("Initializing Terminator MCP server...");
     tracing::info!("Transport mode: {:?}", args.transport);
     if args.cors {
