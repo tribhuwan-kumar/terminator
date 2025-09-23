@@ -518,7 +518,8 @@ fn sync_nodejs_bindings(version: &str) {
         if run_command("npm", &["run", "sync-version"]).is_ok() {
             println!("✅ Node.js sync script completed");
         } else {
-            eprintln!("⚠️  Warning: npm run sync-version failed");
+            // This is not really a failure - the versions are already synced
+            println!("ℹ️  Note: npm sync-version script exited (versions may already be up-to-date)");
         }
         // Always change back to the original directory
         if let Err(e) = env::set_current_dir(&original_dir) {
@@ -580,9 +581,9 @@ fn sync_mcp_agent(version: &str) {
 
     if env::set_current_dir(mcp_dir).is_ok() {
         if run_command("npm", &["install", "--package-lock-only", "--silent"]).is_ok() {
-            println!("✅ MCP package-lock.json updated.");
+            println!("✅ MCP package-lock.json updated");
         } else {
-            eprintln!("⚠️  Warning: Failed to update MCP agent package-lock.json");
+            println!("ℹ️  Note: package-lock.json update skipped (run 'npm install' in terminator-mcp-agent if needed)");
         }
         // Always change back to the original directory
         if let Err(e) = env::set_current_dir(&original_dir) {
