@@ -35,3 +35,6 @@ scripts/copy-mcp-binary.ps1
 .mcp.json
 mcp.json
 .cursor/mcp.json
+
+# Workflow state files (contain sensitive execution data)
+.workflow_state/
