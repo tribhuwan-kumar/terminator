@@ -828,10 +828,17 @@ impl DesktopWrapper {
                                 .unwrap_or_else(serde_json::Map::new);
 
                             // Always inject workflow variables (scripts depend on them)
+                            // Extract default values from VariableDefinition objects for consistency
                             if let Some(workflow_vars) = &args.variables {
+                                let mut resolved_vars = serde_json::Map::new();
+                                for (key, def) in workflow_vars {
+                                    if let Some(default_value) = &def.default {
+                                        resolved_vars.insert(key.clone(), default_value.clone());
+                                    }
+                                }
                                 env_obj.insert(
                                     "_workflow_variables".to_string(),
-                                    json!(workflow_vars),
+                                    json!(resolved_vars),
                                 );
                             }
 
