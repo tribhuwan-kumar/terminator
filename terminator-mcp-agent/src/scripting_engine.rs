@@ -1040,7 +1040,10 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         info!("[Node.js] Using custom working directory: {}", wd.display());
         wd.clone()
     } else {
-        info!("[Node.js] Using default script directory: {}", script_dir.display());
+        info!(
+            "[Node.js] Using default script directory: {}",
+            script_dir.display()
+        );
         script_dir.clone()
     };
 
@@ -1445,10 +1448,16 @@ const setEnv = (updates: Record<string, any>) => {{
     // Build the command based on runtime
     // Determine the working directory for the process
     let process_working_dir = if let Some(ref wd) = working_dir {
-        info!("[TypeScript] Using custom working directory: {}", wd.display());
+        info!(
+            "[TypeScript] Using custom working directory: {}",
+            wd.display()
+        );
         wd.clone()
     } else {
-        info!("[TypeScript] Using default script directory: {}", script_dir.display());
+        info!(
+            "[TypeScript] Using default script directory: {}",
+            script_dir.display()
+        );
         script_dir.clone()
     };
 
@@ -1619,8 +1628,8 @@ const setEnv = (updates: Record<string, any>) => {{
             let stderr_combined = stderr_output.join("\n");
 
             // Check if this is a VC++ redistributables error on Windows
-            if cfg!(windows) && crate::vcredist_check::is_vcredist_error(&stderr_combined) {
-                if !crate::vcredist_check::is_vcredist_available() {
+            if cfg!(windows) && crate::vcredist_check::is_vcredist_error(&stderr_combined)
+                && !crate::vcredist_check::is_vcredist_available() {
                     error!(
                         "[TypeScript] Execution failed due to missing Visual C++ Redistributables"
                     );
@@ -1634,7 +1643,6 @@ const setEnv = (updates: Record<string, any>) => {{
                         })),
                     ));
                 }
-            }
 
             Err(McpError::internal_error(
                 "No result received from TypeScript process",
@@ -1763,7 +1771,10 @@ asyncio.run(__runner__())
         info!("[Python] Using custom working directory: {}", wd.display());
         wd
     } else {
-        info!("[Python] Using default script directory: {}", script_dir.display());
+        info!(
+            "[Python] Using default script directory: {}",
+            script_dir.display()
+        );
         script_dir.clone()
     };
 
