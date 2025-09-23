@@ -26,8 +26,10 @@ use std::process::{Command, Stdio};
 mod mcp_client;
 mod telemetry_receiver;
 mod workflow_result;
+mod workflow_validator;
 
 use workflow_result::WorkflowResult;
+use workflow_validator::WorkflowOutputValidator;
 
 #[derive(Parser)]
 #[command(name = "terminator")]
@@ -159,6 +161,18 @@ enum McpCommands {
     Exec(McpExecArgs),
     /// Execute a workflow sequence from a local file or GitHub gist
     Run(McpRunArgs),
+    /// Validate workflow output structure
+    Validate(McpValidateArgs),
+}
+
+#[derive(Parser, Debug, Clone)]
+struct McpValidateArgs {
+    /// Input file containing workflow output (JSON format). Use '-' or omit to read from stdin
+    input: Option<String>,
+
+    /// Show quality score (0-100)
+    #[clap(long)]
+    score: bool,
 }
 
 #[derive(Subcommand)]
@@ -792,11 +806,21 @@ fn run_command(program: &str, args: &[&str]) -> Result<(), Box<dyn std::error::E
 }
 
 fn handle_mcp_command(cmd: McpCommands) {
+    // Handle validate separately as it doesn't need MCP connection
+    if let McpCommands::Validate(args) = cmd {
+        if let Err(e) = validate_workflow_output(args) {
+            eprintln!("❌ Validation error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let transport = match cmd {
         McpCommands::Chat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
         McpCommands::AiChat(ref args) => parse_transport(args.url.clone(), args.command.clone()),
         McpCommands::Exec(ref args) => parse_transport(args.url.clone(), args.command.clone()),
         McpCommands::Run(ref args) => parse_transport(args.url.clone(), args.command.clone()),
+        McpCommands::Validate(_) => unreachable!(), // Handled above
     };
 
     let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
@@ -809,6 +833,7 @@ fn handle_mcp_command(cmd: McpCommands) {
                 mcp_client::execute_command(transport, args.tool, args.args).await
             }
             McpCommands::Run(args) => run_workflow(transport, args).await,
+            McpCommands::Validate(_) => unreachable!(), // Handled above
         }
     });
 
@@ -816,6 +841,56 @@ fn handle_mcp_command(cmd: McpCommands) {
         eprintln!("❌ MCP command error: {e}");
         std::process::exit(1);
     }
+}
+
+fn validate_workflow_output(args: McpValidateArgs) -> Result<()> {
+    // Read the input - from file or stdin
+    let content = match args.input.as_deref() {
+        None | Some("-") => {
+            // Read from stdin
+            use std::io::Read;
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)
+                .context("Failed to read from stdin")?;
+            buffer
+        },
+        Some(path) => {
+            // Read from file
+            fs::read_to_string(path)
+                .with_context(|| format!("Failed to read file: {}", path))?
+        }
+    };
+
+    // Parse as JSON
+    let output: Value = serde_json::from_str(&content)
+        .context("Failed to parse JSON input")?;
+
+    // Validate the structure
+    let validation_result = WorkflowOutputValidator::validate(&output);
+
+    // Display results
+    WorkflowOutputValidator::display_results(&validation_result);
+
+    // Show quality score if requested
+    if args.score {
+        let score = validation_result.quality_score();
+        println!("Quality Score: {}/100", score);
+
+        let rating = match score {
+            90..=100 => "Excellent",
+            75..=89 => "Good",
+            60..=74 => "Fair",
+            _ => "Needs Improvement",
+        };
+        println!("Rating: {}", rating);
+    }
+
+    // Exit with error if validation failed
+    if !validation_result.is_valid() {
+        std::process::exit(1);
+    }
+
+    Ok(())
 }
 
 fn parse_transport(url: Option<String>, command: Option<String>) -> mcp_client::Transport {

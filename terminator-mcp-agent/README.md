@@ -1026,3 +1026,19 @@ Workflows support `fallback_id` to handle errors gracefully:
 - Use `troubleshooting:` section for recovery steps only accessed via fallback
 
 > Need more help? Browse the examples under `examples/` in this repo or open a discussion on GitHub.
+
+## Documentation
+
+### Workflow Development
+
+- **[Workflow Output Structure](docs/WORKFLOW_OUTPUT_STRUCTURE.md)**: Detailed documentation on the expected output structure for workflows, including:
+  - How to structure `parsed_output` for proper CLI rendering
+  - Success/failure indicators and business logic validation
+  - Data extraction patterns and error handling
+  - Integration with CLI and backend systems
+
+### Additional Resources
+
+- **[CLI Documentation](../terminator-cli/README.md)**: Command-line interface for executing workflows
+- **[Examples](examples/)**: Sample workflows and use cases
+- **[API Reference](https://github.com/mediar-ai/terminator#api)**: Core Terminator library documentation
