@@ -322,6 +322,91 @@ pub struct ClickEvent {
     pub metadata: EventMetadata,
 }
 
+/// Browser-specific click event with DOM information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserClickEvent {
+    /// UI automation element info (Windows UI tree)
+    pub ui_element: Option<UIElement>,
+
+    /// DOM element information from browser
+    pub dom_element: Option<DomElementInfo>,
+
+    /// Click position in screen coordinates
+    pub position: Position,
+
+    /// Best selector candidates for this element
+    pub selectors: Vec<SelectorCandidate>,
+
+    /// Page URL at time of click
+    pub page_url: String,
+
+    /// Page title at time of click
+    pub page_title: String,
+
+    /// Timestamp of the event
+    pub timestamp: u64,
+
+    /// Mouse button used
+    pub button: MouseButton,
+
+    /// Whether this was a double-click
+    pub is_double_click: bool,
+
+    /// Event metadata
+    pub metadata: EventMetadata,
+}
+
+/// DOM element information captured from browser
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DomElementInfo {
+    pub tag_name: String,
+    pub id: Option<String>,
+    pub class_names: Vec<String>,
+    pub css_selector: String,
+    pub xpath: String,
+    pub inner_text: Option<String>,
+    pub input_value: Option<String>,
+    pub is_visible: bool,
+    pub is_interactive: bool,
+    pub aria_label: Option<String>,
+    pub selector_candidates: Vec<SelectorCandidate>,
+}
+
+/// Selector candidate for DOM element
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelectorCandidate {
+    pub selector: String,
+    pub selector_type: String,
+    pub specificity: u32,
+    pub requires_jquery: bool,
+}
+
+/// Browser text input event with DOM context
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserTextInputEvent {
+    /// DOM element being typed into
+    pub dom_element: Option<DomElementInfo>,
+
+    /// Text that was typed
+    pub text: String,
+
+    /// Selector used to identify element
+    pub selector: String,
+
+    /// Whether text was pasted vs typed
+    pub was_pasted: bool,
+
+    /// Page context
+    pub page_url: String,
+    pub page_title: String,
+
+    /// Timestamp
+    pub timestamp: u64,
+
+    /// Event metadata
+    pub metadata: EventMetadata,
+}
+
 /// Represents a workflow event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WorkflowEvent {
@@ -354,6 +439,12 @@ pub enum WorkflowEvent {
 
     /// High-level click event
     Click(ClickEvent),
+
+    /// Browser-specific click event with DOM information
+    BrowserClick(BrowserClickEvent),
+
+    /// Browser text input event
+    BrowserTextInput(BrowserTextInputEvent),
 }
 
 impl WorkflowEvent {
@@ -370,6 +461,8 @@ impl WorkflowEvent {
             WorkflowEvent::ApplicationSwitch(e) => &e.metadata,
             WorkflowEvent::BrowserTabNavigation(e) => &e.metadata,
             WorkflowEvent::Click(e) => &e.metadata,
+            WorkflowEvent::BrowserClick(e) => &e.metadata,
+            WorkflowEvent::BrowserTextInput(e) => &e.metadata,
         }
     }
 
@@ -386,6 +479,8 @@ impl WorkflowEvent {
             WorkflowEvent::ApplicationSwitch(e) => &mut e.metadata,
             WorkflowEvent::BrowserTabNavigation(e) => &mut e.metadata,
             WorkflowEvent::Click(e) => &mut e.metadata,
+            WorkflowEvent::BrowserClick(e) => &mut e.metadata,
+            WorkflowEvent::BrowserTextInput(e) => &mut e.metadata,
         }
     }
 

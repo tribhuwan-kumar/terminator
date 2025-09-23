@@ -7,11 +7,14 @@ use serde::{Deserialize, Serialize};
 pub use terminator_workflow_recorder::{
     ApplicationSwitchEvent,
     ApplicationSwitchMethod,
+    BrowserClickEvent,
     BrowserTabNavigationEvent,
+    BrowserTextInputEvent,
     ButtonInteractionType,
     ClickEvent,
     ClipboardAction,
     ClipboardEvent,
+    DomElementInfo,
     DragDropEvent,
     EnhancedUIElement,
     // Metadata
@@ -32,6 +35,7 @@ pub use terminator_workflow_recorder::{
     RecordedWorkflow,
     Rect,
     SelectionMethod,
+    SelectorCandidate,
     TabAction,
     TabNavigationMethod,
     TextInputCompletedEvent,

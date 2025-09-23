@@ -1,5 +1,6 @@
 use crate::workflow_events::{
-    ClickEvent, EnhancedUIElement, McpToolStep, TextInputCompletedEvent, WorkflowEvent,
+    BrowserClickEvent, BrowserTextInputEvent, ClickEvent, EnhancedUIElement, McpToolStep,
+    TextInputCompletedEvent, WorkflowEvent,
 };
 use anyhow::Result;
 use serde_json::json;
@@ -16,6 +17,8 @@ pub struct ConversionConfig {
     pub max_fallback_strategies: usize,
     /// Whether to validate generated sequences during recording
     pub validate_during_recording: bool,
+    /// Whether to prefer browser scripts over UI automation for browser interactions
+    pub prefer_browser_scripts: bool,
 }
 
 impl Default for ConversionConfig {
@@ -25,6 +28,7 @@ impl Default for ConversionConfig {
             enable_pattern_detection: true,
             max_fallback_strategies: 3,
             validate_during_recording: false, // Expensive, off by default
+            prefer_browser_scripts: true, // NEW: Default to browser scripts
         }
     }
 }
@@ -104,6 +108,14 @@ impl McpConverter {
                 self.convert_text_input(text_event, ui_context).await
             }
             WorkflowEvent::Click(click_event) => self.convert_click(click_event, ui_context).await,
+            WorkflowEvent::BrowserClick(browser_click) => {
+                // Convert BrowserClickEvent directly to browser script
+                self.convert_browser_click_event(browser_click).await
+            }
+            WorkflowEvent::BrowserTextInput(browser_text) => {
+                // Convert BrowserTextInputEvent to browser script
+                self.convert_browser_text_input(browser_text).await
+            }
             WorkflowEvent::ApplicationSwitch(app_event) => {
                 self.convert_application_switch(app_event).await
             }
@@ -237,6 +249,13 @@ impl McpConverter {
     ) -> Result<ConversionResult> {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
+
+        // Check if this is a browser click and we should prefer browser scripts
+        if self.config.prefer_browser_scripts {
+            if let Some(browser_sequence) = self.try_convert_browser_click(event, ui_context).await? {
+                return Ok(browser_sequence);
+            }
+        }
 
         // Extract application/window context for scoped selector generation
         let window_context = if let Some(metadata) = &event.metadata.ui_element {
@@ -475,6 +494,378 @@ impl McpConverter {
         Ok(ConversionResult {
             primary_sequence: sequence,
             semantic_action: "application_switch".to_string(),
+            fallback_sequences: vec![],
+            conversion_notes: notes,
+        })
+    }
+
+    /// Try to convert click event to browser script if it's in a browser context
+    async fn try_convert_browser_click(
+        &self,
+        event: &ClickEvent,
+        _ui_context: Option<&EnhancedUIElement>,
+    ) -> Result<Option<ConversionResult>> {
+        // Check if this click is in a browser context
+        let is_browser = if let Some(metadata) = &event.metadata.ui_element {
+            if let Ok(serialized) = serde_json::to_value(metadata) {
+                let app = serialized
+                    .get("application")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let window = serialized
+                    .get("window")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                // Detect browser applications
+                app.to_lowercase().contains("chrome") ||
+                app.to_lowercase().contains("firefox") ||
+                app.to_lowercase().contains("edge") ||
+                window.to_lowercase().contains("chrome") ||
+                window.to_lowercase().contains("firefox") ||
+                window.to_lowercase().contains("edge")
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !is_browser {
+            return Ok(None);
+        }
+
+        // Generate browser script for the click
+        let mut sequence = Vec::new();
+        let mut notes = Vec::new();
+
+        // Build selector candidates from element text and role
+        let mut selector_candidates = Vec::new();
+
+        // Try ID-based selector if element text looks like an ID
+        if event.element_text.starts_with('#') || event.element_text.contains('_') {
+            selector_candidates.push(format!("'#{}'", event.element_text.trim_start_matches('#')));
+        }
+
+        // Try text-based selector for buttons and links
+        if event.element_role == "Button" || event.element_role == "Link" {
+            if !event.element_text.is_empty() {
+                selector_candidates.push(format!("'button:contains(\"{}\")'", event.element_text));
+                selector_candidates.push(format!("'a:contains(\"{}\")'", event.element_text));
+            }
+        }
+
+        // Try child text content
+        for child_text in &event.child_text_content {
+            if !child_text.is_empty() && child_text.len() < 50 {
+                selector_candidates.push(format!("'*:contains(\"{}\")'", child_text));
+            }
+        }
+
+        // Fallback to generic selector
+        if selector_candidates.is_empty() {
+            selector_candidates.push("'button, a, input[type=\"submit\"], input[type=\"button\"]'".to_string());
+        }
+
+        let selectors_js = selector_candidates.join(", ");
+
+        // Generate inline JavaScript for the click
+        let script = format!(r#"
+(function() {{
+    // Try multiple selectors in order of preference
+    const selectors = [{}];
+    let element = null;
+
+    for (const selector of selectors) {{
+        try {{
+            // Try jQuery selector first if available
+            if (typeof $ !== 'undefined') {{
+                const jqElement = $(selector);
+                if (jqElement.length > 0) {{
+                    element = jqElement[0];
+                    break;
+                }}
+            }} else {{
+                // Fall back to querySelector
+                element = document.querySelector(selector);
+                if (element) break;
+            }}
+        }} catch(e) {{
+            // Invalid selector, try next
+        }}
+    }}
+
+    if (!element) {{
+        // Try to find by text content
+        const allElements = document.querySelectorAll('button, a, [role="button"], [role="link"]');
+        for (const el of allElements) {{
+            if (el.textContent.includes('{}')) {{
+                element = el;
+                break;
+            }}
+        }}
+    }}
+
+    if (!element) {{
+        return JSON.stringify({{
+            error: 'Element not found',
+            tried_selectors: selectors,
+            searched_text: '{}'
+        }});
+    }}
+
+    // Scroll element into view
+    element.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+
+    // Wait a bit for scroll to complete
+    setTimeout(() => {{
+        // Click the element
+        element.click();
+
+        // Also dispatch mouse events for better compatibility
+        const clickEvent = new MouseEvent('click', {{
+            view: window,
+            bubbles: true,
+            cancelable: true
+        }});
+        element.dispatchEvent(clickEvent);
+    }}, 300);
+
+    return JSON.stringify({{
+        success: true,
+        clicked: element.tagName + (element.id ? '#' + element.id : ''),
+        text: element.textContent.trim().substring(0, 50)
+    }});
+}})()
+"#, selectors_js, event.element_text.replace('\'', "\\'"), event.element_text.replace('\'', "\\'"));
+
+        // Get browser window selector
+        let window_selector = if let Some(metadata) = &event.metadata.ui_element {
+            if let Ok(serialized) = serde_json::to_value(metadata) {
+                let window = serialized
+                    .get("window")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("*Chrome");
+                format!("role:Window|name:{}", window)
+            } else {
+                "role:Window|name:*Chrome".to_string()
+            }
+        } else {
+            "role:Window|name:*Chrome".to_string()
+        };
+
+        sequence.push(McpToolStep {
+            tool_name: "execute_browser_script".to_string(),
+            arguments: json!({
+                "selector": window_selector,
+                "script": script
+            }),
+            description: Some(format!(
+                "Click '{}' element in browser",
+                if !event.element_text.is_empty() {
+                    &event.element_text
+                } else {
+                    &event.element_role
+                }
+            )),
+            timeout_ms: Some(5000),
+            continue_on_error: Some(false),
+            delay_ms: Some(500),
+        });
+
+        notes.push("Converted to browser script for better reliability".to_string());
+        notes.push(format!("Generated {} selector candidates", selector_candidates.len()));
+
+        Ok(Some(ConversionResult {
+            primary_sequence: sequence,
+            semantic_action: "browser_click".to_string(),
+            fallback_sequences: vec![],
+            conversion_notes: notes,
+        }))
+    }
+
+    /// Convert BrowserClickEvent to browser script
+    async fn convert_browser_click_event(
+        &self,
+        event: &crate::workflow_events::BrowserClickEvent,
+    ) -> Result<ConversionResult> {
+        let mut sequence = Vec::new();
+        let mut notes = Vec::new();
+
+        // Use DOM element information if available
+        let script = if let Some(dom_element) = &event.dom_element {
+            // Build selector from DOM element's selector candidates
+            let selectors = dom_element
+                .selector_candidates
+                .iter()
+                .map(|s| format!("'{}'", s.selector.replace('\'', "\\'")))
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            format!(r#"
+(function() {{
+    const selectors = [{}];
+    let element = null;
+
+    for (const selector of selectors) {{
+        try {{
+            element = document.querySelector(selector);
+            if (element) break;
+        }} catch(e) {{
+            // Invalid selector, try next
+        }}
+    }}
+
+    if (!element) {{
+        return JSON.stringify({{
+            error: 'Element not found',
+            tried_selectors: selectors
+        }});
+    }}
+
+    // Scroll into view and click
+    element.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+    setTimeout(() => {{
+        element.click();
+    }}, 300);
+
+    return JSON.stringify({{
+        success: true,
+        clicked: element.tagName + (element.id ? '#' + element.id : ''),
+        text: element.textContent.trim().substring(0, 50)
+    }});
+}})()
+"#, selectors)
+        } else {
+            // Fallback to position-based click
+            format!(r#"
+(function() {{
+    const x = {};
+    const y = {};
+    const element = document.elementFromPoint(x, y);
+
+    if (!element) {{
+        return JSON.stringify({{
+            error: 'No element at position',
+            x: x,
+            y: y
+        }});
+    }}
+
+    element.click();
+    return JSON.stringify({{
+        success: true,
+        clicked: element.tagName,
+        position: {{x: x, y: y}}
+    }});
+}})()
+"#, event.position.x, event.position.y)
+        };
+
+        // Get browser window selector
+        let window_selector = if let Some(ui_element) = &event.ui_element {
+            if let Ok(serialized) = serde_json::to_value(ui_element) {
+                let window = serialized
+                    .get("window")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("*Chrome");
+                format!("role:Window|name:{}", window)
+            } else {
+                "role:Window|name:*Chrome".to_string()
+            }
+        } else {
+            "role:Window|name:*Chrome".to_string()
+        };
+
+        sequence.push(McpToolStep {
+            tool_name: "execute_browser_script".to_string(),
+            arguments: json!({
+                "selector": window_selector,
+                "script": script
+            }),
+            description: Some(format!(
+                "Click {} in browser",
+                if let Some(dom) = &event.dom_element {
+                    if let Some(id) = &dom.id {
+                        format!("#{}", id)
+                    } else {
+                        dom.tag_name.clone()
+                    }
+                } else {
+                    "element".to_string()
+                }
+            )),
+            timeout_ms: Some(5000),
+            continue_on_error: Some(false),
+            delay_ms: Some(500),
+        });
+
+        if let Some(dom) = &event.dom_element {
+            notes.push(format!("DOM element: {} with {} selectors", dom.tag_name, dom.selector_candidates.len()));
+        }
+        notes.push(format!("Browser click at page: {}", event.page_url));
+
+        Ok(ConversionResult {
+            primary_sequence: sequence,
+            semantic_action: "browser_click_dom".to_string(),
+            fallback_sequences: vec![],
+            conversion_notes: notes,
+        })
+    }
+
+    /// Convert BrowserTextInputEvent to browser script
+    async fn convert_browser_text_input(
+        &self,
+        event: &crate::workflow_events::BrowserTextInputEvent,
+    ) -> Result<ConversionResult> {
+        let mut sequence = Vec::new();
+        let mut notes = Vec::new();
+
+        let script = format!(r#"
+(function() {{
+    const selector = '{}';
+    const text = `{}`;
+
+    const element = document.querySelector(selector);
+    if (!element) {{
+        return JSON.stringify({{ error: 'Input element not found' }});
+    }}
+
+    // Focus and clear
+    element.focus();
+    element.value = '';
+
+    // Type the text
+    element.value = text;
+    element.dispatchEvent(new Event('input', {{ bubbles: true }}));
+    element.dispatchEvent(new Event('change', {{ bubbles: true }}));
+
+    return JSON.stringify({{
+        success: true,
+        typed: text,
+        element: element.tagName + (element.id ? '#' + element.id : '')
+    }});
+}})()
+"#, event.selector.replace('\'', "\\'"), event.text.replace('`', "\\`"));
+
+        sequence.push(McpToolStep {
+            tool_name: "execute_browser_script".to_string(),
+            arguments: json!({
+                "selector": "role:Window|name:*Chrome",
+                "script": script
+            }),
+            description: Some(format!("Type '{}' into browser input", event.text)),
+            timeout_ms: Some(5000),
+            continue_on_error: Some(false),
+            delay_ms: Some(200),
+        });
+
+        notes.push(format!("Browser text input at page: {}", event.page_url));
+        notes.push(format!("Was pasted: {}", event.was_pasted));
+
+        Ok(ConversionResult {
+            primary_sequence: sequence,
+            semantic_action: "browser_text_input".to_string(),
             fallback_sequences: vec![],
             conversion_notes: notes,
         })

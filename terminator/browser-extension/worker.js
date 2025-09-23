@@ -93,6 +93,34 @@ function connect() {
       log("Received reset command");
       await forceResetDebuggerState();
       safeSend({ type: "reset_complete", ok: true });
+    } else if (msg.action === "capture_element_at_point") {
+      // New action for recording DOM elements
+      const { id, x, y } = msg;
+      try {
+        const tabId = await getActiveTabId();
+        const result = await captureElementAtPoint(tabId, x, y, id);
+        safeSend({ id, ok: true, result });
+      } catch (err) {
+        safeSend({ id, ok: false, error: String(err && (err.message || err)) });
+      }
+    } else if (msg.action === "start_recording_session") {
+      // Initialize recording mode
+      const { id, sessionId } = msg;
+      try {
+        await startRecordingSession(sessionId);
+        safeSend({ id, ok: true, result: { sessionId, status: "recording" } });
+      } catch (err) {
+        safeSend({ id, ok: false, error: String(err && (err.message || err)) });
+      }
+    } else if (msg.action === "stop_recording_session") {
+      // Stop recording mode
+      const { id, sessionId } = msg;
+      try {
+        await stopRecordingSession(sessionId);
+        safeSend({ id, ok: true, result: { sessionId, status: "stopped" } });
+      } catch (err) {
+        safeSend({ id, ok: false, error: String(err && (err.message || err)) });
+      }
     }
   };
 }
@@ -665,6 +693,219 @@ function sendCommand(tabId, method, params) {
       resolve(result || {});
     });
   });
+}
+
+// Recording session management
+let recordingSessionId = null;
+
+async function startRecordingSession(sessionId) {
+  recordingSessionId = sessionId;
+  log(`Started recording session: ${sessionId}`);
+  // Could inject content scripts here if needed
+  return { sessionId, status: "recording" };
+}
+
+async function stopRecordingSession(sessionId) {
+  if (recordingSessionId === sessionId) {
+    recordingSessionId = null;
+    log(`Stopped recording session: ${sessionId}`);
+  }
+  return { sessionId, status: "stopped" };
+}
+
+// DOM element capture for recording
+async function captureElementAtPoint(tabId, x, y, captureId) {
+  const code = `(function() {
+    const x = ${x};
+    const y = ${y};
+
+    // Get element at coordinates
+    const element = document.elementFromPoint(x, y);
+    if (!element) {
+      return { error: 'No element at coordinates', x: x, y: y };
+    }
+
+    // Generate selector candidates
+    function generateSelectors(el) {
+      const selectors = [];
+
+      // 1. ID selector (highest priority)
+      if (el.id) {
+        selectors.push({
+          selector: '#' + CSS.escape(el.id),
+          selector_type: 'Id',
+          specificity: 100,
+          requires_jquery: false
+        });
+      }
+
+      // 2. Data attributes
+      const dataAttrs = Array.from(el.attributes)
+        .filter(attr => attr.name.startsWith('data-'))
+        .map(attr => ({
+          selector: '[' + attr.name + '="' + CSS.escape(attr.value) + '"]',
+          selector_type: 'DataAttribute',
+          specificity: 90,
+          requires_jquery: false
+        }));
+      selectors.push(...dataAttrs);
+
+      // 3. Aria label
+      if (el.getAttribute('aria-label')) {
+        selectors.push({
+          selector: '[aria-label="' + CSS.escape(el.getAttribute('aria-label')) + '"]',
+          selector_type: 'AriaLabel',
+          specificity: 85,
+          requires_jquery: false
+        });
+      }
+
+      // 4. Class combinations
+      if (el.className && typeof el.className === 'string') {
+        const classes = el.className.split(' ').filter(c => c);
+        if (classes.length > 0) {
+          selectors.push({
+            selector: '.' + classes.map(c => CSS.escape(c)).join('.'),
+            selector_type: 'Class',
+            specificity: 70,
+            requires_jquery: false
+          });
+        }
+      }
+
+      // 5. Text content for buttons/links
+      if (['button', 'a'].includes(el.tagName.toLowerCase())) {
+        const text = el.textContent.trim();
+        if (text && text.length < 50) {
+          selectors.push({
+            selector: el.tagName.toLowerCase() + ':contains("' + text + '")',
+            selector_type: 'Text',
+            specificity: 60,
+            requires_jquery: true
+          });
+        }
+      }
+
+      // 6. Generate XPath
+      function getXPath(element) {
+        if (element.id) {
+          return '//*[@id="' + element.id + '"]';
+        }
+
+        const parts = [];
+        while (element && element.nodeType === Node.ELEMENT_NODE) {
+          let index = 1;
+          let sibling = element.previousElementSibling;
+          while (sibling) {
+            if (sibling.tagName === element.tagName) index++;
+            sibling = sibling.previousElementSibling;
+          }
+          const tagName = element.tagName.toLowerCase();
+          const part = tagName + '[' + index + ']';
+          parts.unshift(part);
+          element = element.parentElement;
+        }
+        return '/' + parts.join('/');
+      }
+
+      selectors.push({
+        selector: getXPath(el),
+        selector_type: 'XPath',
+        specificity: 40,
+        requires_jquery: false
+      });
+
+      // 7. CSS path (most specific, least maintainable)
+      function getCSSPath(el) {
+        const path = [];
+        while (el && el.nodeType === Node.ELEMENT_NODE) {
+          let selector = el.tagName.toLowerCase();
+          if (el.id) {
+            selector = '#' + CSS.escape(el.id);
+            path.unshift(selector);
+            break;
+          } else if (el.className && typeof el.className === 'string') {
+            const classes = el.className.split(' ').filter(c => c);
+            if (classes.length > 0) {
+              selector += '.' + classes.map(c => CSS.escape(c)).join('.');
+            }
+          }
+          path.unshift(selector);
+          el = el.parentElement;
+        }
+        return path.join(' > ');
+      }
+
+      selectors.push({
+        selector: getCSSPath(el),
+        selector_type: 'CssPath',
+        specificity: 30,
+        requires_jquery: false
+      });
+
+      return selectors;
+    }
+
+    // Capture element information
+    const rect = element.getBoundingClientRect();
+    const computedStyle = window.getComputedStyle(element);
+
+    // Get all attributes as a map
+    const attributes = {};
+    for (const attr of element.attributes) {
+      attributes[attr.name] = attr.value;
+    }
+
+    // Get class names as array
+    const classNames = element.className
+      ? (typeof element.className === 'string'
+          ? element.className.split(' ').filter(c => c)
+          : [])
+      : [];
+
+    return {
+      tag_name: element.tagName.toLowerCase(),
+      id: element.id || null,
+      class_names: classNames,
+      attributes: attributes,
+      css_selector: getCSSPath(element),
+      xpath: getXPath(element),
+      inner_text: element.innerText ? element.innerText.substring(0, 100) : null,
+      input_value: element.value || null,
+      bounding_rect: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        left: rect.left
+      },
+      is_visible: computedStyle.display !== 'none' &&
+                 computedStyle.visibility !== 'hidden' &&
+                 computedStyle.opacity !== '0',
+      is_interactive: !element.disabled &&
+                     computedStyle.pointerEvents !== 'none',
+      computed_role: element.getAttribute('role') || null,
+      aria_label: element.getAttribute('aria-label') || null,
+      placeholder: element.placeholder || null,
+      selector_candidates: generateSelectors(element),
+      page_context: {
+        url: window.location.href,
+        title: document.title,
+        domain: window.location.hostname
+      },
+      capture_id: '${captureId}'
+    };
+  })()`;
+
+  try {
+    const result = await evalInTab(tabId, code, false, captureId);
+    log(`Captured DOM element at (${x}, ${y}):`, result);
+    return result;
+  } catch (err) {
+    log(`Failed to capture DOM element at (${x}, ${y}):`, err);
+    throw err;
+  }
 }
 
 connect();
