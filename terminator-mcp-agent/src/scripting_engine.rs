@@ -873,6 +873,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 pub async fn execute_javascript_with_nodejs(
     script: String,
     cancellation_token: Option<tokio_util::sync::CancellationToken>,
+    working_dir: Option<PathBuf>,
 ) -> Result<serde_json::Value, McpError> {
     // Dev override: allow forcing local bindings via env var
     if std::env::var("TERMINATOR_JS_USE_LOCAL")
@@ -1034,13 +1035,29 @@ console.log('[Node.js Wrapper] Starting user script execution...');
     let is_batch_file =
         cfg!(windows) && (runtime_exe.ends_with(".cmd") || runtime_exe.ends_with(".bat"));
 
-    // Spawn Node.js/Bun process from the script directory
+    // Determine the working directory for the process
+    let process_working_dir = if let Some(ref wd) = working_dir {
+        info!("[Node.js] Using custom working directory: {}", wd.display());
+        wd.clone()
+    } else {
+        info!("[Node.js] Using default script directory: {}", script_dir.display());
+        script_dir.clone()
+    };
+
+    // For custom working dir, we need to use absolute path to the script
+    let script_arg = if working_dir.is_some() {
+        script_path.to_string_lossy().to_string()
+    } else {
+        unique_filename.clone()
+    };
+
+    // Spawn Node.js/Bun process from the determined working directory
     let mut child = if runtime == "bun" && !is_batch_file {
         info!("[Node.js] Using direct bun execution");
         // Bun can be executed directly if it's not a batch file
         Command::new(&runtime_exe)
-            .current_dir(&script_dir)
-            .arg(&unique_filename)
+            .current_dir(&process_working_dir)
+            .arg(&script_arg)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1048,8 +1065,8 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         info!("[Node.js] Using cmd.exe for batch file execution on Windows");
         // Use cmd.exe for batch files on Windows
         Command::new("cmd")
-            .current_dir(&script_dir)
-            .args(["/c", &runtime_exe, &unique_filename])
+            .current_dir(&process_working_dir)
+            .args(["/c", &runtime_exe, &script_arg])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1057,16 +1074,16 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         info!("[Node.js] Using direct .exe execution on Windows");
         // Direct execution should work for .exe files
         Command::new(&runtime_exe)
-            .current_dir(&script_dir)
-            .arg(&unique_filename)
+            .current_dir(&process_working_dir)
+            .arg(&script_arg)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
     } else {
         info!("[Node.js] Using direct execution");
         Command::new(&runtime_exe)
-            .current_dir(&script_dir)
-            .arg(&unique_filename)
+            .current_dir(&process_working_dir)
+            .arg(&script_arg)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1336,6 +1353,7 @@ console.log('[Node.js Wrapper] Starting user script execution...');
 pub async fn execute_typescript_with_nodejs(
     script: String,
     cancellation_token: Option<tokio_util::sync::CancellationToken>,
+    working_dir: Option<PathBuf>,
 ) -> Result<serde_json::Value, McpError> {
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
@@ -1425,6 +1443,15 @@ const setEnv = (updates: Record<string, any>) => {{
     );
 
     // Build the command based on runtime
+    // Determine the working directory for the process
+    let process_working_dir = if let Some(ref wd) = working_dir {
+        info!("[TypeScript] Using custom working directory: {}", wd.display());
+        wd.clone()
+    } else {
+        info!("[TypeScript] Using default script directory: {}", script_dir.display());
+        script_dir.clone()
+    };
+
     let mut cmd = if runtime == "bun" {
         // Bun can run TypeScript directly
         let mut c = Command::new(runtime);
@@ -1434,7 +1461,6 @@ const setEnv = (updates: Record<string, any>) => {{
         // Use tsx to run TypeScript with Node.js
         let mut c = Command::new("npx");
         c.args(["tsx", script_path.to_string_lossy().as_ref()]);
-        c.current_dir(&script_dir);
         c
     } else {
         // Fallback to node (shouldn't happen)
@@ -1445,7 +1471,7 @@ const setEnv = (updates: Record<string, any>) => {{
 
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    cmd.current_dir(&script_dir);
+    cmd.current_dir(&process_working_dir);
 
     info!("[TypeScript] Executing command: {:?}", cmd);
 
@@ -1622,7 +1648,10 @@ const setEnv = (updates: Record<string, any>) => {{
 }
 
 /// Execute Python using system interpreter with terminator.py bindings available
-pub async fn execute_python_with_bindings(script: String) -> Result<serde_json::Value, McpError> {
+pub async fn execute_python_with_bindings(
+    script: String,
+    working_dir: Option<PathBuf>,
+) -> Result<serde_json::Value, McpError> {
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
@@ -1729,9 +1758,21 @@ asyncio.run(__runner__())
         }
     }
 
+    // Determine the working directory for the process
+    let process_working_dir = if let Some(wd) = working_dir {
+        info!("[Python] Using custom working directory: {}", wd.display());
+        wd
+    } else {
+        info!("[Python] Using default script directory: {}", script_dir.display());
+        script_dir.clone()
+    };
+
+    // Always use absolute path to avoid issues
+    let script_arg = script_path.to_string_lossy().to_string();
+
     let mut child = Command::new(&python_exe)
-        .current_dir(&script_dir)
-        .arg(script_path.file_name().unwrap())
+        .current_dir(&process_working_dir)
+        .arg(&script_arg)
         .env("PYTHONPATH", pythonpath_value)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
