@@ -827,16 +827,16 @@ impl DesktopWrapper {
                                 .cloned()
                                 .unwrap_or_else(serde_json::Map::new);
 
-                            // Only inject state if explicitly in verbose/debug mode
-                            if args.include_detailed_results.unwrap_or(false) {
-                                // Add workflow variables as special env key
-                                if let Some(workflow_vars) = &args.variables {
-                                    env_obj.insert(
-                                        "_workflow_variables".to_string(),
-                                        json!(workflow_vars),
-                                    );
-                                }
+                            // Always inject workflow variables (scripts depend on them)
+                            if let Some(workflow_vars) = &args.variables {
+                                env_obj.insert(
+                                    "_workflow_variables".to_string(),
+                                    json!(workflow_vars),
+                                );
+                            }
 
+                            // Only inject accumulated env if explicitly in verbose/debug mode
+                            if args.include_detailed_results.unwrap_or(false) {
                                 // Add accumulated env from execution context as special key
                                 if let Some(accumulated_env) = execution_context.get("env") {
                                     env_obj.insert(
