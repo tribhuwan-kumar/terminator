@@ -1,6 +1,5 @@
 use crate::workflow_events::{
-    BrowserClickEvent, BrowserTextInputEvent, ClickEvent, EnhancedUIElement, McpToolStep,
-    TextInputCompletedEvent, WorkflowEvent,
+    ClickEvent, EnhancedUIElement, McpToolStep, TextInputCompletedEvent, WorkflowEvent,
 };
 use anyhow::Result;
 use serde_json::json;
@@ -550,17 +549,17 @@ impl McpConverter {
         }
 
         // Try text-based selector for buttons and links
-        if event.element_role == "Button" || event.element_role == "Link" {
-            if !event.element_text.is_empty() {
-                selector_candidates.push(format!("'button:contains(\"{}\")'", event.element_text));
-                selector_candidates.push(format!("'a:contains(\"{}\")'", event.element_text));
-            }
+        if (event.element_role == "Button" || event.element_role == "Link")
+            && !event.element_text.is_empty()
+        {
+            selector_candidates.push(format!("'button:contains(\"{}\")'", event.element_text));
+            selector_candidates.push(format!("'a:contains(\"{}\")'", event.element_text));
         }
 
         // Try child text content
         for child_text in &event.child_text_content {
             if !child_text.is_empty() && child_text.len() < 50 {
-                selector_candidates.push(format!("'*:contains(\"{}\")'", child_text));
+                selector_candidates.push(format!("'*:contains(\"{child_text}\")'"));
             }
         }
 
@@ -654,7 +653,7 @@ impl McpConverter {
                     .get("window")
                     .and_then(|v| v.as_str())
                     .unwrap_or("*Chrome");
-                format!("role:Window|name:{}", window)
+                format!("role:Window|name:{window}")
             } else {
                 "role:Window|name:*Chrome".to_string()
             }
@@ -716,7 +715,7 @@ impl McpConverter {
             format!(
                 r#"
 (function() {{
-    const selectors = [{}];
+    const selectors = [{selectors}];
     let element = null;
 
     for (const selector of selectors) {{
@@ -747,8 +746,7 @@ impl McpConverter {
         text: element.textContent.trim().substring(0, 50)
     }});
 }})()
-"#,
-                selectors
+"#
             )
         } else {
             // Fallback to position-based click
@@ -786,7 +784,7 @@ impl McpConverter {
                     .get("window")
                     .and_then(|v| v.as_str())
                     .unwrap_or("*Chrome");
-                format!("role:Window|name:{}", window)
+                format!("role:Window|name:{window}")
             } else {
                 "role:Window|name:*Chrome".to_string()
             }
@@ -804,7 +802,7 @@ impl McpConverter {
                 "Click {} in browser",
                 if let Some(dom) = &event.dom_element {
                     if let Some(id) = &dom.id {
-                        format!("#{}", id)
+                        format!("#{id}")
                     } else {
                         dom.tag_name.clone()
                     }

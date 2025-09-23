@@ -24,8 +24,7 @@ impl WorkflowOutputValidator {
             result.has_status = true;
             if !["success", "partial_success", "error"].contains(&status) {
                 result.errors.push(format!(
-                    "Invalid status value: '{}'. Expected: success, partial_success, or error",
-                    status
+                    "Invalid status value: '{status}'. Expected: success, partial_success, or error"
                 ));
             }
         } else {
@@ -137,21 +136,21 @@ impl WorkflowOutputValidator {
         }
 
         // Check for error field (should be present when success:false)
-        if parsed.get("success") == Some(&Value::Bool(false)) {
-            if parsed.get("error").is_none() && parsed.get("skipped") != Some(&Value::Bool(true)) {
-                result.warnings.push(
-                    "No 'output.error' field despite success:false - consider adding error details"
-                        .to_string(),
-                );
-            }
+        if parsed.get("success") == Some(&Value::Bool(false))
+            && parsed.get("error").is_none()
+            && parsed.get("skipped") != Some(&Value::Bool(true))
+        {
+            result.warnings.push(
+                "No 'output.error' field despite success:false - consider adding error details"
+                    .to_string(),
+            );
         }
 
         // Check for state field consistency
         if let Some(state) = parsed.get("state").and_then(|s| s.as_str()) {
             if !["success", "failure", "skipped"].contains(&state) {
                 result.errors.push(format!(
-                    "Invalid 'output.state': '{}'. Expected: success, failure, or skipped",
-                    state
+                    "Invalid 'output.state': '{state}'. Expected: success, failure, or skipped"
                 ));
             }
 
@@ -204,7 +203,7 @@ impl WorkflowOutputValidator {
             "❌ INVALID".red().bold()
         };
 
-        println!("\nStatus: {}", status);
+        println!("\nStatus: {status}");
         println!("{}", "─".repeat(60));
 
         // Structure checks
@@ -271,7 +270,7 @@ impl WorkflowOutputValidator {
         } else {
             "Missing".red()
         };
-        println!("  {} {}: {}", icon, label, status);
+        println!("  {icon} {label}: {status}");
     }
 }
 

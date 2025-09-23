@@ -175,7 +175,7 @@ mod file_resolution_tests {
 
     #[test]
     fn test_absolute_path_unchanged() {
-        let (_temp, scripts_base, _workflow_dir, _current) = setup_test_directories();
+        let (_temp, _scripts_base, _workflow_dir, _current) = setup_test_directories();
 
         // Absolute paths should not be affected by scripts_base_path
         let absolute_path = if cfg!(windows) {

@@ -857,7 +857,7 @@ fn validate_workflow_output(args: McpValidateArgs) -> Result<()> {
         }
         Some(path) => {
             // Read from file
-            fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))?
+            fs::read_to_string(path).with_context(|| format!("Failed to read file: {path}"))?
         }
     };
 
@@ -873,7 +873,7 @@ fn validate_workflow_output(args: McpValidateArgs) -> Result<()> {
     // Show quality score if requested
     if args.score {
         let score = validation_result.quality_score();
-        println!("Quality Score: {}/100", score);
+        println!("Quality Score: {score}/100");
 
         let rating = match score {
             90..=100 => "Excellent",
@@ -881,7 +881,7 @@ fn validate_workflow_output(args: McpValidateArgs) -> Result<()> {
             60..=74 => "Fair",
             _ => "Needs Improvement",
         };
-        println!("Rating: {}", rating);
+        println!("Rating: {rating}");
     }
 
     // Exit with error if validation failed

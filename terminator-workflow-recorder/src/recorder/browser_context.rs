@@ -60,19 +60,26 @@ pub struct BrowserContextRecorder {
     dom_cache: Arc<Mutex<HashMap<(i32, i32), DomElementInfo>>>,
 
     /// Current recording session ID
+    #[allow(dead_code)]
     session_id: String,
 
     /// WebSocket connection status
     extension_connected: Arc<Mutex<bool>>,
 }
 
-impl BrowserContextRecorder {
-    pub fn new() -> Self {
+impl Default for BrowserContextRecorder {
+    fn default() -> Self {
         Self {
             dom_cache: Arc::new(Mutex::new(HashMap::new())),
             session_id: uuid::Uuid::new_v4().to_string(),
             extension_connected: Arc::new(Mutex::new(false)),
         }
+    }
+}
+
+impl BrowserContextRecorder {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Check if Chrome extension is available and connected
@@ -96,7 +103,7 @@ impl BrowserContextRecorder {
     /// Capture DOM element at given screen coordinates
     pub async fn capture_dom_element(&self, position: Position) -> Option<DomElementInfo> {
         // Check cache first
-        let cache_key = (position.x as i32, position.y as i32);
+        let cache_key = (position.x, position.y);
         if let Some(cached) = self.dom_cache.lock().await.get(&cache_key) {
             debug!("Using cached DOM element for position {:?}", position);
             return Some(cached.clone());

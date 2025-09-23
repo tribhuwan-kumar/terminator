@@ -824,7 +824,7 @@ try {
 
     println!("🧪 Testing complete Node.js terminator.js execution...");
 
-    let result = execute_javascript_with_nodejs(test_script.to_string(), None).await;
+    let result = execute_javascript_with_nodejs(test_script.to_string(), None, None).await;
 
     match result {
         Ok(value) => {

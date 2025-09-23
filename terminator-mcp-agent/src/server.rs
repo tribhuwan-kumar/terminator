@@ -23,6 +23,7 @@ use rmcp::{tool, ErrorData as McpError, ServerHandler};
 use rmcp::{tool_handler, tool_router};
 use serde_json::json;
 use std::io::Cursor;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use terminator::{AutomationError, Browser, Desktop, Selector, UIElement};
@@ -1263,6 +1264,9 @@ impl DesktopWrapper {
         if let Some(engine_value) = args.engine.as_ref() {
             let engine = engine_value.to_ascii_lowercase();
 
+            // Track resolved script path for working directory determination
+            let mut resolved_script_path: Option<PathBuf> = None;
+
             // Resolve script content from file or inline
             let script_content = if let Some(script_file) = &args.script_file {
                 // Check that both run and script_file aren't provided
@@ -1384,6 +1388,9 @@ impl DesktopWrapper {
 
                     resolved_path.unwrap()
                 };
+
+                // Store the resolved path for later use
+                resolved_script_path = Some(resolved_path.clone());
 
                 // Read script from resolved file path
                 tokio::fs::read_to_string(&resolved_path)
@@ -1549,9 +1556,24 @@ impl DesktopWrapper {
             let is_py = matches!(engine.as_str(), "python" | "py");
 
             if is_js {
+                // Determine the working directory for script execution
+                let script_working_dir = if let Some(ref script_path) = resolved_script_path {
+                    // When using script_file with scripts_base_path, change working dir to script's directory
+                    let scripts_base_guard = self.current_scripts_base_path.lock().await;
+                    if scripts_base_guard.is_some() {
+                        // Use the resolved script path's parent directory
+                        script_path.parent().map(|p| p.to_path_buf())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let execution_result = scripting_engine::execute_javascript_with_nodejs(
                     final_script,
                     cancellation_token,
+                    script_working_dir,
                 )
                 .await?;
 
@@ -1614,9 +1636,24 @@ impl DesktopWrapper {
 
                 return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_ts {
+                // Determine the working directory for script execution
+                let script_working_dir = if let Some(ref script_path) = resolved_script_path {
+                    // When using script_file with scripts_base_path, change working dir to script's directory
+                    let scripts_base_guard = self.current_scripts_base_path.lock().await;
+                    if scripts_base_guard.is_some() {
+                        // Use the resolved script path's parent directory
+                        script_path.parent().map(|p| p.to_path_buf())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let execution_result = scripting_engine::execute_typescript_with_nodejs(
                     final_script,
                     cancellation_token,
+                    script_working_dir,
                 )
                 .await?;
 
@@ -1668,8 +1705,25 @@ impl DesktopWrapper {
 
                 return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_py {
-                let execution_result =
-                    scripting_engine::execute_python_with_bindings(final_script).await?;
+                // Determine the working directory for script execution
+                let script_working_dir = if let Some(ref script_path) = resolved_script_path {
+                    // When using script_file with scripts_base_path, change working dir to script's directory
+                    let scripts_base_guard = self.current_scripts_base_path.lock().await;
+                    if scripts_base_guard.is_some() {
+                        // Use the resolved script path's parent directory
+                        script_path.parent().map(|p| p.to_path_buf())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let execution_result = scripting_engine::execute_python_with_bindings(
+                    final_script,
+                    script_working_dir,
+                )
+                .await?;
 
                 // Check if the Python result indicates a failure (same as JavaScript)
                 if let Some(obj) = execution_result.as_object() {

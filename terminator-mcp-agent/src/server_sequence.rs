@@ -464,10 +464,7 @@ impl DesktopWrapper {
             // Find the step index by ID using the complete map
             id_to_index.get(start_step).copied().ok_or_else(|| {
                 McpError::invalid_params(
-                    format!(
-                        "start_from_step '{}' not found in workflow or troubleshooting steps",
-                        start_step
-                    ),
+                    format!("start_from_step '{start_step}' not found in workflow or troubleshooting steps"),
                     Some(json!({
                         "requested_step": start_step,
                         "available_steps": id_to_index.keys().cloned().collect::<Vec<_>>()

@@ -498,6 +498,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     println!("     └─ 🎯 High-level browser navigation tracking!");
                 }
+                terminator_workflow_recorder::WorkflowEvent::BrowserClick(browser_click) => {
+                    println!("🌐 Browser Click {}: Position ({}, {})", event_count, browser_click.position.x, browser_click.position.y);
+                    if !browser_click.selectors.is_empty() {
+                        println!("     └─ Selectors: {:?}", browser_click.selectors);
+                    }
+                    if let Some(ref dom) = browser_click.dom_element {
+                        if let Some(ref text) = dom.inner_text {
+                            println!("     └─ Text: \"{text}\"");
+                        }
+                    }
+                }
+                terminator_workflow_recorder::WorkflowEvent::BrowserTextInput(browser_input) => {
+                    println!("🌐 Browser Text Input {}: \"{}\"", event_count, browser_input.text);
+                    if !browser_input.selector.is_empty() {
+                        println!("     └─ Selector: {}", browser_input.selector);
+                    }
+                }
             }
         }
     });
