@@ -1361,7 +1361,9 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             }
             WorkflowEvent::Click(e) => SerializableWorkflowEvent::Click(e.into()),
             WorkflowEvent::BrowserClick(e) => SerializableWorkflowEvent::BrowserClick(e.clone()),
-            WorkflowEvent::BrowserTextInput(e) => SerializableWorkflowEvent::BrowserTextInput(e.clone()),
+            WorkflowEvent::BrowserTextInput(e) => {
+                SerializableWorkflowEvent::BrowserTextInput(e.clone())
+            }
         }
     }
 }

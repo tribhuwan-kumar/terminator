@@ -244,11 +244,19 @@ impl DesktopWrapper {
         if let Some(scripts_base_path) = &args.scripts_base_path {
             let mut scripts_base_path_guard = self.current_scripts_base_path.lock().await;
             *scripts_base_path_guard = Some(scripts_base_path.clone());
-            info!("[SCRIPTS_BASE_PATH] Setting scripts_base_path for workflow: {}", scripts_base_path);
-            info!("[SCRIPTS_BASE_PATH] Script files will be searched first in: {}", scripts_base_path);
+            info!(
+                "[SCRIPTS_BASE_PATH] Setting scripts_base_path for workflow: {}",
+                scripts_base_path
+            );
+            info!(
+                "[SCRIPTS_BASE_PATH] Script files will be searched first in: {}",
+                scripts_base_path
+            );
             info!("[SCRIPTS_BASE_PATH] Fallback search will use workflow directory or current directory");
         } else {
-            info!("[SCRIPTS_BASE_PATH] No scripts_base_path specified, using default file resolution");
+            info!(
+                "[SCRIPTS_BASE_PATH] No scripts_base_path specified, using default file resolution"
+            );
         }
 
         // Handle backward compatibility: 'continue' is opposite of 'stop_on_error'
@@ -454,17 +462,18 @@ impl DesktopWrapper {
         // NEW: Check if we should start from a specific step (now searches both main and troubleshooting)
         let start_from_index = if let Some(start_step) = &args.start_from_step {
             // Find the step index by ID using the complete map
-            id_to_index.get(start_step)
-                .copied()
-                .ok_or_else(|| {
-                    McpError::invalid_params(
-                        format!("start_from_step '{}' not found in workflow or troubleshooting steps", start_step),
-                        Some(json!({
-                            "requested_step": start_step,
-                            "available_steps": id_to_index.keys().cloned().collect::<Vec<_>>()
-                        })),
-                    )
-                })?
+            id_to_index.get(start_step).copied().ok_or_else(|| {
+                McpError::invalid_params(
+                    format!(
+                        "start_from_step '{}' not found in workflow or troubleshooting steps",
+                        start_step
+                    ),
+                    Some(json!({
+                        "requested_step": start_step,
+                        "available_steps": id_to_index.keys().cloned().collect::<Vec<_>>()
+                    })),
+                )
+            })?
         } else {
             0
         };
@@ -692,7 +701,10 @@ impl DesktopWrapper {
             } else {
                 "main workflow"
             };
-            info!("Will stop after {} step at index {} (inclusive)", step_type, end_at_index);
+            info!(
+                "Will stop after {} step at index {} (inclusive)",
+                step_type, end_at_index
+            );
         }
 
         while current_index < sequence_items.len()

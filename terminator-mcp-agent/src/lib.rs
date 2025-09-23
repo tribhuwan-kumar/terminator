@@ -9,11 +9,11 @@ pub mod output_parser;
 pub mod prompt;
 pub mod scripting_engine;
 pub mod server;
-pub mod vcredist_check;
 pub mod server_sequence;
 pub mod server_workflow_files;
 pub mod telemetry;
 pub mod utils;
+pub mod vcredist_check;
 pub mod workflow_converter;
 pub mod workflow_events;
 

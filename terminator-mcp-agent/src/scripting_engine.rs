@@ -1595,7 +1595,9 @@ const setEnv = (updates: Record<string, any>) => {{
             // Check if this is a VC++ redistributables error on Windows
             if cfg!(windows) && crate::vcredist_check::is_vcredist_error(&stderr_combined) {
                 if !crate::vcredist_check::is_vcredist_available() {
-                    error!("[TypeScript] Execution failed due to missing Visual C++ Redistributables");
+                    error!(
+                        "[TypeScript] Execution failed due to missing Visual C++ Redistributables"
+                    );
                     return Err(McpError::internal_error(
                         crate::vcredist_check::get_vcredist_error_message(),
                         Some(json!({

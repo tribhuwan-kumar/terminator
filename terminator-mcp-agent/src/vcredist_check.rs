@@ -20,8 +20,8 @@ pub fn check_vcredist_installed() -> bool {
     // Key DLLs that should exist if VC++ redistributables are installed
     let required_dlls = [
         "vcruntime140.dll",
-        "vcruntime140_1.dll",  // Additional runtime for x64
-        "msvcp140.dll",         // C++ standard library
+        "vcruntime140_1.dll", // Additional runtime for x64
+        "msvcp140.dll",       // C++ standard library
     ];
 
     let mut all_found = true;
@@ -69,9 +69,9 @@ pub fn get_vcredist_error_message() -> &'static str {
 
 /// Check if an error is related to missing VC++ redistributables
 pub fn is_vcredist_error(error_message: &str) -> bool {
-    error_message.contains("ERR_DLOPEN_FAILED") ||
-    error_message.contains("specified module could not be found") ||
-    error_message.contains("terminator.win32")
+    error_message.contains("ERR_DLOPEN_FAILED")
+        || error_message.contains("specified module could not be found")
+        || error_message.contains("terminator.win32")
 }
 
 // Cache the check result to avoid repeated filesystem access

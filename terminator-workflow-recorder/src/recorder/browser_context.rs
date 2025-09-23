@@ -81,7 +81,9 @@ impl BrowserContextRecorder {
         if let Ok(bridge) = terminator::extension_bridge::try_eval_via_extension(
             "JSON.stringify({connected: true})",
             std::time::Duration::from_secs(1),
-        ).await {
+        )
+        .await
+        {
             if bridge.is_some() {
                 *self.extension_connected.lock().await = true;
                 return true;
@@ -101,7 +103,8 @@ impl BrowserContextRecorder {
         }
 
         // Query Chrome extension for DOM element
-        let script = format!(r#"
+        let script = format!(
+            r#"
 (function() {{
     const x = {};
     const y = {};
@@ -276,22 +279,31 @@ impl BrowserContextRecorder {
         selector_candidates: generateSelectors(element)
     }});
 }})()
-"#, position.x, position.y);
+"#,
+            position.x, position.y
+        );
 
         // Execute script via Chrome extension
         match terminator::extension_bridge::try_eval_via_extension(
             &script,
             std::time::Duration::from_secs(2),
-        ).await {
+        )
+        .await
+        {
             Ok(Some(result)) => {
                 // Parse the result
                 match serde_json::from_str::<DomElementInfo>(&result) {
                     Ok(dom_info) => {
                         // Cache the result
-                        self.dom_cache.lock().await.insert(cache_key, dom_info.clone());
-                        info!("Captured DOM element: {} with {} selector candidates",
-                              dom_info.tag_name,
-                              dom_info.selector_candidates.len());
+                        self.dom_cache
+                            .lock()
+                            .await
+                            .insert(cache_key, dom_info.clone());
+                        info!(
+                            "Captured DOM element: {} with {} selector candidates",
+                            dom_info.tag_name,
+                            dom_info.selector_candidates.len()
+                        );
                         Some(dom_info)
                     }
                     Err(e) => {
@@ -342,17 +354,17 @@ JSON.stringify({
         match terminator::extension_bridge::try_eval_via_extension(
             script,
             std::time::Duration::from_secs(1),
-        ).await {
-            Ok(Some(result)) => {
-                match serde_json::from_str::<PageContext>(&result) {
-                    Ok(context) => Some(context),
-                    Err(e) => {
-                        error!("Failed to parse page context: {}", e);
-                        None
-                    }
+        )
+        .await
+        {
+            Ok(Some(result)) => match serde_json::from_str::<PageContext>(&result) {
+                Ok(context) => Some(context),
+                Err(e) => {
+                    error!("Failed to parse page context: {}", e);
+                    None
                 }
-            }
-            _ => None
+            },
+            _ => None,
         }
     }
 }

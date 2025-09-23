@@ -1,5 +1,5 @@
-use serde_json::Value;
 use colored::*;
+use serde_json::Value;
 
 /// Validates workflow output structure and provides feedback
 pub struct WorkflowOutputValidator;
@@ -14,32 +14,49 @@ impl WorkflowOutputValidator {
             result.has_output = true;
             Self::validate_output(parsed, &mut result);
         } else {
-            result.warnings.push("No 'output' field found - workflow may lack output parser".to_string());
+            result
+                .warnings
+                .push("No 'output' field found - workflow may lack output parser".to_string());
         }
 
         // Check execution-level fields
         if let Some(status) = output.get("status").and_then(|s| s.as_str()) {
             result.has_status = true;
             if !["success", "partial_success", "error"].contains(&status) {
-                result.errors.push(format!("Invalid status value: '{}'. Expected: success, partial_success, or error", status));
+                result.errors.push(format!(
+                    "Invalid status value: '{}'. Expected: success, partial_success, or error",
+                    status
+                ));
             }
         } else {
-            result.errors.push("Missing required 'status' field".to_string());
+            result
+                .errors
+                .push("Missing required 'status' field".to_string());
         }
 
         // Check for results array
         if output.get("results").and_then(|r| r.as_array()).is_some() {
             result.has_results = true;
         } else {
-            result.warnings.push("Missing or invalid 'results' array".to_string());
+            result
+                .warnings
+                .push("Missing or invalid 'results' array".to_string());
         }
 
         // Check timing information
-        if output.get("total_duration_ms").and_then(|d| d.as_u64()).is_some() {
+        if output
+            .get("total_duration_ms")
+            .and_then(|d| d.as_u64())
+            .is_some()
+        {
             result.has_duration = true;
         }
 
-        if output.get("executed_tools").and_then(|e| e.as_u64()).is_some() {
+        if output
+            .get("executed_tools")
+            .and_then(|e| e.as_u64())
+            .is_some()
+        {
             result.has_executed_count = true;
         }
 
@@ -54,10 +71,14 @@ impl WorkflowOutputValidator {
                 result.parsed_has_success = true;
             }
             Some(_) => {
-                result.errors.push("'output.success' must be a boolean".to_string());
+                result
+                    .errors
+                    .push("'output.success' must be a boolean".to_string());
             }
             None => {
-                result.errors.push("Missing required 'output.success' field".to_string());
+                result
+                    .errors
+                    .push("Missing required 'output.success' field".to_string());
             }
         }
 
@@ -67,13 +88,19 @@ impl WorkflowOutputValidator {
                 result.parsed_has_message = true;
             }
             Some(Value::String(_)) => {
-                result.warnings.push("'output.message' is empty - provide meaningful feedback".to_string());
+                result
+                    .warnings
+                    .push("'output.message' is empty - provide meaningful feedback".to_string());
             }
             Some(_) => {
-                result.errors.push("'output.message' must be a string".to_string());
+                result
+                    .errors
+                    .push("'output.message' must be a string".to_string());
             }
             None => {
-                result.errors.push("Missing required 'output.message' field".to_string());
+                result
+                    .errors
+                    .push("Missing required 'output.message' field".to_string());
             }
         }
 
@@ -85,47 +112,74 @@ impl WorkflowOutputValidator {
             if parsed.get("success") == Some(&Value::Bool(true)) {
                 match data {
                     Value::Array(arr) if arr.is_empty() => {
-                        result.warnings.push("'output.data' is empty array despite success:true".to_string());
+                        result
+                            .warnings
+                            .push("'output.data' is empty array despite success:true".to_string());
                     }
                     Value::Object(obj) if obj.is_empty() => {
-                        result.warnings.push("'output.data' is empty object despite success:true".to_string());
+                        result
+                            .warnings
+                            .push("'output.data' is empty object despite success:true".to_string());
                     }
                     Value::Null => {
-                        result.warnings.push("'output.data' is null despite success:true".to_string());
+                        result
+                            .warnings
+                            .push("'output.data' is null despite success:true".to_string());
                     }
                     _ => {}
                 }
             }
         } else if parsed.get("success") == Some(&Value::Bool(true)) {
-            result.warnings.push("No 'output.data' field despite success:true - consider including extracted data".to_string());
+            result.warnings.push(
+                "No 'output.data' field despite success:true - consider including extracted data"
+                    .to_string(),
+            );
         }
 
         // Check for error field (should be present when success:false)
         if parsed.get("success") == Some(&Value::Bool(false)) {
             if parsed.get("error").is_none() && parsed.get("skipped") != Some(&Value::Bool(true)) {
-                result.warnings.push("No 'output.error' field despite success:false - consider adding error details".to_string());
+                result.warnings.push(
+                    "No 'output.error' field despite success:false - consider adding error details"
+                        .to_string(),
+                );
             }
         }
 
         // Check for state field consistency
         if let Some(state) = parsed.get("state").and_then(|s| s.as_str()) {
             if !["success", "failure", "skipped"].contains(&state) {
-                result.errors.push(format!("Invalid 'output.state': '{}'. Expected: success, failure, or skipped", state));
+                result.errors.push(format!(
+                    "Invalid 'output.state': '{}'. Expected: success, failure, or skipped",
+                    state
+                ));
             }
 
             // Check state consistency with success field
-            let success = parsed.get("success").and_then(|s| s.as_bool()).unwrap_or(false);
-            let skipped = parsed.get("skipped").and_then(|s| s.as_bool()).unwrap_or(false);
+            let success = parsed
+                .get("success")
+                .and_then(|s| s.as_bool())
+                .unwrap_or(false);
+            let skipped = parsed
+                .get("skipped")
+                .and_then(|s| s.as_bool())
+                .unwrap_or(false);
 
             match (state, success, skipped) {
                 ("success", false, _) => {
-                    result.warnings.push("Inconsistency: state='success' but success=false".to_string());
+                    result
+                        .warnings
+                        .push("Inconsistency: state='success' but success=false".to_string());
                 }
                 ("failure", true, _) => {
-                    result.warnings.push("Inconsistency: state='failure' but success=true".to_string());
+                    result
+                        .warnings
+                        .push("Inconsistency: state='failure' but success=true".to_string());
                 }
                 ("skipped", _, false) => {
-                    result.warnings.push("Inconsistency: state='skipped' but skipped field is not true".to_string());
+                    result.warnings.push(
+                        "Inconsistency: state='skipped' but skipped field is not true".to_string(),
+                    );
                 }
                 _ => {}
             }
@@ -212,7 +266,11 @@ impl WorkflowOutputValidator {
 
     fn print_check(label: &str, passed: bool) {
         let icon = if passed { "✓".green() } else { "✗".red() };
-        let status = if passed { "Present".green() } else { "Missing".red() };
+        let status = if passed {
+            "Present".green()
+        } else {
+            "Missing".red()
+        };
         println!("  {} {}: {}", icon, label, status);
     }
 }

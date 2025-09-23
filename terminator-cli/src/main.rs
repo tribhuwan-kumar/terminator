@@ -850,20 +850,19 @@ fn validate_workflow_output(args: McpValidateArgs) -> Result<()> {
             // Read from stdin
             use std::io::Read;
             let mut buffer = String::new();
-            std::io::stdin().read_to_string(&mut buffer)
+            std::io::stdin()
+                .read_to_string(&mut buffer)
                 .context("Failed to read from stdin")?;
             buffer
-        },
+        }
         Some(path) => {
             // Read from file
-            fs::read_to_string(path)
-                .with_context(|| format!("Failed to read file: {}", path))?
+            fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))?
         }
     };
 
     // Parse as JSON
-    let output: Value = serde_json::from_str(&content)
-        .context("Failed to parse JSON input")?;
+    let output: Value = serde_json::from_str(&content).context("Failed to parse JSON input")?;
 
     // Validate the structure
     let validation_result = WorkflowOutputValidator::validate(&output);

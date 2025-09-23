@@ -28,7 +28,7 @@ impl Default for ConversionConfig {
             enable_pattern_detection: true,
             max_fallback_strategies: 3,
             validate_during_recording: false, // Expensive, off by default
-            prefer_browser_scripts: true, // NEW: Default to browser scripts
+            prefer_browser_scripts: true,     // NEW: Default to browser scripts
         }
     }
 }
@@ -252,7 +252,9 @@ impl McpConverter {
 
         // Check if this is a browser click and we should prefer browser scripts
         if self.config.prefer_browser_scripts {
-            if let Some(browser_sequence) = self.try_convert_browser_click(event, ui_context).await? {
+            if let Some(browser_sequence) =
+                self.try_convert_browser_click(event, ui_context).await?
+            {
                 return Ok(browser_sequence);
             }
         }
@@ -518,12 +520,12 @@ impl McpConverter {
                     .unwrap_or("");
 
                 // Detect browser applications
-                app.to_lowercase().contains("chrome") ||
-                app.to_lowercase().contains("firefox") ||
-                app.to_lowercase().contains("edge") ||
-                window.to_lowercase().contains("chrome") ||
-                window.to_lowercase().contains("firefox") ||
-                window.to_lowercase().contains("edge")
+                app.to_lowercase().contains("chrome")
+                    || app.to_lowercase().contains("firefox")
+                    || app.to_lowercase().contains("edge")
+                    || window.to_lowercase().contains("chrome")
+                    || window.to_lowercase().contains("firefox")
+                    || window.to_lowercase().contains("edge")
             } else {
                 false
             }
@@ -564,13 +566,15 @@ impl McpConverter {
 
         // Fallback to generic selector
         if selector_candidates.is_empty() {
-            selector_candidates.push("'button, a, input[type=\"submit\"], input[type=\"button\"]'".to_string());
+            selector_candidates
+                .push("'button, a, input[type=\"submit\"], input[type=\"button\"]'".to_string());
         }
 
         let selectors_js = selector_candidates.join(", ");
 
         // Generate inline JavaScript for the click
-        let script = format!(r#"
+        let script = format!(
+            r#"
 (function() {{
     // Try multiple selectors in order of preference
     const selectors = [{}];
@@ -637,7 +641,11 @@ impl McpConverter {
         text: element.textContent.trim().substring(0, 50)
     }});
 }})()
-"#, selectors_js, event.element_text.replace('\'', "\\'"), event.element_text.replace('\'', "\\'"));
+"#,
+            selectors_js,
+            event.element_text.replace('\'', "\\'"),
+            event.element_text.replace('\'', "\\'")
+        );
 
         // Get browser window selector
         let window_selector = if let Some(metadata) = &event.metadata.ui_element {
@@ -674,7 +682,10 @@ impl McpConverter {
         });
 
         notes.push("Converted to browser script for better reliability".to_string());
-        notes.push(format!("Generated {} selector candidates", selector_candidates.len()));
+        notes.push(format!(
+            "Generated {} selector candidates",
+            selector_candidates.len()
+        ));
 
         Ok(Some(ConversionResult {
             primary_sequence: sequence,
@@ -702,7 +713,8 @@ impl McpConverter {
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            format!(r#"
+            format!(
+                r#"
 (function() {{
     const selectors = [{}];
     let element = null;
@@ -735,10 +747,13 @@ impl McpConverter {
         text: element.textContent.trim().substring(0, 50)
     }});
 }})()
-"#, selectors)
+"#,
+                selectors
+            )
         } else {
             // Fallback to position-based click
-            format!(r#"
+            format!(
+                r#"
 (function() {{
     const x = {};
     const y = {};
@@ -759,7 +774,9 @@ impl McpConverter {
         position: {{x: x, y: y}}
     }});
 }})()
-"#, event.position.x, event.position.y)
+"#,
+                event.position.x, event.position.y
+            )
         };
 
         // Get browser window selector
@@ -801,7 +818,11 @@ impl McpConverter {
         });
 
         if let Some(dom) = &event.dom_element {
-            notes.push(format!("DOM element: {} with {} selectors", dom.tag_name, dom.selector_candidates.len()));
+            notes.push(format!(
+                "DOM element: {} with {} selectors",
+                dom.tag_name,
+                dom.selector_candidates.len()
+            ));
         }
         notes.push(format!("Browser click at page: {}", event.page_url));
 
@@ -821,7 +842,8 @@ impl McpConverter {
         let mut sequence = Vec::new();
         let mut notes = Vec::new();
 
-        let script = format!(r#"
+        let script = format!(
+            r#"
 (function() {{
     const selector = '{}';
     const text = `{}`;
@@ -846,7 +868,10 @@ impl McpConverter {
         element: element.tagName + (element.id ? '#' + element.id : '')
     }});
 }})()
-"#, event.selector.replace('\'', "\\'"), event.text.replace('`', "\\`"));
+"#,
+            event.selector.replace('\'', "\\'"),
+            event.text.replace('`', "\\`")
+        );
 
         sequence.push(McpToolStep {
             tool_name: "execute_browser_script".to_string(),
