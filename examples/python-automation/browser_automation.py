@@ -5,7 +5,7 @@ log("Starting browser automation...")
 
 # Open Chrome browser
 log("Opening Chrome...")
-await desktop.open_application("chrome")
+desktop.open_application("chrome")
 await sleep(2000)
 
 # Find the browser window
@@ -20,9 +20,9 @@ log("Chrome window found")
 log("Navigating to example.com...")
 address_bar = await desktop.locator("role:Edit|name:Address").first()
 if address_bar:
-    await address_bar.click()
-    await address_bar.type_text("https://example.com")
-    await address_bar.press_key("{Enter}")
+    address_bar.click()
+    address_bar.type_text("https://example.com")
+    address_bar.press_key("{Enter}")
     await sleep(3000)
     log("Navigation complete")
 else:
@@ -31,7 +31,7 @@ else:
 
 # Take a screenshot
 try:
-    screenshot_data = await browser.capture_screenshot()
+    screenshot_data = browser.capture_screenshot()
     log("Screenshot captured")
     screenshot_saved = True
 except:
@@ -51,7 +51,7 @@ text_elements = await desktop.locator("role:Text").all()
 page_text_samples = []
 for elem in text_elements[:5]:  # Get first 5 text elements
     try:
-        text = await elem.name()
+        text = elem.name()
         if text and len(text) > 5:  # Filter out very short text
             page_text_samples.append(text[:100])  # Limit to 100 chars
     except:

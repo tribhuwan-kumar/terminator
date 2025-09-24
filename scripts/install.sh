@@ -1,49 +1,47 @@
-#!/bin/bash
-# Terminator One-Line Install Script
-# Usage: curl -sSL https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.sh | bash
+#!/usr/bin/env bash
+# Quick installer for Terminator CLI
+# Usage (latest): curl -fsSL https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.sh | bash
+# Usage (specific): curl -fsSL https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.sh | bash -s -- cli-v1.2.3
+set -euo pipefail
 
-set -e
+REPO="mediar-ai/terminator"
+VERSION="${1:-}"  # optional first arg is tag like cli-v1.2.3
 
-echo "🚀 Installing Terminator..."
-echo ""
-
-# Detect OS
-OS="$(uname -s)"
-case "${OS}" in
-    Linux*)     OS_TYPE=linux;;
-    Darwin*)    OS_TYPE=macos;;
-    MINGW*|MSYS*|CYGWIN*) OS_TYPE=windows;;
-    *)          echo "Unsupported OS: ${OS}"; exit 1;;
-esac
-
-# Check for required tools
-check_command() {
-    if ! command -v "$1" &> /dev/null; then
-        echo "❌ $1 is not installed. Please install it first."
-        exit 1
-    fi
+get_latest() {
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | head -n1 | cut -d '"' -f4
 }
 
-# Check prerequisites
-echo "📋 Checking prerequisites..."
-check_command "cargo"
-check_command "node"
+if [[ -z "$VERSION" ]]; then
+  VERSION="$(get_latest)"
+fi
 
-# Install terminator-cli via cargo
-echo ""
-echo "📦 Installing terminator-cli..."
-cargo install terminator-cli
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+case "$OS" in
+  Linux) OS="linux" ;;
+  Darwin) OS="macos" ;;
+  *)
+    echo "Unsupported OS: $OS" >&2
+    exit 1
+    ;;
+esac
 
-# Run setup
-echo ""
-echo "🛠️ Running setup..."
-terminator setup --skip-vcredist
+case "$ARCH" in
+  x86_64|amd64) ARCH="x86_64" ;;
+  arm64|aarch64) ARCH="aarch64" ;;
+  *)
+    echo "Unsupported architecture: $ARCH" >&2
+    exit 1
+    ;;
+esac
 
-echo ""
-echo "✅ Installation complete!"
-echo ""
-echo "Next steps:"
-echo "  1. Test MCP chat: terminator mcp chat --command \"npx -y terminator-mcp-agent\""
-echo "  2. Run examples: terminator mcp run https://raw.githubusercontent.com/mediar-ai/terminator/main/examples/notepad.yml"
-echo ""
-echo "For more information, visit: https://github.com/mediar-ai/terminator"
+ARCHIVE="terminator-cli-${OS}-${ARCH}.tar.gz"
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE}"
+echo "📦 Downloading $URL"
+curl -L "${URL}" | tar -xz
+
+chmod +x terminator-cli
+# Install to /usr/local/bin (may require sudo)
+sudo mv terminator-cli /usr/local/bin/terminator-cli
+
+echo "✅ Terminator CLI installed! Run 'terminator-cli --help' to get started."

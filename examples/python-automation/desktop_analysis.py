@@ -11,11 +11,11 @@ log(f"Found {len(windows)} windows")
 window_data = []
 for window in windows[:10]:  # Limit to first 10 windows
     try:
-        name = await window.name()
+        name = window.name()
         if name:
             # Get window properties
-            is_enabled = await window.is_enabled()
-            is_focused = await window.is_focused()
+            is_enabled = window.is_enabled()
+            is_focused = window.is_focused()
 
             window_info = {
                 "name": name,
