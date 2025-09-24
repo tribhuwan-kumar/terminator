@@ -1,0 +1,99 @@
+name: Craigslist Data Extraction Workflow
+description: Automated workflow to navigate Craigslist and extract listing data using Python engine
+
+# Define workflow variables for customization
+variables:
+  search_term:
+    type: string
+    label: Search term
+    default: "furniture"
+    description: What to search for on Craigslist
+
+  location_url:
+    type: string
+    label: Craigslist location URL
+    default: "https://sfbay.craigslist.org"
+    description: The Craigslist regional URL to use
+
+  max_listings:
+    type: number
+    label: Maximum listings to extract
+    default: 10
+    description: How many listings to extract data from
+
+# Main workflow steps
+steps:
+  - id: setup_browser
+    tool_name: get_applications
+    arguments: {}
+    continue_on_error: false
+    delay: 500ms
+
+  - id: run_scraper
+    tool_name: run_command
+    arguments:
+      engine: "python"
+      script_file: "./craigslist_scraper.py"
+      env:
+        search_term: "{{variables.search_term}}"
+        location_url: "{{variables.location_url}}"
+        max_listings: "{{variables.max_listings}}"
+    continue_on_error: false
+    delay: 1s
+
+  - id: verify_results
+    tool_name: run_command
+    arguments:
+      engine: "javascript"
+      run: |
+        // Access results from Python script
+        const scraperResult = run_scraper_result;
+        const scraperStatus = run_scraper_status;
+
+        console.log(`Scraper status: ${scraperStatus}`);
+
+        if (scraperStatus === 'success' && scraperResult) {
+          const result = scraperResult.result || scraperResult;
+          console.log(`Found ${result.listings_found} listings`);
+          console.log(`Location: ${result.location}`);
+          console.log(`Search term: ${result.search_term}`);
+
+          // Display first few listings
+          if (result.listings && result.listings.length > 0) {
+            console.log("\nFirst 5 listings:");
+            result.listings.slice(0, 5).forEach(listing => {
+              console.log(`  ${listing.index}. ${listing.title}`);
+            });
+          }
+
+          // Return structured data
+          return {
+            status: "success",
+            summary: {
+              total_listings: result.listings_found,
+              location: result.location,
+              search_term: result.search_term
+            },
+            sample_data: result.listings.slice(0, 5)
+          };
+        } else {
+          console.log("Scraper failed or returned no results");
+          return {
+            status: "error",
+            message: "No data extracted"
+          };
+        }
+
+# Optional troubleshooting steps
+troubleshooting:
+  - id: debug_browser
+    tool_name: get_window_tree
+    arguments:
+      pid: "{{env.browser_pid}}"
+      include_detailed_attributes: true
+
+  - id: take_error_screenshot
+    tool_name: capture_element_screenshot
+    arguments:
+      selector: "role:Window|name:Chrome"
+
