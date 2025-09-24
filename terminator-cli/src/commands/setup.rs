@@ -19,9 +19,6 @@ pub struct SetupCommand {
     #[arg(long)]
     skip_sdk: bool,
 
-    /// Run Chrome extension installation via MCP automation
-    #[arg(long)]
-    auto_chrome: bool,
 
     /// Verbose output
     #[arg(short, long)]
@@ -51,13 +48,9 @@ impl SetupCommand {
             results.push(self.setup_sdks().await);
         }
 
-        // Step 4: Chrome Extension
+        // Step 4: Chrome Extension - Always use automation by default
         if !self.skip_chrome {
-            if self.auto_chrome {
-                results.push(self.auto_install_chrome_extension().await);
-            } else {
-                results.push(self.manual_install_chrome_extension().await);
-            }
+            results.push(self.auto_install_chrome_extension().await);
         }
 
         // Step 5: Verify installation
@@ -238,155 +231,82 @@ impl SetupCommand {
     }
 
     async fn auto_install_chrome_extension(&self) -> (&'static str, Result<String>) {
-        println!("{}", "🌐 Installing Chrome Extension (automated)...".bold());
+        println!("{}", "🌐 Installing Chrome Extension automatically...".bold());
+        println!("  {} This will control your browser to install the extension", "ℹ️".blue());
+        println!();
 
-        // Run the existing workflow via MCP
-        println!("  Running automated installation workflow...");
+        // Check if workflow file exists locally first
+        let local_workflow = PathBuf::from("terminator/browser-extension/install_chrome_extension_ui.yml");
+        let workflow_path = if local_workflow.exists() {
+            local_workflow.to_str().unwrap().to_string()
+        } else {
+            // Use absolute path from current directory
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("terminator")
+                .join("browser-extension")
+                .join("install_chrome_extension_ui.yml")
+                .to_str()
+                .unwrap_or("terminator/browser-extension/install_chrome_extension_ui.yml")
+                .to_string()
+        };
 
-        let workflow_path = "terminator/browser-extension/install_chrome_extension_ui.yml";
+        println!("  Running installation workflow...");
+        println!("  This will:");
+        println!("    1. Download the Chrome extension");
+        println!("    2. Open Chrome and navigate to extensions page");
+        println!("    3. Enable Developer mode");
+        println!("    4. Load the unpacked extension");
+        println!();
 
         let spawn_result = ProcessCommand::new("terminator")
-            .args(&["mcp", "run", workflow_path, "--command", "npx -y terminator-mcp-agent"])
+            .args(&["mcp", "run", &workflow_path, "--command", "npx -y terminator-mcp-agent"])
             .spawn();
 
         match spawn_result {
             Ok(mut child) => {
                 match child.wait() {
                     Ok(status) if status.success() => {
-                        ("Chrome Extension", Ok("Installed via automation".to_string()))
+                        println!();
+                        println!("  {} Chrome extension installed successfully!", "✅".green());
+                        ("Chrome Extension", Ok("Installed automatically".to_string()))
                     }
                     Ok(_) => {
-                        ("Chrome Extension", Err(anyhow::anyhow!("Automation failed, try manual install")))
+                        println!();
+                        println!("  {} Automation failed. Falling back to manual installation...", "⚠️".yellow());
+                        self.show_manual_fallback();
+                        ("Chrome Extension", Err(anyhow::anyhow!("Automation failed, manual instructions provided")))
                     }
                     Err(e) => {
-                        ("Chrome Extension", Err(anyhow::anyhow!("Installation workflow failed: {}", e)))
+                        println!();
+                        println!("  {} Installation workflow error: {}", "❌".red(), e);
+                        self.show_manual_fallback();
+                        ("Chrome Extension", Err(anyhow::anyhow!("Workflow error: {}", e)))
                     }
                 }
             }
             Err(e) => {
-                ("Chrome Extension", Err(anyhow::anyhow!("Failed to run installation workflow: {}", e)))
+                println!();
+                println!("  {} Could not start automation: {}", "❌".red(), e);
+                println!("  Make sure Chrome is installed and terminator-mcp-agent is available");
+                self.show_manual_fallback();
+                ("Chrome Extension", Err(anyhow::anyhow!("Could not start automation: {}", e)))
             }
         }
     }
 
-    async fn manual_install_chrome_extension(&self) -> (&'static str, Result<String>) {
-        println!("{}", "🌐 Installing Chrome Extension (manual)...".bold());
 
-        let ext_path = PathBuf::from("terminator/browser-extension");
-
-        if !ext_path.exists() {
-            // Try downloading from release
-            println!("  Local extension not found, downloading from release...");
-
-            let temp_dir = std::env::temp_dir().join("terminator-bridge");
-            if let Err(e) = tokio::fs::create_dir_all(&temp_dir).await {
-                return ("Chrome Extension", Err(anyhow::anyhow!("Failed to create temp directory: {}", e)));
-            }
-
-            println!("  Downloading extension...");
-            let download_url = "https://github.com/mediar-ai/terminator/releases/latest/download/terminator-browser-extension.zip";
-
-            // Use curl or PowerShell to download
-            #[cfg(windows)]
-            {
-                if let Err(e) = ProcessCommand::new("powershell")
-                    .args(&[
-                        "-Command",
-                        &format!("Invoke-WebRequest -Uri '{}' -OutFile '{}'",
-                            download_url,
-                            temp_dir.join("extension.zip").display())
-                    ])
-                    .output()
-                {
-                    return ("Chrome Extension", Err(anyhow::anyhow!("Failed to download extension: {}", e)));
-                }
-            }
-
-            #[cfg(not(windows))]
-            {
-                if let Err(e) = ProcessCommand::new("curl")
-                    .args(&[
-                        "-L",
-                        download_url,
-                        "-o",
-                        temp_dir.join("extension.zip").to_str().unwrap(),
-                    ])
-                    .output()
-                {
-                    return ("Chrome Extension", Err(anyhow::anyhow!("Failed to download extension: {}", e)));
-                }
-            }
-
-            // Extract
-            println!("  Extracting extension...");
-            #[cfg(windows)]
-            {
-                if let Err(e) = ProcessCommand::new("powershell")
-                    .args(&[
-                        "-Command",
-                        &format!("Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-                            temp_dir.join("extension.zip").display(),
-                            temp_dir.display())
-                    ])
-                    .output()
-                {
-                    return ("Chrome Extension", Err(anyhow::anyhow!("Failed to extract extension: {}", e)));
-                }
-            }
-
-            println!();
-            self.show_chrome_install_instructions(&temp_dir);
-        } else {
-            match std::fs::canonicalize(&ext_path) {
-                Ok(abs_path) => self.show_chrome_install_instructions(&abs_path),
-                Err(e) => {
-                    return ("Chrome Extension", Err(anyhow::anyhow!("Failed to get extension path: {}", e)));
-                }
-            }
-        }
-
-        ("Chrome Extension", Ok("Manual instructions provided".to_string()))
+    fn show_manual_fallback(&self) {
+        println!();
+        println!("  {} Manual installation steps:", "📝".cyan());
+        println!("  1. Download extension from: {}", "https://github.com/mediar-ai/terminator/releases".underline());
+        println!("  2. Extract the zip file");
+        println!("  3. Open Chrome and go to: {}", "chrome://extensions".bold());
+        println!("  4. Enable {} mode (top right)", "Developer".bold());
+        println!("  5. Click {} (top left)", "Load unpacked".bold());
+        println!("  6. Select the extracted folder");
     }
 
-    fn show_chrome_install_instructions(&self, path: &std::path::Path) {
-        println!("  📂 Extension location: {}", path.display().to_string().green());
-        println!();
-        println!("  To install:");
-        println!("  1. Open Chrome and go to: {}", "chrome://extensions".bold());
-        println!("  2. Enable {} (top right)", "Developer mode".bold());
-        println!("  3. Click {} (top left)", "Load unpacked".bold());
-        println!("  4. Select the folder above");
-        println!();
-
-        // Copy to clipboard on Windows
-        #[cfg(windows)]
-        {
-            let _ = ProcessCommand::new("cmd")
-                .args(&["/C", &format!("echo {}| clip", path.display())])
-                .output();
-            println!("  📋 Path copied to clipboard!");
-        }
-
-        println!("  Press Enter to open Chrome extensions page...");
-        std::io::stdin().read_line(&mut String::new()).ok();
-
-        // Open extensions page
-        #[cfg(windows)]
-        ProcessCommand::new("cmd")
-            .args(&["/C", "start", "chrome://extensions"])
-            .spawn()
-            .ok();
-
-        #[cfg(target_os = "macos")]
-        ProcessCommand::new("open")
-            .arg("chrome://extensions")
-            .spawn()
-            .ok();
-
-        println!();
-        println!("  Press Enter when done...");
-        std::io::stdin().read_line(&mut String::new()).ok();
-    }
 
     async fn verify_installation(&self) -> (&'static str, Result<String>) {
         println!("{}", "✅ Verifying installation...".bold());
