@@ -519,7 +519,9 @@ fn sync_nodejs_bindings(version: &str) {
             println!("✅ Node.js sync script completed");
         } else {
             // This is not really a failure - the versions are already synced
-            println!("ℹ️  Note: npm sync-version script exited (versions may already be up-to-date)");
+            println!(
+                "ℹ️  Note: npm sync-version script exited (versions may already be up-to-date)"
+            );
         }
         // Always change back to the original directory
         if let Err(e) = env::set_current_dir(&original_dir) {

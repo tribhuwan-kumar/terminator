@@ -1231,13 +1231,13 @@ console.log('[Node.js Wrapper] Current working directory:', process.cwd());
 
                                 // Check for common error types and provide more helpful messages
                                 let detailed_message = if error_message.contains("Cannot find module") {
-                                    format!("JavaScript execution failed: {}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.", error_message)
+                                    format!("JavaScript execution failed: {error_message}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.")
                                 } else if error_message.contains("SyntaxError") {
-                                    format!("JavaScript syntax error: {}. Please check the script for syntax errors.", error_message)
+                                    format!("JavaScript syntax error: {error_message}. Please check the script for syntax errors.")
                                 } else if error_message.contains("ReferenceError") {
-                                    format!("JavaScript reference error: {}. The script references a variable or function that is not defined.", error_message)
+                                    format!("JavaScript reference error: {error_message}. The script references a variable or function that is not defined.")
                                 } else {
-                                    format!("JavaScript execution error: {}", error_message)
+                                    format!("JavaScript execution error: {error_message}")
                                 };
 
                                 return Err(McpError::internal_error(
@@ -1605,13 +1605,13 @@ console.log('[TypeScript] Current working directory:', process.cwd());
 
                                     // Check for common error types and provide more helpful messages
                                     let detailed_message = if error_message.contains("Cannot find module") {
-                                        format!("TypeScript execution failed: {}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.", error_message)
+                                        format!("TypeScript execution failed: {error_message}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.")
                                     } else if error_message.contains("SyntaxError") {
-                                        format!("TypeScript syntax error: {}. Please check the script for syntax errors.", error_message)
+                                        format!("TypeScript syntax error: {error_message}. Please check the script for syntax errors.")
                                     } else if error_message.contains("ReferenceError") {
-                                        format!("TypeScript reference error: {}. The script references a variable or function that is not defined.", error_message)
+                                        format!("TypeScript reference error: {error_message}. The script references a variable or function that is not defined.")
                                     } else {
-                                        format!("TypeScript execution error: {}", error_message)
+                                        format!("TypeScript execution error: {error_message}")
                                     };
 
                                     return Err(McpError::internal_error(
@@ -1723,21 +1723,21 @@ console.log('[TypeScript] Current working directory:', process.cwd());
             let stderr_combined = stderr_output.join("\n");
 
             // Check if this is a VC++ redistributables error on Windows
-            if cfg!(windows) && crate::vcredist_check::is_vcredist_error(&stderr_combined)
-                && !crate::vcredist_check::is_vcredist_available() {
-                    error!(
-                        "[TypeScript] Execution failed due to missing Visual C++ Redistributables"
-                    );
-                    return Err(McpError::internal_error(
-                        crate::vcredist_check::get_vcredist_error_message(),
-                        Some(json!({
-                            "error": "Missing Visual C++ Redistributables",
-                            "solution": "Run: winget install Microsoft.VCRedist.2015+.x64",
-                            "download_url": "https://aka.ms/vs/17/release/vc_redist.x64.exe",
-                            "details": stderr_combined
-                        })),
-                    ));
-                }
+            if cfg!(windows)
+                && crate::vcredist_check::is_vcredist_error(&stderr_combined)
+                && !crate::vcredist_check::is_vcredist_available()
+            {
+                error!("[TypeScript] Execution failed due to missing Visual C++ Redistributables");
+                return Err(McpError::internal_error(
+                    crate::vcredist_check::get_vcredist_error_message(),
+                    Some(json!({
+                        "error": "Missing Visual C++ Redistributables",
+                        "solution": "Run: winget install Microsoft.VCRedist.2015+.x64",
+                        "download_url": "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+                        "details": stderr_combined
+                    })),
+                ));
+            }
 
             Err(McpError::internal_error(
                 "No result received from TypeScript process",
@@ -1935,15 +1935,15 @@ asyncio.run(__runner__())
 
                                 // Check for common error types and provide more helpful messages
                                 let detailed_message = if error_message.contains("No module named") || error_message.contains("ModuleNotFoundError") {
-                                    format!("Python execution failed: {}. The script requires a module that is not installed. Please ensure all dependencies are installed using pip.", error_message)
+                                    format!("Python execution failed: {error_message}. The script requires a module that is not installed. Please ensure all dependencies are installed using pip.")
                                 } else if error_message.contains("SyntaxError") {
-                                    format!("Python syntax error: {}. Please check the script for syntax errors.", error_message)
+                                    format!("Python syntax error: {error_message}. Please check the script for syntax errors.")
                                 } else if error_message.contains("NameError") {
-                                    format!("Python name error: {}. The script references a variable or function that is not defined.", error_message)
+                                    format!("Python name error: {error_message}. The script references a variable or function that is not defined.")
                                 } else if error_message.contains("ImportError") {
-                                    format!("Python import error: {}. Failed to import a required module or package.", error_message)
+                                    format!("Python import error: {error_message}. Failed to import a required module or package.")
                                 } else {
-                                    format!("Python execution error: {}", error_message)
+                                    format!("Python execution error: {error_message}")
                                 };
 
                                 return Err(McpError::internal_error(
@@ -2465,19 +2465,16 @@ pub async fn execute_javascript_with_local_bindings(
 
                 // Check for common error types and provide more helpful messages
                 let detailed_message = if error_message.contains("Cannot find module") {
-                    format!("JavaScript execution failed: {}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.", error_message)
+                    format!("JavaScript execution failed: {error_message}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.")
                 } else if error_message.contains("SyntaxError") {
-                    format!("JavaScript syntax error: {}. Please check the script for syntax errors.", error_message)
+                    format!("JavaScript syntax error: {error_message}. Please check the script for syntax errors.")
                 } else if error_message.contains("ReferenceError") {
-                    format!("JavaScript reference error: {}. The script references a variable or function that is not defined.", error_message)
+                    format!("JavaScript reference error: {error_message}. The script references a variable or function that is not defined.")
                 } else {
-                    format!("JavaScript execution error with local bindings: {}", error_message)
+                    format!("JavaScript execution error with local bindings: {error_message}")
                 };
 
-                return Err(McpError::internal_error(
-                    detailed_message,
-                    Some(error_data),
-                ));
+                return Err(McpError::internal_error(detailed_message, Some(error_data)));
             }
             break;
         } else {
