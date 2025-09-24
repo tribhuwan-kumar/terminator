@@ -440,6 +440,33 @@ When using `file://` URLs, workflow state is automatically saved:
 - State automatically loaded when using `start_from_step`
 - Enables debugging individual steps and resuming failed workflows
 
+**Conditional Jumps with jump_if:**
+Steps can conditionally jump to other steps based on expressions evaluated after successful execution:
+```yaml
+- tool_name: validate_element
+  id: check_login
+  selector: \"role:button|name:Logout\"
+  jump_if: \"check_login_status == 'success'\"
+  jump_to_id: main_flow
+  jump_reason: \"User already authenticated - skipping login\"
+```
+
+**Jump Parameters:**
+- `jump_if`: Expression evaluated after successful step execution
+- `jump_to_id`: Target step ID to jump to when condition is true
+- `jump_reason`: Optional message logged when jump occurs
+
+**Expression Access:**
+- `{{step_id}}_status`: Step execution status (\"success\" or \"error\")
+- `{{step_id}}_result`: Step result data
+- Supports operators: `==`, `!=`, `&&`, `||`, `!`
+- Functions: `contains()`, `startsWith()`, `endsWith()`
+
+**Common Jump Patterns:**
+- **Skip**: Jump forward over unnecessary steps
+- **Branch**: Different paths based on conditions
+- **Loop**: Jump backward (use with caution to avoid infinite loops)
+
 **Common Pitfalls & Solutions**
 
 *   **Click fails on buttons not in viewport:** Use `invoke_element` instead of `click_element`.

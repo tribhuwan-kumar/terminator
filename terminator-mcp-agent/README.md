@@ -113,6 +113,30 @@ stop_on_error: true
 include_detailed_results: true
 ```
 
+With conditional jumps (`workflow_with_jumps.yml`):
+
+```yaml
+steps:
+  - tool_name: validate_element
+    id: check_logged_in
+    arguments:
+      selector: "role:button|name:Logout"
+    jump_if: "check_logged_in_status == 'success'"
+    jump_to_id: main_app
+    jump_reason: "User already logged in - skipping authentication"
+
+  - tool_name: click_element
+    id: login_flow
+    arguments:
+      selector: "role:button|name:Login"
+  # ... more login steps ...
+
+  - tool_name: click_element
+    id: main_app
+    arguments:
+      selector: "role:button|name:Dashboard"
+```
+
 Tool call wrapper format (`workflow.json`):
 
 ```json
