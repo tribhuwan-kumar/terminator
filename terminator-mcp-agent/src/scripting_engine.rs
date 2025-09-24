@@ -1487,9 +1487,16 @@ console.log('[TypeScript] Current working directory:', process.cwd());
 
 (async () => {{
     try {{
-        // User script starts here
-        {script}
-        // User script ends here
+        // Execute user script and capture result
+        const result = await (async () => {{
+            // User script starts here
+            {script}
+            // User script ends here
+        }})();
+
+        // Send result back, handling undefined properly
+        const resultToSend = result === undefined ? null : result;
+        process.stdout.write('__RESULT__' + JSON.stringify(resultToSend) + '__END__\n');
     }} catch (error: any) {{
         console.error('__ERROR__' + JSON.stringify({{
             message: error?.message || String(error),
@@ -2092,7 +2099,8 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
         info!("[Python] Installing/upgrading terminator.py into cache using pip");
         let max_retries = 3;
         let mut attempt = 0;
-        let candidates = ["terminator.py", "terminator-py", "terminator"];
+        // Try both package names that are published to PyPI
+        let candidates = ["terminator", "terminator-py"];
         let mut last_err: Option<String> = None;
 
         while attempt < max_retries {

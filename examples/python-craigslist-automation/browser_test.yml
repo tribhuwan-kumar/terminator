@@ -1,0 +1,56 @@
+name: Browser Automation Test
+description: Test browser automation without Python
+
+steps:
+  - id: open_browser
+    tool_name: open_application
+    arguments:
+      app_name: "chrome"
+    delay: 2s
+
+  - id: navigate_to_site
+    tool_name: navigate_browser
+    arguments:
+      url: "https://sfbay.craigslist.org"
+    delay: 3s
+
+  - id: take_screenshot
+    tool_name: capture_element_screenshot
+    arguments:
+      selector: "role:Window|name:Chrome"
+    continue_on_error: true
+
+  - id: search_on_page
+    tool_name: click_element
+    arguments:
+      selector: "role:Edit|name:search"
+    continue_on_error: true
+    delay: 1s
+
+  - id: type_search
+    tool_name: type_into_element
+    arguments:
+      selector: "role:Edit|name:search"
+      text_to_type: "furniture"
+    continue_on_error: true
+    delay: 1s
+
+  - id: submit_search
+    tool_name: press_key
+    arguments:
+      selector: "role:Edit|name:search"
+      key: "{Enter}"
+    continue_on_error: true
+    delay: 3s
+
+  - id: report_results
+    tool_name: run_command
+    arguments:
+      engine: "javascript"
+      run: |
+        console.log("=== Browser Automation Test Complete ===");
+        console.log("Browser opened: ", open_browser_status === 'success');
+        console.log("Navigation: ", navigate_to_site_status === 'success');
+        console.log("Screenshot: ", take_screenshot_status === 'success');
+        console.log("Search performed: ", submit_search_status === 'success');
+        return { test_complete: true };

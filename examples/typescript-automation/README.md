@@ -4,11 +4,11 @@ This folder demonstrates TypeScript support in terminator workflows.
 
 ## Current Status
 
-⚠️ **Note**: TypeScript execution is supported but result capture from TypeScript scripts is currently not working properly in the MCP agent. The TypeScript files compile and run, but results are not returned to the workflow.
+✅ **Fixed**: TypeScript execution and result capture now work properly! The MCP agent has been updated to correctly capture and return results from TypeScript scripts, just like JavaScript.
 
 ## Files
 
-### TypeScript Files (Ready for when result capture is fixed)
+### TypeScript Files
 - `analyze-apps.ts` - TypeScript application analysis
 - `notepad-automation.ts` - TypeScript Notepad automation
 
@@ -19,22 +19,19 @@ This folder demonstrates TypeScript support in terminator workflows.
 ## Running the Examples
 
 ```bash
-# Try running TypeScript analysis (currently doesn't return results)
+# Run TypeScript analysis - returns application information
 terminator mcp run examples/typescript-automation/run-typescript-analysis.yml
 
-# Try running TypeScript Notepad automation (currently doesn't return results)
+# Run TypeScript Notepad automation - opens Notepad, types text, and saves
 terminator mcp run examples/typescript-automation/run-typescript-notepad.yml
+
+# Test TypeScript return values
+terminator mcp run examples/typescript-automation/test-return.yml
 ```
-
-## Known Issues
-
-1. **TypeScript Result Capture**: The MCP agent successfully compiles and executes TypeScript files using Bun's native TypeScript support, but the result capture mechanism doesn't work. The scripts run but return "No result received from TypeScript process".
-
-2. **Workaround**: For now, use `engine: javascript` instead of `engine: typescript` for working automation.
 
 ## TypeScript Features Demonstrated
 
-When result capture is fixed, these examples will demonstrate:
+These examples demonstrate:
 - Native TypeScript execution
 - Type safety with interfaces
 - Loading TypeScript from external `.ts` files
@@ -48,5 +45,6 @@ The MCP agent uses:
 - Bun for native TypeScript execution (no transpilation needed)
 - terminator.js for desktop automation
 - Automatic dependency installation
+- Result capture via `__RESULT__` markers (fixed in latest version)
 
-The issue appears to be that TypeScript execution doesn't use the same wrapper mechanism as JavaScript, so results aren't captured with the `__RESULT__` markers.
+TypeScript and JavaScript now use the same result capture mechanism, ensuring consistent behavior across both languages.
