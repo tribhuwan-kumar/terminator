@@ -797,6 +797,21 @@ pub struct SequenceStep {
     )]
     pub fallback_id: Option<String>,
 
+    #[schemars(
+        description = "Optional expression to evaluate after successful step execution. If true, jump to jump_to_id. Expression can reference step results via {step_id}_result and {step_id}_status."
+    )]
+    pub jump_if: Option<String>,
+
+    #[schemars(
+        description = "Target step ID to jump to when jump_if condition evaluates to true."
+    )]
+    pub jump_to_id: Option<String>,
+
+    #[schemars(
+        description = "Optional human-readable explanation of why this jump occurs. Logged when jump is triggered for better workflow observability."
+    )]
+    pub jump_reason: Option<String>,
+
     // Simplified aliases (keeping originals for backward compatibility)
     #[schemars(
         description = "Simplified alias for 'delay_ms'. Supports human-readable durations like '1s', '500ms', '2m'. Defaults to milliseconds if no unit specified."

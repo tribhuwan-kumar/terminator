@@ -1,0 +1,57 @@
+name: Test Jump If Feature
+description: Test conditional jump functionality with jump_if, jump_to_id, and jump_reason
+
+# This test verifies:
+# 1. Basic jump on success
+# 2. Jump with reason logging
+# 3. Conditional jumps that don't trigger
+# 4. Complex expressions in jump_if
+# 5. Jump over multiple steps
+
+steps:
+  # Test 1: Basic jump on success
+  - tool_name: delay
+    id: check_condition
+    arguments:
+      delay_ms: 10
+    jump_if: "check_condition_status == 'success'"
+    jump_to_id: target_step
+    jump_reason: "Condition met - jumping to target"
+
+  # These steps should be SKIPPED
+  - tool_name: delay
+    id: skipped_step_1
+    arguments:
+      delay_ms: 10
+
+  - tool_name: delay
+    id: skipped_step_2
+    arguments:
+      delay_ms: 10
+
+  # Jump target
+  - tool_name: delay
+    id: target_step
+    arguments:
+      delay_ms: 10
+
+  # Test 2: Jump that won't trigger (condition false)
+  - tool_name: delay
+    id: no_jump_step
+    arguments:
+      delay_ms: 10
+    jump_if: "no_jump_step_result.nonexistent == 'value'"
+    jump_to_id: unreachable_step
+    jump_reason: "This jump should never happen"
+
+  # This should execute normally
+  - tool_name: delay
+    id: normal_flow
+    arguments:
+      delay_ms: 10
+
+  # This should be skipped by normal flow ending
+  - tool_name: delay
+    id: unreachable_step
+    arguments:
+      delay_ms: 10

@@ -800,13 +800,15 @@ impl DesktopWrapper {
             if let Some(step) = original_step {
                 if let Some(tool_name) = &step.tool_name {
                     info!(
-                        "Step {} BEGIN tool='{}' id='{}' retries={} if_expr={:?} fallback_id={:?}",
+                        "Step {} BEGIN tool='{}' id='{}' retries={} if_expr={:?} fallback_id={:?} jump_if={:?} jump_to_id={:?}",
                         current_index,
                         tool_name,
                         step.id.as_deref().unwrap_or(""),
                         step.retries.unwrap_or(0),
                         step.r#if,
-                        step.fallback_id
+                        step.fallback_id,
+                        step.jump_if,
+                        step.jump_to_id
                     );
                 } else if let Some(group_name) = &step.group_name {
                     info!(
@@ -964,49 +966,54 @@ impl DesktopWrapper {
 
                         // NEW: Store tool result in env if step has an ID (for ALL tools, not just scripts)
                         if let Some(step_id) = original_step.and_then(|s| s.id.as_deref()) {
+                            let result_key = format!("{step_id}_result");
+                            let status_key = format!("{step_id}_status");
+
+                            // Extract the meaningful content from the result
+                            let mut result_content =
+                                if let Some(result_obj) = final_result.get("result") {
+                                    // For tools, extract the actual content
+                                    if let Some(content) = result_obj.get("content") {
+                                        content.clone()
+                                    } else {
+                                        result_obj.clone()
+                                    }
+                                } else {
+                                    // Fallback to the entire result if no nested structure
+                                    final_result.clone()
+                                };
+
+                            // REMOVE server_logs before storing in env (they're debug data, not operational data)
+                            if let Some(obj) = result_content.as_object_mut() {
+                                if obj.contains_key("server_logs") {
+                                    let log_count = obj
+                                        .get("server_logs")
+                                        .and_then(|logs| logs.as_array())
+                                        .map(|arr| arr.len())
+                                        .unwrap_or(0);
+                                    obj.remove("server_logs");
+                                    debug!(
+                                        "Removed {} server_logs from {}_result before storing in env",
+                                        log_count, step_id
+                                    );
+                                }
+                            }
+
+                            // Store at root level for easier expression access
+                            execution_context_map
+                                .insert(result_key.clone(), result_content.clone());
+                            execution_context_map
+                                .insert(status_key.clone(), final_result["status"].clone());
+
+                            // Also store in env
                             if let Some(env_value) = execution_context_map.get_mut("env") {
                                 if let Some(env_map) = env_value.as_object_mut() {
-                                    // Store the result with {step_id}_result pattern
-                                    let result_key = format!("{step_id}_result");
-                                    let status_key = format!("{step_id}_status");
-
-                                    // Extract the meaningful content from the result
-                                    let mut result_content =
-                                        if let Some(result_obj) = final_result.get("result") {
-                                            // For tools, extract the actual content
-                                            if let Some(content) = result_obj.get("content") {
-                                                content.clone()
-                                            } else {
-                                                result_obj.clone()
-                                            }
-                                        } else {
-                                            // Fallback to the entire result if no nested structure
-                                            final_result.clone()
-                                        };
-
-                                    // REMOVE server_logs before storing in env (they're debug data, not operational data)
-                                    if let Some(obj) = result_content.as_object_mut() {
-                                        if obj.contains_key("server_logs") {
-                                            let log_count = obj
-                                                .get("server_logs")
-                                                .and_then(|logs| logs.as_array())
-                                                .map(|arr| arr.len())
-                                                .unwrap_or(0);
-                                            obj.remove("server_logs");
-                                            debug!(
-                                                "Removed {} server_logs from {}_result before storing in env",
-                                                log_count, step_id
-                                            );
-                                        }
-                                    }
-
-                                    // Store both result and status
                                     env_map.insert(result_key.clone(), result_content);
                                     env_map
                                         .insert(status_key.clone(), final_result["status"].clone());
 
                                     info!(
-                                        "Stored tool result for step '{}' in env as '{}'",
+                                        "Stored tool result for step '{}' as '{}' at root and env levels",
                                         step_id, result_key
                                     );
 
@@ -1379,14 +1386,99 @@ impl DesktopWrapper {
             }
 
             if step_succeeded {
-                // For successful steps, check if we're about to enter troubleshooting section
-                if !jumped_to_troubleshooting && current_index >= main_steps_len - 1 {
-                    // We're at or past the last main step and haven't jumped to troubleshooting
-                    // Exit the loop to prevent entering troubleshooting during normal flow
-                    info!("Completed all main workflow steps successfully");
-                    break;
+                // Check for conditional jump on success
+                let mut performed_jump = false;
+
+                // Debug: Check if original_step exists
+                if original_step.is_some() {
+                    debug!("Original step exists for index {}", current_index);
                 }
-                current_index += 1;
+
+                if let Some(jump_expr) = original_step.and_then(|s| s.jump_if.as_ref()) {
+                    info!(
+                        "Found jump_if expression for step {}: {}",
+                        current_index, jump_expr
+                    );
+                    if let Some(jump_target) = original_step.and_then(|s| s.jump_to_id.as_ref()) {
+                        info!(
+                            "Found jump_to_id for step {}: {}",
+                            current_index, jump_target
+                        );
+                        // Evaluate the jump condition
+                        let execution_context =
+                            serde_json::Value::Object(execution_context_map.clone());
+
+                        // Debug: Show what's available in context for evaluation
+                        if let Some(step_id) = original_step.and_then(|s| s.id.as_ref()) {
+                            let status_key = format!("{step_id}_status");
+                            if let Some(status_val) = execution_context_map
+                                .get("env")
+                                .and_then(|env| env.get(&status_key))
+                            {
+                                info!(
+                                    "Available for evaluation: {} = {:?}",
+                                    status_key, status_val
+                                );
+                            }
+                        }
+
+                        let should_jump =
+                            crate::expression_eval::evaluate(jump_expr, &execution_context);
+
+                        if should_jump {
+                            info!("Jump condition '{}' evaluated to true", jump_expr);
+                        } else {
+                            debug!("Jump condition '{}' evaluated to false", jump_expr);
+                        }
+
+                        if should_jump {
+                            // Look up target index
+                            if let Some(&target_idx) = id_to_index.get(jump_target) {
+                                // Build log message with optional reason
+                                let reason = original_step
+                                    .and_then(|s| s.jump_reason.as_ref())
+                                    .map(|r| format!(": \"{r}\""))
+                                    .unwrap_or_default();
+
+                                info!(
+                                    "Step {} succeeded. Jump condition '{}' met{}. Jumping to '{}' (index {})",
+                                    current_index, jump_expr, reason, jump_target, target_idx
+                                );
+
+                                // Check if we're jumping into the troubleshooting section
+                                if target_idx >= main_steps_len && !jumped_to_troubleshooting {
+                                    jumped_to_troubleshooting = true;
+                                    info!("Entered troubleshooting section via conditional jump");
+                                }
+
+                                current_index = target_idx;
+                                performed_jump = true;
+                            } else {
+                                warn!(
+                                    "jump_to_id '{}' not found for step {}. Continuing sequentially.",
+                                    jump_target, current_index
+                                );
+                            }
+                        }
+                    } else if original_step.and_then(|s| s.jump_to_id.as_ref()).is_none() {
+                        warn!(
+                            "Step {} has jump_if expression but no jump_to_id target. Ignoring jump condition.",
+                            current_index
+                        );
+                    }
+                }
+
+                // Only increment if we didn't jump
+                if !performed_jump {
+                    // For successful steps, check if we're about to enter troubleshooting section
+                    if !jumped_to_troubleshooting && current_index >= main_steps_len - 1 {
+                        // We're at or past the last main step and haven't jumped to troubleshooting
+                        // Exit the loop to prevent entering troubleshooting during normal flow
+                        info!("Completed all main workflow steps successfully");
+                        break;
+                    }
+                    current_index += 1;
+                }
             } else if let Some(fb_id) = fallback_id_opt {
                 if let Some(&fb_idx) = id_to_index.get(&fb_id) {
                     // Check if we should follow this fallback based on end_at_step and follow_fallback setting

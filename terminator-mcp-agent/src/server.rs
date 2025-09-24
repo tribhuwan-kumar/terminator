@@ -4222,17 +4222,19 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             );
         }
 
-
         // Detect and fix problematic wrapper patterns
         // Browser scripts should not start with 'return (function' as they're evaluated directly
         let cleaned_script = {
             let trimmed = modified_script.trim_start();
-            if trimmed.starts_with("return (function") || trimmed.starts_with("return (async function") {
+            if trimmed.starts_with("return (function")
+                || trimmed.starts_with("return (async function")
+            {
                 tracing::warn!(
                     "[execute_browser_script] Detected 'return (function' wrapper pattern - auto-removing 'return' prefix to prevent execution errors"
                 );
                 // Remove the 'return ' prefix
-                modified_script.trim_start()
+                modified_script
+                    .trim_start()
                     .strip_prefix("return ")
                     .unwrap_or(&modified_script)
                     .to_string()
@@ -4241,7 +4243,8 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                 tracing::warn!(
                     "[execute_browser_script] Detected 'return ((' wrapper pattern - auto-removing 'return' prefix to prevent execution errors"
                 );
-                modified_script.trim_start()
+                modified_script
+                    .trim_start()
                     .strip_prefix("return ")
                     .unwrap_or(&modified_script)
                     .to_string()
