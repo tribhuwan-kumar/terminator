@@ -765,6 +765,19 @@ pub struct ToolCall {
 }
 
 // Simplified structure for Gemini compatibility
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
+pub struct JumpCondition {
+    #[serde(rename = "if")]
+    #[schemars(description = "Expression to evaluate for this jump condition")]
+    pub condition: String,
+
+    #[schemars(description = "Target step ID to jump to when condition is true")]
+    pub to_id: String,
+
+    #[schemars(description = "Optional human-readable explanation logged when this jump is taken")]
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone, Default)]
 pub struct SequenceStep {
     #[schemars(description = "The name of the tool to execute (for single tool steps)")]
@@ -798,19 +811,9 @@ pub struct SequenceStep {
     pub fallback_id: Option<String>,
 
     #[schemars(
-        description = "Optional expression to evaluate after successful step execution. If true, jump to jump_to_id. Expression can reference step results via {step_id}_result and {step_id}_status."
+        description = "Conditional jumps evaluated in order after successful step execution. First matching condition triggers jump to target step."
     )]
-    pub jump_if: Option<String>,
-
-    #[schemars(
-        description = "Target step ID to jump to when jump_if condition evaluates to true."
-    )]
-    pub jump_to_id: Option<String>,
-
-    #[schemars(
-        description = "Optional human-readable explanation of why this jump occurs. Logged when jump is triggered for better workflow observability."
-    )]
-    pub jump_reason: Option<String>,
+    pub jumps: Option<Vec<JumpCondition>>,
 
     // Simplified aliases (keeping originals for backward compatibility)
     #[schemars(

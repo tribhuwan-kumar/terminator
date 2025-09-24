@@ -800,15 +800,14 @@ impl DesktopWrapper {
             if let Some(step) = original_step {
                 if let Some(tool_name) = &step.tool_name {
                     info!(
-                        "Step {} BEGIN tool='{}' id='{}' retries={} if_expr={:?} fallback_id={:?} jump_if={:?} jump_to_id={:?}",
+                        "Step {} BEGIN tool='{}' id='{}' retries={} if_expr={:?} fallback_id={:?} jumps={}",
                         current_index,
                         tool_name,
                         step.id.as_deref().unwrap_or(""),
                         step.retries.unwrap_or(0),
                         step.r#if,
                         step.fallback_id,
-                        step.jump_if,
-                        step.jump_to_id
+                        step.jumps.as_ref().map(|j| j.len()).unwrap_or(0)
                     );
                 } else if let Some(group_name) = &step.group_name {
                     info!(
@@ -1386,85 +1385,68 @@ impl DesktopWrapper {
             }
 
             if step_succeeded {
-                // Check for conditional jump on success
+                // Check for conditional jumps on success
                 let mut performed_jump = false;
 
-                // Debug: Check if original_step exists
-                if original_step.is_some() {
-                    debug!("Original step exists for index {}", current_index);
-                }
-
-                if let Some(jump_expr) = original_step.and_then(|s| s.jump_if.as_ref()) {
-                    info!(
-                        "Found jump_if expression for step {}: {}",
-                        current_index, jump_expr
-                    );
-                    if let Some(jump_target) = original_step.and_then(|s| s.jump_to_id.as_ref()) {
+                if let Some(jumps) = original_step.and_then(|s| s.jumps.as_ref()) {
+                    if !jumps.is_empty() {
                         info!(
-                            "Found jump_to_id for step {}: {}",
-                            current_index, jump_target
+                            "Evaluating {} jump condition(s) for step {}",
+                            jumps.len(),
+                            current_index
                         );
-                        // Evaluate the jump condition
+
                         let execution_context =
                             serde_json::Value::Object(execution_context_map.clone());
 
-                        // Debug: Show what's available in context for evaluation
-                        if let Some(step_id) = original_step.and_then(|s| s.id.as_ref()) {
-                            let status_key = format!("{step_id}_status");
-                            if let Some(status_val) = execution_context_map
-                                .get("env")
-                                .and_then(|env| env.get(&status_key))
+                        for (idx, jump) in jumps.iter().enumerate() {
+                            debug!(
+                                "Evaluating jump condition {}/{}: {}",
+                                idx + 1,
+                                jumps.len(),
+                                jump.condition
+                            );
+
+                            if crate::expression_eval::evaluate(&jump.condition, &execution_context)
                             {
-                                info!(
-                                    "Available for evaluation: {} = {:?}",
-                                    status_key, status_val
-                                );
-                            }
-                        }
+                                // This condition matched - perform the jump
+                                if let Some(&target_idx) = id_to_index.get(&jump.to_id) {
+                                    let reason = jump
+                                        .reason
+                                        .as_ref()
+                                        .map(|r| format!(": \"{r}\""))
+                                        .unwrap_or_default();
 
-                        let should_jump =
-                            crate::expression_eval::evaluate(jump_expr, &execution_context);
+                                    info!(
+                                        "Step {} succeeded. Jump condition {}/{} matched{}. Jumping to '{}' (index {})",
+                                        current_index, idx + 1, jumps.len(), reason, jump.to_id, target_idx
+                                    );
 
-                        if should_jump {
-                            info!("Jump condition '{}' evaluated to true", jump_expr);
-                        } else {
-                            debug!("Jump condition '{}' evaluated to false", jump_expr);
-                        }
+                                    // Check if jumping into troubleshooting section
+                                    if target_idx >= main_steps_len && !jumped_to_troubleshooting {
+                                        jumped_to_troubleshooting = true;
+                                        info!(
+                                            "Entered troubleshooting section via conditional jump"
+                                        );
+                                    }
 
-                        if should_jump {
-                            // Look up target index
-                            if let Some(&target_idx) = id_to_index.get(jump_target) {
-                                // Build log message with optional reason
-                                let reason = original_step
-                                    .and_then(|s| s.jump_reason.as_ref())
-                                    .map(|r| format!(": \"{r}\""))
-                                    .unwrap_or_default();
-
-                                info!(
-                                    "Step {} succeeded. Jump condition '{}' met{}. Jumping to '{}' (index {})",
-                                    current_index, jump_expr, reason, jump_target, target_idx
-                                );
-
-                                // Check if we're jumping into the troubleshooting section
-                                if target_idx >= main_steps_len && !jumped_to_troubleshooting {
-                                    jumped_to_troubleshooting = true;
-                                    info!("Entered troubleshooting section via conditional jump");
+                                    current_index = target_idx;
+                                    performed_jump = true;
+                                    break; // Stop evaluating remaining conditions
+                                } else {
+                                    warn!(
+                                        "Jump target '{}' not found for step {} condition {}. Continuing to next condition.",
+                                        jump.to_id, current_index, idx + 1
+                                    );
                                 }
-
-                                current_index = target_idx;
-                                performed_jump = true;
                             } else {
-                                warn!(
-                                    "jump_to_id '{}' not found for step {}. Continuing sequentially.",
-                                    jump_target, current_index
-                                );
+                                debug!("Jump condition {}/{} did not match", idx + 1, jumps.len());
                             }
                         }
-                    } else if original_step.and_then(|s| s.jump_to_id.as_ref()).is_none() {
-                        warn!(
-                            "Step {} has jump_if expression but no jump_to_id target. Ignoring jump condition.",
-                            current_index
-                        );
+
+                        if !performed_jump {
+                            debug!("No jump conditions matched for step {}", current_index);
+                        }
                     }
                 }
 
