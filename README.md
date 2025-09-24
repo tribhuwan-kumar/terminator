@@ -29,32 +29,6 @@ https://github.com/user-attachments/assets/00329105-8875-48cb-8970-a62a85a9ebd0
   </a>
 </p>
 
-## 🚀 Quick Install
-
-### Install Terminator CLI
-
-#### macOS/Linux
-```bash
-curl -fsSL https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.sh | bash
-```
-
-#### Windows
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.ps1 | iex"
-```
-
-#### After Installation
-Run the setup command to configure your environment:
-```bash
-terminator setup
-```
-
-This will:
-- ✅ Install the Chrome extension automatically
-- ✅ Check system requirements (VC++ redistributables on Windows)
-- ✅ Configure SDKs and dependencies
-- ✅ Verify the MCP agent is ready
-
 ## 🚀 What's new
 
 - 08/25 Big release — NodeJS SDK in YAML workflows, run JS in browser, OS event recording → YAML generation in MCP, and more
@@ -92,6 +66,30 @@ claude mcp add terminator "npx -y terminator-mcp-agent" -s user
 ```
 
 Or install via the [MCP directory](https://github.com/mediar-ai/terminator/tree/main/terminator-mcp-agent) for other clients.
+
+## ⚡ Quick start: CLI
+
+#### macOS/Linux
+```bash
+curl -fsSL https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.sh | bash
+```
+
+#### Windows
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.ps1 | iex"
+```
+
+#### After Installation
+Run the setup command to configure your environment:
+```bash
+terminator setup
+```
+
+This will:
+- ✅ Install the Chrome extension automatically
+- ✅ Check system requirements (VC++ redistributables on Windows)
+- ✅ Configure SDKs and dependencies
+- ✅ Verify the MCP agent is ready
 
 ## ⚡ Quick start: programmatic control
 
