@@ -121,9 +121,10 @@ steps:
     id: check_logged_in
     arguments:
       selector: "role:button|name:Logout"
-    jump_if: "check_logged_in_status == 'success'"
-    jump_to_id: main_app
-    jump_reason: "User already logged in - skipping authentication"
+    jumps:
+      - if: "check_logged_in_status == 'success'"
+        to_id: main_app
+        reason: "User already logged in - skipping authentication"
 
   - tool_name: click_element
     id: login_flow

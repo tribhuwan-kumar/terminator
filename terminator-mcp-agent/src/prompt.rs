@@ -440,21 +440,40 @@ When using `file://` URLs, workflow state is automatically saved:
 - State automatically loaded when using `start_from_step`
 - Enables debugging individual steps and resuming failed workflows
 
-**Conditional Jumps with jump_if:**
+**Conditional Jumps:**
 Steps can conditionally jump to other steps based on expressions evaluated after successful execution:
 ```yaml
 - tool_name: validate_element
   id: check_login
   selector: \"role:button|name:Logout\"
-  jump_if: \"check_login_status == 'success'\"
-  jump_to_id: main_flow
-  jump_reason: \"User already authenticated - skipping login\"
+  jumps:
+    - if: \"check_login_status == 'success'\"
+      to_id: main_flow
+      reason: \"User already authenticated - skipping login\"
+```
+
+**Multiple Jump Conditions:**
+Supports multiple conditions with first-match-wins evaluation:
+```yaml
+- tool_name: run_command
+  id: check_state
+  jumps:
+    - if: \"check_state_result.type == 'error'\"
+      to_id: error_handler
+      reason: \"Error occurred - handle it\"
+    - if: \"check_state_result.value > 100\"
+      to_id: high_value_flow
+      reason: \"High value detected\"
+    - if: \"check_state_status == 'success'\"
+      to_id: normal_flow
+      reason: \"Normal processing\"
 ```
 
 **Jump Parameters:**
-- `jump_if`: Expression evaluated after successful step execution
-- `jump_to_id`: Target step ID to jump to when condition is true
-- `jump_reason`: Optional message logged when jump occurs
+- `jumps`: Array of jump conditions (evaluated in order, first match wins)
+- `if`: Expression evaluated after successful step execution
+- `to_id`: Target step ID to jump to when condition is true
+- `reason`: Optional message logged when jump occurs
 
 **Expression Access:**
 - `{{step_id}}_status`: Step execution status (\"success\" or \"error\")
