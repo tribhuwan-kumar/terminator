@@ -278,12 +278,39 @@ execute_browser_script({{
 }})
 ```
 
+**Browser Script Format Requirements:**
+Scripts executed via `execute_browser_script` must follow these format rules:
+- **DO NOT** start scripts with `return (function()` - this causes execution errors
+- **DO NOT** wrap the entire script with a `return` statement
+- Use one of these correct formats:
+  * `(function() {{ ... }})()` - Self-executing function (IIFE) - **RECOMMENDED**
+  * Plain JavaScript code without any wrapper
+  * `new Promise((resolve) => {{ ... }})` - For async operations
+- Always return data using `JSON.stringify()` at the end of your function
+
+**Correct Example:**
+```javascript
+(function() {{
+    const data = document.title;
+    return JSON.stringify({{ title: data }});
+}})()
+```
+
+**Incorrect Example - DO NOT USE:**
+```javascript
+return (function() {{  // ❌ Don't start with 'return'
+    const data = document.title;
+    return JSON.stringify({{ title: data }});
+}})()
+```
+
 **Important Notes:**
 - Chrome extension must be installed for execute_browser_script to work
 - Scripts run in page context and must return serializable data using JSON.stringify()
 - When env/outputs are provided, they're injected as `var env` and `var outputs` at script start
 - Always parse env/outputs in case they're JSON strings: `typeof env === 'string' ? JSON.parse(env) : env`
 - Size limit ~30KB for responses - truncate large DOMs
+- The system will auto-fix some common format errors but it's better to use the correct format
 
 **Core Desktop APIs:**
 ```javascript
