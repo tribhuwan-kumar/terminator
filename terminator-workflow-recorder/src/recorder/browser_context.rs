@@ -55,13 +55,14 @@ pub enum SelectorType {
 }
 
 /// Browser context recorder that coordinates with Chrome extension
+#[derive(Clone)]
 pub struct BrowserContextRecorder {
     /// Cache of DOM elements by position for quick lookup
     dom_cache: Arc<Mutex<HashMap<(i32, i32), DomElementInfo>>>,
 
     /// Current recording session ID
     #[allow(dead_code)]
-    session_id: String,
+    session_id: Arc<String>,
 
     /// WebSocket connection status
     extension_connected: Arc<Mutex<bool>>,
@@ -71,7 +72,7 @@ impl Default for BrowserContextRecorder {
     fn default() -> Self {
         Self {
             dom_cache: Arc::new(Mutex::new(HashMap::new())),
-            session_id: uuid::Uuid::new_v4().to_string(),
+            session_id: Arc::new(uuid::Uuid::new_v4().to_string()),
             extension_connected: Arc::new(Mutex::new(false)),
         }
     }

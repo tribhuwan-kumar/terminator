@@ -1,11 +1,13 @@
 use crate::events::{
-    BrowserTabNavigationEvent, ButtonInteractionType, ClickEvent, TabAction, TabNavigationMethod,
+    BrowserClickEvent, BrowserTabNavigationEvent, ButtonInteractionType,
+    ClickEvent, TabAction, TabNavigationMethod,
 };
 use crate::{
     ApplicationSwitchMethod, ClipboardAction, ClipboardEvent, EventMetadata, HotkeyEvent,
     KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position, Result, WorkflowEvent,
     WorkflowRecorderConfig,
 };
+use crate::recorder::browser_context::BrowserContextRecorder;
 use arboard::Clipboard;
 use rdev::{Button, EventType};
 use std::{
@@ -17,6 +19,7 @@ use std::{
 };
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 
+use tokio::runtime::Runtime;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
 use uiautomation::types::Point;
@@ -42,6 +45,8 @@ struct ButtonPressContext<'a> {
     performance_last_event_time: &'a Arc<Mutex<Instant>>,
     performance_events_counter: &'a Arc<Mutex<(u32, Instant)>>,
     double_click_tracker: &'a Arc<Mutex<structs::DoubleClickTracker>>,
+    browser_recorder: &'a Arc<Mutex<Option<BrowserContextRecorder>>>,
+    tokio_runtime: &'a Arc<Mutex<Option<Runtime>>>,
 }
 
 /// The Windows-specific recorder
@@ -93,6 +98,12 @@ pub struct WindowsRecorder {
 
     /// Double click detection tracker
     double_click_tracker: Arc<Mutex<structs::DoubleClickTracker>>,
+
+    /// Browser context recorder for DOM capture
+    browser_recorder: Arc<Mutex<Option<BrowserContextRecorder>>>,
+
+    /// Tokio runtime for async browser operations
+    tokio_runtime: Arc<Mutex<Option<Runtime>>>,
 }
 
 impl WindowsRecorder {
@@ -205,6 +216,22 @@ impl WindowsRecorder {
         // Initialize hotkey patterns
         let hotkey_patterns = Arc::new(Self::initialize_hotkey_patterns());
 
+        // Initialize browser recorder and tokio runtime
+        let browser_recorder = BrowserContextRecorder::new();
+        let tokio_runtime = Runtime::new().ok();
+
+        // Check if Chrome extension is available
+        if let Some(ref runtime) = tokio_runtime {
+            let recorder_clone = browser_recorder.clone();
+            let _available = runtime.spawn(async move {
+                if recorder_clone.is_extension_available().await {
+                    info!("✅ Chrome extension is available for browser recording");
+                } else {
+                    warn!("⚠️ Chrome extension not available - browser recording disabled");
+                }
+            });
+        }
+
         let mut recorder = Self {
             event_tx,
             config,
@@ -222,6 +249,8 @@ impl WindowsRecorder {
             events_this_second: Arc::new(Mutex::new((0, Instant::now()))),
             current_text_input: Arc::new(Mutex::new(None)),
             double_click_tracker: Arc::new(Mutex::new(structs::DoubleClickTracker::default())),
+            browser_recorder: Arc::new(Mutex::new(Some(browser_recorder))),
+            tokio_runtime: Arc::new(Mutex::new(tokio_runtime)),
         };
 
         let handle = tokio::runtime::Handle::current();
@@ -898,6 +927,8 @@ impl WindowsRecorder {
         let uia_processor_events_counter = Arc::clone(&self.events_this_second);
         let capture_ui_elements = self.config.capture_ui_elements;
         let uia_processor_double_click_tracker = Arc::clone(&self.double_click_tracker);
+        let uia_processor_browser_recorder = Arc::clone(&self.browser_recorder);
+        let uia_processor_tokio_runtime = Arc::clone(&self.tokio_runtime);
 
         thread::spawn(move || {
             if !capture_ui_elements {
@@ -918,6 +949,8 @@ impl WindowsRecorder {
                             performance_last_event_time: &uia_processor_last_event_time,
                             performance_events_counter: &uia_processor_events_counter,
                             double_click_tracker: &uia_processor_double_click_tracker,
+                            browser_recorder: &uia_processor_browser_recorder,
+                            tokio_runtime: &uia_processor_tokio_runtime,
                         };
                         Self::handle_button_press_request(button, &ctx);
                     }
@@ -2612,6 +2645,130 @@ impl WindowsRecorder {
                         );
                     }
 
+                    // Check if this is a browser click and try to capture DOM information
+                    let app_name = element.application_name().to_lowercase();
+                    let is_browser = app_name.contains("chrome") ||
+                        app_name.contains("firefox") ||
+                        app_name.contains("edge") ||
+                        app_name.contains("safari");
+
+                    // Try to capture DOM element if in browser
+                    let mut dom_element = None;
+                    if is_browser {
+                        debug!("🌐 Browser click detected, attempting DOM capture at ({}, {})", ctx.position.x, ctx.position.y);
+
+                        // Use async/sync bridge to query DOM
+                        if let Ok(browser_lock) = ctx.browser_recorder.lock() {
+                            if let Some(ref browser) = *browser_lock {
+                                if let Ok(runtime_lock) = ctx.tokio_runtime.lock() {
+                                    if let Some(ref runtime) = *runtime_lock {
+                                        let browser_clone = browser.clone();
+                                        let position_clone = *ctx.position;
+
+                                        // Create channel for async result
+                                        let (tx, rx) = std::sync::mpsc::channel();
+
+                                        // Spawn async task
+                                        runtime.spawn(async move {
+                                            let result = browser_clone.capture_dom_element(position_clone).await;
+                                            let _ = tx.send(result);
+                                        });
+
+                                        // Wait for DOM result with timeout
+                                        if let Ok(dom_result) = rx.recv_timeout(Duration::from_millis(200)) {
+                                            if let Some(browser_dom_info) = dom_result {
+                                                debug!("✅ DOM element captured: {} with {} selectors",
+                                                    browser_dom_info.tag_name,
+                                                    browser_dom_info.selector_candidates.len());
+                                                // Convert from browser_context::DomElementInfo to events::DomElementInfo
+                                                let converted_dom = crate::events::DomElementInfo {
+                                                    tag_name: browser_dom_info.tag_name,
+                                                    id: browser_dom_info.id,
+                                                    class_names: browser_dom_info.class_names,
+                                                    css_selector: browser_dom_info.css_selector,
+                                                    xpath: browser_dom_info.xpath,
+                                                    inner_text: browser_dom_info.inner_text,
+                                                    input_value: browser_dom_info.input_value,
+                                                    is_visible: browser_dom_info.is_visible,
+                                                    is_interactive: browser_dom_info.is_interactive,
+                                                    aria_label: browser_dom_info.aria_label,
+                                                    selector_candidates: browser_dom_info.selector_candidates.into_iter().map(|sc| {
+                                                        crate::events::SelectorCandidate {
+                                                            selector: sc.selector,
+                                                            selector_type: format!("{:?}", sc.selector_type),
+                                                            specificity: sc.specificity,
+                                                            requires_jquery: sc.requires_jquery,
+                                                        }
+                                                    }).collect(),
+                                                };
+                                                dom_element = Some(converted_dom);
+                                            } else {
+                                                debug!("⚠️ No DOM element found at coordinates");
+                                            }
+                                        } else {
+                                            debug!("⚠️ DOM capture timed out");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Emit browser click event if DOM was captured, regular click otherwise
+                    if let Some(dom_info) = dom_element {
+                        // Get page context
+                        let (page_url, page_title) = if let Ok(browser_lock) = ctx.browser_recorder.lock() {
+                            if let Some(ref browser) = *browser_lock {
+                                if let Ok(runtime_lock) = ctx.tokio_runtime.lock() {
+                                    if let Some(ref runtime) = *runtime_lock {
+                                        let browser_clone = browser.clone();
+                                        let (tx, rx) = std::sync::mpsc::channel();
+
+                                        runtime.spawn(async move {
+                                            let result = browser_clone.get_page_context().await;
+                                            let _ = tx.send(result);
+                                        });
+
+                                        if let Ok(Some(context)) = rx.recv_timeout(Duration::from_millis(100)) {
+                                            (context.url, context.title)
+                                        } else {
+                                            (String::new(), String::new())
+                                        }
+                                    } else {
+                                        (String::new(), String::new())
+                                    }
+                                } else {
+                                    (String::new(), String::new())
+                                }
+                            } else {
+                                (String::new(), String::new())
+                            }
+                        } else {
+                            (String::new(), String::new())
+                        };
+
+                        let browser_click_event = BrowserClickEvent {
+                            ui_element: Some(element.clone()),
+                            dom_element: Some(dom_info.clone()),
+                            position: *ctx.position,
+                            selectors: dom_info.selector_candidates.clone(),
+                            page_url,
+                            page_title,
+                            timestamp: Self::capture_timestamp(),
+                            button,
+                            is_double_click,
+                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
+                        };
+
+                        debug!("🌐 Emitting BrowserClickEvent with DOM information");
+                        if let Err(e) = ctx.event_tx.send(WorkflowEvent::BrowserClick(browser_click_event)) {
+                            debug!("Failed to send browser click event: {}", e);
+                        } else {
+                            debug!("✅ Browser click event sent successfully with DOM data");
+                        }
+                    }
+
+                    // Always emit regular click event as well (for dual recording)
                     let click_event = ClickEvent {
                         element_text: element_name,
                         interaction_type,
