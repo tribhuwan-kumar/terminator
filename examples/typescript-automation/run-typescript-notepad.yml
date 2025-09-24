@@ -1,0 +1,9 @@
+# TypeScript Notepad Automation Workflow
+# This workflow runs TypeScript code from an external .ts file
+
+steps:
+  # Run TypeScript Notepad automation from file
+  - tool_name: run_command
+    arguments:
+      engine: typescript
+      script_file: notepad-automation.ts
