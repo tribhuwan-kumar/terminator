@@ -1898,6 +1898,7 @@ asyncio.run(__runner__())
         .arg("-u")  // Unbuffered output for Windows
         .arg(&script_arg)
         .env("PYTHONUNBUFFERED", "1")  // Also set environment variable
+        .stdin(Stdio::null())  // Close stdin immediately - Python doesn't need it
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)  // Ensure child process is killed if parent dies
