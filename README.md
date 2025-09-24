@@ -86,7 +86,7 @@ terminator setup
 ```
 
 This will:
-- ✅ Install the Chrome extension automatically
+- ✅ Install the Chrome extension automatically (please do not use keyboard/mouse for a few seconds)
 - ✅ Check system requirements (VC++ redistributables on Windows)
 - ✅ Configure SDKs and dependencies
 - ✅ Verify the MCP agent is ready
