@@ -1,13 +1,13 @@
 use crate::events::{
-    BrowserClickEvent, BrowserTabNavigationEvent, ButtonInteractionType,
-    ClickEvent, TabAction, TabNavigationMethod,
+    BrowserClickEvent, BrowserTabNavigationEvent, ButtonInteractionType, ClickEvent, TabAction,
+    TabNavigationMethod,
 };
+use crate::recorder::browser_context::BrowserContextRecorder;
 use crate::{
     ApplicationSwitchMethod, ClipboardAction, ClipboardEvent, EventMetadata, HotkeyEvent,
     KeyboardEvent, MouseButton, MouseEvent, MouseEventType, Position, Result, WorkflowEvent,
     WorkflowRecorderConfig,
 };
-use crate::recorder::browser_context::BrowserContextRecorder;
 use arboard::Clipboard;
 use rdev::{Button, EventType};
 use std::{
@@ -2647,15 +2647,18 @@ impl WindowsRecorder {
 
                     // Check if this is a browser click and try to capture DOM information
                     let app_name = element.application_name().to_lowercase();
-                    let is_browser = app_name.contains("chrome") ||
-                        app_name.contains("firefox") ||
-                        app_name.contains("edge") ||
-                        app_name.contains("safari");
+                    let is_browser = app_name.contains("chrome")
+                        || app_name.contains("firefox")
+                        || app_name.contains("edge")
+                        || app_name.contains("safari");
 
                     // Try to capture DOM element if in browser
                     let mut dom_element = None;
                     if is_browser {
-                        debug!("🌐 Browser click detected, attempting DOM capture at ({}, {})", ctx.position.x, ctx.position.y);
+                        debug!(
+                            "🌐 Browser click detected, attempting DOM capture at ({}, {})",
+                            ctx.position.x, ctx.position.y
+                        );
 
                         // Use async/sync bridge to query DOM
                         if let Ok(browser_lock) = ctx.browser_recorder.lock() {
@@ -2670,16 +2673,22 @@ impl WindowsRecorder {
 
                                         // Spawn async task
                                         runtime.spawn(async move {
-                                            let result = browser_clone.capture_dom_element(position_clone).await;
+                                            let result = browser_clone
+                                                .capture_dom_element(position_clone)
+                                                .await;
                                             let _ = tx.send(result);
                                         });
 
                                         // Wait for DOM result with timeout
-                                        if let Ok(dom_result) = rx.recv_timeout(Duration::from_millis(200)) {
+                                        if let Ok(dom_result) =
+                                            rx.recv_timeout(Duration::from_millis(200))
+                                        {
                                             if let Some(browser_dom_info) = dom_result {
-                                                debug!("✅ DOM element captured: {} with {} selectors",
+                                                debug!(
+                                                    "✅ DOM element captured: {} with {} selectors",
                                                     browser_dom_info.tag_name,
-                                                    browser_dom_info.selector_candidates.len());
+                                                    browser_dom_info.selector_candidates.len()
+                                                );
                                                 // Convert from browser_context::DomElementInfo to events::DomElementInfo
                                                 let converted_dom = crate::events::DomElementInfo {
                                                     tag_name: browser_dom_info.tag_name,
@@ -2692,14 +2701,21 @@ impl WindowsRecorder {
                                                     is_visible: browser_dom_info.is_visible,
                                                     is_interactive: browser_dom_info.is_interactive,
                                                     aria_label: browser_dom_info.aria_label,
-                                                    selector_candidates: browser_dom_info.selector_candidates.into_iter().map(|sc| {
-                                                        crate::events::SelectorCandidate {
-                                                            selector: sc.selector,
-                                                            selector_type: format!("{:?}", sc.selector_type),
-                                                            specificity: sc.specificity,
-                                                            requires_jquery: sc.requires_jquery,
-                                                        }
-                                                    }).collect(),
+                                                    selector_candidates: browser_dom_info
+                                                        .selector_candidates
+                                                        .into_iter()
+                                                        .map(|sc| {
+                                                            crate::events::SelectorCandidate {
+                                                                selector: sc.selector,
+                                                                selector_type: format!(
+                                                                    "{:?}",
+                                                                    sc.selector_type
+                                                                ),
+                                                                specificity: sc.specificity,
+                                                                requires_jquery: sc.requires_jquery,
+                                                            }
+                                                        })
+                                                        .collect(),
                                                 };
                                                 dom_element = Some(converted_dom);
                                             } else {
@@ -2717,20 +2733,26 @@ impl WindowsRecorder {
                     // Emit browser click event if DOM was captured, regular click otherwise
                     if let Some(dom_info) = dom_element {
                         // Get page context
-                        let (page_url, page_title) = if let Ok(browser_lock) = ctx.browser_recorder.lock() {
-                            if let Some(ref browser) = *browser_lock {
-                                if let Ok(runtime_lock) = ctx.tokio_runtime.lock() {
-                                    if let Some(ref runtime) = *runtime_lock {
-                                        let browser_clone = browser.clone();
-                                        let (tx, rx) = std::sync::mpsc::channel();
+                        let (page_url, page_title) =
+                            if let Ok(browser_lock) = ctx.browser_recorder.lock() {
+                                if let Some(ref browser) = *browser_lock {
+                                    if let Ok(runtime_lock) = ctx.tokio_runtime.lock() {
+                                        if let Some(ref runtime) = *runtime_lock {
+                                            let browser_clone = browser.clone();
+                                            let (tx, rx) = std::sync::mpsc::channel();
 
-                                        runtime.spawn(async move {
-                                            let result = browser_clone.get_page_context().await;
-                                            let _ = tx.send(result);
-                                        });
+                                            runtime.spawn(async move {
+                                                let result = browser_clone.get_page_context().await;
+                                                let _ = tx.send(result);
+                                            });
 
-                                        if let Ok(Some(context)) = rx.recv_timeout(Duration::from_millis(100)) {
-                                            (context.url, context.title)
+                                            if let Ok(Some(context)) =
+                                                rx.recv_timeout(Duration::from_millis(100))
+                                            {
+                                                (context.url, context.title)
+                                            } else {
+                                                (String::new(), String::new())
+                                            }
                                         } else {
                                             (String::new(), String::new())
                                         }
@@ -2742,10 +2764,7 @@ impl WindowsRecorder {
                                 }
                             } else {
                                 (String::new(), String::new())
-                            }
-                        } else {
-                            (String::new(), String::new())
-                        };
+                            };
 
                         let browser_click_event = BrowserClickEvent {
                             ui_element: Some(element.clone()),
@@ -2757,11 +2776,16 @@ impl WindowsRecorder {
                             timestamp: Self::capture_timestamp(),
                             button,
                             is_double_click,
-                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
+                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                element.clone(),
+                            )),
                         };
 
                         debug!("🌐 Emitting BrowserClickEvent with DOM information");
-                        if let Err(e) = ctx.event_tx.send(WorkflowEvent::BrowserClick(browser_click_event)) {
+                        if let Err(e) = ctx
+                            .event_tx
+                            .send(WorkflowEvent::BrowserClick(browser_click_event))
+                        {
                             debug!("Failed to send browser click event: {}", e);
                         } else {
                             debug!("✅ Browser click event sent successfully with DOM data");

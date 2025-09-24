@@ -102,7 +102,7 @@ impl DesktopWrapper {
     /// This enables conditions to access env variables directly without the 'env.' prefix,
     /// matching the behavior of script execution.
     fn create_flattened_execution_context(
-        execution_context_map: &serde_json::Map<String, serde_json::Value>
+        execution_context_map: &serde_json::Map<String, serde_json::Value>,
     ) -> serde_json::Value {
         let mut flattened_map = execution_context_map.clone();
 
@@ -110,8 +110,10 @@ impl DesktopWrapper {
         if let Some(env_value) = flattened_map.get("env") {
             if let Some(env_obj) = env_value.as_object() {
                 // Clone env properties to avoid borrow issues
-                let env_entries: Vec<(String, serde_json::Value)> =
-                    env_obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let env_entries: Vec<(String, serde_json::Value)> = env_obj
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
 
                 // Insert each env property at top level
                 // Note: env properties will override existing top-level keys with same name
@@ -873,7 +875,8 @@ impl DesktopWrapper {
 
             // 1. Evaluate condition, unless it's an 'always' step.
             if let Some(cond_str) = &if_expr {
-                let execution_context = Self::create_flattened_execution_context(&execution_context_map);
+                let execution_context =
+                    Self::create_flattened_execution_context(&execution_context_map);
                 if !is_always_step
                     && !crate::expression_eval::evaluate(cond_str, &execution_context)
                 {
@@ -1586,7 +1589,8 @@ impl DesktopWrapper {
         if let Some(parser_def) = parser_def {
             // Apply variable substitution to the output_parser field
             let mut parser_json = parser_def.clone();
-            let execution_context = Self::create_flattened_execution_context(&execution_context_map);
+            let execution_context =
+                Self::create_flattened_execution_context(&execution_context_map);
             substitute_variables(&mut parser_json, &execution_context);
 
             match output_parser::run_output_parser(&parser_json, &summary).await {
