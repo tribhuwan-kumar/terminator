@@ -165,40 +165,69 @@ arguments:
       continue_on_error: true
       delay_ms: 200
 
-    # Safely remove only the Terminator Bridge extension if present
-    - tool_name: highlight_element
+    # Safely remove only the Terminator Bridge extension if present using JavaScript
+    - tool_name: run_command
       arguments:
-        selector: "role:Window|name:Extensions - Google Chrome >> name:Terminator Bridge"
-        timeout_ms: 1200
-      continue_on_error: true
-      delay_ms: 100
+        engine: javascript
+        run: |
+          // Find and remove only Terminator Bridge extension
+          const extensionName = "Terminator Bridge";
 
-    - tool_name: validate_element
-      arguments:
-        selector: "role:Window|name:Extensions - Google Chrome >> role:Button|name:Remove | near:name:Terminator Bridge"
-        timeout_ms: 2500
-      continue_on_error: true
-      delay_ms: 100
+          try {
+            // Wait a bit for extensions page to load
+            await sleep(1000);
 
-    - tool_name: click_element
-      arguments:
-        selector: "role:Window|name:Extensions - Google Chrome >> role:Button|name:Remove | near:name:Terminator Bridge"
-      continue_on_error: true
-      delay_ms: 300
+            // Look for all extension cards on the page
+            const allElements = await desktop.locator("role:Group").all();
+            log(`Found ${allElements.length} groups on extensions page`);
 
-    - tool_name: wait_for_element
-      arguments:
-        selector: "role:Window|name:/^Remove/"
-        condition: "visible"
-        timeout_ms: 2000
-      continue_on_error: true
-      delay_ms: 100
+            let terminatorFound = false;
 
-    - tool_name: press_key_global
-      arguments:
-        key: "{Enter}"
-      delay_ms: 800
+            // Search through elements to find Terminator Bridge
+            for (let element of allElements) {
+              try {
+                const name = await element.name();
+                const text = await element.value();
+
+                // Check if this element contains "Terminator Bridge" text
+                if ((name && name.includes(extensionName)) || (text && text.includes(extensionName))) {
+                  log(`Found Terminator Bridge extension card`);
+                  terminatorFound = true;
+
+                  // Look for Remove button within this specific card
+                  // Try to find the Remove button that's a child of this card
+                  const removeButton = await element.locator("role:Button|name:Remove").first();
+
+                  if (removeButton) {
+                    log(`Found Remove button for Terminator Bridge, clicking it`);
+                    await removeButton.click();
+                    await sleep(500);
+
+                    // Confirm removal in the dialog
+                    await desktop.press_key("{Enter}");
+                    log(`Confirmed removal of Terminator Bridge`);
+                    await sleep(1000);
+                    break;
+                  } else {
+                    log(`Remove button not found in Terminator Bridge card`);
+                  }
+                }
+              } catch (e) {
+                // Skip elements that can't be read
+                continue;
+              }
+            }
+
+            if (!terminatorFound) {
+              log(`Terminator Bridge extension not found - probably not installed`);
+            }
+
+          } catch (error) {
+            log(`Error while trying to remove old extension: ${error.message}`);
+            log(`Continuing with installation anyway...`);
+          }
       continue_on_error: true
+      delay_ms: 500
 
     # Click Load unpacked, then handle folder picker dialog (Windows)
     - tool_name: click_element
