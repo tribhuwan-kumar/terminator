@@ -44,4 +44,11 @@ chmod +x terminator-cli
 # Install to /usr/local/bin (may require sudo)
 sudo mv terminator-cli /usr/local/bin/terminator-cli
 
-echo "✅ Terminator CLI installed! Run 'terminator-cli --help' to get started."
+echo "✅ Terminator CLI installed!"
+echo ""
+echo "📋 Next step: Run 'terminator setup' to:"
+echo "  • Install the Chrome extension automatically"
+echo "  • Check system requirements"
+echo "  • Configure SDKs and dependencies"
+echo ""
+echo "Then run 'terminator --help' to see all available commands."

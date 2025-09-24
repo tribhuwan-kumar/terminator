@@ -40,4 +40,11 @@ $installDir = "$env:ProgramFiles"
 $destPath = Join-Path $installDir "terminator-cli.exe"
 Move-Item -Path $binPath -Destination $destPath -Force
 
-Write-Host "✅ Terminator CLI installed at $destPath. Add it to your PATH if necessary." -ForegroundColor Green
+Write-Host "✅ Terminator CLI installed at $destPath" -ForegroundColor Green
+Write-Host ""
+Write-Host "📋 Next step: Run 'terminator setup' to:" -ForegroundColor Cyan
+Write-Host "  • Install the Chrome extension automatically"
+Write-Host "  • Check system requirements"
+Write-Host "  • Configure SDKs and dependencies"
+Write-Host ""
+Write-Host "Add $installDir to your PATH if necessary, then run 'terminator --help' to see all commands." -ForegroundColor Yellow
