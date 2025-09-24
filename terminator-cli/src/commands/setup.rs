@@ -235,23 +235,20 @@ impl SetupCommand {
         println!("  {} This will control your browser to install the extension", "ℹ️".blue());
         println!();
 
-        // Check if workflow file exists locally first
+        // First try to find a local workflow file
         let local_workflow = PathBuf::from("terminator/browser-extension/install_chrome_extension_ui.yml");
-        let workflow_path = if local_workflow.exists() {
+        let workflow_source = if local_workflow.exists() {
             local_workflow.to_str().unwrap().to_string()
         } else {
-            // Use absolute path from current directory
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("terminator")
-                .join("browser-extension")
-                .join("install_chrome_extension_ui.yml")
-                .to_str()
-                .unwrap_or("terminator/browser-extension/install_chrome_extension_ui.yml")
-                .to_string()
+            // Use the workflow from GitHub directly
+            // This works even if the user doesn't have the repo cloned
+            "https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator/browser-extension/install_chrome_extension_ui.yml".to_string()
         };
 
         println!("  Running installation workflow...");
+        if !local_workflow.exists() {
+            println!("  {} Downloading workflow from GitHub...", "📥".cyan());
+        }
         println!("  This will:");
         println!("    1. Download the Chrome extension");
         println!("    2. Open Chrome and navigate to extensions page");
@@ -260,7 +257,7 @@ impl SetupCommand {
         println!();
 
         let spawn_result = ProcessCommand::new("terminator")
-            .args(&["mcp", "run", &workflow_path, "--command", "npx -y terminator-mcp-agent"])
+            .args(&["mcp", "run", &workflow_source, "--command", "npx -y terminator-mcp-agent"])
             .spawn();
 
         match spawn_result {
