@@ -111,7 +111,7 @@ desktop.locator('name:Equals').click()
 **Installation:**
 
 ```bash
-pip install terminator.py
+pip install terminator
 ```
 
 ### 🟦 TypeScript / Node.js
