@@ -150,7 +150,7 @@ While Terminator aims for full cross-platform support, current capabilities vary
 | Monitor Management           |    ✅    |   🟡   |   🟡   | Multi-display support.                               |
 | Screen & Element Capture     |    ✅    |   ✅   |   🟡   | Take screenshots of displays or elements.            |
 | **Language Bindings**        |         |       |       |                                                      |
-| Python (`terminator.py`)     |    ✅    |   ✅   |   ✅   | `pip install terminator.py`                          |
+| Python (`terminator.py`)     |    ✅    |   ✅   |   ✅   | `pip install terminator`                          |
 | TypeScript (`terminator.js`) |    ✅    |   ✅   |   ✅   | `npm i terminator.js`                                |
 | MCP (`terminator-mcp-agent`) |    ✅    |   ✅   |   ✅   | `npx -y terminator-mcp-agent --add-to-app [app]`     |
 | Rust (`terminator-rs`)       |    ✅    |   ✅   |   ✅   | `cargo add terminator-rs`                            |
