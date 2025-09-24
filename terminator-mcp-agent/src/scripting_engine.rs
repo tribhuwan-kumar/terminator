@@ -953,9 +953,36 @@ pub async fn execute_javascript_with_nodejs(
     // 2. Executes user script
     // 3. Returns result
 
+    // When we have a custom working directory, we need to handle module resolution differently
+    // because require() resolves relative to the script file, not the working directory
+    let module_resolution_setup = if working_dir.is_some() {
+        // Override require to resolve modules relative to the working directory
+        r#"
+// Save original require
+const Module = require('module');
+const path = require('path');
+const originalRequire = Module.prototype.require;
+
+// Override require to handle relative paths from working directory
+Module.prototype.require = function(id) {
+    // If it's a relative path, resolve from process.cwd() instead of __dirname
+    if (id.startsWith('./') || id.startsWith('../')) {
+        const resolvedPath = path.resolve(process.cwd(), id);
+        console.log(`[Node.js Wrapper] Resolving relative module: ${id} -> ${resolvedPath}`);
+        return originalRequire.call(this, resolvedPath);
+    }
+    // For non-relative paths, use the original require
+    return originalRequire.call(this, id);
+};
+"#
+    } else {
+        ""
+    };
+
     let wrapper_script = format!(
         r#"
 const {{ Desktop }} = require('terminator.js');
+{module_resolution_setup}
 
 // Create global objects
 global.desktop = new Desktop();
@@ -963,6 +990,7 @@ global.log = console.log;
 global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 console.log('[Node.js Wrapper] Starting user script execution...');
+console.log('[Node.js Wrapper] Current working directory:', process.cwd());
 
 // Execute user script
 (async () => {{
@@ -971,9 +999,9 @@ console.log('[Node.js Wrapper] Starting user script execution...');
         const result = await (async () => {{
             {script}
         }})();
-        
+
         console.log('[Node.js Wrapper] User script completed, result:', typeof result);
-        
+
         // Send result back, handling undefined properly
         const resultToSend = result === undefined ? null : result;
         process.stdout.write('__RESULT__' + JSON.stringify(resultToSend) + '__END__\n');
@@ -1195,8 +1223,25 @@ console.log('[Node.js Wrapper] Starting user script execution...');
                             error!("[Node.js] Received error from script: {}", error_json);
 
                             if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&error_json) {
+                                // Extract the error message for better reporting
+                                let error_message = error_data
+                                    .get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("Unknown error");
+
+                                // Check for common error types and provide more helpful messages
+                                let detailed_message = if error_message.contains("Cannot find module") {
+                                    format!("JavaScript execution failed: {}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.", error_message)
+                                } else if error_message.contains("SyntaxError") {
+                                    format!("JavaScript syntax error: {}. Please check the script for syntax errors.", error_message)
+                                } else if error_message.contains("ReferenceError") {
+                                    format!("JavaScript reference error: {}. The script references a variable or function that is not defined.", error_message)
+                                } else {
+                                    format!("JavaScript execution error: {}", error_message)
+                                };
+
                                 return Err(McpError::internal_error(
-                                    "JavaScript execution error",
+                                    detailed_message,
                                     Some(error_data),
                                 ));
                             }
@@ -1399,10 +1444,33 @@ pub async fn execute_typescript_with_nodejs(
     let script_filename = format!("script_{}.ts", std::process::id());
     let script_path = script_dir.join(&script_filename);
 
+    // When we have a custom working directory, we need to handle module resolution differently
+    let module_resolution_setup = if working_dir.is_some() {
+        // Override require to resolve modules relative to the working directory
+        r#"
+// Fix module resolution for custom working directories
+const Module = require('module');
+const path = require('path');
+const originalRequire = Module.prototype.require;
+
+Module.prototype.require = function(id: string) {
+    if (id.startsWith('./') || id.startsWith('../')) {
+        const resolvedPath = path.resolve(process.cwd(), id);
+        console.log(`[TypeScript] Resolving relative module: ${id} -> ${resolvedPath}`);
+        return originalRequire.call(this, resolvedPath);
+    }
+    return originalRequire.call(this, id);
+};
+"#
+    } else {
+        ""
+    };
+
     // Wrap the script with terminator.js imports and helpers (TypeScript version)
     let wrapped_script = format!(
         r#"
 import {{ Desktop }} from 'terminator.js';
+{module_resolution_setup}
 
 const desktop = new Desktop();
 const log = console.log;
@@ -1414,6 +1482,8 @@ const setEnv = (updates: Record<string, any>) => {{
         console.log(`::set-env name=${{key}}::${{value}}`);
     }}
 }};
+
+console.log('[TypeScript] Current working directory:', process.cwd());
 
 (async () => {{
     try {{
@@ -1525,6 +1595,31 @@ const setEnv = (updates: Record<string, any>) => {{
                                 }
                             } else if let Some(error_json) = line.strip_prefix("__ERROR__").and_then(|s| s.strip_suffix("__END__")) {
                                 error!("[TypeScript] Script error: {}", error_json);
+
+                                if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(error_json) {
+                                    // Extract the error message for better reporting
+                                    let error_message = error_data
+                                        .get("message")
+                                        .and_then(|m| m.as_str())
+                                        .unwrap_or("Unknown error");
+
+                                    // Check for common error types and provide more helpful messages
+                                    let detailed_message = if error_message.contains("Cannot find module") {
+                                        format!("TypeScript execution failed: {}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.", error_message)
+                                    } else if error_message.contains("SyntaxError") {
+                                        format!("TypeScript syntax error: {}. Please check the script for syntax errors.", error_message)
+                                    } else if error_message.contains("ReferenceError") {
+                                        format!("TypeScript reference error: {}. The script references a variable or function that is not defined.", error_message)
+                                    } else {
+                                        format!("TypeScript execution error: {}", error_message)
+                                    };
+
+                                    return Err(McpError::internal_error(
+                                        detailed_message,
+                                        Some(error_data),
+                                    ));
+                                }
+
                                 return Err(McpError::internal_error(
                                     "TypeScript execution error",
                                     serde_json::from_str(error_json).ok(),
@@ -1692,7 +1787,9 @@ pub async fn execute_python_with_bindings(
         }
         format!(
             r#"
-import sys, json, asyncio, traceback
+import sys, json, asyncio, traceback, os
+
+print('[Python] Current working directory:', os.getcwd())
 
 try:
     import terminator as _terminator
@@ -1828,6 +1925,33 @@ asyncio.run(__runner__())
                             }
                         } else if text.starts_with("__ERROR__") && text.ends_with("__END__") {
                             let error_json = text.replace("__ERROR__", "").replace("__END__", "");
+
+                            if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&error_json) {
+                                // Extract the error message for better reporting
+                                let error_message = error_data
+                                    .get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("Unknown error");
+
+                                // Check for common error types and provide more helpful messages
+                                let detailed_message = if error_message.contains("No module named") || error_message.contains("ModuleNotFoundError") {
+                                    format!("Python execution failed: {}. The script requires a module that is not installed. Please ensure all dependencies are installed using pip.", error_message)
+                                } else if error_message.contains("SyntaxError") {
+                                    format!("Python syntax error: {}. Please check the script for syntax errors.", error_message)
+                                } else if error_message.contains("NameError") {
+                                    format!("Python name error: {}. The script references a variable or function that is not defined.", error_message)
+                                } else if error_message.contains("ImportError") {
+                                    format!("Python import error: {}. Failed to import a required module or package.", error_message)
+                                } else {
+                                    format!("Python execution error: {}", error_message)
+                                };
+
+                                return Err(McpError::internal_error(
+                                    detailed_message,
+                                    Some(error_data),
+                                ));
+                            }
+
                             return Err(McpError::internal_error("Python execution error", serde_json::from_str::<serde_json::Value>(&error_json).ok()));
                         }
                     },
@@ -2333,8 +2457,25 @@ pub async fn execute_javascript_with_local_bindings(
             // Parse error
             let error_json = line.replace("__ERROR__", "").replace("__END__", "");
             if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(&error_json) {
+                // Extract the error message for better reporting
+                let error_message = error_data
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown error");
+
+                // Check for common error types and provide more helpful messages
+                let detailed_message = if error_message.contains("Cannot find module") {
+                    format!("JavaScript execution failed: {}. The script requires a module that is not available. Please ensure all dependencies are installed or use relative paths for local modules.", error_message)
+                } else if error_message.contains("SyntaxError") {
+                    format!("JavaScript syntax error: {}. Please check the script for syntax errors.", error_message)
+                } else if error_message.contains("ReferenceError") {
+                    format!("JavaScript reference error: {}. The script references a variable or function that is not defined.", error_message)
+                } else {
+                    format!("JavaScript execution error with local bindings: {}", error_message)
+                };
+
                 return Err(McpError::internal_error(
-                    "JavaScript execution error with local bindings",
+                    detailed_message,
                     Some(error_data),
                 ));
             }

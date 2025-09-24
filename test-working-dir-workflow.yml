@@ -1,0 +1,11 @@
+name: Test Working Directory Fix
+description: Test that script_file with scripts_base_path correctly sets working directory for relative imports
+
+# Set the base path for scripts
+scripts_base_path: ./test-working-dir/
+
+steps:
+  - tool_name: run_command
+    arguments:
+      engine: "javascript"
+      script_file: "main.js"
