@@ -31,7 +31,7 @@ arguments:
     - tool_name: run_command
       arguments:
         engine: javascript
-        script: |
+        run: |
           const fs = require('fs');
           const path = require('path');
           const os = require('os');
@@ -77,7 +77,7 @@ arguments:
     - tool_name: run_command
       arguments:
         engine: javascript
-        script: |
+        run: |
           const fs = require('fs');
           const path = require('path');
           const os = require('os');
@@ -147,7 +147,7 @@ arguments:
     - tool_name: run_command
       arguments:
         engine: javascript
-        script: |
+        run: |
           // Use terminator.js via global 'desktop'
           const toggleSel = "role:Button|name:Developer mode";
           const loadSel = "role:Button|name:Load unpacked";
