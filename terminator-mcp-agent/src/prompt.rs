@@ -478,6 +478,7 @@ Supports multiple conditions with first-match-wins evaluation:
 **Expression Access:**
 - `{{step_id}}_status`: Step execution status (\"success\" or \"error\")
 - `{{step_id}}_result`: Step result data
+- Environment variables can be accessed directly (e.g., `data_validation_failed`) or with prefix (e.g., `env.data_validation_failed`)
 - Supports operators: `==`, `!=`, `&&`, `||`, `!`
 - Functions: `contains()`, `startsWith()`, `endsWith()`
 
