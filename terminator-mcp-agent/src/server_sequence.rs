@@ -172,25 +172,84 @@ impl DesktopWrapper {
             );
 
             // Parse the fetched YAML workflow
-            let remote_workflow: ExecuteSequenceArgs = match serde_yaml::from_str::<
-                ExecuteSequenceArgs,
-            >(&workflow_content)
-            {
-                Ok(wf) => {
-                    info!(
-                        "Successfully parsed YAML. Steps count: {}",
-                        wf.steps.as_ref().map(|s| s.len()).unwrap_or(0)
-                    );
-                    wf
+            // First check if it's wrapped in execute_sequence structure
+            let remote_workflow: ExecuteSequenceArgs = if workflow_content.contains("tool_name: execute_sequence") {
+                // This workflow is wrapped in execute_sequence structure
+                // Parse as a generic Value first to extract the arguments
+                match serde_yaml::from_str::<serde_json::Value>(&workflow_content) {
+                    Ok(yaml_value) => {
+                        if yaml_value.get("tool_name").and_then(|v| v.as_str()) == Some("execute_sequence") {
+                            // Extract the arguments field
+                            if let Some(arguments) = yaml_value.get("arguments") {
+                                match serde_json::from_value::<ExecuteSequenceArgs>(arguments.clone()) {
+                                    Ok(wf) => {
+                                        info!(
+                                            "Successfully parsed wrapped YAML. Steps count: {}",
+                                            wf.steps.as_ref().map(|s| s.len()).unwrap_or(0)
+                                        );
+                                        wf
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to parse arguments from wrapped YAML: {}", e);
+                                        return Err(McpError::invalid_params(
+                                            format!("Failed to parse workflow arguments: {e}"),
+                                            Some(json!({"url": url, "error": e.to_string()})),
+                                        ));
+                                    }
+                                }
+                            } else {
+                                return Err(McpError::invalid_params(
+                                    "Workflow has execute_sequence but no arguments field".to_string(),
+                                    Some(json!({"url": url})),
+                                ));
+                            }
+                        } else {
+                            // Try parsing as regular ExecuteSequenceArgs
+                            match serde_json::from_value::<ExecuteSequenceArgs>(yaml_value) {
+                                Ok(wf) => {
+                                    info!(
+                                        "Successfully parsed YAML. Steps count: {}",
+                                        wf.steps.as_ref().map(|s| s.len()).unwrap_or(0)
+                                    );
+                                    wf
+                                }
+                                Err(e) => {
+                                    tracing::error!("Failed to parse YAML: {}", e);
+                                    return Err(McpError::invalid_params(
+                                        format!("Failed to parse workflow YAML: {e}"),
+                                        Some(json!({"url": url, "error": e.to_string()})),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to parse YAML as Value: {}", e);
+                        return Err(McpError::invalid_params(
+                            format!("Failed to parse YAML: {e}"),
+                            Some(json!({"url": url, "error": e.to_string()})),
+                        ));
+                    }
                 }
-                Err(e) => {
-                    tracing::error!("Failed to parse YAML: {}", e);
-                    return Err(McpError::invalid_params(
-                        format!("Failed to parse remote workflow YAML: {e}"),
-                        Some(
-                            json!({"url": url, "error": e.to_string(), "content_preview": workflow_content.chars().take(200).collect::<String>()}),
-                        ),
-                    ));
+            } else {
+                // Standard format without execute_sequence wrapper
+                match serde_yaml::from_str::<ExecuteSequenceArgs>(&workflow_content) {
+                    Ok(wf) => {
+                        info!(
+                            "Successfully parsed YAML. Steps count: {}",
+                            wf.steps.as_ref().map(|s| s.len()).unwrap_or(0)
+                        );
+                        wf
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to parse YAML: {}", e);
+                        return Err(McpError::invalid_params(
+                            format!("Failed to parse remote workflow YAML: {e}"),
+                            Some(
+                                json!({"url": url, "error": e.to_string(), "content_preview": workflow_content.chars().take(200).collect::<String>()}),
+                            ),
+                        ));
+                    }
                 }
             };
 

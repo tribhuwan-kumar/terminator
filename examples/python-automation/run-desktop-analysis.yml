@@ -1,0 +1,35 @@
+name: Desktop Analysis Workflow
+description: Analyze current desktop state using Python automation
+
+steps:
+  - id: analyze_desktop
+    tool_name: run_command
+    arguments:
+      engine: "python"
+      script_file: "./desktop_analysis.py"
+    delay: 1s
+
+  - id: display_results
+    tool_name: run_command
+    arguments:
+      engine: "javascript"
+      run: |
+        const result = analyze_desktop_result;
+        if (result && result.status === 'success') {
+          console.log("=== Desktop Analysis Results ===");
+          console.log(`Total windows: ${result.total_windows}`);
+          console.log(`Analyzed: ${result.analyzed_windows}`);
+          console.log(`Focused window: ${result.focused_window || 'None'}`);
+          
+          if (result.applications) {
+            console.log("\nApplications:");
+            Object.keys(result.applications).forEach(app => {
+              console.log(`  - ${app}: ${result.applications[app].length} window(s)`);
+            });
+          }
+          
+          return { analysis_complete: true };
+        } else {
+          console.log("Analysis failed or returned no results");
+          return { analysis_complete: false };
+        }

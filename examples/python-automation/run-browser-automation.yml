@@ -1,0 +1,58 @@
+name: Browser Automation Workflow
+description: Automate browser interactions using Python
+
+variables:
+  browser_name:
+    type: string
+    label: Browser to use
+    default: "chrome"
+    description: Name of the browser application to automate
+
+  target_url:
+    type: string
+    label: Target URL
+    default: "https://example.com"
+    description: URL to navigate to
+
+steps:
+  - id: run_browser_automation
+    tool_name: run_command
+    arguments:
+      engine: "python"
+      script_file: "./browser_automation.py"
+      env:
+        BROWSER_NAME: "{{variables.browser_name}}"
+        TARGET_URL: "{{variables.target_url}}"
+    delay: 2s
+
+  - id: display_results
+    tool_name: run_command
+    arguments:
+      engine: "javascript"
+      run: |
+        const result = run_browser_automation_result;
+        const status = run_browser_automation_status;
+        
+        console.log(`Browser automation status: ${status}`);
+        
+        if (status === 'success' && result) {
+          console.log("=== Browser Automation Results ===");
+          console.log(`Status: ${result.status}`);
+          console.log(`Message: ${result.message}`);
+          
+          if (result.page_info) {
+            console.log("\nPage Information:");
+            console.log(`  URL: ${result.page_info.url_visited}`);
+            console.log(`  Browser: ${result.page_info.browser}`);
+            console.log(`  Screenshot: ${result.page_info.screenshot_captured ? 'Yes' : 'No'}`);
+            
+            if (result.page_info.text_found) {
+              console.log(`  Text elements found: ${result.page_info.text_found.length}`);
+            }
+          }
+          
+          return { automation_complete: true, details: result };
+        } else {
+          console.log("Browser automation failed");
+          return { automation_complete: false };
+        }
