@@ -38,7 +38,7 @@ for win in window_data:
         apps[app_name] = []
     apps[app_name].append(win["name"])
 
-log(f"\nApplications found: {list(apps.keys())}")
+log(f"\nApplications found: {len(apps)} different apps")
 
 # Count total windows (synchronously)
 total_windows = len(windows) if windows else 0

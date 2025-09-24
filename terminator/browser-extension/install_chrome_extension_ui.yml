@@ -165,8 +165,40 @@ arguments:
       continue_on_error: true
       delay_ms: 200
 
-    # Skip removing existing extensions - too risky, might remove user's other extensions
-    # If Terminator Bridge already exists, Chrome will just update it when we load the new one
+    # Safely remove only the Terminator Bridge extension if present
+    - tool_name: highlight_element
+      arguments:
+        selector: "role:Window|name:Extensions - Google Chrome >> name:Terminator Bridge"
+        timeout_ms: 1200
+      continue_on_error: true
+      delay_ms: 100
+
+    - tool_name: validate_element
+      arguments:
+        selector: "role:Window|name:Extensions - Google Chrome >> role:Button|name:Remove | near:name:Terminator Bridge"
+        timeout_ms: 2500
+      continue_on_error: true
+      delay_ms: 100
+
+    - tool_name: click_element
+      arguments:
+        selector: "role:Window|name:Extensions - Google Chrome >> role:Button|name:Remove | near:name:Terminator Bridge"
+      continue_on_error: true
+      delay_ms: 300
+
+    - tool_name: wait_for_element
+      arguments:
+        selector: "role:Window|name:/^Remove/"
+        condition: "visible"
+        timeout_ms: 2000
+      continue_on_error: true
+      delay_ms: 100
+
+    - tool_name: press_key_global
+      arguments:
+        key: "{Enter}"
+      delay_ms: 800
+      continue_on_error: true
 
     # Click Load unpacked, then handle folder picker dialog (Windows)
     - tool_name: click_element

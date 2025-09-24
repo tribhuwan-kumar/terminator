@@ -5,11 +5,11 @@ log("Starting Notepad automation...")
 
 # Open Notepad application
 log("Opening Notepad...")
-await desktop.open_application("notepad")
+desktop.open_application("notepad")
 await sleep(2000)
 
 # Find the Notepad window
-notepad = desktop.locator("role:Window|name:Notepad").first()
+notepad = await desktop.locator("role:Window|name:Notepad").first()
 if not notepad:
     log("Notepad window not found!")
     return {"status": "error", "message": "Could not find Notepad window"}
@@ -17,10 +17,10 @@ if not notepad:
 log("Notepad window found")
 
 # Find the text editor area
-editor = desktop.locator("role:Edit|name:Text Editor").first()
+editor = await desktop.locator("role:Edit|name:Text Editor").first()
 if not editor:
     # Try alternative selector for different Notepad versions
-    editor = desktop.locator("role:Document").first()
+    editor = await desktop.locator("role:Document").first()
     if not editor:
         log("Text editor not found!")
         return {"status": "error", "message": "Could not find text editor"}
@@ -51,7 +51,7 @@ editor.type_text(f"Timestamp: {__import__('datetime').datetime.now().isoformat()
 
 # Try to access menu (File menu)
 log("Attempting to access File menu...")
-file_menu = desktop.locator("role:MenuItem|name:File").first()
+file_menu = await desktop.locator("role:MenuItem|name:File").first()
 if file_menu:
     file_menu.click()
     await sleep(1000)
