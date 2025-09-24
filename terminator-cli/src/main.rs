@@ -27,6 +27,7 @@ mod mcp_client;
 mod telemetry_receiver;
 mod workflow_result;
 mod workflow_validator;
+mod commands;
 
 use workflow_result::WorkflowResult;
 use workflow_validator::WorkflowOutputValidator;
@@ -194,6 +195,8 @@ enum Commands {
     /// MCP client commands
     #[command(subcommand)]
     Mcp(McpCommands),
+    /// Setup Terminator environment (Chrome extension, SDKs, dependencies)
+    Setup(commands::setup::SetupCommand),
 }
 
 fn main() {
@@ -230,6 +233,19 @@ fn main() {
             full_release(&args.level.to_string());
         }
         Commands::Mcp(mcp_cmd) => handle_mcp_command(mcp_cmd),
+        Commands::Setup(setup_cmd) => {
+            // Setup command doesn't require project root
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    if let Err(e) = setup_cmd.execute().await {
+                        eprintln!("❌ Setup failed: {}", e);
+                        std::process::exit(1);
+                    }
+                });
+        }
     }
 }
 

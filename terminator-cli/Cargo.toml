@@ -48,6 +48,9 @@ chrono = { version = "0.4", features = ["serde"] }
 # Display formatting
 colored = "3.0.0"
 
+# System directories
+dirs = "5.0"
+
 # Simple HTTP server for receiving telemetry
 axum = "0.7"
 bytes = "1.5"

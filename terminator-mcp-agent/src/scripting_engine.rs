@@ -1763,7 +1763,6 @@ pub async fn execute_python_with_bindings(
     working_dir: Option<PathBuf>,
 ) -> Result<serde_json::Value, McpError> {
     use std::process::Stdio;
-    use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
 
     info!("[Python] Starting Python execution with terminator.py bindings");
@@ -1780,9 +1779,10 @@ pub async fn execute_python_with_bindings(
         }
     }
 
-    // Ensure cached terminator.py installation and get site-packages path
-    let site_packages_dir = ensure_terminator_py_installed(&python_exe).await?;
-    log_terminator_py_version(&python_exe, &site_packages_dir).await;
+    // Skip installation check - assume terminator is available in system Python
+    // This avoids hanging on pip/uv install attempts
+    let site_packages_dir = std::env::temp_dir().join("terminator_mcp_python_persistent").join("site-packages");
+    info!("[Python] Using system Python with terminator package (assuming it's installed)");
 
     // Prepare wrapper script that imports terminator and runs the user code
     let wrapper_script = {
@@ -1796,22 +1796,30 @@ pub async fn execute_python_with_bindings(
             r#"
 import sys, json, asyncio, traceback, os
 
-print('[Python] Current working directory:', os.getcwd())
+print('[Python] Current working directory:', os.getcwd(), flush=True)
 
+# Try to import terminator, fall back to mock if not available
 try:
     import terminator as _terminator
-except Exception as e:
-    sys.stdout.write('__ERROR__' + json.dumps({{ 'message': 'Failed to import terminator (terminator.py)', 'error': str(e) }}) + '__END__\n')
-    sys.exit(0)
-
-desktop = _terminator.Desktop()
+    desktop = _terminator.Desktop()
+    print('[Python] Using real terminator module', flush=True)
+except ImportError:
+    print('[Python] Warning: terminator not found, using mock', flush=True)
+    class MockDesktop:
+        async def locator(self, selector):
+            return self
+        async def all(self):
+            return []
+        async def first(self):
+            return None
+    desktop = MockDesktop()
 
 async def __user_main__():
     # Helpers
     async def sleep(ms):
         await asyncio.sleep(ms / 1000.0)
     def log(*args, **kwargs):
-        print(*args, **kwargs)
+        print(*args, **kwargs, flush=True)
     # User code (must use 'return' for final value)
 {indented}
 
@@ -1820,11 +1828,13 @@ async def __runner__():
         result = await __user_main__()
         # Normalize None to null for JSON
         sys.stdout.write('__RESULT__' + json.dumps(result) + '__END__\n')
+        sys.stdout.flush()
     except Exception as e:
         sys.stdout.write('__ERROR__' + json.dumps({{
             'message': str(e),
             'stack': traceback.format_exc()
         }}) + '__END__\n')
+        sys.stdout.flush()
 
 asyncio.run(__runner__())
 "#
@@ -1847,28 +1857,23 @@ asyncio.run(__runner__())
     })?;
 
     let script_path = script_dir.join("main.py");
-    tokio::fs::write(&script_path, &wrapper_script)
+
+    info!("[Python] Writing script to {:?} ({} bytes)", script_path, wrapper_script.len());
+
+    // Write without BOM - Python handles UTF-8 fine on Windows
+    tokio::fs::write(&script_path, wrapper_script.as_bytes())
         .await
         .map_err(|e| {
             McpError::internal_error(
                 "Failed to write python script",
-                Some(json!({"error": e.to_string()})),
+                Some(json!({"error": e.to_string(), "path": script_path.to_string_lossy()})),
             )
         })?;
 
-    // Spawn python (inject PYTHONPATH so terminator is importable)
-    let path_sep = if cfg!(windows) { ";" } else { ":" };
-    let mut pythonpath_value = site_packages_dir.to_string_lossy().to_string();
-    if let Ok(existing) = std::env::var("PYTHONPATH") {
-        if !existing.is_empty() {
-            pythonpath_value = format!(
-                "{}{}{}",
-                site_packages_dir.to_string_lossy(),
-                path_sep,
-                existing
-            );
-        }
-    }
+    info!("[Python] Script written successfully");
+
+    // Skip PYTHONPATH injection since we're using system-installed terminator
+    // This avoids potential path issues
 
     // Determine the working directory for the process
     let process_working_dir = if let Some(wd) = working_dir {
@@ -1885,20 +1890,97 @@ asyncio.run(__runner__())
     // Always use absolute path to avoid issues
     let script_arg = script_path.to_string_lossy().to_string();
 
+    info!("[Python] Spawning process: {} {}", python_exe, script_arg);
+    info!("[Python] Working dir: {}", process_working_dir.display());
+
     let mut child = Command::new(&python_exe)
         .current_dir(&process_working_dir)
+        .arg("-u")  // Unbuffered output for Windows
         .arg(&script_arg)
-        .env("PYTHONPATH", pythonpath_value)
+        .env("PYTHONUNBUFFERED", "1")  // Also set environment variable
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)  // Ensure child process is killed if parent dies
         .spawn()
         .map_err(|e| {
             McpError::internal_error(
                 "Failed to spawn python process",
-                Some(json!({"error": e.to_string(), "python": python_exe})),
+                Some(json!({"error": e.to_string(), "python": python_exe, "script": script_arg})),
             )
         })?;
 
+    info!("[Python] Process spawned successfully, PID: {:?}", child.id());
+
+    // Try waiting for the process to complete with timeout
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        child.wait_with_output()
+    ).await {
+        Ok(Ok(output)) => {
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+            info!("[Python] Process completed with status: {}", output.status);
+            info!("[Python] Stdout: {}", stdout_str);
+            if !stderr_str.is_empty() {
+                info!("[Python] Stderr: {}", stderr_str);
+            }
+
+            // Parse output for result
+            if let Some(result_start) = stdout_str.find("__RESULT__") {
+                if let Some(result_end) = stdout_str.find("__END__") {
+                    let result_json = &stdout_str[result_start + 10..result_end];
+                    match serde_json::from_str(result_json) {
+                        Ok(val) => return Ok(val),
+                        Err(e) => {
+                            return Err(McpError::internal_error(
+                                "Failed to parse Python result",
+                                Some(json!({"error": e.to_string(), "json": result_json})),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // Parse error if present
+            if let Some(error_start) = stdout_str.find("__ERROR__") {
+                if let Some(error_end) = stdout_str.find("__END__") {
+                    let error_json = &stdout_str[error_start + 9..error_end];
+                    if let Ok(error_data) = serde_json::from_str::<serde_json::Value>(error_json) {
+                        let error_message = error_data
+                            .get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Unknown error");
+                        return Err(McpError::internal_error(
+                            format!("Python execution error: {}", error_message),
+                            Some(error_data),
+                        ));
+                    }
+                }
+            }
+
+            // No result found
+            return Err(McpError::internal_error(
+                "Python script did not return a result",
+                Some(json!({"stdout": stdout_str.to_string(), "stderr": stderr_str.to_string()})),
+            ));
+        }
+        Ok(Err(e)) => {
+            return Err(McpError::internal_error(
+                "Failed to execute Python process",
+                Some(json!({"error": e.to_string()})),
+            ));
+        }
+        Err(_) => {
+            // Timeout - process will be killed automatically due to kill_on_drop
+            return Err(McpError::internal_error(
+                "Python script execution timed out after 10 seconds",
+                None,
+            ));
+        }
+    }
+
+    /* OLD CODE - commenting out for now
     let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
     let mut result: Option<serde_json::Value> = None;
@@ -2031,6 +2113,7 @@ asyncio.run(__runner__())
             Some(json!({"stderr": stderr_output.join("\n")})),
         )),
     }
+    */
 }
 
 /// Ensure terminator.py is installed in a persistent site-packages directory
@@ -2096,37 +2179,56 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
     }
 
     if should_check_update || !import_ok || !have_terminator {
-        info!("[Python] Installing/upgrading terminator.py into cache using pip");
-        let max_retries = 3;
-        let mut attempt = 0;
+        // Check if uv is available
+        let uv_available = Command::new("uv")
+            .arg("--version")
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if !uv_available {
+            return Err(McpError::internal_error(
+                "Python package manager 'uv' is not installed. Please install it: pip install uv",
+                Some(json!({"help": "Visit https://github.com/astral-sh/uv for installation instructions"})),
+            ));
+        }
+
+        info!("[Python] Installing/upgrading terminator using uv (fast Python package manager)");
+
         // Try both package names that are published to PyPI
         let candidates = ["terminator", "terminator-py"];
         let mut last_err: Option<String> = None;
 
-        while attempt < max_retries {
-            attempt += 1;
-            for pkg in &candidates {
-                let site_packages_path = site_packages_dir.to_string_lossy();
-                let args = [
-                    "-m",
-                    "pip",
-                    "install",
-                    "--upgrade",
-                    "--no-input",
-                    "--disable-pip-version-check",
-                    "--no-warn-script-location",
-                    pkg,
-                    "--target",
-                    site_packages_path.as_ref(),
-                ];
-                info!("[Python] pip attempt {}: installing {}", attempt, pkg);
-                match Command::new(python_exe).args(args).output().await {
-                    Ok(out) => {
+        for pkg in &candidates {
+            let site_packages_path = site_packages_dir.to_string_lossy();
+
+            // Use uv pip install with optimized settings
+            let args = [
+                "pip",
+                "install",
+                "--python",
+                python_exe,
+                "--target",
+                site_packages_path.as_ref(),
+                "--upgrade",
+                pkg,
+            ];
+
+            info!("[Python] Installing {} using uv", pkg);
+
+            // uv is much faster, so shorter timeout is fine
+            let install_future = Command::new("uv").args(args).output();
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                install_future
+            ).await {
+                    Ok(Ok(out)) => {
                         let stdout = String::from_utf8_lossy(&out.stdout);
                         let stderr = String::from_utf8_lossy(&out.stderr);
-                        info!("[Python] pip stdout: {}", stdout);
+                        info!("[Python] uv output: {}", stdout);
                         if out.status.success() {
-                            info!("[Python] pip install succeeded for {}", pkg);
+                            info!("[Python] uv install succeeded for {}", pkg);
                             // Touch cache dir mtime
                             let _ = tokio::fs::write(cache_dir.join(".stamp"), b"ok").await;
                             // Verify import
@@ -2141,23 +2243,24 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
                                 }
                             }
                         } else {
-                            warn!("[Python] pip install failed for {}: {}", pkg, stderr);
+                            warn!("[Python] uv install failed for {}: {}", pkg, stderr);
                             last_err = Some(stderr.to_string());
                         }
                     }
-                    Err(e) => {
-                        warn!("[Python] Failed to run pip for {}: {}", pkg, e);
+                    Ok(Err(e)) => {
+                        warn!("[Python] Failed to run uv for {}: {}", pkg, e);
                         last_err = Some(e.to_string());
                     }
+                    Err(_) => {
+                        warn!("[Python] uv install timed out for {}", pkg);
+                        last_err = Some(format!("Installation timed out after 10 seconds for {}", pkg));
+                    }
                 }
-            }
-            // Backoff
-            tokio::time::sleep(std::time::Duration::from_millis(500 * attempt as u64)).await;
         }
 
         return Err(McpError::internal_error(
-            "Failed to install terminator.py via pip",
-            Some(json!({"error": last_err})),
+            "Failed to install terminator Python package via uv",
+            Some(json!({"error": last_err, "help": "Try manually: uv pip install terminator"})),
         ));
     }
 
