@@ -97,6 +97,33 @@ impl DesktopWrapper {
         Ok(None)
     }
 
+    /// Helper function to create a flattened execution context where env properties
+    /// are available both under 'env.' prefix and directly at the top level.
+    /// This enables conditions to access env variables directly without the 'env.' prefix,
+    /// matching the behavior of script execution.
+    fn create_flattened_execution_context(
+        execution_context_map: &serde_json::Map<String, serde_json::Value>
+    ) -> serde_json::Value {
+        let mut flattened_map = execution_context_map.clone();
+
+        // Flatten env properties to top level
+        if let Some(env_value) = flattened_map.get("env") {
+            if let Some(env_obj) = env_value.as_object() {
+                // Clone env properties to avoid borrow issues
+                let env_entries: Vec<(String, serde_json::Value)> =
+                    env_obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+                // Insert each env property at top level
+                // Note: env properties will override existing top-level keys with same name
+                for (key, value) in env_entries {
+                    flattened_map.insert(key, value);
+                }
+            }
+        }
+
+        serde_json::Value::Object(flattened_map)
+    }
+
     pub async fn execute_sequence_impl(
         &self,
         peer: Peer<RoleServer>,
@@ -577,7 +604,7 @@ impl DesktopWrapper {
             }
         }
 
-        let execution_context = serde_json::Value::Object(execution_context_map.clone());
+        let execution_context = Self::create_flattened_execution_context(&execution_context_map);
         debug!(
             "Executing sequence with context: {}",
             serde_json::to_string_pretty(&execution_context).unwrap_or_default()
@@ -846,7 +873,7 @@ impl DesktopWrapper {
 
             // 1. Evaluate condition, unless it's an 'always' step.
             if let Some(cond_str) = &if_expr {
-                let execution_context = serde_json::Value::Object(execution_context_map.clone());
+                let execution_context = Self::create_flattened_execution_context(&execution_context_map);
                 if !is_always_step
                     && !crate::expression_eval::evaluate(cond_str, &execution_context)
                 {
@@ -882,7 +909,7 @@ impl DesktopWrapper {
 
                         // Substitute variables in arguments before execution
                         let execution_context =
-                            serde_json::Value::Object(execution_context_map.clone());
+                            Self::create_flattened_execution_context(&execution_context_map);
                         let mut substituted_args = tool_call.arguments.clone();
                         substitute_variables(&mut substituted_args, &execution_context);
 
@@ -1269,7 +1296,7 @@ impl DesktopWrapper {
                         {
                             // Substitute variables in arguments before execution
                             let execution_context =
-                                serde_json::Value::Object(execution_context_map.clone());
+                                Self::create_flattened_execution_context(&execution_context_map);
                             let mut substituted_args = step_tool_call.arguments.clone();
                             substitute_variables(&mut substituted_args, &execution_context);
 
@@ -1397,7 +1424,7 @@ impl DesktopWrapper {
                         );
 
                         let execution_context =
-                            serde_json::Value::Object(execution_context_map.clone());
+                            Self::create_flattened_execution_context(&execution_context_map);
 
                         for (idx, jump) in jumps.iter().enumerate() {
                             debug!(
@@ -1559,7 +1586,7 @@ impl DesktopWrapper {
         if let Some(parser_def) = parser_def {
             // Apply variable substitution to the output_parser field
             let mut parser_json = parser_def.clone();
-            let execution_context = serde_json::Value::Object(execution_context_map.clone());
+            let execution_context = Self::create_flattened_execution_context(&execution_context_map);
             substitute_variables(&mut parser_json, &execution_context);
 
             match output_parser::run_output_parser(&parser_json, &summary).await {
