@@ -122,7 +122,7 @@ Use `run_command` with `engine` to execute code directly with SDK bindings:
 *   `desktop` - Main Desktop automation instance
 *   `env` - Accumulated environment from previous steps (auto-injected, no setup needed)
 *   `variables` - Workflow-defined variables (auto-injected, read-only)
-*   Individual env fields - Valid env fields are also available as direct variables (e.g., `file_path` instead of `env.file_path`)
+*   Direct variable access - All env fields are available directly (e.g., `file_path`)
 *   `log(message)` - Console logging function
 *   `sleep(ms)` - Async delay function (returns Promise)
 
@@ -135,8 +135,8 @@ When using `engine` mode, data automatically flows between steps:
    // Non-reserved fields auto-merge into env for next steps
    return {{
      status: 'success',
-     file_path: '/data/file.txt',  // Becomes env.file_path
-     item_count: 42                 // Becomes env.item_count
+     file_path: '/data/file.txt',  // Available as file_path
+     item_count: 42                 // Available as item_count
    }};
    ```
 
@@ -156,7 +156,7 @@ run_command({{
 
 // In process.js:
 // env and variables are automatically available
-console.log(`Processing files from ${{env.input_dir}}`);  // Traditional way
+console.log(`Processing files from ${{input_dir}}`);        // Direct access
 console.log(`Config: ${{variables.max_retries}}`);        // From workflow definition
 
 // NEW: Direct variable access also works
@@ -166,8 +166,8 @@ console.log(`Config: ${{max_retries}}`);                  // Direct from variabl
 // Return data directly (auto-merges to env)
 return {{
   status: 'success',
-  files_processed: 42,    // Becomes env.files_processed (and files_processed)
-  output_path: '/data'    // Becomes env.output_path (and output_path)
+  files_processed: 42,    // Available as files_processed
+  output_path: '/data'    // Available as output_path
 }};
 ```
 
@@ -179,7 +179,7 @@ return {{
 4. **Access in next step** - env is automatically available:
    ```javascript
    // Direct access - no template substitution needed
-   const value = env.key;                  // Traditional way
+   const value = key;                      // Direct access
    const config = variables.some_config;   // From workflow definition
 
    // NEW: Individual variables also work directly
@@ -253,7 +253,7 @@ execute_browser_script({{
 // env and variables are automatically available
 execute_browser_script({{
   selector: \"role:Window\",
-  script: \"// env and variables auto-injected\\nconst searchTerm = env.search_term;  // From previous steps\\nconst config = variables.app_config;  // From workflow\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
+  script: \"// env and variables auto-injected\\nconst searchTerm = search_term;        // Direct access from previous steps\\nconst config = variables.app_config;  // From workflow\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
 }})
 ```
 
@@ -262,7 +262,7 @@ execute_browser_script({{
 // Return fields directly - they auto-merge into env
 execute_browser_script({{
   selector: \"role:Window\",
-  script: \"const pageData = {{\\n  title: document.title,\\n  url: window.location.href,\\n  formCount: document.forms.length\\n}};\\n\\n// Return data directly (no set_env wrapper needed)\\nJSON.stringify({{\\n  status: 'success',\\n  page_title: pageData.title,     // Becomes env.page_title\\n  page_url: pageData.url,         // Becomes env.page_url\\n  form_count: pageData.formCount  // Becomes env.form_count\\n}});\"
+  script: \"const pageData = {{\\n  title: document.title,\\n  url: window.location.href,\\n  formCount: document.forms.length\\n}};\\n\\n// Return data directly (no set_env wrapper needed)\\nJSON.stringify({{\\n  status: 'success',\\n  page_title: pageData.title,     // Available as page_title\\n  page_url: pageData.url,         // Available as page_url\\n  form_count: pageData.formCount  // Available as form_count\\n}});\"
 }})
 ```
 
@@ -478,7 +478,7 @@ Supports multiple conditions with first-match-wins evaluation:
 **Expression Access:**
 - `{{step_id}}_status`: Step execution status (\"success\" or \"error\")
 - `{{step_id}}_result`: Step result data
-- Environment variables can be accessed directly (e.g., `data_validation_failed`) or with prefix (e.g., `env.data_validation_failed`)
+- Environment variables are accessed directly (e.g., `data_validation_failed`)
 - Supports operators: `==`, `!=`, `&&`, `||`, `!`
 - Functions: `contains()`, `startsWith()`, `endsWith()`
 
