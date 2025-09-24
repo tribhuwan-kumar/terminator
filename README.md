@@ -71,12 +71,12 @@ Or install via the [MCP directory](https://github.com/mediar-ai/terminator/tree/
 
 #### macOS/Linux
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.sh | bash
+curl -fsSL https://mediar.ai/install.sh | bash
 ```
 
 #### Windows
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/mediar-ai/terminator/main/scripts/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://mediar.ai/install.ps1 | iex"
 ```
 
 #### After Installation
