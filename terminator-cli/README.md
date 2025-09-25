@@ -67,7 +67,27 @@ terminator mcp run workflow.yml --command "npx -y terminator-mcp-agent@latest"
 
 # Use HTTP MCP server
 terminator mcp run workflow.yml --url http://localhost:3000/mcp
+
+# Pass input values to workflow (available as env variables in scripts)
+terminator mcp run workflow.yml --inputs '{"username":"john","api_key":"abc123"}'
+
+# Combine inputs with other options
+terminator mcp run workflow.yml --inputs '{"count":5}' --verbose
 ```
+
+### Passing Input Values to Workflows
+
+The `--inputs` parameter allows you to pass initial values to your workflow that can be accessed by JavaScript/Python scripts:
+
+```bash
+# Pass inputs as JSON
+terminator mcp run workflow.yml --inputs '{"user":"alice","count":42,"enabled":true}'
+```
+
+These inputs are accessible in your workflow scripts:
+- In JavaScript: via `env.inputs` object or directly as `env.username`, `env.count`, etc.
+- In Python: via `env` dictionary
+- Inputs override any default values defined in the workflow file
 
 **Example workflow file** (`workflow.yml`):
 ```yaml
@@ -108,6 +128,34 @@ arguments:
 ```
 
 **JavaScript execution in workflows**:
+```yaml
+tool_name: execute_sequence
+arguments:
+  steps:
+    - tool_name: run_command
+      arguments:
+        engine: "javascript"
+        run: |
+          // Access inputs passed from CLI via --inputs parameter
+          console.log(`Processing for user: ${env.username}`);
+          console.log(`Count value: ${env.count}`);
+
+          // Or access the entire inputs object
+          const allInputs = env.inputs;
+          console.log(`All inputs:`, JSON.stringify(allInputs));
+
+          // Use inputs in your logic
+          for (let i = 0; i < env.count; i++) {
+            console.log(`Processing item ${i + 1} for ${env.username}`);
+          }
+
+          return {
+            processed_by: env.username,
+            items_processed: env.count
+          };
+```
+
+**Original example**:
 ```yaml
 tool_name: execute_sequence
 arguments:

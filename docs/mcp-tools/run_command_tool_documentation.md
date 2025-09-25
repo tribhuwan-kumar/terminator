@@ -181,7 +181,31 @@ When using `engine` mode (JavaScript or Python), you can pass data between workf
 
 ### Injecting Environment Variables into Scripts
 
-Use the `env` parameter to pass data into your scripts:
+Environment variables can come from two sources:
+
+1. **CLI inputs** - Passed via `--inputs` parameter when running the workflow
+2. **Tool-specific env** - Passed directly to the tool via `env` parameter
+
+Both are merged and available in your scripts, with tool-specific values taking precedence.
+
+#### Example: Using CLI Inputs
+
+Run workflow with inputs:
+```bash
+terminator mcp run workflow.yml --inputs '{"api_key":"sk-123","user":"alice"}'
+```
+
+Access in your script:
+```javascript
+{
+  "engine": "javascript",
+  "run": "console.log(`User ${env.user} with key ${env.api_key}`); return { authenticated: true };"
+}
+```
+
+#### Example: Combining CLI Inputs and Tool Env
+
+Use the `env` parameter to pass additional data or override CLI inputs:
 
 ```javascript
 {
@@ -195,9 +219,13 @@ Use the `env` parameter to pass data into your scripts:
 }
 ```
 
-In your script, parse the env variable:
+In your script, access both CLI inputs and tool env:
 ```javascript
 // process.js
+// env.api_key comes from CLI --inputs
+// env.api_endpoint comes from tool's env parameter
+console.log(`Using API key: ${env.api_key}`);
+console.log(`Connecting to: ${env.api_endpoint}`);
 const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
 console.log(`Connecting to ${parsedEnv.api_endpoint}`);
 console.log(`Max retries: ${parsedEnv.max_retries}`);

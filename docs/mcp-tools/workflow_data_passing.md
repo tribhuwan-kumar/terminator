@@ -2,7 +2,86 @@
 
 ## Overview
 
-This guide explains how to pass data between steps in Terminator MCP workflows using the `set_env` mechanism. This feature allows you to create complex workflows where each step can use data from previous steps.
+This guide explains how to pass data in Terminator MCP workflows:
+1. **Initial inputs from CLI** - Pass values when starting a workflow via `--inputs` parameter
+2. **Between workflow steps** - Use the `set_env` mechanism to pass data from one step to the next
+
+## Passing Initial Inputs from CLI
+
+When running a workflow from the command line, you can provide initial input values using the `--inputs` parameter:
+
+```bash
+# Pass inputs as JSON
+terminator mcp run workflow.yml --inputs '{"username":"alice","api_key":"sk-123","debug":true}'
+```
+
+These inputs become available in your workflow as environment variables:
+
+### Accessing CLI Inputs in JavaScript
+
+```yaml
+steps:
+  - tool_name: run_command
+    arguments:
+      engine: javascript
+      run: |
+        // Access individual input values directly
+        console.log(`Username: ${env.username}`);
+        console.log(`API Key: ${env.api_key}`);
+        console.log(`Debug mode: ${env.debug}`);
+
+        // Access all inputs as an object
+        const allInputs = env.inputs;
+        console.log(`All inputs:`, JSON.stringify(allInputs));
+
+        // Use inputs in your logic
+        if (env.debug) {
+          console.log("Debug mode is enabled");
+        }
+
+        return {
+          authenticated_user: env.username,
+          debug_enabled: env.debug
+        };
+```
+
+### Accessing CLI Inputs in Python
+
+```yaml
+steps:
+  - tool_name: run_command
+    arguments:
+      engine: python
+      run: |
+        # Access inputs from env dictionary
+        print(f"Username: {env['username']}")
+        print(f"API Key: {env['api_key']}")
+        print(f"Debug mode: {env['debug']}")
+
+        # Access all inputs
+        all_inputs = env.get('inputs', {})
+        print(f"All inputs: {all_inputs}")
+
+        # Use in logic
+        if env.get('debug', False):
+            print("Debug mode is enabled")
+
+        return {
+            "authenticated_user": env['username'],
+            "debug_enabled": env.get('debug', False)
+        }
+```
+
+### Input Priority
+
+When both CLI inputs and workflow-defined inputs exist:
+- **CLI inputs take precedence** - Values from `--inputs` override defaults in the workflow
+- **Merged availability** - All inputs are available in the `env` object
+- **Direct access** - Each input is available as `env.key_name`
+
+## Passing Data Between Steps
+
+This section explains how to pass data between steps in workflows using the `set_env` mechanism.
 
 ## Prerequisites
 
