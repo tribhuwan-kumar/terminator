@@ -75,8 +75,9 @@ curl -fsSL https://mediar.ai/install.sh | bash
 ```
 
 #### Windows
+
+In powershell:
 ```powershell
-# in powershell
 irm https://mediar.ai/install.ps1 | iex
 ```
 
