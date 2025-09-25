@@ -169,6 +169,7 @@ impl SetupCommand {
     }
 
     #[cfg(not(windows))]
+    #[allow(dead_code)]
     async fn setup_vcredist(&self) -> (&'static str, Result<String>) {
         ("VC++ Redistributables", Ok("Not needed".to_string()))
     }
