@@ -19,7 +19,6 @@ pub struct SetupCommand {
     #[arg(long)]
     skip_sdk: bool,
 
-
     /// Verbose output
     #[arg(short, long)]
     verbose: bool,
@@ -97,7 +96,10 @@ impl SetupCommand {
         if all_ok {
             ("Prerequisites", Ok(summary))
         } else {
-            ("Prerequisites", Err(anyhow::anyhow!("Missing: {}", summary)))
+            (
+                "Prerequisites",
+                Err(anyhow::anyhow!("Missing: {}", summary)),
+            )
         }
     }
 
@@ -107,7 +109,7 @@ impl SetupCommand {
 
         // Check if already installed
         let check = ProcessCommand::new("reg")
-            .args(&[
+            .args([
                 "query",
                 "HKLM\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64",
                 "/v",
@@ -122,20 +124,26 @@ impl SetupCommand {
 
         // Check with winget
         println!("  Checking winget availability...");
-        let winget_check = ProcessCommand::new("winget")
-            .arg("--version")
-            .output();
+        let winget_check = ProcessCommand::new("winget").arg("--version").output();
 
         if winget_check.map(|o| o.status.success()).unwrap_or(false) {
             println!();
             println!("  📦 Installing via winget...");
             println!("  Please run this command in an elevated terminal:");
             println!();
-            println!("    {}", "winget install Microsoft.VCRedist.2015+.x64".bold().yellow());
+            println!(
+                "    {}",
+                "winget install Microsoft.VCRedist.2015+.x64"
+                    .bold()
+                    .yellow()
+            );
             println!();
             println!("  Press Enter after installation completes...");
             std::io::stdin().read_line(&mut String::new()).ok();
-            ("VC++ Redistributables", Ok("Installed via winget".to_string()))
+            (
+                "VC++ Redistributables",
+                Ok("Installed via winget".to_string()),
+            )
         } else {
             let url = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
             println!();
@@ -146,14 +154,17 @@ impl SetupCommand {
             std::io::stdin().read_line(&mut String::new()).ok();
 
             ProcessCommand::new("cmd")
-                .args(&["/C", "start", url])
+                .args(["/C", "start", url])
                 .spawn()
                 .ok();
 
             println!("  Press Enter after installation completes...");
             std::io::stdin().read_line(&mut String::new()).ok();
 
-            ("VC++ Redistributables", Ok("Manual installation".to_string()))
+            (
+                "VC++ Redistributables",
+                Ok("Manual installation".to_string()),
+            )
         }
     }
 
@@ -192,7 +203,10 @@ impl SetupCommand {
             _ => {
                 println!("{} Not installed", "○".yellow());
                 if self.verbose {
-                    println!("    Install for better TypeScript support: {}", "https://bun.sh".underline());
+                    println!(
+                        "    Install for better TypeScript support: {}",
+                        "https://bun.sh".underline()
+                    );
                 }
             }
         }
@@ -206,14 +220,21 @@ impl SetupCommand {
             .join("mcp-deps");
 
         if let Err(e) = tokio::fs::create_dir_all(&cache_dir).await {
-            println!("    {} Could not create cache directory: {}", "⚠️".yellow(), e);
-            return ("SDK Setup", Err(anyhow::anyhow!("Failed to create cache directory: {}", e)));
+            println!(
+                "    {} Could not create cache directory: {}",
+                "⚠️".yellow(),
+                e
+            );
+            return (
+                "SDK Setup",
+                Err(anyhow::anyhow!("Failed to create cache directory: {}", e)),
+            );
         }
 
         // Run npm install in cache directory
         let npm_result = ProcessCommand::new("npm")
             .current_dir(&cache_dir)
-            .args(&["install", "terminator.js", "--save"])
+            .args(["install", "terminator.js", "--save"])
             .output();
 
         match npm_result {
@@ -222,7 +243,10 @@ impl SetupCommand {
                 components.push("terminator.js");
             }
             _ => {
-                println!("    {} Could not pre-cache (will install on demand)", "○".yellow());
+                println!(
+                    "    {} Could not pre-cache (will install on demand)",
+                    "○".yellow()
+                );
             }
         }
 
@@ -231,12 +255,19 @@ impl SetupCommand {
     }
 
     async fn auto_install_chrome_extension(&self) -> (&'static str, Result<String>) {
-        println!("{}", "🌐 Installing Chrome Extension automatically...".bold());
-        println!("  {} This will control your browser to install the extension", "ℹ️".blue());
+        println!(
+            "{}",
+            "🌐 Installing Chrome Extension automatically...".bold()
+        );
+        println!(
+            "  {} This will control your browser to install the extension",
+            "ℹ️".blue()
+        );
         println!();
 
         // First try to find a local workflow file
-        let local_workflow = PathBuf::from("terminator/browser-extension/install_chrome_extension_ui.yml");
+        let local_workflow =
+            PathBuf::from("terminator/browser-extension/install_chrome_extension_ui.yml");
         let workflow_source = if local_workflow.exists() {
             local_workflow.to_str().unwrap().to_string()
         } else {
@@ -257,53 +288,81 @@ impl SetupCommand {
         println!();
 
         let spawn_result = ProcessCommand::new("terminator")
-            .args(&["mcp", "run", &workflow_source, "--command", "npx -y terminator-mcp-agent"])
+            .args([
+                "mcp",
+                "run",
+                &workflow_source,
+                "--command",
+                "npx -y terminator-mcp-agent",
+            ])
             .spawn();
 
         match spawn_result {
-            Ok(mut child) => {
-                match child.wait() {
-                    Ok(status) if status.success() => {
-                        println!();
-                        println!("  {} Chrome extension installed successfully!", "✅".green());
-                        ("Chrome Extension", Ok("Installed automatically".to_string()))
-                    }
-                    Ok(_) => {
-                        println!();
-                        println!("  {} Automation failed. Falling back to manual installation...", "⚠️".yellow());
-                        self.show_manual_fallback();
-                        ("Chrome Extension", Err(anyhow::anyhow!("Automation failed, manual instructions provided")))
-                    }
-                    Err(e) => {
-                        println!();
-                        println!("  {} Installation workflow error: {}", "❌".red(), e);
-                        self.show_manual_fallback();
-                        ("Chrome Extension", Err(anyhow::anyhow!("Workflow error: {}", e)))
-                    }
+            Ok(mut child) => match child.wait() {
+                Ok(status) if status.success() => {
+                    println!();
+                    println!(
+                        "  {} Chrome extension installed successfully!",
+                        "✅".green()
+                    );
+                    (
+                        "Chrome Extension",
+                        Ok("Installed automatically".to_string()),
+                    )
                 }
-            }
+                Ok(_) => {
+                    println!();
+                    println!(
+                        "  {} Automation failed. Falling back to manual installation...",
+                        "⚠️".yellow()
+                    );
+                    self.show_manual_fallback();
+                    (
+                        "Chrome Extension",
+                        Err(anyhow::anyhow!(
+                            "Automation failed, manual instructions provided"
+                        )),
+                    )
+                }
+                Err(e) => {
+                    println!();
+                    println!("  {} Installation workflow error: {}", "❌".red(), e);
+                    self.show_manual_fallback();
+                    (
+                        "Chrome Extension",
+                        Err(anyhow::anyhow!("Workflow error: {}", e)),
+                    )
+                }
+            },
             Err(e) => {
                 println!();
                 println!("  {} Could not start automation: {}", "❌".red(), e);
                 println!("  Make sure Chrome is installed and terminator-mcp-agent is available");
                 self.show_manual_fallback();
-                ("Chrome Extension", Err(anyhow::anyhow!("Could not start automation: {}", e)))
+                (
+                    "Chrome Extension",
+                    Err(anyhow::anyhow!("Could not start automation: {}", e)),
+                )
             }
         }
     }
 
-
     fn show_manual_fallback(&self) {
         println!();
         println!("  {} Manual installation steps:", "📝".cyan());
-        println!("  1. Download extension from: {}", "https://github.com/mediar-ai/terminator/releases".underline());
+        println!(
+            "  1. Download extension from: {}",
+            "https://github.com/mediar-ai/terminator/releases".underline()
+        );
         println!("  2. Extract the zip file");
-        println!("  3. Open Chrome and go to: {}", "chrome://extensions".bold());
+        println!(
+            "  3. Open Chrome and go to: {}",
+            "chrome://extensions".bold()
+        );
         println!("  4. Enable {} mode (top right)", "Developer".bold());
         println!("  5. Click {} (top left)", "Load unpacked".bold());
         println!("  6. Select the extracted folder");
     }
-
 
     async fn verify_installation(&self) -> (&'static str, Result<String>) {
         println!("{}", "✅ Verifying installation...".bold());
@@ -311,7 +370,7 @@ impl SetupCommand {
         // Test MCP agent
         print!("  MCP Agent: ");
         let mcp_test = ProcessCommand::new("npx")
-            .args(&["-y", "terminator-mcp-agent", "--version"])
+            .args(["-y", "terminator-mcp-agent", "--version"])
             .output();
 
         match mcp_test {
@@ -321,14 +380,17 @@ impl SetupCommand {
             }
             _ => {
                 println!("{} Will install on first use", "○".yellow());
-                ("Verification", Ok("Ready (MCP will install on demand)".to_string()))
+                (
+                    "Verification",
+                    Ok("Ready (MCP will install on demand)".to_string()),
+                )
             }
         }
     }
 
     fn check_chrome_installed(&self) -> bool {
         #[cfg(windows)]
-        let chrome_paths = vec![
+        let chrome_paths = [
             "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
             "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
         ];
@@ -340,12 +402,11 @@ impl SetupCommand {
         ];
 
         #[cfg(target_os = "linux")]
-        let chrome_paths = vec![
-            "/usr/bin/google-chrome",
-            "/usr/bin/chromium",
-        ];
+        let chrome_paths = vec!["/usr/bin/google-chrome", "/usr/bin/chromium"];
 
-        chrome_paths.iter().any(|path| std::path::Path::new(path).exists())
+        chrome_paths
+            .iter()
+            .any(|path| std::path::Path::new(path).exists())
     }
 
     fn print_summary(&self, results: &[(&'static str, Result<String>)]) {
@@ -367,13 +428,22 @@ impl SetupCommand {
 
         println!();
         if has_errors {
-            println!("{}", "⚠️  Some steps need attention. See above for details.".yellow());
+            println!(
+                "{}",
+                "⚠️  Some steps need attention. See above for details.".yellow()
+            );
         } else {
             println!("{}", "🎉 Setup complete!".bold().green());
             println!();
             println!("Next steps:");
-            println!("  1. Test with: {}", "terminator mcp chat --command \"npx -y terminator-mcp-agent\"".cyan());
-            println!("  2. Run examples: {}", "terminator mcp run examples/notepad.py".cyan());
+            println!(
+                "  1. Test with: {}",
+                "terminator mcp chat --command \"npx -y terminator-mcp-agent\"".cyan()
+            );
+            println!(
+                "  2. Run examples: {}",
+                "terminator mcp run examples/notepad.py".cyan()
+            );
         }
     }
 }

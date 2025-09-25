@@ -1390,7 +1390,7 @@ impl DesktopWrapper {
                                 );
                                 // Return error immediately for missing file
                                 return Err(McpError::invalid_params(
-                                    format!("Script file '{}' not found", script_file),
+                                    format!("Script file '{script_file}' not found"),
                                     Some(json!({
                                         "file": script_file,
                                         "resolution_attempts": resolution_attempts,
@@ -1406,9 +1406,12 @@ impl DesktopWrapper {
                             tracing::info!("[run_command] Using absolute path: {}", script_file);
                             resolved_path = Some(candidate);
                         } else {
-                            tracing::warn!("[run_command] Absolute script file not found: {}", script_file);
+                            tracing::warn!(
+                                "[run_command] Absolute script file not found: {}",
+                                script_file
+                            );
                             return Err(McpError::invalid_params(
-                                format!("Script file '{}' not found", script_file),
+                                format!("Script file '{script_file}' not found"),
                                 Some(json!({
                                     "file": script_file,
                                     "error": "File does not exist at absolute path"
@@ -1901,7 +1904,7 @@ impl DesktopWrapper {
                             );
                             // Return error immediately for missing file
                             return Err(McpError::invalid_params(
-                                format!("Script file '{}' not found", script_file),
+                                format!("Script file '{script_file}' not found"),
                                 Some(json!({
                                     "file": script_file,
                                     "resolution_attempts": resolution_attempts,
@@ -1917,9 +1920,12 @@ impl DesktopWrapper {
                         tracing::info!("[run_command shell] Using absolute path: {}", script_file);
                         resolved_path = Some(candidate);
                     } else {
-                        tracing::warn!("[run_command shell] Absolute script file not found: {}", script_file);
+                        tracing::warn!(
+                            "[run_command shell] Absolute script file not found: {}",
+                            script_file
+                        );
                         return Err(McpError::invalid_params(
-                            format!("Script file '{}' not found", script_file),
+                            format!("Script file '{script_file}' not found"),
                             Some(json!({
                                 "file": script_file,
                                 "error": "File does not exist at absolute path"
@@ -4028,7 +4034,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                             );
                             // Return error immediately for missing file
                             return Err(McpError::invalid_params(
-                                format!("Script file '{}' not found", script_file),
+                                format!("Script file '{script_file}' not found"),
                                 Some(json!({
                                     "file": script_file,
                                     "resolution_attempts": resolution_attempts,
@@ -4047,9 +4053,12 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                         );
                         resolved_path = Some(candidate);
                     } else {
-                        tracing::warn!("[execute_browser_script] Absolute script file not found: {}", script_file);
+                        tracing::warn!(
+                            "[execute_browser_script] Absolute script file not found: {}",
+                            script_file
+                        );
                         return Err(McpError::invalid_params(
-                            format!("Script file '{}' not found", script_file),
+                            format!("Script file '{script_file}' not found"),
                             Some(json!({
                                 "file": script_file,
                                 "error": "File does not exist at absolute path"

@@ -173,15 +173,21 @@ impl DesktopWrapper {
 
             // Parse the fetched YAML workflow
             // First check if it's wrapped in execute_sequence structure
-            let remote_workflow: ExecuteSequenceArgs = if workflow_content.contains("tool_name: execute_sequence") {
+            let remote_workflow: ExecuteSequenceArgs = if workflow_content
+                .contains("tool_name: execute_sequence")
+            {
                 // This workflow is wrapped in execute_sequence structure
                 // Parse as a generic Value first to extract the arguments
                 match serde_yaml::from_str::<serde_json::Value>(&workflow_content) {
                     Ok(yaml_value) => {
-                        if yaml_value.get("tool_name").and_then(|v| v.as_str()) == Some("execute_sequence") {
+                        if yaml_value.get("tool_name").and_then(|v| v.as_str())
+                            == Some("execute_sequence")
+                        {
                             // Extract the arguments field
                             if let Some(arguments) = yaml_value.get("arguments") {
-                                match serde_json::from_value::<ExecuteSequenceArgs>(arguments.clone()) {
+                                match serde_json::from_value::<ExecuteSequenceArgs>(
+                                    arguments.clone(),
+                                ) {
                                     Ok(wf) => {
                                         info!(
                                             "Successfully parsed wrapped YAML. Steps count: {}",
@@ -190,7 +196,10 @@ impl DesktopWrapper {
                                         wf
                                     }
                                     Err(e) => {
-                                        tracing::error!("Failed to parse arguments from wrapped YAML: {}", e);
+                                        tracing::error!(
+                                            "Failed to parse arguments from wrapped YAML: {}",
+                                            e
+                                        );
                                         return Err(McpError::invalid_params(
                                             format!("Failed to parse workflow arguments: {e}"),
                                             Some(json!({"url": url, "error": e.to_string()})),
@@ -199,7 +208,8 @@ impl DesktopWrapper {
                                 }
                             } else {
                                 return Err(McpError::invalid_params(
-                                    "Workflow has execute_sequence but no arguments field".to_string(),
+                                    "Workflow has execute_sequence but no arguments field"
+                                        .to_string(),
                                     Some(json!({"url": url})),
                                 ));
                             }
@@ -712,7 +722,7 @@ impl DesktopWrapper {
         let mut results = Vec::new();
         let mut sequence_had_errors = false;
         let mut critical_error_occurred = false;
-        let mut used_fallback = false;  // Track if any fallback was used
+        let mut used_fallback = false; // Track if any fallback was used
         let start_time = chrono::Utc::now();
 
         let mut current_index: usize = start_from_index;

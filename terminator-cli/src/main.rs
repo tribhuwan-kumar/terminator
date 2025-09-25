@@ -23,11 +23,11 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+mod commands;
 mod mcp_client;
 mod telemetry_receiver;
 mod workflow_result;
 mod workflow_validator;
-mod commands;
 
 use workflow_result::WorkflowResult;
 use workflow_validator::WorkflowOutputValidator;
@@ -241,7 +241,7 @@ fn main() {
                 .unwrap()
                 .block_on(async {
                     if let Err(e) = setup_cmd.execute().await {
-                        eprintln!("❌ Setup failed: {}", e);
+                        eprintln!("❌ Setup failed: {e}");
                         std::process::exit(1);
                     }
                 });

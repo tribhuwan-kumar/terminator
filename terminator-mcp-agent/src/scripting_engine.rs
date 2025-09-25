@@ -1781,7 +1781,9 @@ pub async fn execute_python_with_bindings(
 
     // Skip installation check - assume terminator is available in system Python
     // This avoids hanging on pip/uv install attempts
-    let site_packages_dir = std::env::temp_dir().join("terminator_mcp_python_persistent").join("site-packages");
+    let _site_packages_dir = std::env::temp_dir()
+        .join("terminator_mcp_python_persistent")
+        .join("site-packages");
     info!("[Python] Using system Python with terminator package (assuming it's installed)");
 
     // Prepare wrapper script that imports terminator and runs the user code
@@ -1858,7 +1860,11 @@ asyncio.run(__runner__())
 
     let script_path = script_dir.join("main.py");
 
-    info!("[Python] Writing script to {:?} ({} bytes)", script_path, wrapper_script.len());
+    info!(
+        "[Python] Writing script to {:?} ({} bytes)",
+        script_path,
+        wrapper_script.len()
+    );
 
     // Write without BOM - Python handles UTF-8 fine on Windows
     tokio::fs::write(&script_path, wrapper_script.as_bytes())
@@ -1893,15 +1899,15 @@ asyncio.run(__runner__())
     info!("[Python] Spawning process: {} {}", python_exe, script_arg);
     info!("[Python] Working dir: {}", process_working_dir.display());
 
-    let mut child = Command::new(&python_exe)
+    let child = Command::new(&python_exe)
         .current_dir(&process_working_dir)
-        .arg("-u")  // Unbuffered output for Windows
+        .arg("-u") // Unbuffered output for Windows
         .arg(&script_arg)
-        .env("PYTHONUNBUFFERED", "1")  // Also set environment variable
-        .stdin(Stdio::null())  // Close stdin immediately - Python doesn't need it
+        .env("PYTHONUNBUFFERED", "1") // Also set environment variable
+        .stdin(Stdio::null()) // Close stdin immediately - Python doesn't need it
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true)  // Ensure child process is killed if parent dies
+        .kill_on_drop(true) // Ensure child process is killed if parent dies
         .spawn()
         .map_err(|e| {
             McpError::internal_error(
@@ -1910,13 +1916,13 @@ asyncio.run(__runner__())
             )
         })?;
 
-    info!("[Python] Process spawned successfully, PID: {:?}", child.id());
+    info!(
+        "[Python] Process spawned successfully, PID: {:?}",
+        child.id()
+    );
 
     // Try waiting for the process to complete with timeout
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        child.wait_with_output()
-    ).await {
+    match tokio::time::timeout(std::time::Duration::from_secs(10), child.wait_with_output()).await {
         Ok(Ok(output)) => {
             let stdout_str = String::from_utf8_lossy(&output.stdout);
             let stderr_str = String::from_utf8_lossy(&output.stderr);
@@ -1953,7 +1959,7 @@ asyncio.run(__runner__())
                             .and_then(|m| m.as_str())
                             .unwrap_or("Unknown error");
                         return Err(McpError::internal_error(
-                            format!("Python execution error: {}", error_message),
+                            format!("Python execution error: {error_message}"),
                             Some(error_data),
                         ));
                     }
@@ -1961,23 +1967,23 @@ asyncio.run(__runner__())
             }
 
             // No result found
-            return Err(McpError::internal_error(
+            Err(McpError::internal_error(
                 "Python script did not return a result",
                 Some(json!({"stdout": stdout_str.to_string(), "stderr": stderr_str.to_string()})),
-            ));
+            ))
         }
         Ok(Err(e)) => {
-            return Err(McpError::internal_error(
+            Err(McpError::internal_error(
                 "Failed to execute Python process",
                 Some(json!({"error": e.to_string()})),
-            ));
+            ))
         }
         Err(_) => {
             // Timeout - process will be killed automatically due to kill_on_drop
-            return Err(McpError::internal_error(
+            Err(McpError::internal_error(
                 "Python script execution timed out after 10 seconds",
                 None,
-            ));
+            ))
         }
     }
 
@@ -2191,7 +2197,9 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
         if !uv_available {
             return Err(McpError::internal_error(
                 "Python package manager 'uv' is not installed. Please install it: pip install uv",
-                Some(json!({"help": "Visit https://github.com/astral-sh/uv for installation instructions"})),
+                Some(
+                    json!({"help": "Visit https://github.com/astral-sh/uv for installation instructions"}),
+                ),
             ));
         }
 
@@ -2220,43 +2228,42 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
 
             // uv is much faster, so shorter timeout is fine
             let install_future = Command::new("uv").args(args).output();
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                install_future
-            ).await {
-                    Ok(Ok(out)) => {
-                        let stdout = String::from_utf8_lossy(&out.stdout);
-                        let stderr = String::from_utf8_lossy(&out.stderr);
-                        info!("[Python] uv output: {}", stdout);
-                        if out.status.success() {
-                            info!("[Python] uv install succeeded for {}", pkg);
-                            // Touch cache dir mtime
-                            let _ = tokio::fs::write(cache_dir.join(".stamp"), b"ok").await;
-                            // Verify import
-                            let mut verify = Command::new(python_exe);
-                            verify.arg("-c").arg("import terminator; print('ok')").env(
-                                "PYTHONPATH",
-                                site_packages_dir.to_string_lossy().to_string(),
-                            );
-                            if let Ok(v) = verify.output().await {
-                                if v.status.success() {
-                                    return Ok(site_packages_dir);
-                                }
+            match tokio::time::timeout(std::time::Duration::from_secs(10), install_future).await {
+                Ok(Ok(out)) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    info!("[Python] uv output: {}", stdout);
+                    if out.status.success() {
+                        info!("[Python] uv install succeeded for {}", pkg);
+                        // Touch cache dir mtime
+                        let _ = tokio::fs::write(cache_dir.join(".stamp"), b"ok").await;
+                        // Verify import
+                        let mut verify = Command::new(python_exe);
+                        verify.arg("-c").arg("import terminator; print('ok')").env(
+                            "PYTHONPATH",
+                            site_packages_dir.to_string_lossy().to_string(),
+                        );
+                        if let Ok(v) = verify.output().await {
+                            if v.status.success() {
+                                return Ok(site_packages_dir);
                             }
-                        } else {
-                            warn!("[Python] uv install failed for {}: {}", pkg, stderr);
-                            last_err = Some(stderr.to_string());
                         }
-                    }
-                    Ok(Err(e)) => {
-                        warn!("[Python] Failed to run uv for {}: {}", pkg, e);
-                        last_err = Some(e.to_string());
-                    }
-                    Err(_) => {
-                        warn!("[Python] uv install timed out for {}", pkg);
-                        last_err = Some(format!("Installation timed out after 10 seconds for {}", pkg));
+                    } else {
+                        warn!("[Python] uv install failed for {}: {}", pkg, stderr);
+                        last_err = Some(stderr.to_string());
                     }
                 }
+                Ok(Err(e)) => {
+                    warn!("[Python] Failed to run uv for {}: {}", pkg, e);
+                    last_err = Some(e.to_string());
+                }
+                Err(_) => {
+                    warn!("[Python] uv install timed out for {}", pkg);
+                    last_err = Some(format!(
+                        "Installation timed out after 10 seconds for {pkg}"
+                    ));
+                }
+            }
         }
 
         return Err(McpError::internal_error(
@@ -2269,6 +2276,7 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
 }
 
 /// Log installed terminator.py version using Python runtime with injected PYTHONPATH
+#[allow(dead_code)]
 async fn log_terminator_py_version(python_exe: &str, site_packages_dir: &std::path::Path) {
     use tokio::process::Command;
     let code = r#"
