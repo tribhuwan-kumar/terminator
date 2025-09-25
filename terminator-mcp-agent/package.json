@@ -15,10 +15,10 @@
   ],
   "name": "terminator-mcp-agent",
   "optionalDependencies": {
-    "terminator-mcp-darwin-arm64": "0.15.5",
-    "terminator-mcp-darwin-x64": "0.15.5",
-    "terminator-mcp-linux-x64-gnu": "0.15.5",
-    "terminator-mcp-win32-x64-msvc": "0.15.5"
+    "terminator-mcp-darwin-arm64": "0.15.6",
+    "terminator-mcp-darwin-x64": "0.15.6",
+    "terminator-mcp-linux-x64-gnu": "0.15.6",
+    "terminator-mcp-win32-x64-msvc": "0.15.6"
   },
   "repository": {
     "type": "git",
