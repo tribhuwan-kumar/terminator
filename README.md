@@ -213,7 +213,6 @@ You can build and debug selector paths incrementally using `.locator()` chaining
 ## Explore Further
 
 - **[Examples](https://github.com/mediar-ai/terminator/tree/main/examples)**
-- **[Documentation](https://github.com/mediar-ai/terminator/tree/main/docs)**
 
 ## Troubleshooting
 
@@ -226,3 +225,9 @@ Contributions are welcome! Please feel free to submit issues and pull requests. 
 ## Businesses
 
 If you want desktop automation at scale for your business, [let's talk](https://mediar.ai).
+
+## Investors
+
+[DM](mailto:louis@mediar.ai)
+
+
