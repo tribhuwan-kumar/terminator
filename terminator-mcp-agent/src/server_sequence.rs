@@ -712,6 +712,7 @@ impl DesktopWrapper {
         let mut results = Vec::new();
         let mut sequence_had_errors = false;
         let mut critical_error_occurred = false;
+        let mut used_fallback = false;  // Track if any fallback was used
         let start_time = chrono::Utc::now();
 
         let mut current_index: usize = start_from_index;
@@ -1407,6 +1408,9 @@ impl DesktopWrapper {
                             current_index, fb_id, fb_idx
                         );
 
+                        // Mark that we used a fallback
+                        used_fallback = true;
+
                         // Check if we're jumping into the troubleshooting section
                         if fb_idx >= main_steps_len {
                             jumped_to_troubleshooting = true;
@@ -1441,12 +1445,11 @@ impl DesktopWrapper {
 
         let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
 
+        // Determine final status - simple success or failure
         let final_status = if !sequence_had_errors {
             "success"
-        } else if critical_error_occurred {
-            "partial_success"
         } else {
-            "completed_with_errors"
+            "failed"
         };
         info!(
             "execute_sequence completed: status={}, executed_tools={}, total_duration_ms={}",
@@ -1462,6 +1465,7 @@ impl DesktopWrapper {
             "executed_tools": results.len(),
             "total_duration_ms": total_duration,
             "timestamp": chrono::Utc::now().to_rfc3339(),
+            "used_fallback": used_fallback,
             "results": results,
         });
 
@@ -1498,6 +1502,7 @@ impl DesktopWrapper {
                 "final_status": final_status,
                 "had_critical_error": critical_error_occurred,
                 "had_errors": sequence_had_errors,
+                "used_fallback": used_fallback,
                 "executed_count": results.len(),
             });
 
@@ -1508,24 +1513,21 @@ impl DesktopWrapper {
 
         let contents = vec![Content::json(summary.clone())?];
 
-        // End workflow span with success status
-        let had_errors = summary
-            .get("had_errors")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        workflow_span.set_status(
-            !had_errors,
-            if had_errors {
-                "Workflow completed with errors"
-            } else {
-                "Workflow completed successfully"
-            },
-        );
+        // End workflow span with appropriate status
+        let span_success = matches!(final_status, "success");
+        let span_message = if span_success {
+            "Workflow completed successfully"
+        } else {
+            "Workflow failed"
+        };
+
+        workflow_span.set_status(span_success, span_message);
         workflow_span.add_event(
             "workflow.completed",
             vec![
                 ("workflow.total_steps", results.len().to_string()),
-                ("workflow.had_errors", had_errors.to_string()),
+                ("workflow.final_status", final_status.to_string()),
+                ("workflow.used_fallback", used_fallback.to_string()),
             ],
         );
         workflow_span.end();
