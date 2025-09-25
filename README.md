@@ -228,6 +228,5 @@ If you want desktop automation at scale for your business, [let's talk](https://
 
 ## Investors
 
-[DM](mailto:louis@mediar.ai)
-
+[louis@mediar.ai](mailto:louis@mediar.ai)
 
