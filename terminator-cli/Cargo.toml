@@ -50,6 +50,8 @@ colored = "3.0.0"
 
 # System directories
 dirs = "5.0"
+# Regex for stripping ANSI codes
+regex = "1.10"
 
 # Simple HTTP server for receiving telemetry
 axum = "0.7"

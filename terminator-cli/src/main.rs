@@ -20,8 +20,12 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::Value;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
+use tokio::sync::Mutex;
 
 mod commands;
 mod mcp_client;
@@ -150,6 +154,15 @@ struct McpRunArgs {
     /// Follow fallback_id even beyond end_at_step boundary (default: false when end_at_step is specified)
     #[clap(long)]
     follow_fallback: Option<bool>,
+
+    /// Disable output logging to file (logging is enabled by default)
+    #[clap(long)]
+    no_log: bool,
+
+    /// JSON object with input values for workflow variables
+    /// Example: --inputs '{"user":"john","count":5}'
+    #[clap(long)]
+    inputs: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -952,8 +965,175 @@ fn parse_command(command: &str) -> Vec<String> {
     parts
 }
 
+/// Run workflow with output logging to file
+async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
+    use chrono::Local;
+    use colored::Colorize;
+
+    // Get the log directory path
+    let log_dir = if cfg!(target_os = "windows") {
+        env::var("LOCALAPPDATA")
+            .map(|p| PathBuf::from(p).join("terminator").join("workflow-results"))
+            .or_else(|_| {
+                env::var("APPDATA")
+                    .map(|p| PathBuf::from(p).join("terminator").join("workflow-results"))
+            })
+            .unwrap_or_else(|_| PathBuf::from("C:\\temp\\terminator\\workflow-results"))
+    } else {
+        env::var("HOME")
+            .map(|p| PathBuf::from(p).join(".local").join("share").join("terminator").join("workflow-results"))
+            .unwrap_or_else(|_| PathBuf::from("/tmp/terminator/workflow-results"))
+    };
+
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&log_dir)?;
+
+    // Create latest.txt and timestamped file paths
+    let latest_path = log_dir.join("latest.txt");
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let timestamped_path = log_dir.join(format!("workflow_{}.txt", timestamp));
+
+    // Open both files for writing
+    let latest_file = Arc::new(Mutex::new(
+        fs::File::create(&latest_path)
+            .with_context(|| format!("Failed to create {}", latest_path.display()))?
+    ));
+    let timestamped_file = Arc::new(Mutex::new(
+        fs::File::create(&timestamped_path)
+            .with_context(|| format!("Failed to create {}", timestamped_path.display()))?
+    ));
+
+    println!("{}", format!("📝 Logging output to:").cyan());
+    println!("   {}", latest_path.display());
+    println!("   {}", timestamped_path.display());
+    println!();
+
+    // Build command to re-execute ourselves with --no-log to prevent recursion
+    let current_exe = env::current_exe()?;
+    let mut cmd = tokio::process::Command::new(&current_exe);
+
+    // Reconstruct arguments with --no-log added to prevent recursion
+    let args_vec: Vec<String> = env::args().collect();
+    let mut skip_next = false;
+    let mut reconstructed_args = Vec::new();
+
+    for (i, arg) in args_vec.iter().enumerate() {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+
+        // Skip the executable name (first arg)
+        if i == 0 {
+            continue;
+        }
+
+        // Check if this arg takes a value
+        if arg.starts_with("--") && i + 1 < args_vec.len() {
+            let next_arg = &args_vec[i + 1];
+            if !next_arg.starts_with("-") {
+                // This is a flag with a value, include both
+                reconstructed_args.push(arg.clone());
+                reconstructed_args.push(next_arg.clone());
+                skip_next = true;
+                continue;
+            }
+        }
+
+        reconstructed_args.push(arg.clone());
+    }
+
+    // Add --no-log to prevent infinite recursion
+    reconstructed_args.push("--no-log".to_string());
+
+    cmd.args(&reconstructed_args);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    // Spawn the child process
+    let mut child = cmd.spawn()
+        .with_context(|| "Failed to spawn terminator subprocess")?;
+
+    // Get handles to stdout and stderr
+    let stdout = child.stdout.take().expect("Failed to get stdout");
+    let stderr = child.stderr.take().expect("Failed to get stderr");
+
+    // Function to strip ANSI codes
+    fn strip_ansi_codes(text: &str) -> String {
+        let ansi_regex = regex::Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").unwrap();
+        ansi_regex.replace_all(text, "").to_string()
+    }
+
+    // Spawn tasks to handle stdout and stderr
+    let latest_file_stdout = Arc::clone(&latest_file);
+    let timestamped_file_stdout = Arc::clone(&timestamped_file);
+    let stdout_task = tokio::spawn(async move {
+        let mut reader = AsyncBufReader::new(stdout);
+        let mut line = String::new();
+
+        while reader.read_line(&mut line).await? > 0 {
+            // Write to console (with colors)
+            print!("{}", line);
+
+            // Write to files (without colors)
+            let clean_line = strip_ansi_codes(&line);
+            latest_file_stdout.lock().await.write_all(clean_line.as_bytes())?;
+            timestamped_file_stdout.lock().await.write_all(clean_line.as_bytes())?;
+
+            line.clear();
+        }
+        Ok::<(), anyhow::Error>(())
+    });
+
+    let latest_file_stderr = Arc::clone(&latest_file);
+    let timestamped_file_stderr = Arc::clone(&timestamped_file);
+    let stderr_task = tokio::spawn(async move {
+        let mut reader = AsyncBufReader::new(stderr);
+        let mut line = String::new();
+
+        while reader.read_line(&mut line).await? > 0 {
+            // Write to console (with colors)
+            eprint!("{}", line);
+
+            // Write to files (without colors)
+            let clean_line = strip_ansi_codes(&line);
+            latest_file_stderr.lock().await.write_all(clean_line.as_bytes())?;
+            timestamped_file_stderr.lock().await.write_all(clean_line.as_bytes())?;
+
+            line.clear();
+        }
+        Ok::<(), anyhow::Error>(())
+    });
+
+    // Wait for child process to complete
+    let status = child.wait().await?;
+
+    // Wait for output tasks to complete
+    let _ = tokio::join!(stdout_task, stderr_task);
+
+    // Flush files
+    latest_file.lock().await.flush()?;
+    timestamped_file.lock().await.flush()?;
+
+    println!();
+    println!("{}", format!("📄 Output saved to:").green());
+    println!("   {}", latest_path.display());
+
+    // Exit with same code as child
+    if !status.success() {
+        std::process::exit(status.code().unwrap_or(1));
+    }
+
+    Ok(())
+}
+
 async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> anyhow::Result<()> {
     use tracing::info;
+
+    // By default, log output to file unless --no-log is specified
+    if !args.no_log {
+        return run_logged_workflow(args).await;
+    }
 
     if args.verbose {
         // Keep rmcp quieter even in verbose mode unless user explicitly overrides
@@ -1169,8 +1349,36 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
             );
         }
 
-        serde_json::to_string(&workflow_args)?
+        // Add CLI inputs if provided
+        if let Some(inputs_str) = &args.inputs {
+            match serde_json::from_str::<serde_json::Value>(inputs_str) {
+                Ok(inputs_val) => {
+                    workflow_args.insert("inputs".to_string(), inputs_val);
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Invalid JSON in --inputs parameter: {}", e));
+                }
+            }
+        }
+
+        let workflow_str = serde_json::to_string(&workflow_args)?;
+        info!("Sending workflow_args to MCP: {}", workflow_str);
+        workflow_str
     } else {
+        // For remote sources, merge inputs into the workflow content
+        if let Some(inputs_str) = &args.inputs {
+            match serde_json::from_str::<serde_json::Value>(inputs_str) {
+                Ok(inputs_val) => {
+                    if let Some(obj) = workflow_val.as_object_mut() {
+                        obj.insert("inputs".to_string(), inputs_val);
+                    }
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Invalid JSON in --inputs parameter: {}", e));
+                }
+            }
+        }
+
         // For remote sources, send the entire parsed content
         serde_json::to_string(&workflow_val)?
     };
@@ -1338,6 +1546,7 @@ async fn run_workflow_once(
     transport: mcp_client::Transport,
     args: McpRunArgs,
 ) -> anyhow::Result<()> {
+    use tracing::info;
     // Resolve actual input type (auto-detect if needed)
     let resolved_type = determine_input_type(&args.input, args.input_type);
 
@@ -1420,8 +1629,36 @@ async fn run_workflow_once(
             );
         }
 
-        serde_json::to_string(&workflow_args)?
+        // Add CLI inputs if provided
+        if let Some(inputs_str) = &args.inputs {
+            match serde_json::from_str::<serde_json::Value>(inputs_str) {
+                Ok(inputs_val) => {
+                    workflow_args.insert("inputs".to_string(), inputs_val);
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Invalid JSON in --inputs parameter: {}", e));
+                }
+            }
+        }
+
+        let workflow_str = serde_json::to_string(&workflow_args)?;
+        info!("Sending workflow_args to MCP: {}", workflow_str);
+        workflow_str
     } else {
+        // For remote sources, merge inputs into the workflow content
+        if let Some(inputs_str) = &args.inputs {
+            match serde_json::from_str::<serde_json::Value>(inputs_str) {
+                Ok(inputs_val) => {
+                    if let Some(obj) = workflow_val.as_object_mut() {
+                        obj.insert("inputs".to_string(), inputs_val);
+                    }
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Invalid JSON in --inputs parameter: {}", e));
+                }
+            }
+        }
+
         // For remote sources, send the entire parsed content
         serde_json::to_string(&workflow_val)?
     };

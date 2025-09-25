@@ -319,12 +319,25 @@ impl DesktopWrapper {
             if args.selectors.is_none() {
                 args.selectors = remote_workflow.selectors;
             }
-            // Keep local inputs, variables, and other settings as they override remote ones
+            // Merge inputs: local inputs (from CLI) override remote inputs (from workflow file)
+            if args.inputs.is_none() && remote_workflow.inputs.is_some() {
+                args.inputs = remote_workflow.inputs;
+            } else if args.inputs.is_some() && remote_workflow.inputs.is_some() {
+                // If both exist, merge them with local taking precedence
+                if let (Some(local_inputs), Some(remote_inputs)) = (&args.inputs, &remote_workflow.inputs) {
+                    if let (Some(local_obj), Some(remote_obj)) = (local_inputs.as_object(), remote_inputs.as_object()) {
+                        let mut merged = remote_obj.clone();
+                        merged.extend(local_obj.clone());
+                        args.inputs = Some(serde_json::Value::Object(merged));
+                    }
+                }
+            }
 
             info!(
-                "After merge - args.steps present: {}, count: {}",
+                "After merge - args.steps present: {}, count: {}, inputs present: {}",
                 args.steps.is_some(),
-                args.steps.as_ref().map(|s| s.len()).unwrap_or(0)
+                args.steps.as_ref().map(|s| s.len()).unwrap_or(0),
+                args.inputs.is_some()
             );
 
             info!(
@@ -518,8 +531,22 @@ impl DesktopWrapper {
             };
             execution_context_map.insert("selectors".to_string(), selectors_value);
         }
-        // Initialize an internal env bag for dynamic, step-to-step values set at runtime (e.g., via JS)
-        execution_context_map.insert("env".to_string(), json!({}));
+
+        // Initialize an internal env bag with the inputs and other values
+        let mut env_map = serde_json::Map::new();
+
+        // Add all inputs to the env so they're accessible in JavaScript
+        if let Some(inputs) = &args.inputs {
+            if let Some(inputs_obj) = inputs.as_object() {
+                for (key, value) in inputs_obj {
+                    env_map.insert(key.clone(), value.clone());
+                }
+                // Also store the entire inputs object
+                env_map.insert("inputs".to_string(), inputs.clone());
+            }
+        }
+
+        execution_context_map.insert("env".to_string(), serde_json::Value::Object(env_map));
 
         // Build a map from step ID to its index for quick lookup (includes both main and troubleshooting steps)
         use std::collections::HashMap;
@@ -771,10 +798,14 @@ impl DesktopWrapper {
             );
         }
 
-        // Get follow_fallback setting (default to false when end_at_step is specified)
-        let follow_fallback = args.follow_fallback.unwrap_or(false);
+        // Get follow_fallback setting
+        // - Default to true for unbounded execution (no end_at_step) to allow troubleshooting fallbacks
+        // - Default to false for bounded execution (with end_at_step) to respect boundaries
+        let follow_fallback = args.follow_fallback.unwrap_or(args.end_at_step.is_none());
         if args.end_at_step.is_some() {
             info!("follow_fallback={} for bounded execution", follow_fallback);
+        } else {
+            info!("follow_fallback={} for unbounded execution (defaulting to true for troubleshooting access)", follow_fallback);
         }
 
         // Log if we're skipping steps

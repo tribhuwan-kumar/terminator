@@ -4222,36 +4222,17 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             );
         }
 
-        // Detect and fix problematic wrapper patterns
-        // Browser scripts should not start with 'return (function' as they're evaluated directly
-        let cleaned_script = {
-            let trimmed = modified_script.trim_start();
-            if trimmed.starts_with("return (function")
-                || trimmed.starts_with("return (async function")
-            {
-                tracing::warn!(
-                    "[execute_browser_script] Detected 'return (function' wrapper pattern - auto-removing 'return' prefix to prevent execution errors"
-                );
-                // Remove the 'return ' prefix
-                modified_script
-                    .trim_start()
-                    .strip_prefix("return ")
-                    .unwrap_or(&modified_script)
-                    .to_string()
-            } else if trimmed.starts_with("return ((") {
-                // Also handle arrow function pattern: return (() => { ... })()
-                tracing::warn!(
-                    "[execute_browser_script] Detected 'return ((' wrapper pattern - auto-removing 'return' prefix to prevent execution errors"
-                );
-                modified_script
-                    .trim_start()
-                    .strip_prefix("return ")
-                    .unwrap_or(&modified_script)
-                    .to_string()
-            } else {
-                modified_script
-            }
-        };
+        // Validate that browser scripts don't use top-level return statements
+        if modified_script.trim_start().starts_with("return ") {
+            return Err(McpError::invalid_params(
+                "Browser scripts cannot use top-level 'return' statements. \
+                 Remove 'return' from the beginning of your script. \
+                 Example: Use '(async function() {...})()' instead of 'return (async function() {...})()'",
+                None
+            ));
+        }
+
+        let cleaned_script = modified_script;
 
         // Append the cleaned script
         final_script.push_str(&cleaned_script);
