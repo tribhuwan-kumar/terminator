@@ -62,7 +62,7 @@ We achieve this by pre-training workflows as deterministic code, and calling AI 
 Install the Terminator MCP in Claude Code with one command:
 
 ```bash
-claude mcp add terminator "npx -y terminator-mcp-agent" -s user
+claude mcp add terminator "npx -y terminator-mcp-agent@latest" -s user
 ```
 
 Or install via the [MCP directory](https://github.com/mediar-ai/terminator/tree/main/terminator-mcp-agent) for other clients.
@@ -76,7 +76,8 @@ curl -fsSL https://mediar.ai/install.sh | bash
 
 #### Windows
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://mediar.ai/install.ps1 | iex"
+# in powershell
+irm https://mediar.ai/install.ps1 | iex
 ```
 
 #### After Installation
