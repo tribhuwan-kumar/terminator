@@ -324,8 +324,12 @@ impl DesktopWrapper {
                 args.inputs = remote_workflow.inputs;
             } else if args.inputs.is_some() && remote_workflow.inputs.is_some() {
                 // If both exist, merge them with local taking precedence
-                if let (Some(local_inputs), Some(remote_inputs)) = (&args.inputs, &remote_workflow.inputs) {
-                    if let (Some(local_obj), Some(remote_obj)) = (local_inputs.as_object(), remote_inputs.as_object()) {
+                if let (Some(local_inputs), Some(remote_inputs)) =
+                    (&args.inputs, &remote_workflow.inputs)
+                {
+                    if let (Some(local_obj), Some(remote_obj)) =
+                        (local_inputs.as_object(), remote_inputs.as_object())
+                    {
                         let mut merged = remote_obj.clone();
                         merged.extend(local_obj.clone());
                         args.inputs = Some(serde_json::Value::Object(merged));

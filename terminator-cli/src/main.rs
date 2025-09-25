@@ -981,7 +981,13 @@ async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
             .unwrap_or_else(|_| PathBuf::from("C:\\temp\\terminator\\workflow-results"))
     } else {
         env::var("HOME")
-            .map(|p| PathBuf::from(p).join(".local").join("share").join("terminator").join("workflow-results"))
+            .map(|p| {
+                PathBuf::from(p)
+                    .join(".local")
+                    .join("share")
+                    .join("terminator")
+                    .join("workflow-results")
+            })
             .unwrap_or_else(|_| PathBuf::from("/tmp/terminator/workflow-results"))
     };
 
@@ -991,19 +997,20 @@ async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
     // Create latest.txt and timestamped file paths
     let latest_path = log_dir.join("latest.txt");
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-    let timestamped_path = log_dir.join(format!("workflow_{}.txt", timestamp));
+    // CLIPPY: Use implicit capture for format!
+    let timestamped_path = log_dir.join(format!("workflow_{timestamp}.txt"));
 
     // Open both files for writing
     let latest_file = Arc::new(Mutex::new(
         fs::File::create(&latest_path)
-            .with_context(|| format!("Failed to create {}", latest_path.display()))?
+            .with_context(|| format!("Failed to create {}", latest_path.display()))?,
     ));
     let timestamped_file = Arc::new(Mutex::new(
         fs::File::create(&timestamped_path)
-            .with_context(|| format!("Failed to create {}", timestamped_path.display()))?
+            .with_context(|| format!("Failed to create {}", timestamped_path.display()))?,
     ));
 
-    println!("{}", format!("📝 Logging output to:").cyan());
+    println!("{}", "📝 Logging output to:".cyan()); // CLIPPY FIXED
     println!("   {}", latest_path.display());
     println!("   {}", timestamped_path.display());
     println!();
@@ -1051,7 +1058,8 @@ async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
     cmd.stderr(Stdio::piped());
 
     // Spawn the child process
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .with_context(|| "Failed to spawn terminator subprocess")?;
 
     // Get handles to stdout and stderr
@@ -1073,12 +1081,19 @@ async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
 
         while reader.read_line(&mut line).await? > 0 {
             // Write to console (with colors)
-            print!("{}", line);
+            // CLIPPY: Use implicit capture for print!
+            print!("{line}"); // CLIPPY FIXED
 
             // Write to files (without colors)
             let clean_line = strip_ansi_codes(&line);
-            latest_file_stdout.lock().await.write_all(clean_line.as_bytes())?;
-            timestamped_file_stdout.lock().await.write_all(clean_line.as_bytes())?;
+            latest_file_stdout
+                .lock()
+                .await
+                .write_all(clean_line.as_bytes())?;
+            timestamped_file_stdout
+                .lock()
+                .await
+                .write_all(clean_line.as_bytes())?;
 
             line.clear();
         }
@@ -1093,12 +1108,19 @@ async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
 
         while reader.read_line(&mut line).await? > 0 {
             // Write to console (with colors)
-            eprint!("{}", line);
+            // CLIPPY: Use implicit capture for eprint!
+            eprint!("{line}"); // CLIPPY FIXED
 
             // Write to files (without colors)
             let clean_line = strip_ansi_codes(&line);
-            latest_file_stderr.lock().await.write_all(clean_line.as_bytes())?;
-            timestamped_file_stderr.lock().await.write_all(clean_line.as_bytes())?;
+            latest_file_stderr
+                .lock()
+                .await
+                .write_all(clean_line.as_bytes())?;
+            timestamped_file_stderr
+                .lock()
+                .await
+                .write_all(clean_line.as_bytes())?;
 
             line.clear();
         }
@@ -1116,7 +1138,7 @@ async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
     timestamped_file.lock().await.flush()?;
 
     println!();
-    println!("{}", format!("📄 Output saved to:").green());
+    println!("{}", "📄 Output saved to:".green()); // CLIPPY FIXED
     println!("   {}", latest_path.display());
 
     // Exit with same code as child

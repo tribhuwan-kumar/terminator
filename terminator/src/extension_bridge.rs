@@ -362,7 +362,10 @@ impl ExtensionBridge {
                         clients.retain(|c| !c.sender.is_closed());
                         let remaining = clients.len();
                         if remaining > 0 {
-                            tracing::info!("Client disconnected, {} client(s) remaining", remaining);
+                            tracing::info!(
+                                "Client disconnected, {} client(s) remaining",
+                                remaining
+                            );
                         } else {
                             tracing::info!("Last client disconnected, extension bridge idle");
                         }
