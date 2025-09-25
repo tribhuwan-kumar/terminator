@@ -1972,12 +1972,10 @@ asyncio.run(__runner__())
                 Some(json!({"stdout": stdout_str.to_string(), "stderr": stderr_str.to_string()})),
             ))
         }
-        Ok(Err(e)) => {
-            Err(McpError::internal_error(
-                "Failed to execute Python process",
-                Some(json!({"error": e.to_string()})),
-            ))
-        }
+        Ok(Err(e)) => Err(McpError::internal_error(
+            "Failed to execute Python process",
+            Some(json!({"error": e.to_string()})),
+        )),
         Err(_) => {
             // Timeout - process will be killed automatically due to kill_on_drop
             Err(McpError::internal_error(
@@ -2259,9 +2257,7 @@ pub async fn ensure_terminator_py_installed(python_exe: &str) -> Result<PathBuf,
                 }
                 Err(_) => {
                     warn!("[Python] uv install timed out for {}", pkg);
-                    last_err = Some(format!(
-                        "Installation timed out after 10 seconds for {pkg}"
-                    ));
+                    last_err = Some(format!("Installation timed out after 10 seconds for {pkg}"));
                 }
             }
         }
