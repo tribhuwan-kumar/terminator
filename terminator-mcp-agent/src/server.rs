@@ -1370,20 +1370,51 @@ impl DesktopWrapper {
                             }
                         }
 
-                        // Priority 3: Use as-is if still not found
+                        // Priority 3: Check current directory or use as-is
                         if resolved_path.is_none() {
                             let candidate = script_path.to_path_buf();
                             resolution_attempts.push(format!("as-is: {}", candidate.display()));
-                            tracing::info!(
-                                "[SCRIPTS_BASE_PATH] Using path as-is (not found in base paths): {}",
-                                script_file
-                            );
-                            resolved_path = Some(candidate);
+
+                            // Check if file exists before using it
+                            if candidate.exists() {
+                                tracing::info!(
+                                    "[SCRIPTS_BASE_PATH] Found script file at: {}",
+                                    candidate.display()
+                                );
+                                resolved_path = Some(candidate);
+                            } else {
+                                tracing::warn!(
+                                    "[SCRIPTS_BASE_PATH] Script file not found: {} (tried: {:?})",
+                                    script_file,
+                                    resolution_attempts
+                                );
+                                // Return error immediately for missing file
+                                return Err(McpError::invalid_params(
+                                    format!("Script file '{}' not found", script_file),
+                                    Some(json!({
+                                        "file": script_file,
+                                        "resolution_attempts": resolution_attempts,
+                                        "error": "File does not exist"
+                                    })),
+                                ));
+                            }
                         }
                     } else {
-                        // Absolute path - use as-is
-                        tracing::info!("[run_command] Using absolute path: {}", script_file);
-                        resolved_path = Some(script_path.to_path_buf());
+                        // Absolute path - check if exists
+                        let candidate = script_path.to_path_buf();
+                        if candidate.exists() {
+                            tracing::info!("[run_command] Using absolute path: {}", script_file);
+                            resolved_path = Some(candidate);
+                        } else {
+                            tracing::warn!("[run_command] Absolute script file not found: {}", script_file);
+                            return Err(McpError::invalid_params(
+                                format!("Script file '{}' not found", script_file),
+                                Some(json!({
+                                    "file": script_file,
+                                    "error": "File does not exist at absolute path"
+                                })),
+                            ));
+                        }
                     }
 
                     resolved_path.unwrap()
@@ -1850,20 +1881,51 @@ impl DesktopWrapper {
                         }
                     }
 
-                    // Priority 3: Use as-is if still not found
+                    // Priority 3: Check current directory or use as-is
                     if resolved_path.is_none() {
                         let candidate = script_path.to_path_buf();
                         resolution_attempts.push(format!("as-is: {}", candidate.display()));
-                        tracing::info!(
-                            "[run_command shell] Using path as-is (not found in base paths): {}",
-                            script_file
-                        );
-                        resolved_path = Some(candidate);
+
+                        // Check if file exists before using it
+                        if candidate.exists() {
+                            tracing::info!(
+                                "[run_command shell] Found script file at: {}",
+                                candidate.display()
+                            );
+                            resolved_path = Some(candidate);
+                        } else {
+                            tracing::warn!(
+                                "[run_command shell] Script file not found: {} (tried: {:?})",
+                                script_file,
+                                resolution_attempts
+                            );
+                            // Return error immediately for missing file
+                            return Err(McpError::invalid_params(
+                                format!("Script file '{}' not found", script_file),
+                                Some(json!({
+                                    "file": script_file,
+                                    "resolution_attempts": resolution_attempts,
+                                    "error": "File does not exist"
+                                })),
+                            ));
+                        }
                     }
                 } else {
-                    // Absolute path - use as-is
-                    tracing::info!("[run_command shell] Using absolute path: {}", script_file);
-                    resolved_path = Some(script_path.to_path_buf());
+                    // Absolute path - check if exists
+                    let candidate = script_path.to_path_buf();
+                    if candidate.exists() {
+                        tracing::info!("[run_command shell] Using absolute path: {}", script_file);
+                        resolved_path = Some(candidate);
+                    } else {
+                        tracing::warn!("[run_command shell] Absolute script file not found: {}", script_file);
+                        return Err(McpError::invalid_params(
+                            format!("Script file '{}' not found", script_file),
+                            Some(json!({
+                                "file": script_file,
+                                "error": "File does not exist at absolute path"
+                            })),
+                        ));
+                    }
                 }
 
                 resolved_path.unwrap()
@@ -3946,23 +4008,54 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                         }
                     }
 
-                    // Priority 3: Use as-is if still not found
+                    // Priority 3: Check current directory or use as-is
                     if resolved_path.is_none() {
                         let candidate = script_path.to_path_buf();
                         resolution_attempts.push(format!("as-is: {}", candidate.display()));
+
+                        // Check if file exists before using it
+                        if candidate.exists() {
+                            tracing::info!(
+                                "[execute_browser_script] Found script file at: {}",
+                                candidate.display()
+                            );
+                            resolved_path = Some(candidate);
+                        } else {
+                            tracing::warn!(
+                                "[execute_browser_script] Script file not found: {} (tried: {:?})",
+                                script_file,
+                                resolution_attempts
+                            );
+                            // Return error immediately for missing file
+                            return Err(McpError::invalid_params(
+                                format!("Script file '{}' not found", script_file),
+                                Some(json!({
+                                    "file": script_file,
+                                    "resolution_attempts": resolution_attempts,
+                                    "error": "File does not exist"
+                                })),
+                            ));
+                        }
+                    }
+                } else {
+                    // Absolute path - check if exists
+                    let candidate = script_path.to_path_buf();
+                    if candidate.exists() {
                         tracing::info!(
-                            "[execute_browser_script] Using path as-is (not found in base paths): {}",
+                            "[execute_browser_script] Using absolute path: {}",
                             script_file
                         );
                         resolved_path = Some(candidate);
+                    } else {
+                        tracing::warn!("[execute_browser_script] Absolute script file not found: {}", script_file);
+                        return Err(McpError::invalid_params(
+                            format!("Script file '{}' not found", script_file),
+                            Some(json!({
+                                "file": script_file,
+                                "error": "File does not exist at absolute path"
+                            })),
+                        ));
                     }
-                } else {
-                    // Absolute path - use as-is
-                    tracing::info!(
-                        "[execute_browser_script] Using absolute path: {}",
-                        script_file
-                    );
-                    resolved_path = Some(script_path.to_path_buf());
                 }
 
                 resolved_path.unwrap()
