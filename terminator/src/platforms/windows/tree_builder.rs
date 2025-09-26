@@ -11,6 +11,7 @@ pub(crate) struct TreeBuildingConfig {
     pub(crate) timeout_per_operation_ms: u64,
     pub(crate) yield_every_n_elements: usize,
     pub(crate) batch_size: usize,
+    pub(crate) max_depth: Option<usize>,
 }
 
 /// Context for tracking tree building progress and stats
@@ -67,6 +68,17 @@ pub(crate) fn build_ui_node_tree_configurable(
 
     // Get element attributes with configurable property loading
     let attributes = get_configurable_attributes(element, &context.property_mode);
+
+    // Check if we've reached max_depth - if so, return node without children
+    if let Some(max_depth) = context.config.max_depth {
+        if current_depth >= max_depth {
+            return Ok(crate::UINode {
+                id: element.id(),
+                attributes,
+                children: Vec::new(), // Stop traversal at max_depth
+            });
+        }
+    }
 
     let mut children_nodes = Vec::new();
 

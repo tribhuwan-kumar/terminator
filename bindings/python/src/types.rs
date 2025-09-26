@@ -469,6 +469,7 @@ impl From<TreeBuildConfig> for ::terminator_core::platforms::TreeBuildConfig {
             timeout_per_operation_ms: config.timeout_per_operation_ms,
             yield_every_n_elements: config.yield_every_n_elements,
             batch_size: config.batch_size,
+            max_depth: None,  // Not exposed in Python bindings yet
         }
     }
 }

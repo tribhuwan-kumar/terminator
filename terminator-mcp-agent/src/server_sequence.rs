@@ -1180,8 +1180,13 @@ impl DesktopWrapper {
                                                     if let Some(env_map) = env_value.as_object_mut()
                                                     {
                                                         for (k, v) in obj {
-                                                            if !RESERVED_KEYS.contains(&k.as_str())
+                                                            if RESERVED_KEYS.contains(&k.as_str())
                                                             {
+                                                                warn!(
+                                                                    "[execute_browser_script] Script returned reserved field '{}' which will be ignored. Reserved fields: {:?}",
+                                                                    k, RESERVED_KEYS
+                                                                );
+                                                            } else {
                                                                 env_map
                                                                     .insert(k.clone(), v.clone());
                                                                 info!("[execute_browser_script] Auto-merged field '{}' to env", k);
@@ -1240,6 +1245,83 @@ impl DesktopWrapper {
                                                                 info!("[run_command] Auto-merged field '{}' to env", k);
                                                             }
                                                         }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // NEW: Auto-merge non-reserved fields from root level
+                                    // This enables scripts to return data directly without wrapping in 'result'
+                                    for item in content_arr {
+                                        // Try two approaches:
+                                        // 1. If the result is a JSON string, parse it and merge fields
+                                        // 2. If the item itself is an object with fields, merge those
+
+                                        // Approach 1: Parse JSON string from result field
+                                        if let Some(result_str) = item.get("result").and_then(|r| r.as_str()) {
+                                            // Try to parse the result string as JSON
+                                            if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(result_str) {
+                                                if let Some(parsed_obj) = parsed_json.as_object() {
+                                                    if let Some(env_value) = execution_context_map.get_mut("env") {
+                                                        if let Some(env_map) = env_value.as_object_mut() {
+                                                            // Define structural keys that should not be merged
+                                                            const STRUCTURAL_KEYS: &[&str] =
+                                                                &["result", "action", "mode", "engine", "content"];
+
+                                                            for (k, v) in parsed_obj {
+                                                                // Check if it's a reserved key
+                                                                if RESERVED_KEYS.contains(&k.as_str()) {
+                                                                    warn!(
+                                                                        "[run_command] Script returned reserved field '{}' at root level which will be ignored. Reserved fields: {:?}",
+                                                                        k, RESERVED_KEYS
+                                                                    );
+                                                                    continue;
+                                                                }
+
+                                                                // Skip structural keys silently
+                                                                if STRUCTURAL_KEYS.contains(&k.as_str()) {
+                                                                    continue;
+                                                                }
+
+                                                                // Merge the field (overwrite to ensure updates)
+                                                                env_map.insert(k.clone(), v.clone());
+                                                                info!("[run_command] Auto-merged root field '{}' from parsed JSON to env", k);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // Approach 2: Direct object fields (for backward compatibility)
+                                        if let Some(obj) = item.as_object() {
+                                            if let Some(env_value) =
+                                                execution_context_map.get_mut("env")
+                                            {
+                                                if let Some(env_map) = env_value.as_object_mut() {
+                                                    // Define structural keys that should not be merged
+                                                    const STRUCTURAL_KEYS: &[&str] =
+                                                        &["result", "action", "mode", "engine", "content"];
+
+                                                    for (k, v) in obj {
+                                                        // Check if it's a reserved key
+                                                        if RESERVED_KEYS.contains(&k.as_str()) {
+                                                            warn!(
+                                                                "[run_command] Script returned reserved field '{}' at root level which will be ignored. Reserved fields: {:?}",
+                                                                k, RESERVED_KEYS
+                                                            );
+                                                            continue;
+                                                        }
+
+                                                        // Skip structural keys silently
+                                                        if STRUCTURAL_KEYS.contains(&k.as_str()) {
+                                                            continue;
+                                                        }
+
+                                                        // Merge the field (overwrite to ensure updates)
+                                                        env_map.insert(k.clone(), v.clone());
+                                                        debug!("[run_command] Auto-merged root field '{}' to env", k);
                                                     }
                                                 }
                                             }

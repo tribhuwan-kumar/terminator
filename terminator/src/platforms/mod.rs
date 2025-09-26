@@ -9,10 +9,12 @@ pub struct TreeBuildConfig {
     pub property_mode: PropertyLoadingMode,
     /// Optional timeout per operation in milliseconds
     pub timeout_per_operation_ms: Option<u64>,
-    /// Optional yield frequency for responsiveness  
+    /// Optional yield frequency for responsiveness
     pub yield_every_n_elements: Option<usize>,
     /// Optional batch size for processing elements
     pub batch_size: Option<usize>,
+    /// Optional maximum depth to traverse (None = unlimited)
+    pub max_depth: Option<usize>,
 }
 
 /// Defines how much element property data to load
@@ -33,6 +35,7 @@ impl Default for TreeBuildConfig {
             timeout_per_operation_ms: Some(50),
             yield_every_n_elements: Some(50),
             batch_size: Some(50),
+            max_depth: None,  // No limit by default
         }
     }
 }

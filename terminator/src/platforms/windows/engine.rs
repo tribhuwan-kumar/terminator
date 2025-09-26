@@ -3367,6 +3367,7 @@ impl AccessibilityEngine for WindowsEngine {
                 timeout_per_operation_ms: config.timeout_per_operation_ms.unwrap_or(50),
                 yield_every_n_elements: config.yield_every_n_elements.unwrap_or(50),
                 batch_size: config.batch_size.unwrap_or(50),
+                max_depth: config.max_depth,
             },
             property_mode: config.property_mode.clone(),
             elements_processed: 0,

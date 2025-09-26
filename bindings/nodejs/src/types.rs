@@ -292,6 +292,7 @@ impl From<TreeBuildConfig> for terminator::platforms::TreeBuildConfig {
             timeout_per_operation_ms: config.timeout_per_operation_ms.map(|x| x as u64),
             yield_every_n_elements: config.yield_every_n_elements.map(|x| x as usize),
             batch_size: config.batch_size.map(|x| x as usize),
+            max_depth: None,  // Not exposed in nodejs bindings yet
         }
     }
 }

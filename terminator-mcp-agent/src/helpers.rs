@@ -377,35 +377,116 @@ pub fn infer_expected_outcomes(tool_calls: &[ToolCall]) -> Vec<String> {
 }
 
 // Helper to optionally attach UI tree to response
-pub fn maybe_attach_tree(
+pub async fn maybe_attach_tree(
     desktop: &Desktop,
-    include_tree: bool,
-    include_detailed_attributes: Option<bool>,
+    include_tree_option: Option<&crate::utils::IncludeTreeOption>,
+    include_detailed_attributes: Option<bool>,  // Keep for backward compatibility
     pid_opt: Option<u32>,
     result_json: &mut Value,
+    found_element: Option<&terminator::UIElement>,
 ) {
-    if !include_tree {
+    use crate::utils::{IncludeTreeOption, TreeOptions};
+    use std::time::Duration;
+    use terminator::Selector;
+
+    // Parse the include_tree option
+    let (should_include, tree_options) = match include_tree_option {
+        None => (false, TreeOptions::default()),
+        Some(IncludeTreeOption::Simple(b)) => (*b, TreeOptions::default()),
+        Some(IncludeTreeOption::Extended(opts)) => {
+            // Extended form always means include tree with these options
+            (true, opts.clone())
+        }
+    };
+
+    if !should_include {
         return;
     }
-    if let Some(pid) = pid_opt {
-        // Create tree config based on include_detailed_attributes parameter
-        let include_detailed = include_detailed_attributes.unwrap_or(true);
-        let tree_config = if include_detailed {
-            terminator::platforms::TreeBuildConfig {
-                property_mode: terminator::platforms::PropertyLoadingMode::Complete,
-                timeout_per_operation_ms: Some(100), // Slightly higher timeout for detailed loading
-                yield_every_n_elements: Some(25),    // More frequent yielding for responsiveness
-                batch_size: Some(25),
+
+    // Only proceed if we have a PID
+    let pid = match pid_opt {
+        Some(p) => p,
+        None => return,
+    };
+
+    // Build tree config with max_depth and other options
+    // Use detailed_attributes from TreeOptions if available, otherwise fall back to include_detailed_attributes param
+    let detailed = tree_options.detailed_attributes
+        .or(include_detailed_attributes)
+        .unwrap_or(true);
+
+    let tree_config = terminator::platforms::TreeBuildConfig {
+        property_mode: if detailed {
+            terminator::platforms::PropertyLoadingMode::Complete
+        } else {
+            terminator::platforms::PropertyLoadingMode::Fast
+        },
+        timeout_per_operation_ms: Some(100),
+        yield_every_n_elements: Some(25),
+        batch_size: Some(25),
+        max_depth: tree_options.max_depth,
+    };
+
+    // Handle from_selector logic
+    if let Some(from_selector_value) = &tree_options.from_selector {
+        if from_selector_value == "true" {
+            // Backward compatibility: use the found_element if available
+            if let Some(element) = found_element {
+                let max_depth = tree_options.max_depth.unwrap_or(100);
+                let subtree = element.to_serializable_tree(max_depth);
+                if let Ok(tree_val) = serde_json::to_value(subtree) {
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert("ui_tree".to_string(), tree_val);
+                        obj.insert("tree_type".to_string(), json!("subtree"));
+                    }
+                }
+                return;
             }
         } else {
-            terminator::platforms::TreeBuildConfig::default() // Fast mode
-        };
+            // New behavior: treat from_selector as an actual selector string
+            let selector = Selector::from(from_selector_value.as_str());
+            let locator = desktop.locator(selector);
 
-        if let Ok(tree) = desktop.get_window_tree(pid, None, Some(tree_config)) {
-            if let Ok(tree_val) = serde_json::to_value(tree) {
-                if let Some(obj) = result_json.as_object_mut() {
-                    obj.insert("ui_tree".to_string(), tree_val);
+            match locator.first(Some(Duration::from_millis(1000))).await {
+                Ok(from_element) => {
+                    // Build tree from this different element
+                    let max_depth = tree_options.max_depth.unwrap_or(100);
+                    let subtree = from_element.to_serializable_tree(max_depth);
+                    if let Ok(tree_val) = serde_json::to_value(subtree) {
+                        if let Some(obj) = result_json.as_object_mut() {
+                            obj.insert("ui_tree".to_string(), tree_val);
+                            obj.insert("tree_type".to_string(), json!("subtree"));
+                            obj.insert("from_selector_used".to_string(), json!(from_selector_value));
+                        }
+                    }
+                    return;
                 }
+                Err(e) => {
+                    // Log warning and return with error info
+                    tracing::warn!(
+                        "from_selector '{}' not found: {}",
+                        from_selector_value, e
+                    );
+                    // Add error information to result
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert("tree_error".to_string(), json!(format!(
+                            "from_selector '{}' not found: {}",
+                            from_selector_value, e
+                        )));
+                        obj.insert("tree_type".to_string(), json!("none"));
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    // Default: get the full window tree
+    if let Some(tree) = desktop.get_window_tree(pid, None, Some(tree_config)).ok() {
+        if let Ok(tree_val) = serde_json::to_value(tree) {
+            if let Some(obj) = result_json.as_object_mut() {
+                obj.insert("ui_tree".to_string(), tree_val);
+                obj.insert("tree_type".to_string(), json!("full_window"));
             }
         }
     }
