@@ -35,7 +35,7 @@ impl Default for TreeBuildConfig {
             timeout_per_operation_ms: Some(50),
             yield_every_n_elements: Some(50),
             batch_size: Some(50),
-            max_depth: None,  // No limit by default
+            max_depth: None, // No limit by default
         }
     }
 }

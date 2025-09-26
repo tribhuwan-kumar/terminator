@@ -49,10 +49,10 @@ fn default_true() -> bool {
 
 // New flexible tree option structure for backward compatibility
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
-#[serde(untagged)]  // This allows both bool and object forms
+#[serde(untagged)] // This allows both bool and object forms
 pub enum IncludeTreeOption {
-    Simple(bool),           // Backward compatible: true/false
-    Extended(TreeOptions),  // New extended format
+    Simple(bool),          // Backward compatible: true/false
+    Extended(TreeOptions), // New extended format
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
@@ -142,9 +142,7 @@ pub struct GetWindowTreeArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
-    #[schemars(
-        description = "Control tree extraction with max_depth and other options"
-    )]
+    #[schemars(description = "Control tree extraction with max_depth and other options")]
     pub include_tree: Option<IncludeTreeOption>,
 }
 
@@ -154,9 +152,7 @@ pub struct GetFocusedWindowTreeArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
-    #[schemars(
-        description = "Control tree extraction with max_depth and other options"
-    )]
+    #[schemars(description = "Control tree extraction with max_depth and other options")]
     pub include_tree: Option<IncludeTreeOption>,
 }
 

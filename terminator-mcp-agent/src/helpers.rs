@@ -380,7 +380,7 @@ pub fn infer_expected_outcomes(tool_calls: &[ToolCall]) -> Vec<String> {
 pub async fn maybe_attach_tree(
     desktop: &Desktop,
     include_tree_option: Option<&crate::utils::IncludeTreeOption>,
-    include_detailed_attributes: Option<bool>,  // Keep for backward compatibility
+    include_detailed_attributes: Option<bool>, // Keep for backward compatibility
     pid_opt: Option<u32>,
     result_json: &mut Value,
     found_element: Option<&terminator::UIElement>,
@@ -411,7 +411,8 @@ pub async fn maybe_attach_tree(
 
     // Build tree config with max_depth and other options
     // Use detailed_attributes from TreeOptions if available, otherwise fall back to include_detailed_attributes param
-    let detailed = tree_options.detailed_attributes
+    let detailed = tree_options
+        .detailed_attributes
         .or(include_detailed_attributes)
         .unwrap_or(true);
 
@@ -456,23 +457,26 @@ pub async fn maybe_attach_tree(
                         if let Some(obj) = result_json.as_object_mut() {
                             obj.insert("ui_tree".to_string(), tree_val);
                             obj.insert("tree_type".to_string(), json!("subtree"));
-                            obj.insert("from_selector_used".to_string(), json!(from_selector_value));
+                            obj.insert(
+                                "from_selector_used".to_string(),
+                                json!(from_selector_value),
+                            );
                         }
                     }
                     return;
                 }
                 Err(e) => {
                     // Log warning and return with error info
-                    tracing::warn!(
-                        "from_selector '{}' not found: {}",
-                        from_selector_value, e
-                    );
+                    tracing::warn!("from_selector '{}' not found: {}", from_selector_value, e);
                     // Add error information to result
                     if let Some(obj) = result_json.as_object_mut() {
-                        obj.insert("tree_error".to_string(), json!(format!(
-                            "from_selector '{}' not found: {}",
-                            from_selector_value, e
-                        )));
+                        obj.insert(
+                            "tree_error".to_string(),
+                            json!(format!(
+                                "from_selector '{}' not found: {}",
+                                from_selector_value, e
+                            )),
+                        );
                         obj.insert("tree_type".to_string(), json!("none"));
                     }
                     return;
@@ -482,7 +486,7 @@ pub async fn maybe_attach_tree(
     }
 
     // Default: get the full window tree
-    if let Some(tree) = desktop.get_window_tree(pid, None, Some(tree_config)).ok() {
+    if let Ok(tree) = desktop.get_window_tree(pid, None, Some(tree_config)) {
         if let Ok(tree_val) = serde_json::to_value(tree) {
             if let Some(obj) = result_json.as_object_mut() {
                 obj.insert("ui_tree".to_string(), tree_val);

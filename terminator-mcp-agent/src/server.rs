@@ -174,7 +174,7 @@ impl DesktopWrapper {
         match option {
             None => Self::get_include_tree_default(None),
             Some(IncludeTreeOption::Simple(b)) => *b,
-            Some(IncludeTreeOption::Extended(_)) => true,  // Extended form always includes tree
+            Some(IncludeTreeOption::Extended(_)) => true, // Extended form always includes tree
         }
     }
 
@@ -339,7 +339,7 @@ impl DesktopWrapper {
                 timeout_per_operation_ms: Some(100), // Slightly higher timeout for detailed loading
                 yield_every_n_elements: Some(25),    // More frequent yielding for responsiveness
                 batch_size: Some(25),
-                max_depth: None,  // No limit by default
+                max_depth: None, // No limit by default
             }
         } else {
             terminator::platforms::TreeBuildConfig::default() // Fast mode
@@ -365,7 +365,9 @@ impl DesktopWrapper {
         });
 
         // Force include_tree to default to true for this tool
-        let include_tree_with_default = args.include_tree.or(Some(crate::utils::IncludeTreeOption::Simple(true)));
+        let include_tree_with_default = args
+            .include_tree
+            .or(Some(crate::utils::IncludeTreeOption::Simple(true)));
 
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
@@ -374,8 +376,9 @@ impl DesktopWrapper {
             args.include_detailed_attributes,
             Some(args.pid),
             &mut result_json,
-            None,  // No found element for window tree
-        ).await;
+            None, // No found element for window tree
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -423,7 +426,9 @@ impl DesktopWrapper {
         });
 
         // Force include_tree to default to true for this tool
-        let include_tree_with_default = args.include_tree.or(Some(crate::utils::IncludeTreeOption::Simple(true)));
+        let include_tree_with_default = args
+            .include_tree
+            .or(Some(crate::utils::IncludeTreeOption::Simple(true)));
 
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
@@ -432,8 +437,9 @@ impl DesktopWrapper {
             args.include_detailed_attributes,
             Some(pid),
             &mut result_json,
-            Some(&focused_element),  // Pass the focused element for from_selector="true" support
-        ).await;
+            Some(&focused_element), // Pass the focused element for from_selector="true" support
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -967,7 +973,8 @@ impl DesktopWrapper {
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1114,7 +1121,8 @@ impl DesktopWrapper {
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1196,7 +1204,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -1245,7 +1254,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -2154,7 +2164,8 @@ impl DesktopWrapper {
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -2234,7 +2245,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -2281,7 +2293,8 @@ impl DesktopWrapper {
                     element.process_id().ok(),
                     &mut result_json,
                     Some(&element),
-                ).await;
+                )
+                .await;
 
                 Ok(CallToolResult::success(vec![Content::json(result_json)?]))
             }
@@ -2413,7 +2426,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -2459,11 +2473,12 @@ impl DesktopWrapper {
                     maybe_attach_tree(
                         &self.desktop,
                         args.include_tree.as_ref(),
-                        None,  // include_detailed_attributes - use default from tree options
+                        None, // include_detailed_attributes - use default from tree options
                         element.process_id().ok(),
                         &mut result_json,
                         Some(&element),
-                    ).await;
+                    )
+                    .await;
 
                     return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
                 }
@@ -2587,11 +2602,12 @@ impl DesktopWrapper {
                         maybe_attach_tree(
                             &self.desktop,
                             args.include_tree.as_ref(),
-                            None,  // include_detailed_attributes - use default from tree options
+                            None, // include_detailed_attributes - use default from tree options
                             element.process_id().ok(),
                             &mut result_json,
                             Some(&element),
-                        ).await;
+                        )
+                        .await;
 
                         return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
                     } else {
@@ -2649,7 +2665,8 @@ impl DesktopWrapper {
             ui_element.process_id().ok(),
             &mut result_json,
             Some(&ui_element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -2815,7 +2832,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -2880,7 +2898,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -2931,7 +2950,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2994,7 +3014,8 @@ impl DesktopWrapper {
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3052,7 +3073,8 @@ impl DesktopWrapper {
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3110,7 +3132,8 @@ impl DesktopWrapper {
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3159,7 +3182,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3208,7 +3232,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3257,7 +3282,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3377,7 +3403,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -3756,7 +3783,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -3804,7 +3832,8 @@ impl DesktopWrapper {
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -3862,7 +3891,8 @@ impl DesktopWrapper {
             None, // No specific element for zoom operation
             &mut result_json,
             None, // No element available for zoom
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -3918,7 +3948,8 @@ impl DesktopWrapper {
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
-        ).await;
+        )
+        .await;
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -4374,7 +4405,8 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             None, // Don't filter by process since this could apply to any browser
             &mut result_json,
             None, // No specific element
-        ).await;
+        )
+        .await;
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
