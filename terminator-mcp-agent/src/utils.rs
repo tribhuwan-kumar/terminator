@@ -142,7 +142,7 @@ pub struct GetWindowTreeArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
-    #[schemars(description = "Control tree extraction with max_depth and other options")]
+    #[schemars(description = "Control tree extraction. Use boolean (true/false) for simple on/off, or object { max_depth: N, from_selector: \"role:Type\" } for advanced control")]
     pub include_tree: Option<IncludeTreeOption>,
 }
 
@@ -152,7 +152,7 @@ pub struct GetFocusedWindowTreeArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
-    #[schemars(description = "Control tree extraction with max_depth and other options")]
+    #[schemars(description = "Control tree extraction. Use boolean (true/false) for simple on/off, or object { max_depth: N, from_selector: \"role:Type\" } for advanced control")]
     pub include_tree: Option<IncludeTreeOption>,
 }
 

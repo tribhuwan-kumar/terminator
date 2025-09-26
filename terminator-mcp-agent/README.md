@@ -232,7 +232,10 @@ The Terminator MCP agent offers two primary workflows for automating desktop tas
 
 This is the most powerful and flexible method. You build a workflow step-by-step, using MCP tools to inspect the UI and refine your actions.
 
-1.  **Inspect the UI**: Start by using `get_focused_window_tree` to understand the structure of your target application. This gives you the roles, names, and IDs of all elements.
+1.  **Inspect the UI**: Start by using `get_focused_window_tree` to understand the structure of your target application. This gives you the roles, names, and IDs of all elements. For performance optimization:
+    - Use `include_tree: { max_depth: 2 }` to limit tree depth when you only need shallow inspection
+    - Use `include_tree: { from_selector: "role:Dialog" }` to get subtree from a specific element
+    - Use `include_tree: { from_selector: "true" }` to start from the currently focused element
 2.  **Build a Sequence**: Create an `execute_sequence` tool call with a series of actions (`click_element`, `type_into_element`, etc.). Use robust selectors (like `role|name` or stable `properties:AutomationId:value` selectors) whenever possible.
 3.  **Capture the Final State**: Ensure the last step in your sequence is an action that returns a UI tree. The `wait_for_element` tool with `include_tree: true` is perfect for this, as it captures the application's state after your automation has run.
 4.  **Extract Structured Data with `output_parser`**: Add the `output_parser` argument to your `execute_sequence` call. Write JavaScript code to parse the final UI tree and extract structured data. If successful, the tool result will contain a `parsed_output` field with your clean JSON data.
@@ -713,6 +716,10 @@ The virtual display manager creates a memory-based display context that satisfie
 - Use specific selectors instead of broad element searches
 - Implement delays between rapid operations
 - Consider using `include_tree: false` for intermediate steps
+- For tree extraction tools, optimize with:
+  - `include_tree: { max_depth: 2 }` - Limit depth for large trees
+  - `include_tree: { from_selector: "role:List" }` - Get subtree from specific element
+  - `include_tree: { from_selector: "true" }` - Start from focused element
 
 **JavaScript Performance**:
 
@@ -895,6 +902,30 @@ steps:
   - tool_name: run_command
     arguments:
       engine: javascript
+
+# Tree Parameter Examples - Performance Optimization
+- tool_name: get_window_tree
+  arguments:
+    pid: 1234
+    include_tree:
+      max_depth: 2  # Only get 2 levels deep
+
+- tool_name: get_focused_window_tree
+  arguments:
+    include_tree:
+      from_selector: "role:Dialog"  # Start tree from first dialog
+      max_depth: 3  # Limit depth from that point
+
+- tool_name: get_focused_window_tree
+  arguments:
+    include_tree:
+      from_selector: "true"  # Start from focused element
+
+# Backward compatible - still works
+- tool_name: get_window_tree
+  arguments:
+    pid: 1234
+    include_tree: true  # Simple boolean form
       run: |
         // Direct variable access - auto-injected!
         const apps = check_apps_result || [];
