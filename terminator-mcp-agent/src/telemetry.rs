@@ -146,6 +146,15 @@ mod with_telemetry {
             return Ok(());
         }
 
+        // Check if running in CI environment
+        let is_ci = std::env::var("CI").unwrap_or_default() == "true"
+            || std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true";
+
+        if is_ci {
+            info!("Running in CI environment, disabling OpenTelemetry to avoid blocking");
+            return Ok(());
+        }
+
         // Set up propagator
         global::set_text_map_propagator(TraceContextPropagator::new());
 
