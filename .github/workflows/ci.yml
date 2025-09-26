@@ -14,6 +14,10 @@ env:
   CARGO_NET_GIT_FETCH_WITH_CLI: true
   # Skip npm install in tests to avoid timeout
   TERMINATOR_SKIP_NPM_INSTALL: 1
+  # Skip telemetry collector check to avoid CI timeouts
+  OTEL_SKIP_COLLECTOR_CHECK: true
+  # Reduce retry time for telemetry in CI
+  OTEL_RETRY_DURATION_MINS: 0
 
 jobs:
   test:
