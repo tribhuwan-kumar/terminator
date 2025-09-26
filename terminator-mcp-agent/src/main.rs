@@ -149,9 +149,6 @@ async fn main() -> Result<()> {
     // Kill any previous MCP instances before starting
     kill_previous_mcp_instances();
 
-    // Initialize OpenTelemetry if telemetry feature is enabled
-    terminator_mcp_agent::telemetry::init_telemetry()?;
-
     // Install panic hook to prevent stdout corruption (used by other MCP servers)
     std::panic::set_hook(Box::new(|panic_info| {
         // CRITICAL: Never write to stdout during panic - it corrupts the JSON-RPC stream
@@ -175,6 +172,9 @@ async fn main() -> Result<()> {
     }
 
     let log_capture = init_logging()?;
+
+    // Initialize OpenTelemetry if telemetry feature is enabled (after logging is set up)
+    terminator_mcp_agent::telemetry::init_telemetry()?;
 
     // Add binary identification logging
     tracing::info!("========================================");
