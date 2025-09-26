@@ -184,7 +184,10 @@ mod with_telemetry {
                 let collector_available = check_collector_availability(&otlp_endpoint);
 
                 if collector_available {
-                    info!("OpenTelemetry collector is available at {} (attempt {})", otlp_endpoint, attempt);
+                    info!(
+                        "OpenTelemetry collector is available at {} (attempt {})",
+                        otlp_endpoint, attempt
+                    );
                     break;
                 }
 

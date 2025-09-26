@@ -191,6 +191,7 @@ mod performance_benchmarks {
                 timeout_per_operation_ms: Some(50),
                 yield_every_n_elements: Some(50),
                 batch_size: Some(50),
+                max_depth: None,
             };
 
             match engine.get_window_tree(pid, Some(&window_title), config) {
