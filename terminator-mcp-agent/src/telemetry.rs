@@ -26,7 +26,7 @@ mod with_telemetry {
         SCHEMA_URL,
     };
     use std::time::Duration;
-    use tracing::{debug, info};
+    use tracing::info;
 
     pub struct WorkflowSpan {
         span: BoxedSpan,
@@ -153,20 +153,62 @@ mod with_telemetry {
         let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
             .unwrap_or_else(|_| "http://localhost:4318".to_string());
 
-        // Check if collector is available (optional, for early detection)
-        // Can be disabled with OTEL_SKIP_COLLECTOR_CHECK=true for environments where
-        // the collector starts after the application
+        // Get retry configuration from environment
+        let retry_duration_mins = std::env::var("OTEL_RETRY_DURATION_MINS")
+            .unwrap_or_else(|_| "15".to_string())
+            .parse::<u64>()
+            .unwrap_or(15);
+        let retry_interval_secs = std::env::var("OTEL_RETRY_INTERVAL_SECS")
+            .unwrap_or_else(|_| "30".to_string())
+            .parse::<u64>()
+            .unwrap_or(30);
+
+        info!(
+            "OpenTelemetry configuration: endpoint={}, retry_duration={}m, retry_interval={}s",
+            otlp_endpoint, retry_duration_mins, retry_interval_secs
+        );
+
+        // Check if collector is available with retries
         let skip_check = std::env::var("OTEL_SKIP_COLLECTOR_CHECK")
             .unwrap_or_default()
             .eq_ignore_ascii_case("true");
 
         if !skip_check {
-            let collector_available = check_collector_availability(&otlp_endpoint);
-            if !collector_available {
-                debug!("OpenTelemetry collector not available at {}. Telemetry will be disabled. Set OTEL_SKIP_COLLECTOR_CHECK=true to skip this check.", otlp_endpoint);
-                // Silently disable telemetry if collector is not available
-                return Ok(());
+            let start_time = std::time::Instant::now();
+            let max_duration = Duration::from_secs(retry_duration_mins * 60);
+            let retry_interval = Duration::from_secs(retry_interval_secs);
+
+            let mut attempt = 0;
+            loop {
+                attempt += 1;
+                let collector_available = check_collector_availability(&otlp_endpoint);
+
+                if collector_available {
+                    info!("OpenTelemetry collector is available at {} (attempt {})", otlp_endpoint, attempt);
+                    break;
+                }
+
+                let elapsed = start_time.elapsed();
+                if elapsed >= max_duration {
+                    info!(
+                        "OpenTelemetry collector not available at {} after {} minutes. Telemetry will be disabled.",
+                        otlp_endpoint,
+                        retry_duration_mins
+                    );
+                    return Ok(());
+                }
+
+                info!(
+                    "OpenTelemetry collector not available at {} (attempt {}). Retrying in {} seconds... ({:.1} minutes elapsed)",
+                    otlp_endpoint,
+                    attempt,
+                    retry_interval_secs,
+                    elapsed.as_secs_f64() / 60.0
+                );
+                std::thread::sleep(retry_interval);
             }
+        } else {
+            info!("Skipping collector availability check (OTEL_SKIP_COLLECTOR_CHECK=true)");
         }
 
         info!(
@@ -177,7 +219,7 @@ mod with_telemetry {
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_http()
             .with_endpoint(format!("{}/v1/traces", &otlp_endpoint))
-            .with_timeout(Duration::from_secs(3))
+            .with_timeout(Duration::from_secs(10))
             .build()?;
 
         // Create tracer provider with OTLP exporter
@@ -237,7 +279,6 @@ mod without_telemetry {
     }
 
     pub fn init_telemetry() -> anyhow::Result<()> {
-        debug!("Telemetry disabled: init_telemetry (no-op)");
         Ok(())
     }
 
