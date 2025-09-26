@@ -54,6 +54,9 @@ mod telemetry_tests {
     #[tokio::test]
     async fn test_telemetry_initialization() {
         // Disable SDK for testing to avoid network calls
+        // Skip collector check to avoid network calls and timeouts in CI
+        std::env::set_var("OTEL_SKIP_COLLECTOR_CHECK", "true");
+        std::env::set_var("OTEL_RETRY_DURATION_MINS", "0");
         std::env::set_var("OTEL_SDK_DISABLED", "true");
 
         // Test that init_telemetry doesn't panic
@@ -112,6 +115,9 @@ mod telemetry_tests {
 
         // Set environment to disable actual network calls during testing
         env::set_var("OTEL_SDK_DISABLED", "true");
+        // Skip collector check to avoid network calls and timeouts in CI
+        env::set_var("OTEL_SKIP_COLLECTOR_CHECK", "true");
+        env::set_var("OTEL_RETRY_DURATION_MINS", "0");
 
         let result = terminator_mcp_agent::telemetry::init_telemetry();
         assert!(result.is_ok());
