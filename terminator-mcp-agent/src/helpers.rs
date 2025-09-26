@@ -379,26 +379,19 @@ pub fn infer_expected_outcomes(tool_calls: &[ToolCall]) -> Vec<String> {
 // Helper to optionally attach UI tree to response
 pub async fn maybe_attach_tree(
     desktop: &Desktop,
-    include_tree_option: Option<&crate::utils::IncludeTreeOption>,
-    include_detailed_attributes: Option<bool>, // Keep for backward compatibility
+    include_tree: Option<bool>,
+    tree_max_depth: Option<usize>,
+    tree_from_selector: Option<&str>,
+    include_detailed_attributes: Option<bool>,
     pid_opt: Option<u32>,
     result_json: &mut Value,
     found_element: Option<&terminator::UIElement>,
 ) {
-    use crate::utils::{IncludeTreeOption, TreeOptions};
     use std::time::Duration;
     use terminator::Selector;
 
-    // Parse the include_tree option
-    let (should_include, tree_options) = match include_tree_option {
-        None => (false, TreeOptions::default()),
-        Some(IncludeTreeOption::Simple(b)) => (*b, TreeOptions::default()),
-        Some(IncludeTreeOption::Extended(opts)) => {
-            // Extended form always means include tree with these options
-            (true, opts.clone())
-        }
-    };
-
+    // Check if tree should be included
+    let should_include = include_tree.unwrap_or(false);
     if !should_include {
         return;
     }
@@ -410,11 +403,7 @@ pub async fn maybe_attach_tree(
     };
 
     // Build tree config with max_depth and other options
-    // Use detailed_attributes from TreeOptions if available, otherwise fall back to include_detailed_attributes param
-    let detailed = tree_options
-        .detailed_attributes
-        .or(include_detailed_attributes)
-        .unwrap_or(true);
+    let detailed = include_detailed_attributes.unwrap_or(true);
 
     let tree_config = terminator::platforms::TreeBuildConfig {
         property_mode: if detailed {
@@ -425,15 +414,15 @@ pub async fn maybe_attach_tree(
         timeout_per_operation_ms: Some(100),
         yield_every_n_elements: Some(25),
         batch_size: Some(25),
-        max_depth: tree_options.max_depth,
+        max_depth: tree_max_depth,
     };
 
     // Handle from_selector logic
-    if let Some(from_selector_value) = &tree_options.from_selector {
+    if let Some(from_selector_value) = tree_from_selector {
         if from_selector_value == "true" {
             // Backward compatibility: use the found_element if available
             if let Some(element) = found_element {
-                let max_depth = tree_options.max_depth.unwrap_or(100);
+                let max_depth = tree_max_depth.unwrap_or(100);
                 let subtree = element.to_serializable_tree(max_depth);
                 if let Ok(tree_val) = serde_json::to_value(subtree) {
                     if let Some(obj) = result_json.as_object_mut() {
@@ -445,13 +434,13 @@ pub async fn maybe_attach_tree(
             }
         } else {
             // New behavior: treat from_selector as an actual selector string
-            let selector = Selector::from(from_selector_value.as_str());
+            let selector = Selector::from(from_selector_value);
             let locator = desktop.locator(selector);
 
             match locator.first(Some(Duration::from_millis(1000))).await {
                 Ok(from_element) => {
                     // Build tree from this different element
-                    let max_depth = tree_options.max_depth.unwrap_or(100);
+                    let max_depth = tree_max_depth.unwrap_or(100);
                     let subtree = from_element.to_serializable_tree(max_depth);
                     if let Ok(tree_val) = serde_json::to_value(subtree) {
                         if let Some(obj) = result_json.as_object_mut() {

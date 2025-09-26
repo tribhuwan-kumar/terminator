@@ -169,14 +169,9 @@ impl DesktopWrapper {
         }
     }
 
-    /// Helper to determine if tree should be included from IncludeTreeOption
-    fn should_include_tree(option: &Option<crate::utils::IncludeTreeOption>) -> bool {
-        use crate::utils::IncludeTreeOption;
-        match option {
-            None => Self::get_include_tree_default(None),
-            Some(IncludeTreeOption::Simple(b)) => *b,
-            Some(IncludeTreeOption::Extended(_)) => true, // Extended form always includes tree
-        }
+    /// Helper to determine if tree should be included
+    fn should_include_tree(option: &Option<bool>) -> bool {
+        option.unwrap_or_else(|| Self::get_include_tree_default(None))
     }
 
     // Minimal, conservative parser to extract `{ set_env: {...} }` from simple scripts
@@ -377,14 +372,12 @@ impl DesktopWrapper {
         });
 
         // Force include_tree to default to true for this tool
-        let include_tree_with_default = args
-            .include_tree
-            .or(Some(crate::utils::IncludeTreeOption::Simple(true)));
-
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
             &self.desktop,
-            include_tree_with_default.as_ref(),
+            args.include_tree.or(Some(false)),  // Default to false for get_window_tree
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(args.pid),
             &mut result_json,
@@ -443,15 +436,12 @@ impl DesktopWrapper {
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use include_tree: { max_depth: 2 } to limit depth or { from_selector: \"role:Dialog\" } to focus on specific UI regions."
         });
 
-        // Force include_tree to default to true for this tool
-        let include_tree_with_default = args
-            .include_tree
-            .or(Some(crate::utils::IncludeTreeOption::Simple(true)));
-
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
             &self.desktop,
-            include_tree_with_default.as_ref(),
+            args.include_tree.or(Some(true)),  // Default to true for get_focused_window_tree
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(pid),
             &mut result_json,
@@ -1048,7 +1038,9 @@ impl DesktopWrapper {
         // Always attach tree for better context, or if an override is provided
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1235,7 +1227,9 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1346,7 +1340,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -1415,7 +1411,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -2351,7 +2349,9 @@ impl DesktopWrapper {
         // Always attach UI tree for activated elements to help with next actions
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -2452,7 +2452,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -2525,7 +2527,9 @@ impl DesktopWrapper {
                 });
                 maybe_attach_tree(
                     &self.desktop,
-                    args.include_tree.as_ref(),
+                    args.include_tree,
+                    args.tree_max_depth,
+                    args.tree_from_selector.as_deref(),
                     args.include_detailed_attributes,
                     element.process_id().ok(),
                     &mut result_json,
@@ -2676,7 +2680,9 @@ impl DesktopWrapper {
         }
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -2738,8 +2744,10 @@ impl DesktopWrapper {
 
                     maybe_attach_tree(
                         &self.desktop,
-                        args.include_tree.as_ref(),
-                        None, // include_detailed_attributes - use default from tree options
+                        args.include_tree,
+                        args.tree_max_depth,
+                        args.tree_from_selector.as_deref(),
+                        None, // include_detailed_attributes - use default
                         element.process_id().ok(),
                         &mut result_json,
                         Some(&element),
@@ -2870,8 +2878,10 @@ impl DesktopWrapper {
 
                         maybe_attach_tree(
                             &self.desktop,
-                            args.include_tree.as_ref(),
-                            None, // include_detailed_attributes - use default from tree options
+                            args.include_tree,
+                            args.tree_max_depth,
+                            args.tree_from_selector.as_deref(),
+                            None, // include_detailed_attributes - use default
                             element.process_id().ok(),
                             &mut result_json,
                             Some(&element),
@@ -2937,7 +2947,9 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             ui_element.process_id().ok(),
             &mut result_json,
@@ -3138,7 +3150,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3215,7 +3229,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3278,7 +3294,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3355,7 +3373,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -3427,7 +3447,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -3499,7 +3521,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -3561,7 +3585,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3623,7 +3649,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3685,7 +3713,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -3829,7 +3859,9 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -4258,7 +4290,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -4318,7 +4352,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             element.process_id().ok(),
             &mut result_json,
@@ -4406,7 +4442,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             None, // No specific element for zoom operation
             &mut result_json,
@@ -4475,7 +4513,9 @@ impl DesktopWrapper {
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -4946,7 +4986,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         // Always attach tree for better context
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree.as_ref(),
+            args.include_tree,
+            args.tree_max_depth,
+            args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
             None, // Don't filter by process since this could apply to any browser
             &mut result_json,
