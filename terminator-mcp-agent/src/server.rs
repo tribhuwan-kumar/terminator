@@ -360,6 +360,7 @@ impl DesktopWrapper {
         if let Some(title) = &args.title {
             span.set_attribute("window_title", title.clone());
         }
+        span.set_attribute("include_detailed_attributes", args.include_detailed_attributes.unwrap_or(true).to_string());
 
         // Build the base result JSON first
         let mut result_json = json!({
@@ -1025,7 +1026,14 @@ impl DesktopWrapper {
 
         tracing::info!("[click_element] Called with selector: '{}'", args.selector);
 
+        // Record retry configuration
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }
+
         if let Some(ref pos) = args.click_position {
+            span.set_attribute("click.position_x", pos.x_percentage.to_string());
+            span.set_attribute("click.position_y", pos.y_percentage.to_string());
             tracing::info!(
                 "[click_element] Click position: {}%, {}%",
                 pos.x_percentage,
@@ -1089,29 +1097,41 @@ impl DesktopWrapper {
             }
         };
 
-        let ((click_result, element), successful_selector) =
-            match crate::utils::find_and_execute_with_retry_with_fallback(
-                &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
-                action,
-            )
-            .await
-            {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
-                Err(e) => {
-                    // Note: Cannot use span in error closure as it would be moved
-                    Err(build_element_not_found_error(
-                        &args.selector,
-                        args.alternative_selectors.as_deref(),
-                        args.fallback_selectors.as_deref(),
-                        e,
-                    ))
-                }
-            }?;
+        // Track search and action time
+        let operation_start = std::time::Instant::now();
+
+        let result = crate::utils::find_and_execute_with_retry_with_fallback(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
+            args.timeout_ms,
+            args.retries,
+            action,
+        )
+        .await;
+
+        let operation_time_ms = operation_start.elapsed().as_millis() as i64;
+        span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
+
+        let ((click_result, element), successful_selector) = match result {
+            Ok(((result, element), selector)) => {
+                span.set_attribute("selector.used", selector.clone());
+                span.set_attribute("element.found", "true".to_string());
+                ((result, element), selector)
+            }
+            Err(e) => {
+                span.set_attribute("element.found", "false".to_string());
+                span.set_status(false, Some(&e.to_string()));
+                span.end();
+                return Err(build_element_not_found_error(
+                    &args.selector,
+                    args.alternative_selectors.as_deref(),
+                    args.fallback_selectors.as_deref(),
+                    e,
+                ).into());
+            }
+        };
 
         // Optionally include troubleshooting recommendations when evidence suggests the click may have missed the intended target
         let details_str = &click_result.details;
@@ -1119,6 +1139,16 @@ impl DesktopWrapper {
         // regardless of the click path. This makes guidance available for subtle misses too.
         let looks_uncertain = details_str.contains("window_title_changed=false")
             && details_str.contains("bounds_changed=false");
+
+        // Track element metadata in telemetry
+        span.set_attribute("element.role", element.role());
+        if let Some(name) = element.name() {
+            span.set_attribute("element.name", name);
+        }
+        let window_title = element.window_title();
+        if !window_title.is_empty() {
+            span.set_attribute("element.window_title", window_title.clone());
+        }
 
         let mut result_json = json!({
             "action": "click",
