@@ -360,7 +360,10 @@ impl DesktopWrapper {
         if let Some(title) = &args.title {
             span.set_attribute("window_title", title.clone());
         }
-        span.set_attribute("include_detailed_attributes", args.include_detailed_attributes.unwrap_or(true).to_string());
+        span.set_attribute(
+            "include_detailed_attributes",
+            args.include_detailed_attributes.unwrap_or(true).to_string(),
+        );
 
         // Build the base result JSON first
         let mut result_json = json!({
@@ -872,8 +875,14 @@ impl DesktopWrapper {
         // Add comprehensive telemetry attributes
         span.set_attribute("selector", args.selector.clone());
         span.set_attribute("text.length", args.text_to_type.len().to_string());
-        span.set_attribute("clear_before_typing", args.clear_before_typing.unwrap_or(true).to_string());
-        span.set_attribute("verify_action", args.verify_action.unwrap_or(true).to_string());
+        span.set_attribute(
+            "clear_before_typing",
+            args.clear_before_typing.unwrap_or(true).to_string(),
+        );
+        span.set_attribute(
+            "verify_action",
+            args.verify_action.unwrap_or(true).to_string(),
+        );
         if let Some(timeout) = args.timeout_ms {
             span.set_attribute("timeout_ms", timeout.to_string());
         }
@@ -1022,7 +1031,10 @@ impl DesktopWrapper {
                     obj.insert("verification".to_string(), verification);
                 }
             } else {
-                span.set_status(false, Some("Failed to find element for verification after typing."));
+                span.set_status(
+                    false,
+                    Some("Failed to find element for verification after typing."),
+                );
                 span.end();
                 return Err(McpError::internal_error(
                     "Failed to find element for verification after typing.",
@@ -1165,7 +1177,8 @@ impl DesktopWrapper {
                     args.alternative_selectors.as_deref(),
                     args.fallback_selectors.as_deref(),
                     e,
-                ).into());
+                )
+                .into());
             }
         };
 
@@ -2241,7 +2254,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((_result, element), successful_selector) =
+        }
+        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -2362,7 +2376,8 @@ impl DesktopWrapper {
         let mut span = StepSpan::new("delay", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("delay_ms", args.delay_ms.to_string());        let start_time = chrono::Utc::now();
+        span.set_attribute("delay_ms", args.delay_ms.to_string());
+        let start_time = chrono::Utc::now();
 
         // Use tokio's sleep for async delay
         tokio::time::sleep(std::time::Duration::from_millis(args.delay_ms)).await;
@@ -2397,7 +2412,8 @@ impl DesktopWrapper {
         // Mouse drag uses x,y coordinates, not selectors
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let action = |element: UIElement| async move {
+        }
+        let action = |element: UIElement| async move {
             element.mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y)
         };
 
@@ -2570,7 +2586,8 @@ impl DesktopWrapper {
         }
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let duration = args.duration_ms.map(std::time::Duration::from_millis);
+        }
+        let duration = args.duration_ms.map(std::time::Duration::from_millis);
         let color = args.color;
 
         let text = args.text.as_deref();
@@ -2687,7 +2704,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        info!(
+        }
+        info!(
             "[wait_for_element] Called with selector: '{}', condition: '{}', timeout_ms: {:?}, include_tree: {:?}",
             args.selector, args.condition, args.timeout_ms, args.include_tree
         );
@@ -2897,7 +2915,8 @@ impl DesktopWrapper {
         let mut span = StepSpan::new("navigate_browser", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("url", args.url.clone());        let browser = args.browser.clone().map(Browser::Custom);
+        span.set_attribute("url", args.url.clone());
+        let browser = args.browser.clone().map(Browser::Custom);
         let ui_element = self.desktop.open_url(&args.url, browser).map_err(|e| {
             McpError::internal_error(
                 "Failed to open URL",
@@ -2999,7 +3018,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((_result, element), successful_selector) =
+        }
+        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3049,7 +3069,8 @@ impl DesktopWrapper {
         span.set_attribute("amount", args.amount.to_string());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        tracing::info!(
+        }
+        tracing::info!(
             "[scroll_element] Called with selector: '{}', direction: '{}', amount: {}",
             args.selector,
             args.direction,
@@ -3143,7 +3164,8 @@ impl DesktopWrapper {
         span.set_attribute("option_name", args.option_name.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let option_name = args.option_name.clone();
+        }
+        let option_name = args.option_name.clone();
         let action = move |element: UIElement| {
             let option_name = option_name.clone();
             async move {
@@ -3221,7 +3243,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((options, element), successful_selector) =
+        }
+        let ((options, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3284,7 +3307,8 @@ impl DesktopWrapper {
         span.set_attribute("state", args.state.to_string());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let state = args.state;
+        }
+        let state = args.state;
         let action = move |element: UIElement| async move {
             // Ensure element is visible before interaction
             if let Err(e) = Self::ensure_element_in_view(&element) {
@@ -3360,7 +3384,8 @@ impl DesktopWrapper {
         span.set_attribute("value", args.value.to_string());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let value = args.value;
+        }
+        let value = args.value;
         let action = move |element: UIElement| async move {
             // Ensure element is visible before interaction
             if let Err(e) = Self::ensure_element_in_view(&element) {
@@ -3431,7 +3456,8 @@ impl DesktopWrapper {
         span.set_attribute("state", args.state.to_string());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let state = args.state;
+        }
+        let state = args.state;
         let action =
             move |element: UIElement| async move { element.set_selected_with_state(state) };
 
@@ -3501,7 +3527,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((is_toggled, element), successful_selector) =
+        }
+        let ((is_toggled, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3562,7 +3589,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((value, element), successful_selector) =
+        }
+        let ((value, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3623,7 +3651,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((is_selected, element), successful_selector) =
+        }
+        let ((is_selected, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3682,7 +3711,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((screenshot_result, element), successful_selector) =
+        }
+        let ((screenshot_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3753,7 +3783,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((result, element), successful_selector) =
+        }
+        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -4153,7 +4184,10 @@ impl DesktopWrapper {
 
         let result = self.export_workflow_sequence_impl(args).await;
 
-        span.set_status(result.is_ok(), result.as_ref().err().map(|e| e.to_string()).as_deref());
+        span.set_status(
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+        );
         span.end();
 
         result
@@ -4169,7 +4203,10 @@ impl DesktopWrapper {
 
         let result = self.import_workflow_sequence_impl(args).await;
 
-        span.set_status(result.is_ok(), result.as_ref().err().map(|e| e.to_string()).as_deref());
+        span.set_status(
+            result.is_ok(),
+            result.as_ref().err().map(|e| e.to_string()).as_deref(),
+        );
         span.end();
 
         result
@@ -4187,7 +4224,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((_result, element), successful_selector) =
+        }
+        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -4246,7 +4284,8 @@ impl DesktopWrapper {
         span.set_attribute("selector", args.selector.clone());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let ((_result, element), successful_selector) =
+        }
+        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -4396,7 +4435,8 @@ impl DesktopWrapper {
         span.set_attribute("value", args.value.to_string());
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
-        }        let value_to_set = args.value.clone();
+        }
+        let value_to_set = args.value.clone();
         let action = move |element: UIElement| {
             let value_to_set = value_to_set.clone();
             async move { element.set_value(&value_to_set) }
@@ -4498,7 +4538,8 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         }
         if let Some(ref script_file) = args.script_file {
             span.set_attribute("script_file", script_file.clone());
-        }        use serde_json::json;
+        }
+        use serde_json::json;
         let start_instant = std::time::Instant::now();
 
         // Resolve the script content

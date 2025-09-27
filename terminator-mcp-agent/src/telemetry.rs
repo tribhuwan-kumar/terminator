@@ -85,7 +85,10 @@ mod with_telemetry {
                 .start(&tracer);
 
             span.set_attribute(KeyValue::new("tool.name", tool_name.to_string()));
-            span.set_attribute(KeyValue::new("tool.start_time", chrono::Utc::now().to_rfc3339()));
+            span.set_attribute(KeyValue::new(
+                "tool.start_time",
+                chrono::Utc::now().to_rfc3339(),
+            ));
             if let Some(id) = step_id {
                 span.set_attribute(KeyValue::new("step.id", id.to_string()));
             }
@@ -111,34 +114,46 @@ mod with_telemetry {
         }
 
         pub fn record_retry(&mut self, attempt: u32, reason: &str) {
-            self.span.set_attribute(KeyValue::new("retry.attempt", attempt as i64));
-            self.span.set_attribute(KeyValue::new("retry.reason", reason.to_string()));
-            self.add_event("retry", vec![
-                ("attempt", attempt.to_string()),
-                ("reason", reason.to_string()),
-            ]);
+            self.span
+                .set_attribute(KeyValue::new("retry.attempt", attempt as i64));
+            self.span
+                .set_attribute(KeyValue::new("retry.reason", reason.to_string()));
+            self.add_event(
+                "retry",
+                vec![
+                    ("attempt", attempt.to_string()),
+                    ("reason", reason.to_string()),
+                ],
+            );
         }
 
         pub fn set_status(&mut self, success: bool, error: Option<&str>) {
             let duration_ms = self.start_time.elapsed().as_millis() as i64;
 
             // Add duration and status attributes
-            self.span.set_attribute(KeyValue::new("tool.duration_ms", duration_ms));
-            self.span.set_attribute(KeyValue::new("tool.success", success));
+            self.span
+                .set_attribute(KeyValue::new("tool.duration_ms", duration_ms));
+            self.span
+                .set_attribute(KeyValue::new("tool.success", success));
 
             let status = if success {
                 Status::Ok
             } else {
                 let message = error.unwrap_or("Failed");
-                self.span.set_attribute(KeyValue::new("error.message", message.to_string()));
-                self.span.set_attribute(KeyValue::new("error.type", classify_error(message)));
+                self.span
+                    .set_attribute(KeyValue::new("error.message", message.to_string()));
+                self.span
+                    .set_attribute(KeyValue::new("error.type", classify_error(message)));
                 Status::error(message.to_string())
             };
             self.span.set_status(status);
         }
 
         pub fn end(mut self) {
-            self.span.set_attribute(KeyValue::new("tool.end_time", chrono::Utc::now().to_rfc3339()));
+            self.span.set_attribute(KeyValue::new(
+                "tool.end_time",
+                chrono::Utc::now().to_rfc3339(),
+            ));
             self.span.end();
         }
     }
