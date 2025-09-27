@@ -377,6 +377,7 @@ pub fn infer_expected_outcomes(tool_calls: &[ToolCall]) -> Vec<String> {
 }
 
 // Helper to optionally attach UI tree to response
+#[allow(clippy::too_many_arguments)]
 pub async fn maybe_attach_tree(
     desktop: &Desktop,
     include_tree: Option<bool>,

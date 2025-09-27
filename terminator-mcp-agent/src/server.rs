@@ -375,7 +375,7 @@ impl DesktopWrapper {
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
             &self.desktop,
-            args.include_tree.or(Some(false)),  // Default to false for get_window_tree
+            args.include_tree.or(Some(false)), // Default to false for get_window_tree
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
@@ -439,7 +439,7 @@ impl DesktopWrapper {
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
             &self.desktop,
-            args.include_tree.or(Some(true)),  // Default to true for get_focused_window_tree
+            args.include_tree.or(Some(true)), // Default to true for get_focused_window_tree
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,

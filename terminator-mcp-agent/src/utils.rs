@@ -146,9 +146,13 @@ pub struct GetApplicationsArgs {
         description = "Whether to include the full UI tree for each application. Defaults to false."
     )]
     pub include_tree: Option<bool>,
-    #[schemars(description = "Maximum depth to traverse when building tree (only used if include_tree is true)")]
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
     pub tree_max_depth: Option<usize>,
-    #[schemars(description = "Selector to start tree from instead of window root (only used if include_tree is true)")]
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
     pub tree_from_selector: Option<String>,
     #[schemars(
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
@@ -174,9 +178,13 @@ pub struct LocatorArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
-    #[schemars(description = "Maximum depth to traverse when building tree (only used if include_tree is true)")]
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
     pub tree_max_depth: Option<usize>,
-    #[schemars(description = "Selector to start tree from instead of window root (only used if include_tree is true)")]
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
     pub tree_from_selector: Option<String>,
     #[schemars(
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
@@ -614,9 +622,13 @@ pub struct SelectOptionArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
-    #[schemars(description = "Maximum depth to traverse when building tree (only used if include_tree is true)")]
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
     pub tree_max_depth: Option<usize>,
-    #[schemars(description = "Selector to start tree from instead of window root (only used if include_tree is true)")]
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
     pub tree_from_selector: Option<String>,
     #[schemars(
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
@@ -641,9 +653,13 @@ pub struct SetToggledArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
-    #[schemars(description = "Maximum depth to traverse when building tree (only used if include_tree is true)")]
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
     pub tree_max_depth: Option<usize>,
-    #[schemars(description = "Selector to start tree from instead of window root (only used if include_tree is true)")]
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
     pub tree_from_selector: Option<String>,
     #[schemars(
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
@@ -706,9 +722,13 @@ pub struct SetRangeValueArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
-    #[schemars(description = "Maximum depth to traverse when building tree (only used if include_tree is true)")]
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
     pub tree_max_depth: Option<usize>,
-    #[schemars(description = "Selector to start tree from instead of window root (only used if include_tree is true)")]
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
     pub tree_from_selector: Option<String>,
     #[schemars(
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
@@ -733,9 +753,13 @@ pub struct SetValueArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
-    #[schemars(description = "Maximum depth to traverse when building tree (only used if include_tree is true)")]
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
     pub tree_max_depth: Option<usize>,
-    #[schemars(description = "Selector to start tree from instead of window root (only used if include_tree is true)")]
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
     pub tree_from_selector: Option<String>,
     #[schemars(
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
@@ -760,9 +784,13 @@ pub struct SetSelectedArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to include full UI tree in the response.")]
     pub include_tree: Option<bool>,
-    #[schemars(description = "Maximum depth to traverse when building tree (only used if include_tree is true)")]
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
     pub tree_max_depth: Option<usize>,
-    #[schemars(description = "Selector to start tree from instead of window root (only used if include_tree is true)")]
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
     pub tree_from_selector: Option<String>,
     #[schemars(
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
