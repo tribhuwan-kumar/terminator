@@ -360,6 +360,7 @@ impl DesktopWrapper {
         if let Some(title) = &args.title {
             span.set_attribute("window_title", title.clone());
         }
+        span.set_attribute("include_detailed_attributes", args.include_detailed_attributes.unwrap_or(true).to_string());
 
         // Build the base result JSON first
         let mut result_json = json!({
@@ -867,6 +868,19 @@ impl DesktopWrapper {
         Parameters(args): Parameters<TypeIntoElementArgs>,
     ) -> Result<CallToolResult, McpError> {
         let mut span = StepSpan::new("type_into_element", None);
+
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("text.length", args.text_to_type.len().to_string());
+        span.set_attribute("clear_before_typing", args.clear_before_typing.unwrap_or(true).to_string());
+        span.set_attribute("verify_action", args.verify_action.unwrap_or(true).to_string());
+        if let Some(timeout) = args.timeout_ms {
+            span.set_attribute("timeout_ms", timeout.to_string());
+        }
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }
+
         tracing::info!(
             "[type_into_element] Called with selector: '{}'",
             args.selector
@@ -902,6 +916,7 @@ impl DesktopWrapper {
             }
         };
 
+        let operation_start = std::time::Instant::now();
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -914,9 +929,24 @@ impl DesktopWrapper {
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector)) => {
+                    let operation_time_ms = operation_start.elapsed().as_millis() as i64;
+                    span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
+                    span.set_attribute("element.found", "true".to_string());
+                    span.set_attribute("selector.successful", selector.clone());
+
+                    // Add element metadata
+                    if let Some(name) = element.name() {
+                        span.set_attribute("element.name", name);
+                    }
+                    if let Ok(focused) = element.is_focused() {
+                        span.set_attribute("element.is_focused", focused.to_string());
+                    }
+
+                    Ok(((result, element), selector))
+                }
                 Err(e) => {
-                    // Note: Cannot use span here as it would be moved
+                    // Note: Cannot use span here as it would be moved if we call span.end()
                     Err(build_element_not_found_error(
                         &args.selector,
                         args.alternative_selectors.as_deref(),
@@ -944,6 +974,8 @@ impl DesktopWrapper {
 
         // Verification if requested
         if args.verify_action.unwrap_or(true) {
+            span.add_event("verification_started", vec![]);
+
             // Create a new locator for verification using the successful selector
             let verification_locator = self
                 .desktop
@@ -953,6 +985,8 @@ impl DesktopWrapper {
                 .await
             {
                 let current_text = updated_element.text(0).unwrap_or_default();
+                span.set_attribute("verification.text_after", current_text.clone());
+
                 let should_clear = args.clear_before_typing.unwrap_or(true);
                 let text_matches = if should_clear {
                     current_text == args.text_to_type
@@ -960,7 +994,10 @@ impl DesktopWrapper {
                     current_text.contains(&args.text_to_type)
                 };
 
+                span.set_attribute("verification.passed", text_matches.to_string());
+
                 if !text_matches {
+                    span.set_attribute("verification.expected", args.text_to_type.clone());
                     span.set_status(false, Some("Text verification failed after typing."));
                     span.end();
                     return Err(McpError::internal_error(
@@ -1025,7 +1062,14 @@ impl DesktopWrapper {
 
         tracing::info!("[click_element] Called with selector: '{}'", args.selector);
 
+        // Record retry configuration
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }
+
         if let Some(ref pos) = args.click_position {
+            span.set_attribute("click.position_x", pos.x_percentage.to_string());
+            span.set_attribute("click.position_y", pos.y_percentage.to_string());
             tracing::info!(
                 "[click_element] Click position: {}%, {}%",
                 pos.x_percentage,
@@ -1089,29 +1133,41 @@ impl DesktopWrapper {
             }
         };
 
-        let ((click_result, element), successful_selector) =
-            match crate::utils::find_and_execute_with_retry_with_fallback(
-                &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
-                action,
-            )
-            .await
-            {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
-                Err(e) => {
-                    // Note: Cannot use span in error closure as it would be moved
-                    Err(build_element_not_found_error(
-                        &args.selector,
-                        args.alternative_selectors.as_deref(),
-                        args.fallback_selectors.as_deref(),
-                        e,
-                    ))
-                }
-            }?;
+        // Track search and action time
+        let operation_start = std::time::Instant::now();
+
+        let result = crate::utils::find_and_execute_with_retry_with_fallback(
+            &self.desktop,
+            &args.selector,
+            args.alternative_selectors.as_deref(),
+            args.fallback_selectors.as_deref(),
+            args.timeout_ms,
+            args.retries,
+            action,
+        )
+        .await;
+
+        let operation_time_ms = operation_start.elapsed().as_millis() as i64;
+        span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
+
+        let ((click_result, element), successful_selector) = match result {
+            Ok(((result, element), selector)) => {
+                span.set_attribute("selector.used", selector.clone());
+                span.set_attribute("element.found", "true".to_string());
+                ((result, element), selector)
+            }
+            Err(e) => {
+                span.set_attribute("element.found", "false".to_string());
+                span.set_status(false, Some(&e.to_string()));
+                span.end();
+                return Err(build_element_not_found_error(
+                    &args.selector,
+                    args.alternative_selectors.as_deref(),
+                    args.fallback_selectors.as_deref(),
+                    e,
+                ).into());
+            }
+        };
 
         // Optionally include troubleshooting recommendations when evidence suggests the click may have missed the intended target
         let details_str = &click_result.details;
@@ -1119,6 +1175,16 @@ impl DesktopWrapper {
         // regardless of the click path. This makes guidance available for subtle misses too.
         let looks_uncertain = details_str.contains("window_title_changed=false")
             && details_str.contains("bounds_changed=false");
+
+        // Track element metadata in telemetry
+        span.set_attribute("element.role", element.role());
+        if let Some(name) = element.name() {
+            span.set_attribute("element.name", name);
+        }
+        let window_title = element.window_title();
+        if !window_title.is_empty() {
+            span.set_attribute("element.window_title", window_title.clone());
+        }
 
         let mut result_json = json!({
             "action": "click",
@@ -1175,6 +1241,17 @@ impl DesktopWrapper {
         Parameters(args): Parameters<PressKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
         let mut span = StepSpan::new("press_key", None);
+
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("key", args.key.clone());
+        if let Some(timeout) = args.timeout_ms {
+            span.set_attribute("timeout_ms", timeout.to_string());
+        }
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }
+
         tracing::info!(
             "[press_key] Called with selector: '{}', key: '{}'",
             args.selector,
@@ -1201,6 +1278,7 @@ impl DesktopWrapper {
             }
         };
 
+        let operation_start = std::time::Instant::now();
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -1213,9 +1291,21 @@ impl DesktopWrapper {
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector)) => {
+                    let operation_time_ms = operation_start.elapsed().as_millis() as i64;
+                    span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
+                    span.set_attribute("element.found", "true".to_string());
+                    span.set_attribute("selector.successful", selector.clone());
+
+                    // Add element metadata
+                    if let Some(name) = element.name() {
+                        span.set_attribute("element.name", name);
+                    }
+
+                    Ok(((result, element), selector))
+                }
                 Err(e) => {
-                    // Note: Cannot use span in error closure as it would be moved
+                    // Note: Cannot use span here as it would be moved if we call span.end()
                     Err(build_element_not_found_error(
                         &args.selector,
                         None,
@@ -1264,7 +1354,12 @@ impl DesktopWrapper {
         Parameters(args): Parameters<GlobalKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
         let mut span = StepSpan::new("press_key_global", None);
+
+        // Add telemetry attributes
+        span.set_attribute("key", args.key.clone());
+
         // Identify focused element
+        let operation_start = std::time::Instant::now();
         let element = self.desktop.focused_element().map_err(|e| {
             // Note: Cannot use span in error closure as it would be moved
             McpError::internal_error(
@@ -1272,6 +1367,15 @@ impl DesktopWrapper {
                 Some(json!({"reason": e.to_string()})),
             )
         })?;
+
+        let operation_time_ms = operation_start.elapsed().as_millis() as i64;
+        span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
+        span.set_attribute("focused_element.found", "true".to_string());
+
+        // Add element metadata
+        if let Some(name) = element.name() {
+            span.set_attribute("element.name", name);
+        }
 
         // Gather metadata for debugging / result payload
         let element_info = build_element_info(&element);
@@ -2356,9 +2460,19 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("validate_element", None);
 
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(timeout) = args.timeout_ms {
+            span.set_attribute("timeout_ms", timeout.to_string());
+        }
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }
+
         // For validation, the "action" is just succeeding.
         let action = |element: UIElement| async move { Ok(element) };
 
+        let operation_start = std::time::Instant::now();
         match find_and_execute_with_retry_with_fallback(
             &self.desktop,
             &args.selector,
@@ -2371,6 +2485,15 @@ impl DesktopWrapper {
         .await
         {
             Ok(((element, _), successful_selector)) => {
+                let operation_time_ms = operation_start.elapsed().as_millis() as i64;
+                span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
+                span.set_attribute("element.found", "true".to_string());
+                span.set_attribute("selector.successful", successful_selector.clone());
+
+                // Add element metadata
+                if let Some(name) = element.name() {
+                    span.set_attribute("element.name", name);
+                }
                 let mut element_info = build_element_info(&element);
                 if let Some(obj) = element_info.as_object_mut() {
                     obj.insert("exists".to_string(), json!(true));
