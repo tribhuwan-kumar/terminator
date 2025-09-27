@@ -72,6 +72,8 @@ mod with_telemetry {
 
     pub struct StepSpan {
         span: BoxedSpan,
+        start_time: std::time::Instant,
+        tool_name: String,
     }
 
     impl StepSpan {
@@ -83,11 +85,16 @@ mod with_telemetry {
                 .start(&tracer);
 
             span.set_attribute(KeyValue::new("tool.name", tool_name.to_string()));
+            span.set_attribute(KeyValue::new("tool.start_time", chrono::Utc::now().to_rfc3339()));
             if let Some(id) = step_id {
                 span.set_attribute(KeyValue::new("step.id", id.to_string()));
             }
 
-            StepSpan { span }
+            StepSpan {
+                span,
+                start_time: std::time::Instant::now(),
+                tool_name: tool_name.to_string(),
+            }
         }
 
         pub fn set_attribute(&mut self, key: &str, value: String) {
@@ -95,18 +102,61 @@ mod with_telemetry {
                 .set_attribute(KeyValue::new(key.to_string(), value));
         }
 
+        pub fn add_event(&mut self, name: &str, attributes: Vec<(&str, String)>) {
+            let kvs: Vec<KeyValue> = attributes
+                .into_iter()
+                .map(|(k, v)| KeyValue::new(k.to_string(), v))
+                .collect();
+            self.span.add_event(name.to_string(), kvs);
+        }
+
+        pub fn record_retry(&mut self, attempt: u32, reason: &str) {
+            self.span.set_attribute(KeyValue::new("retry.attempt", attempt as i64));
+            self.span.set_attribute(KeyValue::new("retry.reason", reason.to_string()));
+            self.add_event("retry", vec![
+                ("attempt", attempt.to_string()),
+                ("reason", reason.to_string()),
+            ]);
+        }
+
         pub fn set_status(&mut self, success: bool, error: Option<&str>) {
+            let duration_ms = self.start_time.elapsed().as_millis() as i64;
+
+            // Add duration and status attributes
+            self.span.set_attribute(KeyValue::new("tool.duration_ms", duration_ms));
+            self.span.set_attribute(KeyValue::new("tool.success", success));
+
             let status = if success {
                 Status::Ok
             } else {
                 let message = error.unwrap_or("Failed");
+                self.span.set_attribute(KeyValue::new("error.message", message.to_string()));
+                self.span.set_attribute(KeyValue::new("error.type", classify_error(message)));
                 Status::error(message.to_string())
             };
             self.span.set_status(status);
         }
 
         pub fn end(mut self) {
+            self.span.set_attribute(KeyValue::new("tool.end_time", chrono::Utc::now().to_rfc3339()));
             self.span.end();
+        }
+    }
+
+    fn classify_error(error: &str) -> String {
+        let lower = error.to_lowercase();
+        if lower.contains("not found") || lower.contains("unable to find") {
+            "element_not_found".to_string()
+        } else if lower.contains("timeout") {
+            "timeout".to_string()
+        } else if lower.contains("permission") || lower.contains("access") {
+            "permission_denied".to_string()
+        } else if lower.contains("network") || lower.contains("connection") {
+            "network_error".to_string()
+        } else if lower.contains("invalid") || lower.contains("validation") {
+            "validation_error".to_string()
+        } else {
+            "other".to_string()
         }
     }
 
@@ -286,6 +336,8 @@ mod without_telemetry {
         }
 
         pub fn set_attribute(&mut self, _key: &str, _value: String) {}
+        pub fn add_event(&mut self, _name: &str, _attributes: Vec<(&str, String)>) {}
+        pub fn record_retry(&mut self, _attempt: u32, _reason: &str) {}
         pub fn set_status(&mut self, _success: bool, _error: Option<&str>) {}
         pub fn end(self) {}
     }
