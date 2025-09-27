@@ -1,5 +1,6 @@
 use crate::helpers::*;
 use crate::scripting_engine;
+use crate::telemetry::StepSpan;
 use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
@@ -353,6 +354,13 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<GetWindowTreeArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("get_window_tree", None);
+        span.set_attribute("pid", args.pid.to_string());
+        if let Some(title) = &args.title {
+            span.set_attribute("window_title", title.clone());
+        }
+
         // Build the base result JSON first
         let mut result_json = json!({
             "action": "get_window_tree",
@@ -380,6 +388,9 @@ impl DesktopWrapper {
         )
         .await;
 
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -390,6 +401,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<crate::utils::GetFocusedWindowTreeArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("get_focused_window_tree", None);
+
         // Get the currently focused element first
         let focused_element = self.desktop.focused_element().map_err(|e| {
             McpError::internal_error(
@@ -441,6 +455,9 @@ impl DesktopWrapper {
         )
         .await;
 
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -451,6 +468,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<GetApplicationsArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("get_applications", None);
+
         let apps = self.desktop.applications().map_err(|e| {
             McpError::resource_not_found(
                 "Failed to get applications",
@@ -522,6 +542,9 @@ impl DesktopWrapper {
             "applications": applications,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
+
+        span.set_status(true, None);
+        span.end();
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
@@ -843,6 +866,7 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<TypeIntoElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let mut span = StepSpan::new("type_into_element", None);
         tracing::info!(
             "[type_into_element] Called with selector: '{}'",
             args.selector
@@ -891,12 +915,15 @@ impl DesktopWrapper {
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
-                Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
-                    e,
-                )),
+                Err(e) => {
+                    // Note: Cannot use span here as it would be moved
+                    Err(build_element_not_found_error(
+                        &args.selector,
+                        args.alternative_selectors.as_deref(),
+                        args.fallback_selectors.as_deref(),
+                        e,
+                    ))
+                }
             }?;
 
         let mut result_json = json!({
@@ -934,6 +961,8 @@ impl DesktopWrapper {
                 };
 
                 if !text_matches {
+                    span.set_status(false, Some("Text verification failed after typing."));
+                    span.end();
                     return Err(McpError::internal_error(
                         "Text verification failed after typing.",
                         Some(json!({
@@ -956,6 +985,8 @@ impl DesktopWrapper {
                     obj.insert("verification".to_string(), verification);
                 }
             } else {
+                span.set_status(false, Some("Failed to find element for verification after typing."));
+                span.end();
                 return Err(McpError::internal_error(
                     "Failed to find element for verification after typing.",
                     Some(json!({
@@ -976,6 +1007,8 @@ impl DesktopWrapper {
         )
         .await;
 
+        span.set_status(true, None);
+        span.end();
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -986,6 +1019,10 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ClickElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("click_element", None);
+        span.set_attribute("selector", args.selector.clone());
+
         tracing::info!("[click_element] Called with selector: '{}'", args.selector);
 
         if let Some(ref pos) = args.click_position {
@@ -1065,12 +1102,15 @@ impl DesktopWrapper {
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
-                Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
-                    e,
-                )),
+                Err(e) => {
+                    // Note: Cannot use span in error closure as it would be moved
+                    Err(build_element_not_found_error(
+                        &args.selector,
+                        args.alternative_selectors.as_deref(),
+                        args.fallback_selectors.as_deref(),
+                        e,
+                    ))
+                }
             }?;
 
         // Optionally include troubleshooting recommendations when evidence suggests the click may have missed the intended target
@@ -1134,6 +1174,7 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<PressKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let mut span = StepSpan::new("press_key", None);
         tracing::info!(
             "[press_key] Called with selector: '{}', key: '{}'",
             args.selector,
@@ -1173,12 +1214,15 @@ impl DesktopWrapper {
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
-                Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    None,
-                    args.fallback_selectors.as_deref(),
-                    e,
-                )),
+                Err(e) => {
+                    // Note: Cannot use span in error closure as it would be moved
+                    Err(build_element_not_found_error(
+                        &args.selector,
+                        None,
+                        args.fallback_selectors.as_deref(),
+                        e,
+                    ))
+                }
             }?;
 
         let element_info = build_element_info(&element);
@@ -1207,6 +1251,8 @@ impl DesktopWrapper {
         )
         .await;
 
+        span.set_status(true, None);
+        span.end();
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1217,8 +1263,10 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<GlobalKeyArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let mut span = StepSpan::new("press_key_global", None);
         // Identify focused element
         let element = self.desktop.focused_element().map_err(|e| {
+            // Note: Cannot use span in error closure as it would be moved
             McpError::internal_error(
                 "Failed to get focused element",
                 Some(json!({"reason": e.to_string()})),
@@ -1230,6 +1278,7 @@ impl DesktopWrapper {
 
         // Perform the key press
         element.press_key(&args.key).map_err(|e| {
+            // Note: Cannot use span in error closure as it would be moved
             McpError::resource_not_found(
                 "Failed to press key on focused element",
                 Some(json!({
@@ -1257,6 +1306,8 @@ impl DesktopWrapper {
         )
         .await;
 
+        span.set_status(true, None);
+        span.end();
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -1275,6 +1326,9 @@ impl DesktopWrapper {
         args: RunCommandArgs,
         cancellation_token: Option<tokio_util::sync::CancellationToken>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("run_command_impl", None);
+
         // Engine-based execution path (provides SDK bindings)
         if let Some(engine_value) = args.engine.as_ref() {
             let engine = engine_value.to_ascii_lowercase();
@@ -1683,6 +1737,10 @@ impl DesktopWrapper {
                     response["logs"] = logs;
                 }
 
+
+                span.set_status(true, None);
+                span.end();
+
                 return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_ts {
                 // Determine the working directory for script execution
@@ -1752,6 +1810,10 @@ impl DesktopWrapper {
                     response["logs"] = logs;
                 }
 
+
+                span.set_status(true, None);
+                span.end();
+
                 return Ok(CallToolResult::success(vec![Content::json(response)?]));
             } else if is_py {
                 // Determine the working directory for script execution
@@ -1799,6 +1861,10 @@ impl DesktopWrapper {
 
                 // For now, Python doesn't capture logs yet, but we can add it later
                 // Just pass through the result as before
+
+                span.set_status(true, None);
+                span.end();
+
                 return Ok(CallToolResult::success(vec![Content::json(json!({
                     "action": "run_command",
                     "mode": "engine",
@@ -2044,6 +2110,10 @@ impl DesktopWrapper {
                 )
             })?;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "exit_status": output.exit_status,
             "stdout": output.stdout,
@@ -2063,6 +2133,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ActivateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("activate_element", None);
+
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -2167,6 +2240,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2177,6 +2254,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<DelayArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("delay", None);
+
         let start_time = chrono::Utc::now();
 
         // Use tokio's sleep for async delay
@@ -2184,6 +2264,10 @@ impl DesktopWrapper {
 
         let end_time = chrono::Utc::now();
         let actual_delay_ms = (end_time - start_time).num_milliseconds();
+
+
+        span.set_status(true, None);
+        span.end();
 
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "delay",
@@ -2201,6 +2285,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<MouseDragArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("mouse_drag", None);
+
         let action = |element: UIElement| async move {
             element.mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y)
         };
@@ -2248,6 +2335,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2258,6 +2349,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ValidateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("validate_element", None);
+
         // For validation, the "action" is just succeeding.
         let action = |element: UIElement| async move { Ok(element) };
 
@@ -2296,6 +2390,10 @@ impl DesktopWrapper {
                 )
                 .await;
 
+
+                span.set_status(true, None);
+                span.end();
+
                 Ok(CallToolResult::success(vec![Content::json(result_json)?]))
             }
             Err(e) => {
@@ -2316,6 +2414,10 @@ impl DesktopWrapper {
                 });
 
                 // This is not a tool error, but a validation failure, so we return success with the failure info.
+
+                span.set_status(true, None);
+                span.end();
+
                 Ok(CallToolResult::success(vec![Content::json(json!({
                     "action": "validate_element",
                     "status": "failed",
@@ -2332,6 +2434,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<HighlightElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("highlight_element", None);
+
         let duration = args.duration_ms.map(std::time::Duration::from_millis);
         let color = args.color;
 
@@ -2429,6 +2534,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2439,6 +2548,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<WaitForElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("wait_for_element", None);
+
         info!(
             "[wait_for_element] Called with selector: '{}', condition: '{}', timeout_ms: {:?}, include_tree: {:?}",
             args.selector, args.condition, args.timeout_ms, args.include_tree
@@ -2479,6 +2591,10 @@ impl DesktopWrapper {
                         Some(&element),
                     )
                     .await;
+
+
+                    span.set_status(true, None);
+                    span.end();
 
                     return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
                 }
@@ -2609,6 +2725,10 @@ impl DesktopWrapper {
                         )
                         .await;
 
+
+                        span.set_status(true, None);
+                        span.end();
+
                         return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
                     } else {
                         info!(
@@ -2639,6 +2759,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<NavigateBrowserArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("navigate_browser", None);
+
         let browser = args.browser.clone().map(Browser::Custom);
         let ui_element = self.desktop.open_url(&args.url, browser).map_err(|e| {
             McpError::internal_error(
@@ -2668,6 +2791,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2676,6 +2803,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<OpenApplicationArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("open_application", None);
+
         let ui_element = self.desktop.open_application(&args.app_name).map_err(|e| {
             McpError::internal_error(
                 "Failed to open application",
@@ -2711,6 +2841,10 @@ impl DesktopWrapper {
             }
         }
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2721,6 +2855,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<CloseElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("close_element", None);
+
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -2744,6 +2881,10 @@ impl DesktopWrapper {
 
         let element_info = build_element_info(&element);
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "close_element",
             "status": "success",
@@ -2759,6 +2900,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ScrollElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("scroll_element", None);
+
         tracing::info!(
             "[scroll_element] Called with selector: '{}', direction: '{}', amount: {}",
             args.selector,
@@ -2835,6 +2979,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2843,6 +2991,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SelectOptionArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("select_option", None);
+
         let option_name = args.option_name.clone();
         let action = move |element: UIElement| {
             let option_name = option_name.clone();
@@ -2901,6 +3052,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2911,6 +3066,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("list_options", None);
+
         let ((options, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -2952,6 +3110,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -2962,6 +3124,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetToggledArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("set_toggled", None);
+
         let state = args.state;
         let action = move |element: UIElement| async move {
             // Ensure element is visible before interaction
@@ -3016,6 +3181,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3026,6 +3195,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetRangeValueArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("set_range_value", None);
+
         let value = args.value;
         let action = move |element: UIElement| async move {
             // Ensure element is visible before interaction
@@ -3075,6 +3247,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3085,6 +3261,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetSelectedArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("set_selected", None);
+
         let state = args.state;
         let action =
             move |element: UIElement| async move { element.set_selected_with_state(state) };
@@ -3134,6 +3313,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3144,6 +3327,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("is_toggled", None);
+
         let ((is_toggled, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3184,6 +3370,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3194,6 +3384,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("get_range_value", None);
+
         let ((value, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3234,6 +3427,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3244,6 +3441,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("is_selected", None);
+
         let ((is_selected, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3284,6 +3484,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3292,6 +3496,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ValidateElementArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("capture_element_screenshot", None);
+
         let ((screenshot_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3333,6 +3540,10 @@ impl DesktopWrapper {
 
         let element_info = build_element_info(&element);
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![
             Content::json(json!({
                 "action": "capture_element_screenshot",
@@ -3353,6 +3564,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<LocatorArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("invoke_element", None);
+
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3406,6 +3620,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3416,6 +3634,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<RecordWorkflowArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("record_workflow", None);
+
         let mut recorder_guard = self.recorder.lock().await;
 
         match args.action.as_str() {
@@ -3575,6 +3796,10 @@ impl DesktopWrapper {
                     }
                 }
 
+
+                span.set_status(true, None);
+                span.end();
+
                 Ok(CallToolResult::success(vec![Content::json(response)?]))
             }
             "stop" => {
@@ -3676,6 +3901,10 @@ impl DesktopWrapper {
                 // Add MCP workflow if conversion was successful, otherwise null
                 response["mcp_workflow"] = mcp_workflow.unwrap_or(serde_json::Value::Null);
 
+
+                span.set_status(true, None);
+                span.end();
+
                 Ok(CallToolResult::success(vec![Content::json(response)?]))
             }
             _ => Err(McpError::invalid_params(
@@ -3692,6 +3921,9 @@ impl DesktopWrapper {
         &self,
         Parameters(_args): Parameters<crate::utils::StopHighlightingArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("stop_highlighting", None);
+
         // Current minimal implementation ignores highlight_id and stops all tracked highlights
         let mut list = self.active_highlights.lock().await;
         let mut stopped = 0usize;
@@ -3705,6 +3937,10 @@ impl DesktopWrapper {
             "highlights_stopped": stopped,
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(response)?]))
     }
     // Tool functions continue below - part of impl block with #[tool_router]
@@ -3729,7 +3965,15 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ExportWorkflowSequenceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        self.export_workflow_sequence_impl(args).await
+        // Start telemetry span
+        let mut span = StepSpan::new("export_workflow_sequence", None);
+
+        let result = self.export_workflow_sequence_impl(args).await;
+
+        span.set_status(result.is_ok(), result.as_ref().err().map(|e| e.to_string()).as_deref());
+        span.end();
+
+        result
     }
 
     #[tool(description = "Load a YAML workflow file or scan folder for YAML workflow files")]
@@ -3737,7 +3981,15 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ImportWorkflowSequenceArgs>,
     ) -> Result<CallToolResult, McpError> {
-        self.import_workflow_sequence_impl(args).await
+        // Start telemetry span
+        let mut span = StepSpan::new("import_workflow_sequence", None);
+
+        let result = self.import_workflow_sequence_impl(args).await;
+
+        span.set_status(result.is_ok(), result.as_ref().err().map(|e| e.to_string()).as_deref());
+        span.end();
+
+        result
     }
 
     #[tool(description = "Maximizes a window.")]
@@ -3745,6 +3997,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<MaximizeWindowArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("maximize_window", None);
+
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3786,6 +4041,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3794,6 +4053,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<MinimizeWindowArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("minimize_window", None);
+
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
@@ -3835,6 +4097,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3843,9 +4109,16 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ZoomArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("zoom_in", None);
+
         self.desktop.zoom_in(args.level).await.map_err(|e| {
             McpError::internal_error("Failed to zoom in", Some(json!({"reason": e.to_string()})))
         })?;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "zoom_in",
             "status": "success",
@@ -3858,9 +4131,16 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<ZoomArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("zoom_out", None);
+
         self.desktop.zoom_out(args.level).await.map_err(|e| {
             McpError::internal_error("Failed to zoom out", Some(json!({"reason": e.to_string()})))
         })?;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(json!({
             "action": "zoom_out",
             "status": "success",
@@ -3875,6 +4155,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetZoomArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("set_zoom", None);
+
         self.desktop.set_zoom(args.percentage).await.map_err(|e| {
             McpError::internal_error("Failed to set zoom", Some(json!({"reason": e.to_string()})))
         })?;
@@ -3894,6 +4177,10 @@ impl DesktopWrapper {
         )
         .await;
 
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3904,6 +4191,9 @@ impl DesktopWrapper {
         &self,
         Parameters(args): Parameters<SetValueArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("set_value", None);
+
         let value_to_set = args.value.clone();
         let action = move |element: UIElement| {
             let value_to_set = value_to_set.clone();
@@ -3950,6 +4240,10 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
+
+        span.set_status(true, None);
+        span.end();
+
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
@@ -3993,6 +4287,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         &self,
         Parameters(args): Parameters<ExecuteBrowserScriptArgs>,
     ) -> Result<CallToolResult, McpError> {
+        // Start telemetry span
+        let mut span = StepSpan::new("execute_browser_script", None);
+
         use serde_json::json;
         let start_instant = std::time::Instant::now();
 
@@ -4407,6 +4704,10 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             None, // No specific element
         )
         .await;
+
+
+        span.set_status(true, None);
+        span.end();
 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
