@@ -1737,7 +1737,6 @@ impl DesktopWrapper {
                     response["logs"] = logs;
                 }
 
-
                 span.set_status(true, None);
                 span.end();
 
@@ -1809,7 +1808,6 @@ impl DesktopWrapper {
                 if let Some(logs) = logs {
                     response["logs"] = logs;
                 }
-
 
                 span.set_status(true, None);
                 span.end();
@@ -2110,7 +2108,6 @@ impl DesktopWrapper {
                 )
             })?;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -2136,7 +2133,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("activate_element", None);
 
-        let ((_result, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -2240,7 +2241,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -2257,14 +2257,14 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("delay", None);
 
-        let start_time = chrono::Utc::now();
+        // Add comprehensive telemetry attributes
+        span.set_attribute("delay_ms", args.delay_ms.to_string());        let start_time = chrono::Utc::now();
 
         // Use tokio's sleep for async delay
         tokio::time::sleep(std::time::Duration::from_millis(args.delay_ms)).await;
 
         let end_time = chrono::Utc::now();
         let actual_delay_ms = (end_time - start_time).num_milliseconds();
-
 
         span.set_status(true, None);
         span.end();
@@ -2288,7 +2288,12 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("mouse_drag", None);
 
-        let action = |element: UIElement| async move {
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        // Mouse drag uses x,y coordinates, not selectors
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let action = |element: UIElement| async move {
             element.mouse_drag(args.start_x, args.start_y, args.end_x, args.end_y)
         };
 
@@ -2334,7 +2339,6 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
-
 
         span.set_status(true, None);
         span.end();
@@ -2390,7 +2394,6 @@ impl DesktopWrapper {
                 )
                 .await;
 
-
                 span.set_status(true, None);
                 span.end();
 
@@ -2437,7 +2440,14 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("highlight_element", None);
 
-        let duration = args.duration_ms.map(std::time::Duration::from_millis);
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(ref color) = args.color {
+            span.set_attribute("color", format!("#{:08X}", color));
+        }
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let duration = args.duration_ms.map(std::time::Duration::from_millis);
         let color = args.color;
 
         let text = args.text.as_deref();
@@ -2534,7 +2544,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -2551,7 +2560,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("wait_for_element", None);
 
-        info!(
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        info!(
             "[wait_for_element] Called with selector: '{}', condition: '{}', timeout_ms: {:?}, include_tree: {:?}",
             args.selector, args.condition, args.timeout_ms, args.include_tree
         );
@@ -2591,7 +2604,6 @@ impl DesktopWrapper {
                         Some(&element),
                     )
                     .await;
-
 
                     span.set_status(true, None);
                     span.end();
@@ -2725,7 +2737,6 @@ impl DesktopWrapper {
                         )
                         .await;
 
-
                         span.set_status(true, None);
                         span.end();
 
@@ -2762,7 +2773,8 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("navigate_browser", None);
 
-        let browser = args.browser.clone().map(Browser::Custom);
+        // Add comprehensive telemetry attributes
+        span.set_attribute("url", args.url.clone());        let browser = args.browser.clone().map(Browser::Custom);
         let ui_element = self.desktop.open_url(&args.url, browser).map_err(|e| {
             McpError::internal_error(
                 "Failed to open URL",
@@ -2791,7 +2803,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -2806,6 +2817,10 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("open_application", None);
 
+        // Add comprehensive telemetry attributes
+        span.set_attribute("app_name", args.app_name.clone());
+
+        // Open the application
         let ui_element = self.desktop.open_application(&args.app_name).map_err(|e| {
             McpError::internal_error(
                 "Failed to open application",
@@ -2841,7 +2856,6 @@ impl DesktopWrapper {
             }
         }
 
-
         span.set_status(true, None);
         span.end();
 
@@ -2858,7 +2872,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("close_element", None);
 
-        let ((_result, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -2881,7 +2899,6 @@ impl DesktopWrapper {
 
         let element_info = build_element_info(&element);
 
-
         span.set_status(true, None);
         span.end();
 
@@ -2903,7 +2920,13 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("scroll_element", None);
 
-        tracing::info!(
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("direction", format!("{:?}", args.direction));
+        span.set_attribute("amount", args.amount.to_string());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        tracing::info!(
             "[scroll_element] Called with selector: '{}', direction: '{}', amount: {}",
             args.selector,
             args.direction,
@@ -2979,7 +3002,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -2994,7 +3016,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("select_option", None);
 
-        let option_name = args.option_name.clone();
+        // Add comprehensive telemetry attributes
+        span.set_attribute("option_name", args.option_name.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let option_name = args.option_name.clone();
         let action = move |element: UIElement| {
             let option_name = option_name.clone();
             async move {
@@ -3052,7 +3078,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -3069,7 +3094,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("list_options", None);
 
-        let ((options, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((options, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3127,7 +3156,12 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("set_toggled", None);
 
-        let state = args.state;
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("state", args.state.to_string());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let state = args.state;
         let action = move |element: UIElement| async move {
             // Ensure element is visible before interaction
             if let Err(e) = Self::ensure_element_in_view(&element) {
@@ -3198,7 +3232,12 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("set_range_value", None);
 
-        let value = args.value;
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("value", args.value.to_string());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let value = args.value;
         let action = move |element: UIElement| async move {
             // Ensure element is visible before interaction
             if let Err(e) = Self::ensure_element_in_view(&element) {
@@ -3264,7 +3303,12 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("set_selected", None);
 
-        let state = args.state;
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("state", args.state.to_string());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let state = args.state;
         let action =
             move |element: UIElement| async move { element.set_selected_with_state(state) };
 
@@ -3330,7 +3374,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("is_toggled", None);
 
-        let ((is_toggled, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((is_toggled, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3387,7 +3435,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("get_range_value", None);
 
-        let ((value, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((value, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3444,7 +3496,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("is_selected", None);
 
-        let ((is_selected, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((is_selected, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3499,7 +3555,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("capture_element_screenshot", None);
 
-        let ((screenshot_result, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((screenshot_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3540,7 +3600,6 @@ impl DesktopWrapper {
 
         let element_info = build_element_info(&element);
 
-
         span.set_status(true, None);
         span.end();
 
@@ -3567,7 +3626,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("invoke_element", None);
 
-        let ((result, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -3619,7 +3682,6 @@ impl DesktopWrapper {
             Some(&element),
         )
         .await;
-
 
         span.set_status(true, None);
         span.end();
@@ -3796,7 +3858,6 @@ impl DesktopWrapper {
                     }
                 }
 
-
                 span.set_status(true, None);
                 span.end();
 
@@ -3901,7 +3962,6 @@ impl DesktopWrapper {
                 // Add MCP workflow if conversion was successful, otherwise null
                 response["mcp_workflow"] = mcp_workflow.unwrap_or(serde_json::Value::Null);
 
-
                 span.set_status(true, None);
                 span.end();
 
@@ -4000,7 +4060,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("maximize_window", None);
 
-        let ((_result, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -4041,7 +4105,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -4056,7 +4119,11 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("minimize_window", None);
 
-        let ((_result, element), successful_selector) =
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
                 &args.selector,
@@ -4097,7 +4164,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -4111,6 +4177,9 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
         let mut span = StepSpan::new("zoom_in", None);
+
+        // Add comprehensive telemetry attributes
+        span.set_attribute("level", args.level.to_string());
 
         self.desktop.zoom_in(args.level).await.map_err(|e| {
             McpError::internal_error("Failed to zoom in", Some(json!({"reason": e.to_string()})))
@@ -4133,6 +4202,9 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
         let mut span = StepSpan::new("zoom_out", None);
+
+        // Add comprehensive telemetry attributes
+        span.set_attribute("level", args.level.to_string());
 
         self.desktop.zoom_out(args.level).await.map_err(|e| {
             McpError::internal_error("Failed to zoom out", Some(json!({"reason": e.to_string()})))
@@ -4158,6 +4230,9 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("set_zoom", None);
 
+        // Add comprehensive telemetry attributes
+        span.set_attribute("percentage", args.percentage.to_string());
+
         self.desktop.set_zoom(args.percentage).await.map_err(|e| {
             McpError::internal_error("Failed to set zoom", Some(json!({"reason": e.to_string()})))
         })?;
@@ -4177,7 +4252,6 @@ impl DesktopWrapper {
         )
         .await;
 
-
         span.set_status(true, None);
         span.end();
 
@@ -4194,7 +4268,12 @@ impl DesktopWrapper {
         // Start telemetry span
         let mut span = StepSpan::new("set_value", None);
 
-        let value_to_set = args.value.clone();
+        // Add comprehensive telemetry attributes
+        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("value", args.value.to_string());
+        if let Some(retries) = args.retries {
+            span.set_attribute("retry.max_attempts", retries.to_string());
+        }        let value_to_set = args.value.clone();
         let action = move |element: UIElement| {
             let value_to_set = value_to_set.clone();
             async move { element.set_value(&value_to_set) }
@@ -4290,7 +4369,13 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         // Start telemetry span
         let mut span = StepSpan::new("execute_browser_script", None);
 
-        use serde_json::json;
+        // Add comprehensive telemetry attributes
+        if let Some(ref script) = args.script {
+            span.set_attribute("script.length", script.len().to_string());
+        }
+        if let Some(ref script_file) = args.script_file {
+            span.set_attribute("script_file", script_file.clone());
+        }        use serde_json::json;
         let start_instant = std::time::Instant::now();
 
         // Resolve the script content
@@ -4704,7 +4789,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             None, // No specific element
         )
         .await;
-
 
         span.set_status(true, None);
         span.end();
