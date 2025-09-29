@@ -517,60 +517,41 @@ async fn root_handler() -> impl axum::response::IntoResponse {
 }
 
 async fn health_check() -> impl axum::response::IntoResponse {
+    use terminator::health::{check_automation_health, HealthStatus};
+
     // Get bridge health status
     let bridge_health = terminator::extension_bridge::ExtensionBridge::health_status().await;
 
-    // Check UIAutomation API health (Windows only)
-    #[cfg(target_os = "windows")]
-    let uiautomation_health = {
-        terminator::platforms::windows::check_uiautomation_health().await
-    };
+    // Check platform-specific automation API health
+    let automation_health = check_automation_health().await;
 
-    // Build response based on platform
-    #[cfg(target_os = "windows")]
-    let response_body = {
-        // Determine overall status based on UIAutomation health
-        let overall_status = if uiautomation_health.available
-            && uiautomation_health.can_access_desktop
-            && uiautomation_health.can_enumerate_children {
-            "ok"
-        } else if uiautomation_health.available {
-            "degraded" // API available but desktop access issues
-        } else {
-            "unhealthy" // API not available at all
-        };
-
-        serde_json::json!({
-            "status": overall_status,
-            "extension_bridge": bridge_health,
-            "uiautomation": uiautomation_health,
-            "platform": "windows",
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })
-    };
-
-    #[cfg(not(target_os = "windows"))]
+    // Build response body
     let response_body = serde_json::json!({
-        "status": "ok",
+        "status": match automation_health.status {
+            HealthStatus::Healthy => "healthy",
+            HealthStatus::Degraded => "degraded",
+            HealthStatus::Unhealthy => "unhealthy",
+        },
         "extension_bridge": bridge_health,
-        "platform": std::env::consts::OS,
+        "automation": {
+            "api_available": automation_health.api_available,
+            "desktop_accessible": automation_health.desktop_accessible,
+            "can_enumerate_elements": automation_health.can_enumerate_elements,
+            "check_duration_ms": automation_health.check_duration_ms,
+            "error_message": automation_health.error_message,
+            "diagnostics": automation_health.diagnostics,
+        },
+        "platform": automation_health.platform,
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
 
     // Return appropriate HTTP status based on health
-    #[cfg(target_os = "windows")]
-    let http_status = if uiautomation_health.available
-        && uiautomation_health.can_access_desktop
-        && uiautomation_health.can_enumerate_children {
-        axum::http::StatusCode::OK
-    } else if uiautomation_health.available {
-        axum::http::StatusCode::PARTIAL_CONTENT // 206 - partially available
-    } else {
-        axum::http::StatusCode::SERVICE_UNAVAILABLE // 503 - service unavailable
+    let http_status = match automation_health.status.to_http_status() {
+        200 => axum::http::StatusCode::OK,
+        206 => axum::http::StatusCode::PARTIAL_CONTENT,
+        503 => axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
     };
-
-    #[cfg(not(target_os = "windows"))]
-    let http_status = axum::http::StatusCode::OK;
 
     (http_status, axum::Json(response_body))
 }

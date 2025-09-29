@@ -20,51 +20,46 @@ async function testHealthEndpoint() {
         console.log(`HTTP Status: ${status}`);
         console.log('Response Body:', JSON.stringify(data, null, 2));
 
-        // Check platform-specific fields
-        if (data.platform === 'windows') {
-            console.log('\n=== Windows UIAutomation Status ===');
-            const uiautomation = data.uiautomation;
+        // Check automation health
+        const automation = data.automation;
+        if (automation) {
+            console.log('\n=== Automation API Status ===');
+            console.log(`Platform: ${data.platform}`);
+            console.log(`API Available: ${automation.api_available}`);
+            console.log(`Desktop Accessible: ${automation.desktop_accessible}`);
+            console.log(`Can Enumerate Elements: ${automation.can_enumerate_elements}`);
+            console.log(`Check Duration: ${automation.check_duration_ms}ms`);
 
-            if (uiautomation) {
-                console.log(`Available: ${uiautomation.available}`);
-                console.log(`Can Access Desktop: ${uiautomation.can_access_desktop}`);
-                console.log(`Can Enumerate Children: ${uiautomation.can_enumerate_children}`);
-                console.log(`Check Duration: ${uiautomation.check_duration_ms}ms`);
+            if (automation.error_message) {
+                console.log(`Error: ${automation.error_message}`);
+            }
 
-                if (uiautomation.error_message) {
-                    console.log(`Error: ${uiautomation.error_message}`);
+            if (automation.diagnostics && Object.keys(automation.diagnostics).length > 0) {
+                console.log('\nDiagnostics:');
+                for (const [key, value] of Object.entries(automation.diagnostics)) {
+                    console.log(`  ${key}: ${JSON.stringify(value)}`);
                 }
+            }
 
-                if (uiautomation.diagnostics) {
-                    console.log('\nDiagnostics:');
-                    console.log(`  COM Initialized: ${uiautomation.diagnostics.com_initialized}`);
-                    console.log(`  Is Headless: ${uiautomation.diagnostics.is_headless}`);
-                    console.log(`  Desktop Children: ${uiautomation.diagnostics.desktop_child_count || 'N/A'}`);
-                    console.log(`  Display Info: ${uiautomation.diagnostics.display_info || 'N/A'}`);
-                }
-
-                // Overall health assessment
-                let healthStatus = 'UNKNOWN';
-                if (uiautomation.available && uiautomation.can_access_desktop && uiautomation.can_enumerate_children) {
-                    healthStatus = 'HEALTHY';
-                } else if (uiautomation.available) {
-                    healthStatus = 'DEGRADED (VM/RDP issues likely)';
-                } else {
-                    healthStatus = 'UNHEALTHY (UIAutomation API unavailable)';
-                }
-
-                console.log(`\n=== Overall UIAutomation Health: ${healthStatus} ===`);
-
-                // Check HTTP status matches expected
-                if (status === 200 && healthStatus !== 'HEALTHY') {
-                    console.error('WARNING: HTTP status 200 but UIAutomation is not healthy!');
-                } else if (status === 206 && healthStatus !== 'DEGRADED (VM/RDP issues likely)') {
-                    console.error('WARNING: HTTP status 206 but UIAutomation is not degraded!');
-                } else if (status === 503 && healthStatus !== 'UNHEALTHY (UIAutomation API unavailable)') {
-                    console.error('WARNING: HTTP status 503 but UIAutomation is not unhealthy!');
-                }
+            // Overall health assessment
+            let healthStatus = 'UNKNOWN';
+            if (automation.api_available && automation.desktop_accessible && automation.can_enumerate_elements) {
+                healthStatus = 'HEALTHY';
+            } else if (automation.api_available) {
+                healthStatus = 'DEGRADED (Display/RDP issues likely)';
             } else {
-                console.log('UIAutomation health data not present in response');
+                healthStatus = 'UNHEALTHY (Automation API unavailable)';
+            }
+
+            console.log(`\n=== Overall Automation Health: ${healthStatus} ===`);
+
+            // Check HTTP status matches expected
+            if (status === 200 && healthStatus !== 'HEALTHY') {
+                console.error('WARNING: HTTP status 200 but automation is not healthy!');
+            } else if (status === 206 && healthStatus !== 'DEGRADED (Display/RDP issues likely)') {
+                console.error('WARNING: HTTP status 206 but automation is not degraded!');
+            } else if (status === 503 && healthStatus !== 'UNHEALTHY (Automation API unavailable)') {
+                console.error('WARNING: HTTP status 503 but automation is not unhealthy!');
             }
         } else {
             console.log(`Platform: ${data.platform} (UIAutomation check not applicable)`);

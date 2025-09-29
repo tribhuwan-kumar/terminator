@@ -6,11 +6,11 @@
 pub mod applications;
 pub mod element;
 pub mod engine;
+pub mod health;
 pub mod highlighting;
 pub mod input;
 pub mod tree_builder;
 pub mod types;
-pub mod uiautomation_health;
 pub mod utils;
 pub mod virtual_display;
 
@@ -30,7 +30,3 @@ pub use virtual_display::{
     is_headless_environment, HeadlessConfig, VirtualDisplayConfig, VirtualDisplayManager,
 };
 
-// Re-export UIAutomation health check functionality
-pub use uiautomation_health::{
-    check_uiautomation_health, quick_health_check, UIAutomationHealthStatus,
-};
