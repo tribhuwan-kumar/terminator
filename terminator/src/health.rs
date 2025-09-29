@@ -175,7 +175,10 @@ impl PlatformHealthCheck for MacOSHealthChecker {
         // For now, return a healthy status for macOS
         // TODO: Implement actual Accessibility API checks
         let mut result = HealthCheckResult::healthy("macos");
-        result.add_diagnostic("note", "Accessibility API health checks not yet implemented");
+        result.add_diagnostic(
+            "note",
+            "Accessibility API health checks not yet implemented",
+        );
         result
     }
 }
