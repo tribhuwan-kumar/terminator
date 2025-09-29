@@ -35,6 +35,7 @@ fn test_execute_sequence_args_serialization() {
         follow_fallback: None,
         end_at_step: None,
         troubleshooting: None,
+        execute_jumps_at_end: None,
     };
 
     let json = serde_json::to_string(&args).unwrap();

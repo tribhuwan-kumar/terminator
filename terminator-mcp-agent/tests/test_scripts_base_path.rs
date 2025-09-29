@@ -105,6 +105,7 @@ steps:
             end_at_step: Some("step5".to_string()),
             follow_fallback: Some(false),
             scripts_base_path: Some("/custom/path".to_string()),
+            execute_jumps_at_end: Some(false),
         };
 
         let serialized = serde_json::to_string(&args).unwrap();

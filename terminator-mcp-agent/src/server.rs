@@ -1169,8 +1169,7 @@ impl DesktopWrapper {
                     args.alternative_selectors.as_deref(),
                     args.fallback_selectors.as_deref(),
                     e,
-                )
-                .into());
+                ));
             }
         };
 
@@ -2586,7 +2585,7 @@ impl DesktopWrapper {
         // Add comprehensive telemetry attributes
         span.set_attribute("selector", args.selector.clone());
         if let Some(ref color) = args.color {
-            span.set_attribute("color", format!("#{:08X}", color));
+            span.set_attribute("color", format!("#{color:08X}"));
         }
         if let Some(retries) = args.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());

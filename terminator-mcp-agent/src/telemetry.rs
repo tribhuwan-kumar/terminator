@@ -73,7 +73,7 @@ mod with_telemetry {
     pub struct StepSpan {
         span: BoxedSpan,
         start_time: std::time::Instant,
-        tool_name: String,
+        _tool_name: String,
     }
 
     impl StepSpan {
@@ -96,7 +96,7 @@ mod with_telemetry {
             StepSpan {
                 span,
                 start_time: std::time::Instant::now(),
-                tool_name: tool_name.to_string(),
+                _tool_name: tool_name.to_string(),
             }
         }
 
@@ -310,7 +310,7 @@ mod with_telemetry {
 
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_http()
-            .with_endpoint(format!("{}/v1/traces", otlp_endpoint))
+            .with_endpoint(format!("{otlp_endpoint}/v1/traces"))
             .with_timeout(Duration::from_secs(10))
             .build()?;
 
