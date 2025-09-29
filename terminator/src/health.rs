@@ -105,13 +105,14 @@ impl HealthCheckResult {
 
     /// Update the overall status based on component health
     pub fn update_status(&mut self) {
-        self.status = if self.api_available && self.desktop_accessible && self.can_enumerate_elements {
-            HealthStatus::Healthy
-        } else if self.api_available {
-            HealthStatus::Degraded
-        } else {
-            HealthStatus::Unhealthy
-        };
+        self.status =
+            if self.api_available && self.desktop_accessible && self.can_enumerate_elements {
+                HealthStatus::Healthy
+            } else if self.api_available {
+                HealthStatus::Degraded
+            } else {
+                HealthStatus::Unhealthy
+            };
     }
 
     /// Add a diagnostic value
@@ -180,9 +181,12 @@ impl PlatformHealthCheck for UnsupportedPlatformHealthChecker {
             error_message: None,
             diagnostics: {
                 let mut diag = HashMap::new();
-                diag.insert("note".to_string(), serde_json::Value::String(
-                    "Platform-specific health checks not implemented".to_string()
-                ));
+                diag.insert(
+                    "note".to_string(),
+                    serde_json::Value::String(
+                        "Platform-specific health checks not implemented".to_string(),
+                    ),
+                );
                 diag
             },
         }

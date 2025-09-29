@@ -11,6 +11,12 @@ use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 /// Windows health checker using UIAutomation API
 pub struct WindowsHealthChecker;
 
+impl Default for WindowsHealthChecker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WindowsHealthChecker {
     pub fn new() -> Self {
         Self
@@ -23,7 +29,7 @@ impl PlatformHealthCheck for WindowsHealthChecker {
         let start = Instant::now();
 
         // Run the check in a blocking task with timeout since UIAutomation uses COM
-        let check_future = tokio::task::spawn_blocking(|| perform_sync_health_check());
+        let check_future = tokio::task::spawn_blocking(perform_sync_health_check);
 
         // Apply a 5-second timeout to the health check
         match tokio::time::timeout(std::time::Duration::from_secs(5), check_future).await {
@@ -35,7 +41,7 @@ impl PlatformHealthCheck for WindowsHealthChecker {
                 error!("Failed to spawn UIAutomation health check task: {}", e);
                 let mut result = HealthCheckResult::unhealthy(
                     "windows",
-                    format!("Failed to spawn health check task: {}", e),
+                    format!("Failed to spawn health check task: {e}"),
                 );
                 result.check_duration_ms = start.elapsed().as_millis() as u64;
                 result
@@ -55,8 +61,10 @@ impl PlatformHealthCheck for WindowsHealthChecker {
 
 fn perform_sync_health_check() -> HealthCheckResult {
     let start = Instant::now();
-    let mut result = HealthCheckResult::default();
-    result.platform = "windows".to_string();
+    let mut result = HealthCheckResult {
+        platform: "windows".to_string(),
+        ..Default::default()
+    };
 
     // Step 1: Initialize COM
     let com_initialized = unsafe {
@@ -88,7 +96,7 @@ fn perform_sync_health_check() -> HealthCheckResult {
         }
         Err(e) => {
             error!("Failed to create UIAutomation instance: {}", e);
-            result.error_message = Some(format!("UIAutomation creation failed: {}", e));
+            result.error_message = Some(format!("UIAutomation creation failed: {e}"));
             result.check_duration_ms = start.elapsed().as_millis() as u64;
             result.update_status();
             return result;
@@ -114,8 +122,7 @@ fn perform_sync_health_check() -> HealthCheckResult {
             }
 
             result.error_message = Some(format!(
-                "Cannot access desktop: {}. This typically indicates RDP disconnection or virtual display issues.",
-                e
+                "Cannot access desktop: {e}. This typically indicates RDP disconnection or virtual display issues."
             ));
             result.check_duration_ms = start.elapsed().as_millis() as u64;
             result.update_status();
@@ -136,20 +143,23 @@ fn perform_sync_health_check() -> HealthCheckResult {
                         warn!("Desktop has no children - possible display issue");
                         result.add_diagnostic("display_warning", "Desktop has no child windows");
                         result.can_enumerate_elements = false;
-                        result.error_message = Some("Desktop has no child windows - display may be disconnected".to_string());
+                        result.error_message = Some(
+                            "Desktop has no child windows - display may be disconnected"
+                                .to_string(),
+                        );
                     } else {
                         result.can_enumerate_elements = true;
                     }
                 }
                 Err(e) => {
                     error!("Failed to enumerate desktop children: {}", e);
-                    result.error_message = Some(format!("Cannot enumerate UI elements: {}", e));
+                    result.error_message = Some(format!("Cannot enumerate UI elements: {e}"));
                 }
             }
         }
         Err(e) => {
             error!("Failed to create condition for enumeration: {}", e);
-            result.error_message = Some(format!("Cannot create enumeration condition: {}", e));
+            result.error_message = Some(format!("Cannot create enumeration condition: {e}"));
         }
     }
 
@@ -177,8 +187,14 @@ fn perform_sync_health_check() -> HealthCheckResult {
                 }
             }
             Err(e) => {
-                warn!("Cannot get display bounds: {} - display may be disconnected", e);
-                result.add_diagnostic("display_bounds_error", format!("Cannot determine display bounds: {}", e));
+                warn!(
+                    "Cannot get display bounds: {} - display may be disconnected",
+                    e
+                );
+                result.add_diagnostic(
+                    "display_bounds_error",
+                    format!("Cannot determine display bounds: {e}"),
+                );
             }
         }
     }
