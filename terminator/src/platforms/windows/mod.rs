@@ -10,6 +10,7 @@ pub mod highlighting;
 pub mod input;
 pub mod tree_builder;
 pub mod types;
+pub mod uiautomation_health;
 pub mod utils;
 pub mod virtual_display;
 
@@ -27,4 +28,9 @@ pub use applications::get_process_name_by_pid;
 // Re-export virtual display support
 pub use virtual_display::{
     is_headless_environment, HeadlessConfig, VirtualDisplayConfig, VirtualDisplayManager,
+};
+
+// Re-export UIAutomation health check functionality
+pub use uiautomation_health::{
+    check_uiautomation_health, quick_health_check, UIAutomationHealthStatus,
 };

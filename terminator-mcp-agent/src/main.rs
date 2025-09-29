@@ -520,12 +520,57 @@ async fn health_check() -> impl axum::response::IntoResponse {
     // Get bridge health status
     let bridge_health = terminator::extension_bridge::ExtensionBridge::health_status().await;
 
-    (
-        axum::http::StatusCode::OK,
-        axum::Json(serde_json::json!({
-            "status": "ok",
+    // Check UIAutomation API health (Windows only)
+    #[cfg(target_os = "windows")]
+    let uiautomation_health = {
+        terminator::platforms::windows::check_uiautomation_health().await
+    };
+
+    // Build response based on platform
+    #[cfg(target_os = "windows")]
+    let response_body = {
+        // Determine overall status based on UIAutomation health
+        let overall_status = if uiautomation_health.available
+            && uiautomation_health.can_access_desktop
+            && uiautomation_health.can_enumerate_children {
+            "ok"
+        } else if uiautomation_health.available {
+            "degraded" // API available but desktop access issues
+        } else {
+            "unhealthy" // API not available at all
+        };
+
+        serde_json::json!({
+            "status": overall_status,
             "extension_bridge": bridge_health,
+            "uiautomation": uiautomation_health,
+            "platform": "windows",
             "timestamp": chrono::Utc::now().to_rfc3339()
-        })),
-    )
+        })
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let response_body = serde_json::json!({
+        "status": "ok",
+        "extension_bridge": bridge_health,
+        "platform": std::env::consts::OS,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    });
+
+    // Return appropriate HTTP status based on health
+    #[cfg(target_os = "windows")]
+    let http_status = if uiautomation_health.available
+        && uiautomation_health.can_access_desktop
+        && uiautomation_health.can_enumerate_children {
+        axum::http::StatusCode::OK
+    } else if uiautomation_health.available {
+        axum::http::StatusCode::PARTIAL_CONTENT // 206 - partially available
+    } else {
+        axum::http::StatusCode::SERVICE_UNAVAILABLE // 503 - service unavailable
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    let http_status = axum::http::StatusCode::OK;
+
+    (http_status, axum::Json(response_body))
 }
