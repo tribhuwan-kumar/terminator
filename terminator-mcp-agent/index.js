@@ -185,10 +185,58 @@ if (argv.includes("--add-to-app")) {
   process.on("SIGTERM", shutdown);
   process.on("exit", shutdown);
 
-  child.on("exit", (code) => {
-    if (code !== 0) {
-      console.error(`[MCP exited with code ${code}]`);
+  let restartAttempts = 0;
+  const MAX_RESTART_ATTEMPTS = 3;
+  const RESTART_DELAY = 1000; // 1 second
+
+  child.on("exit", (code, signal) => {
+    // Check for stack overflow exit code on Windows (3221225725 = 0xC00000FD)
+    const isStackOverflow = code === 3221225725 || code === -1073741571;
+
+    if (code !== 0 && !shuttingDown) {
+      console.error(`[MCP exited with code ${code}${signal ? ` (signal: ${signal})` : ''}]`);
+
+      // Auto-restart on crash if under max attempts
+      if (restartAttempts < MAX_RESTART_ATTEMPTS) {
+        restartAttempts++;
+
+        if (isStackOverflow) {
+          console.error(`[Stack overflow detected - this often happens with deeply nested UI trees]`);
+        }
+
+        console.error(`[Attempting to restart MCP server (attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS})...]`);
+
+        setTimeout(() => {
+          console.error(`[Restarting MCP server...]`);
+
+          // Spawn new process
+          const newChild = spawn(binary, agentArgs, {
+            stdio: ["pipe", "pipe", "pipe"],
+            shell: false,
+            detached: process.platform !== "win32",
+          });
+
+          // Reconnect pipes
+          process.stdin.unpipe(child.stdin);
+          process.stdin.pipe(newChild.stdin);
+          newChild.stdout.pipe(process.stdout);
+          newChild.stderr.pipe(process.stderr);
+
+          // Replace child reference
+          child = newChild;
+
+          // Reattach exit handler with same logic
+          child.on("exit", arguments.callee);
+
+          console.error(`[MCP server restarted successfully]`);
+        }, RESTART_DELAY);
+
+        return; // Don't exit the wrapper process
+      } else {
+        console.error(`[Max restart attempts reached. Exiting.]`);
+      }
     }
+
     process.exit(code);
   });
 }

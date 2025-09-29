@@ -220,7 +220,7 @@ mod with_telemetry {
             return Ok(());
         }
 
-        // Set up propagator
+        // Set up propagator early
         global::set_text_map_propagator(TraceContextPropagator::new());
 
         // Configure OTLP exporter
@@ -237,17 +237,24 @@ mod with_telemetry {
             .parse::<u64>()
             .unwrap_or(30);
 
+        // Check if we should skip collector check entirely
+        let skip_check = std::env::var("OTEL_SKIP_COLLECTOR_CHECK")
+            .unwrap_or_default()
+            .eq_ignore_ascii_case("true");
+
+        if skip_check {
+            info!("Skipping collector availability check (OTEL_SKIP_COLLECTOR_CHECK=true)");
+            // Initialize telemetry immediately without checking
+            return init_telemetry_provider(&otlp_endpoint);
+        }
+
         info!(
             "OpenTelemetry configuration: endpoint={}, retry_duration={}m, retry_interval={}s",
             otlp_endpoint, retry_duration_mins, retry_interval_secs
         );
 
-        // Check if collector is available with retries
-        let skip_check = std::env::var("OTEL_SKIP_COLLECTOR_CHECK")
-            .unwrap_or_default()
-            .eq_ignore_ascii_case("true");
-
-        if !skip_check {
+        // Spawn telemetry initialization in a background thread to avoid blocking
+        std::thread::spawn(move || {
             let start_time = std::time::Instant::now();
             let max_duration = Duration::from_secs(retry_duration_mins * 60);
             let retry_interval = Duration::from_secs(retry_interval_secs);
@@ -262,6 +269,11 @@ mod with_telemetry {
                         "OpenTelemetry collector is available at {} (attempt {})",
                         otlp_endpoint, attempt
                     );
+
+                    // Initialize telemetry now that collector is available
+                    if let Err(e) = init_telemetry_provider(&otlp_endpoint) {
+                        tracing::error!("Failed to initialize telemetry provider: {}", e);
+                    }
                     break;
                 }
 
@@ -272,7 +284,7 @@ mod with_telemetry {
                         otlp_endpoint,
                         retry_duration_mins
                     );
-                    return Ok(());
+                    break;
                 }
 
                 info!(
@@ -284,10 +296,13 @@ mod with_telemetry {
                 );
                 std::thread::sleep(retry_interval);
             }
-        } else {
-            info!("Skipping collector availability check (OTEL_SKIP_COLLECTOR_CHECK=true)");
-        }
+        });
 
+        // Return immediately to avoid blocking the main thread
+        Ok(())
+    }
+
+    fn init_telemetry_provider(otlp_endpoint: &str) -> anyhow::Result<()> {
         info!(
             "Initializing OpenTelemetry with endpoint: {}",
             otlp_endpoint
@@ -295,7 +310,7 @@ mod with_telemetry {
 
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_http()
-            .with_endpoint(format!("{}/v1/traces", &otlp_endpoint))
+            .with_endpoint(format!("{}/v1/traces", otlp_endpoint))
             .with_timeout(Duration::from_secs(10))
             .build()?;
 

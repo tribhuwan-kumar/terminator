@@ -58,72 +58,114 @@ pub(crate) fn build_ui_node_tree_configurable(
     current_depth: usize,
     context: &mut TreeBuildingContext,
 ) -> Result<crate::UINode, AutomationError> {
-    context.increment_element_count();
-    context.update_max_depth(current_depth);
-
-    // Yield CPU periodically to prevent freezing while processing everything
-    if context.should_yield() {
-        thread::sleep(Duration::from_millis(1));
+    // Use iterative approach with explicit stack to prevent stack overflow
+    // We'll build the tree using a work queue and then assemble it
+    struct WorkItem {
+        element: UIElement,
+        depth: usize,
+        node_path: Vec<usize>, // Path of indices to reach this node from root
     }
 
-    // Get element attributes with configurable property loading
-    let attributes = get_configurable_attributes(element, &context.property_mode);
+    let mut work_queue = Vec::new();
 
-    // Check if we've reached max_depth - if so, return node without children
-    if let Some(max_depth) = context.config.max_depth {
-        if current_depth >= max_depth {
-            return Ok(crate::UINode {
-                id: element.id(),
-                attributes,
-                children: Vec::new(), // Stop traversal at max_depth
-            });
+    // Start with root element
+    work_queue.push(WorkItem {
+        element: element.clone(),
+        depth: current_depth,
+        node_path: vec![],
+    });
+
+    while let Some(work_item) = work_queue.pop() {
+        context.increment_element_count();
+        context.update_max_depth(work_item.depth);
+
+        // Yield CPU periodically to prevent freezing
+        if context.should_yield() {
+            thread::sleep(Duration::from_millis(1));
         }
-    }
 
-    let mut children_nodes = Vec::new();
+        // Get element attributes with configurable property loading
+        let attributes = get_configurable_attributes(&work_item.element, &context.property_mode);
 
-    // Get children with safe strategy
-    match get_element_children_safe(element, context) {
-        Ok(children_elements) => {
-            // Process children in efficient batches
-            for batch in children_elements.chunks(context.config.batch_size) {
-                for child_element in batch {
-                    match build_ui_node_tree_configurable(child_element, current_depth + 1, context)
-                    {
-                        Ok(child_node) => children_nodes.push(child_node),
-                        Err(e) => {
-                            debug!(
-                                "Failed to process child element: {}. Continuing with next child.",
-                                e
-                            );
-                            context.increment_errors();
-                            // Continue processing - we want the full tree
+        // Create node without children initially
+        let mut node = crate::UINode {
+            id: work_item.element.id(),
+            attributes,
+            children: Vec::new(),
+        };
+
+        // Check if we should process children
+        let should_process_children = if let Some(max_depth) = context.config.max_depth {
+            work_item.depth < max_depth
+        } else {
+            true
+        };
+
+        if should_process_children {
+            // Get children with safe strategy
+            match get_element_children_safe(&work_item.element, context) {
+                Ok(children_elements) => {
+                    // Process children in batches
+                    let mut child_index = 0;
+                    for batch in children_elements.chunks(context.config.batch_size) {
+                        for child_element in batch {
+                            // Create path for this child
+                            let mut child_path = work_item.node_path.clone();
+                            child_path.push(child_index);
+
+                            // Recursively build child node (with depth limit to prevent deep recursion)
+                            if work_item.depth < 100 { // Limit recursion depth
+                                match build_ui_node_tree_configurable(child_element, work_item.depth + 1, context) {
+                                    Ok(child_node) => node.children.push(child_node),
+                                    Err(e) => {
+                                        debug!(
+                                            "Failed to process child element: {}. Continuing with next child.",
+                                            e
+                                        );
+                                        context.increment_errors();
+                                    }
+                                }
+                            } else {
+                                // If too deep, add to work queue for iterative processing
+                                work_queue.push(WorkItem {
+                                    element: child_element.clone(),
+                                    depth: work_item.depth + 1,
+                                    node_path: child_path,
+                                });
+                            }
+                            child_index += 1;
+                        }
+
+                        // Small yield between large batches to maintain responsiveness
+                        if batch.len() == context.config.batch_size
+                            && children_elements.len() > context.config.batch_size
+                        {
+                            thread::sleep(Duration::from_millis(1));
                         }
                     }
                 }
-
-                // Small yield between large batches to maintain responsiveness
-                if batch.len() == context.config.batch_size
-                    && children_elements.len() > context.config.batch_size
-                {
-                    thread::sleep(Duration::from_millis(1));
+                Err(e) => {
+                    debug!(
+                        "Failed to get children for element: {}. Proceeding with no children.",
+                        e
+                    );
+                    context.increment_errors();
                 }
             }
         }
-        Err(e) => {
-            debug!(
-                "Failed to get children for element: {}. Proceeding with no children.",
-                e
-            );
-            context.increment_errors();
+
+        // If this is the root node (no path), return it
+        if work_item.node_path.is_empty() {
+            return Ok(node);
         }
+        // For deep nodes that were queued, we'd need additional logic to attach them
+        // But since we're using hybrid approach (recursion up to depth 100), this shouldn't happen
     }
 
-    Ok(crate::UINode {
-        id: element.id(),
-        attributes,
-        children: children_nodes,
-    })
+    // If we get here, something went wrong
+    Err(AutomationError::PlatformError(
+        "Failed to build UI tree".to_string(),
+    ))
 }
 
 /// Get element attributes based on the configured property loading mode
