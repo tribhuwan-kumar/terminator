@@ -144,12 +144,12 @@ pub async fn get_platform_health_checker() -> Box<dyn PlatformHealthCheck> {
 
     #[cfg(target_os = "macos")]
     {
-        Box::new(super::platforms::macos::health::MacOSHealthChecker::new())
+        Box::new(MacOSHealthChecker)
     }
 
     #[cfg(target_os = "linux")]
     {
-        Box::new(super::platforms::linux::health::LinuxHealthChecker::new())
+        Box::new(LinuxHealthChecker)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -162,6 +162,38 @@ pub async fn get_platform_health_checker() -> Box<dyn PlatformHealthCheck> {
 pub async fn check_automation_health() -> HealthCheckResult {
     let checker = get_platform_health_checker().await;
     checker.check_health().await
+}
+
+/// macOS health checker
+#[cfg(target_os = "macos")]
+struct MacOSHealthChecker;
+
+#[cfg(target_os = "macos")]
+#[async_trait]
+impl PlatformHealthCheck for MacOSHealthChecker {
+    async fn check_health(&self) -> HealthCheckResult {
+        // For now, return a healthy status for macOS
+        // TODO: Implement actual Accessibility API checks
+        let mut result = HealthCheckResult::healthy("macos");
+        result.add_diagnostic("note", "Accessibility API health checks not yet implemented");
+        result
+    }
+}
+
+/// Linux health checker
+#[cfg(target_os = "linux")]
+struct LinuxHealthChecker;
+
+#[cfg(target_os = "linux")]
+#[async_trait]
+impl PlatformHealthCheck for LinuxHealthChecker {
+    async fn check_health(&self) -> HealthCheckResult {
+        // For now, return a healthy status for Linux
+        // TODO: Implement actual AT-SPI or X11 accessibility checks
+        let mut result = HealthCheckResult::healthy("linux");
+        result.add_diagnostic("note", "AT-SPI health checks not yet implemented");
+        result
+    }
 }
 
 /// Health checker for unsupported platforms
