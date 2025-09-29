@@ -6,6 +6,7 @@
 pub mod applications;
 pub mod element;
 pub mod engine;
+pub mod health;
 pub mod highlighting;
 pub mod input;
 pub mod tree_builder;
@@ -28,3 +29,4 @@ pub use applications::get_process_name_by_pid;
 pub use virtual_display::{
     is_headless_environment, HeadlessConfig, VirtualDisplayConfig, VirtualDisplayManager,
 };
+

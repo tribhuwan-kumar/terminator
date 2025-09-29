@@ -517,15 +517,41 @@ async fn root_handler() -> impl axum::response::IntoResponse {
 }
 
 async fn health_check() -> impl axum::response::IntoResponse {
+    use terminator::health::{check_automation_health, HealthStatus};
+
     // Get bridge health status
     let bridge_health = terminator::extension_bridge::ExtensionBridge::health_status().await;
 
-    (
-        axum::http::StatusCode::OK,
-        axum::Json(serde_json::json!({
-            "status": "ok",
-            "extension_bridge": bridge_health,
-            "timestamp": chrono::Utc::now().to_rfc3339()
-        })),
-    )
+    // Check platform-specific automation API health
+    let automation_health = check_automation_health().await;
+
+    // Build response body
+    let response_body = serde_json::json!({
+        "status": match automation_health.status {
+            HealthStatus::Healthy => "healthy",
+            HealthStatus::Degraded => "degraded",
+            HealthStatus::Unhealthy => "unhealthy",
+        },
+        "extension_bridge": bridge_health,
+        "automation": {
+            "api_available": automation_health.api_available,
+            "desktop_accessible": automation_health.desktop_accessible,
+            "can_enumerate_elements": automation_health.can_enumerate_elements,
+            "check_duration_ms": automation_health.check_duration_ms,
+            "error_message": automation_health.error_message,
+            "diagnostics": automation_health.diagnostics,
+        },
+        "platform": automation_health.platform,
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    });
+
+    // Return appropriate HTTP status based on health
+    let http_status = match automation_health.status.to_http_status() {
+        200 => axum::http::StatusCode::OK,
+        206 => axum::http::StatusCode::PARTIAL_CONTENT,
+        503 => axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        _ => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+    };
+
+    (http_status, axum::Json(response_body))
 }
