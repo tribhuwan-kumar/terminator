@@ -70,6 +70,14 @@ fn evaluate_internal(expression: &str, variables: &Value) -> bool {
         return result;
     }
 
+    // Handle literal boolean values
+    if expr == "true" {
+        return true;
+    }
+    if expr == "false" {
+        return false;
+    }
+
     // Handle simple variable references (evaluate to their boolean truthiness)
     // This allows expressions like "env.troubleshooting" or "!env.troubleshooting"
     // where troubleshooting is a boolean

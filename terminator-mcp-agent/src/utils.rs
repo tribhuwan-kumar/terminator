@@ -997,6 +997,10 @@ pub struct ExecuteSequenceArgs {
     )]
     pub follow_fallback: Option<bool>,
     #[schemars(
+        description = "Whether to execute jumps when reaching the end_at_step boundary. When false (default), jumps are skipped at the end step. When true, jumps are evaluated and executed even at the boundary."
+    )]
+    pub execute_jumps_at_end: Option<bool>,
+    #[schemars(
         description = "Optional base path for resolving script files. When script_file is used in run_command or execute_browser_script, relative paths will first be searched in this directory, then fallback to workflow directory or current directory. Useful for mounting external file sources like S3 via rclone."
     )]
     pub scripts_base_path: Option<String>,

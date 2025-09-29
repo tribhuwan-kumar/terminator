@@ -1553,7 +1553,19 @@ impl DesktopWrapper {
                 // Check for conditional jumps on success
                 let mut performed_jump = false;
 
-                if let Some(jumps) = original_step.and_then(|s| s.jumps.as_ref()) {
+                // Check if we should skip jump evaluation at the end_at_step boundary
+                // When end_at_step is specified, jumps are skipped by default at the boundary
+                // to provide predictable execution bounds. Users can override this with
+                // --execute-jumps-at-end to allow jumps even at the boundary (e.g., for loops).
+                let execute_jumps_at_end = args.execute_jumps_at_end.unwrap_or(false);
+                let skip_jumps = current_index == end_at_index && !execute_jumps_at_end;
+
+                if skip_jumps {
+                    info!(
+                        "Skipping jump evaluation at end_at_step boundary (step index {}). Use --execute-jumps-at-end to enable jumps at boundary.",
+                        current_index
+                    );
+                } else if let Some(jumps) = original_step.and_then(|s| s.jumps.as_ref()) {
                     if !jumps.is_empty() {
                         info!(
                             "Evaluating {} jump condition(s) for step {}",

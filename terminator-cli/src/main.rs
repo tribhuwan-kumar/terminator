@@ -155,6 +155,10 @@ struct McpRunArgs {
     #[clap(long)]
     follow_fallback: Option<bool>,
 
+    /// Execute jumps when reaching the end_at_step boundary (default: false)
+    #[clap(long)]
+    execute_jumps_at_end: Option<bool>,
+
     /// Disable output logging to file (logging is enabled by default)
     #[clap(long)]
     no_log: bool,
@@ -1370,6 +1374,12 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
                 serde_json::Value::Bool(follow),
             );
         }
+        if let Some(execute_jumps) = args.execute_jumps_at_end {
+            workflow_args.insert(
+                "execute_jumps_at_end".to_string(),
+                serde_json::Value::Bool(execute_jumps),
+            );
+        }
 
         // Add CLI inputs if provided
         if let Some(inputs_str) = &args.inputs {
@@ -1648,6 +1658,12 @@ async fn run_workflow_once(
             workflow_args.insert(
                 "follow_fallback".to_string(),
                 serde_json::Value::Bool(follow),
+            );
+        }
+        if let Some(execute_jumps) = args.execute_jumps_at_end {
+            workflow_args.insert(
+                "execute_jumps_at_end".to_string(),
+                serde_json::Value::Bool(execute_jumps),
             );
         }
 
