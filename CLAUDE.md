@@ -30,7 +30,8 @@ terminator mcp run workflow.yml --no-detailed-results     # Minimal output
 terminator mcp run workflow.yml --start-from-step "step_3"
 terminator mcp run workflow.yml --end-at-step "step_5"
 terminator mcp run workflow.yml --start-from-step "step_2" --end-at-step "step_5"
-terminator mcp run workflow.yml --follow-fallback        # Follow fallback_id beyond boundaries
+terminator mcp run workflow.yml --follow-fallback              # Follow fallback_id beyond boundaries
+terminator mcp run workflow.yml --end-at-step "step_5" --execute-jumps-at-end  # Execute jumps at boundary
 
 # Validate workflow output
 terminator mcp validate output.json

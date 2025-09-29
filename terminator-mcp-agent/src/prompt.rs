@@ -424,7 +424,8 @@ Run specific portions of a workflow using `start_from_step` and `end_at_step`:
         \"url\": \"file://workflow.yml\",
         \"start_from_step\": \"read_data_step\",     // Start from this step ID
         \"end_at_step\": \"process_data_step\",      // Stop after this step (inclusive)
-        \"follow_fallback\": false                  // Don't follow fallback_id beyond end_at_step (default: false)
+        \"follow_fallback\": false,                 // Don't follow fallback_id beyond end_at_step (default: false)
+        \"execute_jumps_at_end\": false            // Don't execute jumps at end_at_step boundary (default: false)
     }}
 }}
 ```
@@ -435,6 +436,7 @@ Run specific portions of a workflow using `start_from_step` and `end_at_step`:
 - **Resume from step:** Only set `start_from_step`
 - **Run until step:** Only set `end_at_step`
 - **Debug without fallback:** Use `follow_fallback: false` to prevent jumping to troubleshooting steps
+- **Allow jumps at boundary:** Use `execute_jumps_at_end: true` to execute jump conditions at the `end_at_step` boundary
 
 **Automatic State Persistence:**
 When using `file://` URLs, workflow state is automatically saved:
@@ -477,6 +479,11 @@ Supports multiple conditions with first-match-wins evaluation:
 - `if`: Expression evaluated after successful step execution
 - `to_id`: Target step ID to jump to when condition is true
 - `reason`: Optional message logged when jump occurs
+
+**Jump Behavior with Partial Execution:**
+- By default, jumps are **skipped** when a step is the `end_at_step` boundary
+- This provides predictable execution bounds when debugging or running partial workflows
+- To allow jumps even at the boundary (e.g., for loops), use `execute_jumps_at_end: true`
 
 **Expression Access:**
 - `{{step_id}}_status`: Step execution status (\"success\" or \"error\")

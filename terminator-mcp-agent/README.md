@@ -95,6 +95,9 @@ terminator mcp run workflow.yml --start-from "step_12" --end-at "step_13"
 
 # Run single step
 terminator mcp run workflow.yml --start-from "read_json" --end-at "read_json"
+
+# Execute jumps at end boundary (by default jumps are skipped at --end-at-step)
+terminator mcp run workflow.yml --end-at "step_5" --execute-jumps-at-end
 ```
 
 **Workflow File Formats:**
@@ -856,7 +859,8 @@ You can run specific portions of a workflow using `start_from_step` and `end_at_
     "url": "file://path/to/workflow.yml",
     "start_from_step": "read_json_file",    // Start from this step ID
     "end_at_step": "fill_journal_entries",  // Stop after this step (inclusive)
-    "follow_fallback": false                // Don't follow fallback_id beyond end_at_step (default: false)
+    "follow_fallback": false,               // Don't follow fallback_id beyond end_at_step (default: false)
+    "execute_jumps_at_end": false          // Don't execute jumps at end_at_step boundary (default: false)
   }
 }
 ```
@@ -867,6 +871,7 @@ You can run specific portions of a workflow using `start_from_step` and `end_at_
 - Run from step to end: Only set `start_from_step`
 - Run from beginning to step: Only set `end_at_step`
 - Debug without fallback: Use `follow_fallback: false` to prevent jumping to troubleshooting steps when a bounded step fails
+- Allow jumps at boundary: Use `execute_jumps_at_end: true` to execute jump conditions even at the `end_at_step` boundary (by default, jumps are skipped at the boundary for predictable execution)
 
 #### Automatic State Persistence
 
