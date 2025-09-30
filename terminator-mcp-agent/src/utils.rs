@@ -574,7 +574,9 @@ pub struct ExecuteBrowserScriptArgs {
         description = "Optional path to JavaScript file to load instead of inline script. Either this or script must be provided."
     )]
     pub script_file: Option<String>,
-    #[schemars(description = "Optional environment variables to inject into browser script. Variables are automatically available as proper JavaScript types - JSON strings are parsed into objects/arrays.")]
+    #[schemars(
+        description = "Optional environment variables to inject into browser script. Variables are automatically available as proper JavaScript types - JSON strings are parsed into objects/arrays."
+    )]
     pub env: Option<serde_json::Value>,
     #[schemars(
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."

@@ -1721,7 +1721,7 @@ impl DesktopWrapper {
                                             );
                                             parsed
                                         }
-                                        Err(_) => value.clone()
+                                        Err(_) => value.clone(),
                                     }
                                 } else {
                                     value.clone()
@@ -1791,7 +1791,7 @@ impl DesktopWrapper {
                                             );
                                             parsed
                                         }
-                                        Err(_) => value.clone()
+                                        Err(_) => value.clone(),
                                     }
                                 } else {
                                     value.clone()
