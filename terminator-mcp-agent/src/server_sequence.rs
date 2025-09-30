@@ -1750,12 +1750,19 @@ impl DesktopWrapper {
             match output_parser::run_output_parser(&parser_json, &summary).await {
                 Ok(Some(parsed_data)) => {
                     // Check if the parsed data is wrapped in a 'result' field and unwrap it
-                    // This handles the case where JavaScript execution returns {result: ..., logs: ...}
+                    // This handles the case where JavaScript execution via scripting_engine returns
+                    // {result: <actual_parser_output>, logs: [...]} wrapper structure.
+                    // We need to extract the actual parser output from the wrapper to ensure
+                    // the CLI and downstream consumers receive the parser's intended structure.
                     let final_data = if let Some(result) = parsed_data.get("result") {
+                        // Log that we're unwrapping for debugging visibility
+                        info!(
+                            "[output_parser] Unwrapping parser result from JavaScript execution wrapper"
+                        );
                         // Unwrap the result field to get the actual parser output
                         result.clone()
                     } else {
-                        // Use as-is if not wrapped (backward compatibility)
+                        // Use as-is if not wrapped (backward compatibility with direct returns)
                         parsed_data
                     };
 
