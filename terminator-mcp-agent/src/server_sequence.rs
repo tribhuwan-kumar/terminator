@@ -1743,9 +1743,14 @@ impl DesktopWrapper {
         // Skip output parser when end_at_step is specified (partial execution)
         if let Some(parser_def) = parser_def {
             if args.end_at_step.is_some() {
-                warn!("Skipping output parser for partial workflow execution (end_at_step specified)");
+                warn!(
+                    "Skipping output parser for partial workflow execution (end_at_step specified)"
+                );
                 if let Some(obj) = summary.as_object_mut() {
-                    obj.insert("parser_skipped".to_string(), json!("Partial execution with end_at_step"));
+                    obj.insert(
+                        "parser_skipped".to_string(),
+                        json!("Partial execution with end_at_step"),
+                    );
                 }
             } else {
                 // Apply variable substitution to the output_parser field
@@ -1755,39 +1760,39 @@ impl DesktopWrapper {
                 substitute_variables(&mut parser_json, &execution_context);
 
                 match output_parser::run_output_parser(&parser_json, &summary).await {
-                Ok(Some(parsed_data)) => {
-                    // Check if the parsed data is wrapped in a 'result' field and unwrap it
-                    // This handles the case where JavaScript execution via scripting_engine returns
-                    // {result: <actual_parser_output>, logs: [...]} wrapper structure.
-                    // We need to extract the actual parser output from the wrapper to ensure
-                    // the CLI and downstream consumers receive the parser's intended structure.
-                    let final_data = if let Some(result) = parsed_data.get("result") {
-                        // Log that we're unwrapping for debugging visibility
-                        info!(
+                    Ok(Some(parsed_data)) => {
+                        // Check if the parsed data is wrapped in a 'result' field and unwrap it
+                        // This handles the case where JavaScript execution via scripting_engine returns
+                        // {result: <actual_parser_output>, logs: [...]} wrapper structure.
+                        // We need to extract the actual parser output from the wrapper to ensure
+                        // the CLI and downstream consumers receive the parser's intended structure.
+                        let final_data = if let Some(result) = parsed_data.get("result") {
+                            // Log that we're unwrapping for debugging visibility
+                            info!(
                             "[output_parser] Unwrapping parser result from JavaScript execution wrapper"
                         );
-                        // Unwrap the result field to get the actual parser output
-                        result.clone()
-                    } else {
-                        // Use as-is if not wrapped (backward compatibility with direct returns)
-                        parsed_data
-                    };
+                            // Unwrap the result field to get the actual parser output
+                            result.clone()
+                        } else {
+                            // Use as-is if not wrapped (backward compatibility with direct returns)
+                            parsed_data
+                        };
 
-                    if let Some(obj) = summary.as_object_mut() {
-                        obj.insert("parsed_output".to_string(), final_data);
+                        if let Some(obj) = summary.as_object_mut() {
+                            obj.insert("parsed_output".to_string(), final_data);
+                        }
+                    }
+                    Ok(None) => {
+                        if let Some(obj) = summary.as_object_mut() {
+                            obj.insert("parsed_output".to_string(), json!({}));
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(obj) = summary.as_object_mut() {
+                            obj.insert("parser_error".to_string(), json!(e.to_string()));
+                        }
                     }
                 }
-                Ok(None) => {
-                    if let Some(obj) = summary.as_object_mut() {
-                        obj.insert("parsed_output".to_string(), json!({}));
-                    }
-                }
-                Err(e) => {
-                    if let Some(obj) = summary.as_object_mut() {
-                        obj.insert("parser_error".to_string(), json!(e.to_string()));
-                    }
-                }
-            }
             }
         }
         if final_status != "success" {
