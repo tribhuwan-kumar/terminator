@@ -277,6 +277,16 @@ execute_browser_script({{
 }})
 ```
 
+**Finding and Setting Form Fields by Label Text:**
+```javascript
+// Reliable pattern for setting form fields using their label text
+// instead of IDs or selectors that might change
+execute_browser_script({{
+  selector: \"role:Window|name:Chrome\",
+  script: \"(function() {{\\n  // Find input field below a label with specific text\\n  function findInputByLabel(labelText) {{\\n    const labels = Array.from(document.querySelectorAll('label'));\\n    const label = labels.find(l => l.textContent.trim() === labelText);\\n    \\n    if (!label) return null;\\n    \\n    const labelRect = label.getBoundingClientRect();\\n    const inputs = Array.from(document.querySelectorAll('input[type=\\\\\"text\\\\\"]'));\\n    \\n    // Find input directly below the label\\n    return inputs.find(input => {{\\n      const inputRect = input.getBoundingClientRect();\\n      const isBelow = inputRect.top > labelRect.bottom;\\n      const isAligned = Math.abs(inputRect.left - labelRect.left) < 10;\\n      const isClose = inputRect.top - labelRect.bottom < 30;\\n      return isBelow && isAligned && isClose;\\n    }});\\n  }}\\n  \\n  // Set date fields using labels\\n  const dateValue = date_sap_format || '01.01.2025';  // From workflow env\\n  const fields = [\\n    {{ label: 'Posting Date', value: dateValue }},\\n    {{ label: 'Due Date', value: dateValue }},\\n    {{ label: 'Doc. Date', value: dateValue }}\\n  ];\\n  \\n  const results = [];\\n  fields.forEach(field => {{\\n    const input = findInputByLabel(field.label);\\n    if (input) {{\\n      input.value = field.value;\\n      input.dispatchEvent(new Event('input', {{ bubbles: true }}));\\n      input.dispatchEvent(new Event('change', {{ bubbles: true }}));\\n      results.push({{ label: field.label, success: true }});\\n    }}\\n  }});\\n  \\n  return JSON.stringify({{ fields_set: results.length, results }});\\n}})()\"
+}})
+```
+
 **Browser Script Format Requirements:**
 Scripts executed via `execute_browser_script` must follow these format rules:
 - **DO NOT** start scripts with `return (function()` - this causes execution errors
