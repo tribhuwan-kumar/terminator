@@ -1705,7 +1705,33 @@ impl DesktopWrapper {
                 {
                     for (key, value) in env_obj {
                         if Self::is_valid_js_identifier(&key) {
-                            if let Ok(value_json) = serde_json::to_string(&value) {
+                            // Smart handling of potentially double-stringified JSON (same as browser scripts)
+                            let injectable_value = if let Some(str_val) = value.as_str() {
+                                let trimmed = str_val.trim();
+                                // Check if it looks like JSON (object or array)
+                                if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                                    || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                                {
+                                    // Try to parse as JSON to avoid double stringification
+                                    match serde_json::from_str::<serde_json::Value>(str_val) {
+                                        Ok(parsed) => {
+                                            tracing::debug!(
+                                                "[run_command] Detected JSON string for env.{}, parsing to avoid double stringification",
+                                                key
+                                            );
+                                            parsed
+                                        }
+                                        Err(_) => value.clone()
+                                    }
+                                } else {
+                                    value.clone()
+                                }
+                            } else {
+                                value.clone()
+                            };
+
+                            // Now stringify for injection (single level of stringification)
+                            if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                                 final_script.push_str(&format!("var {key} = {value_json};\n"));
                                 tracing::debug!(
                                     "[run_command] Injected env.{} as individual variable",
@@ -1749,7 +1775,33 @@ impl DesktopWrapper {
                 {
                     for (key, value) in env_obj {
                         if Self::is_valid_js_identifier(&key) {
-                            if let Ok(value_json) = serde_json::to_string(&value) {
+                            // Smart handling of potentially double-stringified JSON (same as browser/JS scripts)
+                            let injectable_value = if let Some(str_val) = value.as_str() {
+                                let trimmed = str_val.trim();
+                                // Check if it looks like JSON (object or array)
+                                if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                                    || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                                {
+                                    // Try to parse as JSON to avoid double stringification
+                                    match serde_json::from_str::<serde_json::Value>(str_val) {
+                                        Ok(parsed) => {
+                                            tracing::debug!(
+                                                "[run_command] Detected JSON string for env.{}, parsing to avoid double stringification",
+                                                key
+                                            );
+                                            parsed
+                                        }
+                                        Err(_) => value.clone()
+                                    }
+                                } else {
+                                    value.clone()
+                                }
+                            } else {
+                                value.clone()
+                            };
+
+                            // Now stringify for injection (single level of stringification)
+                            if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                                 final_script.push_str(&format!("{key} = {value_json}\n"));
                                 tracing::debug!(
                                     "[run_command] Injected env.{} as individual variable",
@@ -4808,12 +4860,47 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         {
             for (key, value) in env_obj {
                 if Self::is_valid_js_identifier(&key) {
-                    if let Ok(value_json) = serde_json::to_string(&value) {
+                    // Smart handling of potentially double-stringified JSON
+                    let injectable_value = if let Some(str_val) = value.as_str() {
+                        let trimmed = str_val.trim();
+                        // Check if it looks like JSON (object or array)
+                        if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                            || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                        {
+                            // Try to parse as JSON to avoid double stringification
+                            match serde_json::from_str::<serde_json::Value>(str_val) {
+                                Ok(parsed) => {
+                                    tracing::debug!(
+                                        "[execute_browser_script] Detected JSON string for env.{}, parsing to avoid double stringification",
+                                        key
+                                    );
+                                    parsed
+                                }
+                                Err(_) => {
+                                    // Not valid JSON despite looking like it, keep as string
+                                    value.clone()
+                                }
+                            }
+                        } else {
+                            // Regular string value, keep as is
+                            value.clone()
+                        }
+                    } else {
+                        // Not a string (number, bool, object, etc.), keep as is
+                        value.clone()
+                    };
+
+                    // Now stringify for injection (single level of stringification)
+                    if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
                         injected_vars.insert(key.clone()); // Track this variable
                         tracing::debug!(
-                            "[execute_browser_script] Injected env.{} as individual variable",
-                            key
+                            "[execute_browser_script] Injected env.{} as individual variable (type: {})",
+                            key,
+                            if injectable_value.is_string() { "string" }
+                            else if injectable_value.is_object() { "object" }
+                            else if injectable_value.is_array() { "array" }
+                            else { "other" }
                         );
                     }
                 }
