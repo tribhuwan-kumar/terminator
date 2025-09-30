@@ -353,6 +353,13 @@ impl DesktopWrapper {
             if args.scripts_base_path.is_none() {
                 args.scripts_base_path = remote_workflow.scripts_base_path;
             }
+            // Also merge output_parser and output if not provided locally
+            if args.output_parser.is_none() {
+                args.output_parser = remote_workflow.output_parser;
+            }
+            if args.output.is_none() {
+                args.output = remote_workflow.output;
+            }
         }
 
         // Set the scripts_base_path for file resolution in run_command and execute_browser_script
@@ -1742,8 +1749,18 @@ impl DesktopWrapper {
 
             match output_parser::run_output_parser(&parser_json, &summary).await {
                 Ok(Some(parsed_data)) => {
+                    // Check if the parsed data is wrapped in a 'result' field and unwrap it
+                    // This handles the case where JavaScript execution returns {result: ..., logs: ...}
+                    let final_data = if let Some(result) = parsed_data.get("result") {
+                        // Unwrap the result field to get the actual parser output
+                        result.clone()
+                    } else {
+                        // Use as-is if not wrapped (backward compatibility)
+                        parsed_data
+                    };
+
                     if let Some(obj) = summary.as_object_mut() {
-                        obj.insert("parsed_output".to_string(), parsed_data);
+                        obj.insert("parsed_output".to_string(), final_data);
                     }
                 }
                 Ok(None) => {
