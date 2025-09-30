@@ -392,8 +392,26 @@ function hasTopLevelReturn(code) {
   return true;
 }
 
+// Helper function to detect async IIFE pattern
+function isAsyncIIFE(code) {
+  // Check for common async IIFE patterns
+  const asyncIIFEPatterns = [
+    /^\s*\(\s*async\s+function\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /^\s*\(\s*async\s*\([^)]*\)\s*=>\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /^\s*\(\s*async\s+function\s+\w+\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/
+  ];
+
+  return asyncIIFEPatterns.some(pattern => pattern.test(code.trim()));
+}
+
 // Helper function to wrap code in IIFE if it has top-level returns
 function wrapCodeIfNeeded(code) {
+  // Check if it's an async IIFE - if so, return as-is since it's already wrapped
+  if (isAsyncIIFE(code)) {
+    log("Detected async IIFE pattern, using as-is (will set awaitPromise=true)");
+    return code;
+  }
+
   if (hasTopLevelReturn(code)) {
     log("Detected top-level return statement, wrapping in IIFE");
     return `(function() {\n${code}\n})()`;
@@ -414,8 +432,14 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
   const perfStart = performance.now();
   const timings = {};
 
-  // Auto-detect and wrap code with top-level returns
+  // Auto-detect async IIFEs and set awaitPromise accordingly
   const originalCode = code;
+  if (isAsyncIIFE(originalCode)) {
+    log("Detected async IIFE, forcing awaitPromise=true");
+    awaitPromise = true;
+  }
+
+  // Auto-detect and wrap code with top-level returns
   code = wrapCodeIfNeeded(code);
 
   // Only attach if we haven't before
@@ -646,9 +670,24 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
     // Log timing summary
     timings.total = performance.now() - perfStart;
     log(`[TIMING] Total: ${timings.total.toFixed(1)}ms | Attach: ${timings.attach.toFixed(1)}ms | Enable: ${timings.totalEnable.toFixed(1)}ms | Eval: ${timings.evaluate.toFixed(1)}ms`);
-    
+
     // Return JSON-serializable value
-    return result?.value;
+    // Check if result is null or undefined - these should be treated as errors
+    const resultValue = result?.value;
+    if (resultValue === null || resultValue === undefined) {
+      // Throw an error to trigger workflow fallback_id behavior
+      throw new Error(
+        JSON.stringify({
+          code: "NULL_RESULT",
+          message: "JavaScript execution returned null or undefined",
+          details: {
+            text: "Script returned null/undefined value",
+            resultType: resultValue === null ? "null" : "undefined"
+          }
+        })
+      );
+    }
+    return resultValue;
   } finally {
     try {
       // Best-effort: remove onEvent listener
