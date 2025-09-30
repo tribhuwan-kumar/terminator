@@ -274,22 +274,27 @@ execute_browser_script({
 
 ## Best Practices
 
-### 1. Variables Are Already Parsed
+### 1. Always Use Safe Variable Access
 
-Environment variables are automatically injected with proper JavaScript types. No parsing is needed:
+Due to how Terminator injects variables with `var` declarations, always use typeof checks:
 
 ```javascript
-// ✅ Correct - Direct access without env prefix
-console.log(username);
-console.log(items[0]);
-console.log(userData.name);
+// ✅ CORRECT - Safe access pattern that prevents errors
+const username = (typeof username !== 'undefined') ? username : 'guest';
+const items = (typeof items !== 'undefined') ? items : [];
+const userData = (typeof userData !== 'undefined') ? userData : {};
 
-// ❌ Wrong - Don't use env prefix
-console.log(env.username);  // Incorrect!
+// Then use the variables normally
+console.log(`User: ${username}`);
+if (items.length > 0) console.log(items[0]);
+if (userData.name) console.log(userData.name);
 
-// ❌ Unnecessary - Don't parse what's already parsed
-const parsedEnv = JSON.parse(env);  // Not needed!
+// ❌ WRONG - Direct access can cause "already declared" errors
+const username = username;  // Error if username was injected
+console.log(env.username);  // Wrong - no env prefix exists
 ```
+
+**Note**: Variables are automatically parsed from JSON when injected, so you don't need `JSON.parse()` on incoming data.
 
 ### 2. Return JSON Strings
 
@@ -400,28 +405,41 @@ execute_browser_script({
 
 ## Troubleshooting
 
-### Issue: "env is not defined"
+### Issue: "env is not defined" or "variable is not defined"
 
-**Cause**: The `env` parameter was not provided to the tool.
+**Cause**: The variable was not provided through the `env` parameter or doesn't exist in the workflow state.
 
-**Solution**: Either provide the `env` parameter or check for its existence:
+**Solution**: Always use typeof checks to safely access variables:
 
 ```javascript
-// Check if specific variables exist
-if (typeof username !== "undefined") {
-  console.log(username);
-}
+// ✅ Safe variable access pattern
+const username = (typeof username !== 'undefined') ? username : 'guest';
+const items = (typeof items !== 'undefined') ? items : [];
+const config = (typeof app_config !== 'undefined') ? app_config : {};
 
-if (typeof items !== "undefined") {
-  console.log(items[0]);
+// Use the variables safely
+console.log(`User: ${username}`);
+if (items.length > 0) {
+  console.log(`First item: ${items[0]}`);
 }
 ```
 
-### Issue: "Identifier 'env' has already been declared"
+### Issue: "Identifier 'x' has already been declared"
 
-**Cause**: The browser context persists `var` declarations between executions.
+**Cause**: Terminator injects environment variables using `var` declarations at the top of your script. If your code tries to redeclare them with `const`, `let`, or `var`, you'll get this error.
 
-**Solution**: Navigate to a new page or use a fresh tab to reset the context.
+**Solution**: Always use the typeof check pattern to avoid redeclaration:
+
+```javascript
+// ❌ WRONG - Will fail if journal_entries was injected
+const journal_entries = [];  // Error: already declared
+
+// ✅ CORRECT - Safe access that won't conflict
+const journalEntries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+const errorFound = (typeof error_found !== 'undefined') ? error_found === 'true' : false;
+```
+
+**Note**: Terminator has a "smart replacement" feature that tries to fix simple cases automatically by converting `const/let/var x =` to `x =`, but it's not 100% reliable. Always use typeof checks for safety.
 
 ### Issue: Script returns "[object Object]"
 

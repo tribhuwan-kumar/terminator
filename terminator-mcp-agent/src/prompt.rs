@@ -114,6 +114,20 @@ Your most reliable strategy is to inspect the application's UI structure *before
 
 **Code execution via run_command (engine mode)**
 
+⚠️ **CRITICAL: JavaScript Variable Declaration Safety**
+Terminator injects environment variables using `var` declarations. To avoid \"variable already declared\" errors, **ALWAYS** use typeof checks:
+
+```javascript
+// ✅ CORRECT - Check if variable exists first
+const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
+const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
+const count = parseInt(retry_count || '0');
+
+// ❌ WRONG - Will fail if variable was already declared with var
+const myVar = env_var_name;  // Error if env_var_name exists
+let isActive = is_active === 'true';  // Error if is_active exists
+```
+
 Use `run_command` with `engine` to execute code directly with SDK bindings:
 
 - engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`). Put your JS in `run` or `script_file`.
@@ -155,11 +169,14 @@ run_command({{
   // No env parameter needed - accumulated env is auto-injected
 }})
 
-// In process.js:
-// All variables are directly available as proper JavaScript types
-console.log(`Processing files from ${{input_dir}}`);      // Direct access as string
-console.log(`Max retries: ${{max_retries}}`);            // Direct access as number
-const entries = journal_entries;                          // Already an array if was JSON
+// In process.js - ALWAYS use typeof checks to avoid redeclaration errors:
+// ⚠️ Variables are injected with 'var' - must check existence first
+const inputDir = (typeof input_dir !== 'undefined') ? input_dir : './default';
+const maxRetries = (typeof max_retries !== 'undefined') ? parseInt(max_retries) : 3;
+const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+
+console.log(`Processing files from ${{inputDir}}`);
+console.log(`Max retries: ${{maxRetries}}`);
 
 // Return data directly (auto-merges to env)
 return {{
@@ -176,13 +193,13 @@ return {{
 
 4. **Access in next step** - Variables are automatically available as proper types:
    ```javascript
-   // Direct access - variables are already properly typed
-   const value = key;                      // Direct access as proper type
-   const data = journal_entries;           // Already an array if was JSON
+   // ⚠️ ALWAYS use typeof checks to avoid redeclaration errors
+   const value = (typeof key !== 'undefined') ? key : null;
+   const data = (typeof journal_entries !== 'undefined') ? journal_entries : [];
 
-   // No JSON.parse needed - smart detection handles it
-   console.log(key);                       // Direct access
-   console.log(data.length);              // Can use array methods directly
+   // Safe access after checking existence
+   if (value) console.log(value);
+   if (data.length) console.log(data.length);
    ```
 
 **Reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
@@ -247,12 +264,27 @@ execute_browser_script({{
 ```
 
 **Accessing Data in Browser Scripts:**
+
+**⚠️ CRITICAL: Variable Declaration Pattern**
+Terminator injects environment variables using `var` declarations. To avoid \"already declared\" errors, **ALWAYS** use the typeof check pattern:
+
 ```javascript
-// Environment variables are automatically injected as proper JavaScript types
-// If a value was JSON in state, it's already parsed into object/array
+// ✅ CORRECT - Safe variable access pattern
+const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default_value';
+const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
+const errorMsg = (typeof error_message !== 'undefined' && error_message !== null) ? error_message : '';
+const count = parseInt(retry_count || '0');
+
+// ❌ WRONG - Will fail if variable was already declared
+const myVar = env_var_name;  // Error: env_var_name already declared
+let isActive = is_active === 'true';  // Error: is_active already declared
+```
+
+```javascript
+// Full example with safe variable access
 execute_browser_script({{
   selector: \"role:Window\",
-  script: \"// Variables auto-injected as proper types\\nconst searchTerm = search_term;        // Direct access - already a string\\nconst entries = journal_entries;       // Direct access - already an array if JSON\\nconst config = app_config;            // Already an object if was JSON\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
+  script: \"// Safe variable access with typeof checks\\nconst searchTerm = (typeof search_term !== 'undefined') ? search_term : '';\\nconst entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];\\nconst config = (typeof app_config !== 'undefined') ? app_config : {{}};\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
 }})
 ```
 

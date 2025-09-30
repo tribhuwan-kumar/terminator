@@ -188,6 +188,29 @@ Environment variables can come from two sources:
 
 Both are merged and available in your scripts, with tool-specific values taking precedence.
 
+#### ⚠️ Critical: Variable Declaration Safety
+
+Terminator injects environment variables using `var` declarations at the beginning of your script. This can cause "variable already declared" errors if your code tries to redeclare them with `const` or `let`.
+
+**Always use the typeof check pattern to safely access variables:**
+
+```javascript
+// ✅ CORRECT - Safe variable access
+const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default_value';
+const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
+const errorMsg = (typeof error_message !== 'undefined' && error_message !== null) ? error_message : '';
+const count = parseInt(retry_count || '0');
+
+// ❌ WRONG - Will fail if variable was already declared with var
+const myVar = env_var_name;  // Error: env_var_name already declared
+let isActive = is_active === 'true';  // Error: is_active already declared
+```
+
+This pattern works whether:
+- The variable exists or doesn't exist
+- Terminator's smart replacement succeeds or fails
+- The variable is used in any scope (global, function, block)
+
 #### Example: Using CLI Inputs
 
 Run workflow with inputs:
@@ -222,13 +245,18 @@ Use the `env` parameter to pass additional data or override CLI inputs:
 In your script, access both CLI inputs and tool env:
 ```javascript
 // process.js
-// Variables are directly available as proper types
+// Use typeof checks to safely access variables
 // api_key comes from CLI --inputs
 // api_endpoint comes from tool's env parameter
-console.log(`Using API key: ${api_key}`);
-console.log(`Connecting to: ${api_endpoint}`);
-console.log(`Max retries: ${max_retries}`);
-console.log(`User: ${user_data.name}`);  // Objects are already parsed
+const apiKey = (typeof api_key !== 'undefined') ? api_key : '';
+const apiEndpoint = (typeof api_endpoint !== 'undefined') ? api_endpoint : 'https://api.example.com';
+const maxRetries = (typeof max_retries !== 'undefined') ? max_retries : 3;
+const userData = (typeof user_data !== 'undefined') ? user_data : { name: 'Unknown' };
+
+console.log(`Using API key: ${apiKey}`);
+console.log(`Connecting to: ${apiEndpoint}`);
+console.log(`Max retries: ${maxRetries}`);
+console.log(`User: ${userData.name}`);  // Objects are already parsed
 ```
 
 ### Setting Environment Variables

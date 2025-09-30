@@ -25,22 +25,26 @@ steps:
     arguments:
       engine: javascript
       run: |
-        // Variables are directly available as proper types
-        console.log(`Username: ${username}`);
-        console.log(`API Key: ${api_key}`);
-        console.log(`Debug mode: ${debug}`);
+        // ⚠️ IMPORTANT: Use typeof checks to safely access variables
+        // Terminator injects variables with 'var', which can cause conflicts
+        const username = (typeof username !== 'undefined') ? username : 'anonymous';
+        const apiKey = (typeof api_key !== 'undefined') ? api_key : '';
+        const debugMode = (typeof debug !== 'undefined') ? debug : false;
+        const allInputs = (typeof inputs !== 'undefined') ? inputs : {};
 
-        // All inputs are also available as an object
-        console.log(`All inputs:`, JSON.stringify(inputs));
+        console.log(`Username: ${username}`);
+        console.log(`API Key: ${apiKey}`);
+        console.log(`Debug mode: ${debugMode}`);
+        console.log(`All inputs:`, JSON.stringify(allInputs));
 
         // Use inputs in your logic
-        if (debug) {
+        if (debugMode) {
           console.log("Debug mode is enabled");
         }
 
         return {
           authenticated_user: username,
-          debug_enabled: debug
+          debug_enabled: debugMode
         };
 ```
 
@@ -76,6 +80,33 @@ When both CLI inputs and workflow-defined inputs exist:
 - **CLI inputs take precedence** - Values from `--inputs` override defaults in the workflow
 - **Smart type detection** - JSON strings are automatically parsed into proper objects/arrays
 - **Direct access** - Each input is available directly without any prefix (e.g., `username`, not `env.username`)
+
+## Variable Declaration Safety
+
+### ⚠️ Critical: Avoiding "Variable Already Declared" Errors
+
+Terminator injects environment variables into your scripts using `var` declarations at the beginning. This can cause conflicts if your code tries to redeclare the same variables with `const`, `let`, or `var`.
+
+**The Problem:**
+```javascript
+// Terminator injects: var journal_entries = [...];
+// Your code has: const journal_entries = [];
+// Result: Error - "journal_entries has already been declared"
+```
+
+**The Solution - Always Use typeof Checks:**
+```javascript
+// ✅ SAFE - Works whether variable exists or not
+const journalEntries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+const hasError = (typeof error_found !== 'undefined') ? error_found === 'true' : false;
+const retryCount = parseInt(retry_count || '0');
+
+// ❌ UNSAFE - Will fail if variable was injected
+const journal_entries = [];  // Error if already declared
+let error_found = false;     // Error if already declared
+```
+
+**Note:** Terminator has a "smart replacement" feature that attempts to fix simple cases by converting `const/let/var x =` to `x =`, but it's not 100% reliable. The typeof pattern is the only guaranteed safe approach.
 
 ## Passing Data Between Steps
 
@@ -436,17 +467,20 @@ steps:
         searchTerm: "{{env.search_term}}"
         maxResults: "{{env.max_results}}"
       script: |
-        // Variables are directly available as proper types
-        // No parsing needed - smart JSON detection handles it
+        // Use typeof checks for safe variable access
+        const term = (typeof searchTerm !== 'undefined') ? searchTerm : '';
+        const maxRes = (typeof maxResults !== 'undefined') ? maxResults : '10';
 
-        // Use the data directly
+        // Use the data safely
         const searchBox = document.querySelector('input[type="search"]');
-        searchBox.value = searchTerm;
+        if (searchBox && term) {
+          searchBox.value = term;
+        }
 
         // Return results
         JSON.stringify({
           status: 'search_configured',
-          searchTerm: searchTerm,
+          searchTerm: term,
           set_env: {
             search_executed: 'true'
           }
