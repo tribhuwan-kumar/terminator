@@ -1740,14 +1740,21 @@ impl DesktopWrapper {
         // Support both 'output_parser' (legacy) and 'output' (simplified)
         let parser_def = args.output_parser.as_ref().or(args.output.as_ref());
 
+        // Skip output parser when end_at_step is specified (partial execution)
         if let Some(parser_def) = parser_def {
-            // Apply variable substitution to the output_parser field
-            let mut parser_json = parser_def.clone();
-            let execution_context =
-                Self::create_flattened_execution_context(&execution_context_map);
-            substitute_variables(&mut parser_json, &execution_context);
+            if args.end_at_step.is_some() {
+                warn!("Skipping output parser for partial workflow execution (end_at_step specified)");
+                if let Some(obj) = summary.as_object_mut() {
+                    obj.insert("parser_skipped".to_string(), json!("Partial execution with end_at_step"));
+                }
+            } else {
+                // Apply variable substitution to the output_parser field
+                let mut parser_json = parser_def.clone();
+                let execution_context =
+                    Self::create_flattened_execution_context(&execution_context_map);
+                substitute_variables(&mut parser_json, &execution_context);
 
-            match output_parser::run_output_parser(&parser_json, &summary).await {
+                match output_parser::run_output_parser(&parser_json, &summary).await {
                 Ok(Some(parsed_data)) => {
                     // Check if the parsed data is wrapped in a 'result' field and unwrap it
                     // This handles the case where JavaScript execution via scripting_engine returns
@@ -1780,6 +1787,7 @@ impl DesktopWrapper {
                         obj.insert("parser_error".to_string(), json!(e.to_string()));
                     }
                 }
+            }
             }
         }
         if final_status != "success" {
