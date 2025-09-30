@@ -25,23 +25,22 @@ steps:
     arguments:
       engine: javascript
       run: |
-        // Access individual input values directly
-        console.log(`Username: ${env.username}`);
-        console.log(`API Key: ${env.api_key}`);
-        console.log(`Debug mode: ${env.debug}`);
+        // Variables are directly available as proper types
+        console.log(`Username: ${username}`);
+        console.log(`API Key: ${api_key}`);
+        console.log(`Debug mode: ${debug}`);
 
-        // Access all inputs as an object
-        const allInputs = env.inputs;
-        console.log(`All inputs:`, JSON.stringify(allInputs));
+        // All inputs are also available as an object
+        console.log(`All inputs:`, JSON.stringify(inputs));
 
         // Use inputs in your logic
-        if (env.debug) {
+        if (debug) {
           console.log("Debug mode is enabled");
         }
 
         return {
-          authenticated_user: env.username,
-          debug_enabled: env.debug
+          authenticated_user: username,
+          debug_enabled: debug
         };
 ```
 
@@ -53,22 +52,21 @@ steps:
     arguments:
       engine: python
       run: |
-        # Access inputs from env dictionary
-        print(f"Username: {env['username']}")
-        print(f"API Key: {env['api_key']}")
-        print(f"Debug mode: {env['debug']}")
+        # Variables are available in the global scope
+        print(f"Username: {username}")
+        print(f"API Key: {api_key}")
+        print(f"Debug mode: {debug}")
 
-        # Access all inputs
-        all_inputs = env.get('inputs', {})
-        print(f"All inputs: {all_inputs}")
+        # All inputs are also available as a dict
+        print(f"All inputs: {inputs}")
 
         # Use in logic
-        if env.get('debug', False):
+        if debug:
             print("Debug mode is enabled")
 
         return {
-            "authenticated_user": env['username'],
-            "debug_enabled": env.get('debug', False)
+            "authenticated_user": username,
+            "debug_enabled": debug
         }
 ```
 
@@ -76,8 +74,8 @@ steps:
 
 When both CLI inputs and workflow-defined inputs exist:
 - **CLI inputs take precedence** - Values from `--inputs` override defaults in the workflow
-- **Merged availability** - All inputs are available in the `env` object
-- **Direct access** - Each input is available as `env.key_name`
+- **Smart type detection** - JSON strings are automatically parsed into proper objects/arrays
+- **Direct access** - Each input is available directly without any prefix (e.g., `username`, not `env.username`)
 
 ## Passing Data Between Steps
 
@@ -151,7 +149,7 @@ Use `{{env.variable_name}}` to access environment variables in subsequent steps:
   "tool_name": "run_command",
   "arguments": {
     "engine": "javascript",
-    "run": "// Access variables from previous steps\nconst filePath = '{{env.file_path}}';\nconst fileSize = parseInt('{{env.file_size}}');\nconst userData = JSON.parse('{{env.user_data}}');\n\nconsole.log(`Processing file: ${filePath}`);\nconsole.log(`Size: ${fileSize} bytes`);\nconsole.log(`User: ${userData.name}`);\n\nreturn { processed: true };"
+    "run": "// Template substitution happens before execution\n// If user_data was JSON.stringify'd when set, it arrives as a valid JSON string\nconst filePath = '{{env.file_path}}';\nconst fileSize = parseInt('{{env.file_size}}');\nconst userData = JSON.parse('{{env.user_data}}');  // Parse if it was stringified when set\n\nconsole.log(`Processing file: ${filePath}`);\nconsole.log(`Size: ${fileSize} bytes`);\nconsole.log(`User: ${userData.name}`);\n\nreturn { processed: true };"
   }
 }
 ```
@@ -329,21 +327,22 @@ return {
 
 ### 2. Complex Data Structures
 
-**Problem**: Only strings can be passed through environment variables.
+**Note**: Environment variables can only store strings, so complex objects must be stringified when setting.
 
-**Solution**: JSON stringify complex objects:
+**Solution**: JSON stringify complex objects when setting, parse when reading via template substitution:
 
 ```javascript
-// Step 1: Stringify complex data
+// Step 1: Stringify complex data when setting
 const data = { users: ["Alice", "Bob"], count: 2 };
 return {
   set_env: {
-    user_data: JSON.stringify(data),
+    user_data: JSON.stringify(data),  // Must stringify when setting
   },
 };
 
-// Step 2: Parse the JSON string
-const userData = JSON.parse("{{env.user_data}}");
+// Step 2: Parse when using template substitution
+// Template substitution replaces {{env.user_data}} with the JSON string
+const userData = JSON.parse('{{env.user_data}}');
 console.log(`Users: ${userData.users.join(", ")}`);
 ```
 
@@ -384,7 +383,10 @@ if (value.startsWith("{{env.")) {
 
 2. **Validate Data**: Check if variables were properly substituted before using them
 
-3. **Use JSON for Complex Data**: Stringify objects and arrays before passing them
+3. **JSON Handling**:
+   - **When setting**: Use `JSON.stringify()` for complex objects/arrays
+   - **When reading via env parameter**: Variables are automatically parsed - use directly
+   - **When reading via template substitution**: Use `JSON.parse()` if the value was stringified
 
 4. **Escape Special Characters**: Particularly important for Windows file paths
 
@@ -434,17 +436,17 @@ steps:
         searchTerm: "{{env.search_term}}"
         maxResults: "{{env.max_results}}"
       script: |
-        // Parse the injected environment variables
-        const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
+        // Variables are directly available as proper types
+        // No parsing needed - smart JSON detection handles it
 
-        // Use the data
+        // Use the data directly
         const searchBox = document.querySelector('input[type="search"]');
-        searchBox.value = parsedEnv.searchTerm;
+        searchBox.value = searchTerm;
 
         // Return results
         JSON.stringify({
           status: 'search_configured',
-          searchTerm: parsedEnv.searchTerm,
+          searchTerm: searchTerm,
           set_env: {
             search_executed: 'true'
           }
@@ -488,7 +490,10 @@ The `set_env` mechanism also works with Python:
 
 ### Issue: Complex data not passing correctly
 
-- **Solution**: Use `JSON.stringify()` when setting and `JSON.parse()` when reading
+- **Solution**:
+  - Use `JSON.stringify()` when setting complex data to env
+  - When using `env` parameter: Data is automatically parsed - use directly
+  - When using template substitution `{{env.var}}`: Use `JSON.parse()` if it was stringified
 
 ### Issue: Variable shows as literal string
 
@@ -502,11 +507,13 @@ The `set_env` mechanism provides a powerful way to pass data between workflow st
 - `run_command` tool when using `engine` mode (JavaScript/Python)
 - `execute_browser_script` tool (which can both set and receive environment variables)
 
-Remember to:
+Key points about data handling:
 
-- Parse JSON strings when receiving data in browser scripts
-- Handle special characters carefully (especially backslashes)
-- Use JSON.stringify() for complex data structures
-- Consider combining related operations into a single step if data passing becomes too complex
+- **Smart JSON detection**: When using `env` parameter, JSON strings are automatically parsed into proper JavaScript/Python objects
+- **Direct variable access**: Variables are available directly without `env.` prefix
+- **Setting complex data**: Use `JSON.stringify()` when setting objects/arrays to env
+- **Template substitution**: When using `{{env.variable}}`, parse JSON if it was stringified
+- **Handle special characters carefully** (especially backslashes in Windows paths)
+- **Consider combining related operations** into a single step if data passing becomes too complex
 
 The combination of `run_command` and `execute_browser_script` with environment variables enables sophisticated browser automation workflows with clean data flow between browser and server-side processing.

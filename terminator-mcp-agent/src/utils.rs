@@ -393,7 +393,7 @@ pub struct RunCommandArgs {
     )]
     pub script_file: Option<String>,
     #[schemars(
-        description = "Optional environment variables to inject into the script (only works with 'engine' mode). Variables are injected as 'var env = {...}' at the start of JavaScript or as 'env' dict in Python."
+        description = "Optional environment variables to inject into the script (only works with 'engine' mode). Variables are automatically available as proper JavaScript/Python types - JSON strings are parsed into objects/arrays. Variables can be accessed directly without 'env.' prefix."
     )]
     pub env: Option<serde_json::Value>,
     #[schemars(
@@ -574,7 +574,7 @@ pub struct ExecuteBrowserScriptArgs {
         description = "Optional path to JavaScript file to load instead of inline script. Either this or script must be provided."
     )]
     pub script_file: Option<String>,
-    #[schemars(description = "Optional environment variables to inject into browser script")]
+    #[schemars(description = "Optional environment variables to inject into browser script. Variables are automatically available as proper JavaScript types - JSON strings are parsed into objects/arrays.")]
     pub env: Option<serde_json::Value>,
     #[schemars(
         description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."

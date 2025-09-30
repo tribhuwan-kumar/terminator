@@ -35,23 +35,25 @@ execute_browser_script({
 
 ## Data Injection
 
-When `env` or `outputs` parameters are provided, they are injected as JavaScript variables at the beginning of your script:
+When `env` or `outputs` parameters are provided, they are automatically injected as JavaScript variables with proper types:
 
 ```javascript
-var env = {...};     // Your env data
-var outputs = {...}; // Your outputs data
+// Variables are automatically available as proper JavaScript types
+// If a value was JSON in the workflow state, it's already parsed
+var env = {...};     // Already parsed - objects/arrays are ready to use
+var outputs = {...}; // Already parsed - no JSON.parse needed
 // Your script code follows...
 ```
 
-### Parsing Injected Data
+### Smart JSON Detection
 
-The injected variables may be JSON strings that need parsing:
+The system automatically detects and parses JSON strings into proper JavaScript objects/arrays. All environment variables are injected directly into the script scope:
 
 ```javascript
-// Safe parsing pattern
-const parsedEnv = typeof env === "string" ? JSON.parse(env) : env;
-const parsedOutputs =
-  typeof outputs === "string" ? JSON.parse(outputs) : outputs;
+// Variables are directly available - no env prefix needed
+console.log(username);        // Direct string access
+console.log(userData.name);   // Direct object access
+console.log(items[0]);        // Direct array access
 ```
 
 ## Examples
@@ -96,16 +98,16 @@ execute_browser_script({
     maxResults: "{{env.maxResults}}",
   },
   script: `
-    const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-    
+    // Variables are directly available - no env prefix needed
+
     // Fill search form
     const searchInput = document.querySelector('input[name="q"]');
-    searchInput.value = parsedEnv.searchTerm;
+    searchInput.value = searchTerm;  // Direct access
     searchInput.form.submit();
-    
+
     JSON.stringify({
       status: 'search_submitted',
-      searchTerm: parsedEnv.searchTerm
+      searchTerm: searchTerm
     });
   `,
 });
@@ -117,10 +119,8 @@ Create a reusable script file:
 
 ```javascript
 // scripts/extract_table_data.js
-const parsedEnv = typeof env === "string" ? JSON.parse(env) : env;
-const tableName = parsedEnv?.tableName || "table";
-
-const table = document.querySelector(tableName);
+// Variables are directly available in the script scope
+const table = document.querySelector(tableName || "table");
 if (!table) {
   JSON.stringify({ error: "Table not found" });
 } else {
@@ -202,19 +202,19 @@ execute_browser_script({
     formId: "{{env.first_form_id}}",
   },
   script: `
-    const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-    
-    if (parsedEnv.shouldSubmit === 'true') {
-      const form = document.getElementById(parsedEnv.formId);
+    // Variables are directly available
+
+    if (shouldSubmit === 'true') {
+      const form = document.getElementById(formId);
       if (form) {
-        console.log('Submitting form:', parsedEnv.formId);
+        console.log('Submitting form:', formId);
         // form.submit(); // Uncomment to actually submit
       }
     }
-    
-    JSON.stringify({ 
-      action: parsedEnv.shouldSubmit === 'true' ? 'would_submit' : 'skipped',
-      formId: parsedEnv.formId 
+
+    JSON.stringify({
+      action: shouldSubmit === 'true' ? 'would_submit' : 'skipped',
+      formId: formId
     });
   `,
 });
@@ -274,12 +274,21 @@ execute_browser_script({
 
 ## Best Practices
 
-### 1. Always Parse Injected Variables
+### 1. Variables Are Already Parsed
+
+Environment variables are automatically injected with proper JavaScript types. No parsing is needed:
 
 ```javascript
-const parsedEnv = typeof env === "string" ? JSON.parse(env) : env;
-const parsedOutputs =
-  typeof outputs === "string" ? JSON.parse(outputs) : outputs;
+// ✅ Correct - Direct access without env prefix
+console.log(username);
+console.log(items[0]);
+console.log(userData.name);
+
+// ❌ Wrong - Don't use env prefix
+console.log(env.username);  // Incorrect!
+
+// ❌ Unnecessary - Don't parse what's already parsed
+const parsedEnv = JSON.parse(env);  // Not needed!
 ```
 
 ### 2. Return JSON Strings
@@ -341,11 +350,10 @@ execute_browser_script({
     email: "{{env.email}}",
   },
   script: `
-    const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-    
-    document.querySelector('#username').value = parsedEnv.username;
-    document.querySelector('#email').value = parsedEnv.email;
-    
+    // Direct access - variables are available without prefix
+    document.querySelector('#username').value = username;
+    document.querySelector('#email').value = email;
+
     JSON.stringify({ filled: true });
   `,
 });
@@ -383,8 +391,8 @@ execute_browser_script({
     targetUrl: "{{env.target_url}}",
   },
   script: `
-    const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-    window.location.href = parsedEnv.targetUrl;
+    // Direct access - variables are available without prefix
+    window.location.href = targetUrl;
     JSON.stringify({ navigating: true });
   `,
 });
@@ -399,9 +407,13 @@ execute_browser_script({
 **Solution**: Either provide the `env` parameter or check for its existence:
 
 ```javascript
-if (typeof env !== "undefined") {
-  const parsedEnv = typeof env === "string" ? JSON.parse(env) : env;
-  // Use env
+// Check if specific variables exist
+if (typeof username !== "undefined") {
+  console.log(username);
+}
+
+if (typeof items !== "undefined") {
+  console.log(items[0]);
 }
 ```
 

@@ -12,7 +12,7 @@ The new syntax follows the [GitHub Actions convention](https://docs.github.com/e
 
 - **`run`** (optional): The command to execute. Can be a single command, multi-line script, or inline code when using `engine` mode. Either `run` or `script_file` must be provided.
 - **`script_file`** (optional): Path to a script file to load and execute. Either `run` or `script_file` must be provided. When using `engine`, the file should contain JavaScript or Python code.
-- **`env`** (optional): Environment variables to inject into the script (only works with `engine` mode). Variables are injected as `var env = {...}` at the start of JavaScript or as `env` dict in Python.
+- **`env`** (optional): Environment variables to inject into the script (only works with `engine` mode). Variables are automatically available as proper JavaScript/Python types with smart JSON detection - JSON strings are parsed into objects/arrays. Variables can be accessed directly without any prefix.
 - **`engine`** (optional): High-level engine to execute inline code with SDK bindings. Options:
   - `javascript`, `js`, `node`, `bun` - Execute JavaScript with terminator.js bindings
   - `python` - Execute Python with terminator.py bindings
@@ -101,7 +101,7 @@ The new syntax follows the [GitHub Actions convention](https://docs.github.com/e
 ```json
 {
   "engine": "javascript",
-  "run": "const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;\nconsole.log(`Processing ${parsedEnv.file_count} files from ${parsedEnv.source_dir}`);\nreturn { set_env: { processed: true, timestamp: new Date().toISOString() } };",
+  "run": "// Variables are directly available as proper types\nconsole.log(`Processing ${file_count} files from ${source_dir}`);\nreturn { set_env: { processed: true, timestamp: new Date().toISOString() } };",
   "env": {
     "file_count": 42,
     "source_dir": "C:\\input"
@@ -199,7 +199,7 @@ Access in your script:
 ```javascript
 {
   "engine": "javascript",
-  "run": "console.log(`User ${env.user} with key ${env.api_key}`); return { authenticated: true };"
+  "run": "// Variables are directly available\nconsole.log(`User ${user} with key ${api_key}`); return { authenticated: true };"
 }
 ```
 
@@ -222,14 +222,13 @@ Use the `env` parameter to pass additional data or override CLI inputs:
 In your script, access both CLI inputs and tool env:
 ```javascript
 // process.js
-// env.api_key comes from CLI --inputs
-// env.api_endpoint comes from tool's env parameter
-console.log(`Using API key: ${env.api_key}`);
-console.log(`Connecting to: ${env.api_endpoint}`);
-const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-console.log(`Connecting to ${parsedEnv.api_endpoint}`);
-console.log(`Max retries: ${parsedEnv.max_retries}`);
-console.log(`User: ${parsedEnv.user_data.name}`);
+// Variables are directly available as proper types
+// api_key comes from CLI --inputs
+// api_endpoint comes from tool's env parameter
+console.log(`Using API key: ${api_key}`);
+console.log(`Connecting to: ${api_endpoint}`);
+console.log(`Max retries: ${max_retries}`);
+console.log(`User: ${user_data.name}`);  // Objects are already parsed
 ```
 
 ### Setting Environment Variables
@@ -297,7 +296,7 @@ Use the `{{env.variable_name}}` syntax in your workflow steps:
 
 2. **Variable Substitution**: The `{{env.variable}}` substitution happens before the JavaScript executes, so:
    - Variables must be set in a previous step
-   - Complex data should be JSON stringified/parsed
+   - Complex data needs JSON.stringify() when setting to env, but is automatically parsed when reading
    - Consider combining related operations in a single step if data passing becomes complex
 
 3. **Engine Mode Required**: Remember that `set_env` ONLY works with:

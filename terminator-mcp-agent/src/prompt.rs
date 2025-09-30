@@ -119,13 +119,11 @@ Use `run_command` with `engine` to execute code directly with SDK bindings:
 - engine: `javascript`/`node`/`bun` executes JS with terminator.js (global `desktop`). Put your JS in `run` or `script_file`.
 - engine: `python` executes async Python with terminator.py (variable `desktop`). Put your Python in `run` or `script_file`.
 - NEW: Use `script_file` to load scripts from external files
-- Auto-injected: `env` (accumulated from previous steps) and `variables` (from workflow definition) are automatically available
+- Smart JSON detection: Environment variables are automatically injected with proper types - JSON strings are parsed into JavaScript/Python objects
 
 **Globals/Helpers Available:**
-*   `desktop` - Main Desktop automation instance
-*   `env` - Accumulated environment from previous steps (auto-injected, no setup needed)
-*   `variables` - Workflow-defined variables (auto-injected, read-only)
-*   Direct variable access - All env fields are available directly (e.g., `file_path`)
+*   `desktop` - Main Desktop automation instance (when using SDK)
+*   Direct variable access - All env fields are available directly as proper types (e.g., `file_path` as string, `journal_entries` as array if JSON)
 *   `log(message)` - Console logging function
 *   `sleep(ms)` - Async delay function (returns Promise)
 
@@ -150,7 +148,7 @@ When using `engine` mode, data automatically flows between steps:
 
 **Example with script_file:**
 ```javascript
-// Scripts automatically get env and variables
+// Scripts automatically get all environment variables as proper types
 run_command({{
   engine: \"javascript\",
   script_file: \"C:\\\\\\\\scripts\\\\\\\\process.js\"
@@ -158,13 +156,10 @@ run_command({{
 }})
 
 // In process.js:
-// env and variables are automatically available
-console.log(`Processing files from ${{input_dir}}`);        // Direct access
-console.log(`Config: ${{variables.max_retries}}`);        // From workflow definition
-
-// NEW: Direct variable access also works
-console.log(`Processing files from ${{input_dir}}`);      // Direct access
-console.log(`Config: ${{max_retries}}`);                  // Direct from variables
+// All variables are directly available as proper JavaScript types
+console.log(`Processing files from ${{input_dir}}`);      // Direct access as string
+console.log(`Max retries: ${{max_retries}}`);            // Direct access as number
+const entries = journal_entries;                          // Already an array if was JSON
 
 // Return data directly (auto-merges to env)
 return {{
@@ -179,15 +174,15 @@ return {{
    console.log('::set-env name=key::value');
    ```
 
-4. **Access in next step** - env is automatically available:
+4. **Access in next step** - Variables are automatically available as proper types:
    ```javascript
-   // Direct access - no template substitution needed
-   const value = key;                      // Direct access
-   const config = variables.some_config;   // From workflow definition
+   // Direct access - variables are already properly typed
+   const value = key;                      // Direct access as proper type
+   const data = journal_entries;           // Already an array if was JSON
 
-   // NEW: Individual variables also work directly
-   console.log(key);                       // Direct access without env prefix
-   console.log(some_config);               // Direct access from variables
+   // No JSON.parse needed - smart detection handles it
+   console.log(key);                       // Direct access
+   console.log(data.length);              // Can use array methods directly
    ```
 
 **Reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
@@ -253,10 +248,11 @@ execute_browser_script({{
 
 **Accessing Data in Browser Scripts:**
 ```javascript
-// env and variables are automatically available
+// Environment variables are automatically injected as proper JavaScript types
+// If a value was JSON in state, it's already parsed into object/array
 execute_browser_script({{
   selector: \"role:Window\",
-  script: \"// env and variables auto-injected\\nconst searchTerm = search_term;        // Direct access from previous steps\\nconst config = variables.app_config;  // From workflow\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
+  script: \"// Variables auto-injected as proper types\\nconst searchTerm = search_term;        // Direct access - already a string\\nconst entries = journal_entries;       // Direct access - already an array if JSON\\nconst config = app_config;            // Already an object if was JSON\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
 }})
 ```
 
@@ -307,11 +303,28 @@ return (function() {{  // ❌ Don't start with 'return'
 }})()
 ```
 
+**IIFE Return Pattern for Non-Browser Scripts:**
+When using IIFE patterns in Node.js scripts (run_command with engine), capture and return the result:
+```javascript
+// Correct - capture IIFE result
+const result = (async function() {{
+    await someAsyncOperation();
+    return {{ success: true, data: 'value' }};
+}})();
+return result;  // Must return the Promise
+
+// Incorrect - IIFE result not captured
+(async function() {{
+    await someAsyncOperation();
+    return {{ success: true }};
+}})();  // ❌ Result is lost
+```
+
 **Important Notes:**
 - Chrome extension must be installed for execute_browser_script to work
 - Scripts run in page context and must return serializable data using JSON.stringify()
-- When env/outputs are provided, they're injected as `var env` and `var outputs` at script start
-- Always parse env/outputs in case they're JSON strings: `typeof env === 'string' ? JSON.parse(env) : env`
+- Environment variables are automatically injected with smart JSON detection - JSON strings are parsed into proper JavaScript objects/arrays
+- Variables are available directly (e.g., `user_data`, `file_path`) without the `env.` prefix
 - Size limit ~30KB for responses - truncate large DOMs
 - The system will auto-fix some common format errors but it's better to use the correct format
 
