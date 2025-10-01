@@ -66,7 +66,11 @@ mod with_telemetry {
         }
 
         pub fn end(mut self) {
-            self.span.end();
+            // End the span without blocking on export
+            // Drop the span in a detached task to avoid blocking the response
+            std::thread::spawn(move || {
+                self.span.end();
+            });
         }
     }
 
@@ -311,7 +315,7 @@ mod with_telemetry {
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_http()
             .with_endpoint(format!("{otlp_endpoint}/v1/traces"))
-            .with_timeout(Duration::from_secs(10))
+            .with_timeout(Duration::from_millis(500))
             .build()?;
 
         // Create tracer provider with OTLP exporter
