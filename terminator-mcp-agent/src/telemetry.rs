@@ -66,7 +66,11 @@ mod with_telemetry {
         }
 
         pub fn end(mut self) {
-            self.span.end();
+            // End the span without blocking on export
+            // Drop the span in a detached task to avoid blocking the response
+            std::thread::spawn(move || {
+                self.span.end();
+            });
         }
     }
 
