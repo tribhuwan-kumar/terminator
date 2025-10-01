@@ -1735,6 +1735,7 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "used_fallback": used_fallback,
             "results": results,
+            "env": execution_context_map.get("env").cloned().unwrap_or_else(|| json!({})),
         });
 
         // Support both 'output_parser' (legacy) and 'output' (simplified)
