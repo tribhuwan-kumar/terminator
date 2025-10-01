@@ -16,7 +16,7 @@ A Model Context Protocol (MCP) server that provides desktop GUI automation capab
 Install with a single command:
 
 ```bash
-claude mcp add terminator "npx -y terminator-mcp-agent" -s user
+claude mcp add terminator "npx -y terminator-mcp-agent@latest" -s user
 ```
 
 ### Cursor
