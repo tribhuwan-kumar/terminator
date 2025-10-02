@@ -39,7 +39,7 @@ async function runResolverAutomation(): Promise<string> {
       const base64Jpeg = Buffer.from(jpegBuffer).toString('base64');
 
       const ai = new GoogleGenAI({
-        apiKey: "AIzaSyBPbRG_oo0L48GtmldeEEqmrFpDTHgjSDQ"
+        apiKey: process.env.GEMINI_API_KEY || "" 
       });
 
       const res_from_browser = recaptcha_webview?.executeBrowserScript(`
