@@ -320,16 +320,37 @@ execute_browser_script({{
 ```
 
 **Browser Script Format Requirements:**
-Scripts executed via `execute_browser_script` must follow these format rules:
-- **DO NOT** start scripts with `return (function()` - this causes execution errors
-- **DO NOT** wrap the entire script with a `return` statement
-- Use one of these correct formats:
-  * `(function() {{ ... }})()` - Self-executing function (IIFE) - **RECOMMENDED**
-  * Plain JavaScript code without any wrapper
-  * `new Promise((resolve) => {{ ... }})` - For async operations
-- Always return data using `JSON.stringify()` at the end of your function
 
-**Correct Example:**
+The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns for reliable execution:
+
+**✅ RECOMMENDED: Promise Chain as Last Expression**
+```javascript
+// Setup variables first (synchronously)
+const config = (typeof user_config !== 'undefined') ? user_config : {{}};
+const data = (typeof table_data !== 'undefined') ? table_data : [];
+
+// Promise as last expression (NO explicit return keyword)
+navigator.clipboard.readText().then(clipboardText => {{
+    console.log('Success:', clipboardText);
+
+    // MUST return value from .then() handler
+    return JSON.stringify({{
+        success: true,
+        data: clipboardText
+    }});
+
+}}).catch(error => {{
+    console.error('Error:', error);
+
+    // MUST return value from .catch() handler
+    return JSON.stringify({{
+        success: false,
+        error: error.message
+    }});
+}});
+```
+
+**✅ ALTERNATIVE: Self-Executing IIFE**
 ```javascript
 (function() {{
     const data = document.title;
@@ -337,13 +358,49 @@ Scripts executed via `execute_browser_script` must follow these format rules:
 }})()
 ```
 
-**Incorrect Example - DO NOT USE:**
+**❌ WRONG: Async IIFE Pattern**
 ```javascript
-return (function() {{  // ❌ Don't start with 'return'
+// DO NOT USE - causes NULL_RESULT errors
+(async function() {{
+    const result = await navigator.clipboard.readText();
+    return JSON.stringify({{ result }});
+}})();
+// Worker.js detects async IIFE but eval() wrapper can't capture async function results
+```
+
+**❌ WRONG: Top-Level Return Statement**
+```javascript
+// DO NOT USE - illegal return statement
+return (function() {{
     const data = document.title;
     return JSON.stringify({{ title: data }});
 }})()
 ```
+
+**❌ WRONG: Missing Return Values in Handlers**
+```javascript
+// DO NOT USE - handlers must return values
+navigator.clipboard.readText().then(result => {{
+    console.log(result);
+    // Missing return! Causes NULL_RESULT error
+}}).catch(error => {{
+    console.error(error);
+    // Missing return! Causes NULL_RESULT error
+}});
+```
+
+**❌ WRONG: Top-Level Await**
+```javascript
+// DO NOT USE - not supported
+const result = await navigator.clipboard.readText();
+return JSON.stringify({{ result }});
+```
+
+**Key Rules:**
+- Both `.then()` and `.catch()` handlers MUST return values (use `JSON.stringify()`)
+- Promise as last expression is automatically detected and awaited by worker.js
+- Do synchronous variable setup BEFORE the Promise chain
+- Avoid async IIFE - use Promise chain pattern instead
 
 **IIFE Return Pattern for Non-Browser Scripts:**
 When using IIFE patterns in Node.js scripts (run_command with engine), capture and return the result:
