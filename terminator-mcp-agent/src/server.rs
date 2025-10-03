@@ -4879,7 +4879,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             // Merge accumulated and explicit env for individual vars
             let mut base: serde_json::Map<String, serde_json::Value> =
                 serde_json::from_str(&accumulated_env_json).unwrap_or_default();
-            if let Ok(explicit) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&explicit_env_json) {
+            if let Ok(explicit) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+                &explicit_env_json,
+            ) {
                 base.extend(explicit);
             }
             serde_json::to_string(&base).unwrap_or_else(|_| "{}".to_string())
@@ -4948,7 +4950,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         final_script.push_str(&format!("var variables = {variables_json};\n"));
 
         // Parse and inject individual workflow variables
-        if let Ok(variables_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&variables_json) {
+        if let Ok(variables_obj) =
+            serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&variables_json)
+        {
             for (key, value) in variables_obj {
                 // Inject all valid JavaScript identifiers from variables
                 if Self::is_valid_js_identifier(&key) {
