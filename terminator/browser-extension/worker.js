@@ -29,6 +29,8 @@ function log(...args) {
 const BASE_RECONNECT_DELAY_MS = 500; // faster initial retry
 const MAX_RECONNECT_DELAY_MS = 3000; // cap retries to 3s to align with host waiting
 let currentReconnectDelayMs = BASE_RECONNECT_DELAY_MS;
+let connectionAttempts = 0;
+const MAX_LOGGED_ATTEMPTS = 3; // Only log first few attempts to reduce noise
 
 function connect() {
   try {
@@ -52,16 +54,24 @@ function connect() {
     log("Connected to", WS_URL);
     // Reset backoff on successful connection
     currentReconnectDelayMs = BASE_RECONNECT_DELAY_MS;
+    connectionAttempts = 0; // Reset connection attempts on successful connection
     socket.send(JSON.stringify({ type: "hello", from: "extension" }));
   };
 
   socket.onclose = () => {
-    log("Socket closed");
+    // Only log socket closed for first 3 attempts and every 10th
+    if (connectionAttempts <= 3 || connectionAttempts % 10 === 0) {
+      log(`Socket closed (attempt ${connectionAttempts})`);
+    }
     scheduleReconnect();
   };
 
   socket.onerror = (e) => {
-    log("Socket error", e);
+    connectionAttempts++;
+    // Only log first 3 attempts and then every 10th attempt to reduce noise
+    if (connectionAttempts <= 3 || connectionAttempts % 10 === 0) {
+      log(`Socket error (attempt ${connectionAttempts})`, e);
+    }
     try {
       socket.close();
     } catch (_) {}
@@ -246,6 +256,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
+
   const delay = currentReconnectDelayMs;
   currentReconnectDelayMs = Math.min(
     currentReconnectDelayMs * 2,
@@ -253,7 +264,10 @@ function scheduleReconnect() {
   );
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    log(`Reconnecting... (delay=${delay}ms)`);
+    // Only log reconnection for first 3 attempts and then every 10th
+    if (connectionAttempts <= 3 || connectionAttempts % 10 === 0) {
+      log(`Reconnecting... (attempt ${connectionAttempts + 1}, delay=${delay}ms)`);
+    }
     connect();
   }, delay);
 }
@@ -404,6 +418,18 @@ function isAsyncIIFE(code) {
   return asyncIIFEPatterns.some(pattern => pattern.test(code.trim()));
 }
 
+// Helper function to detect regular (non-async) IIFE pattern
+function isRegularIIFE(code) {
+  // Check for common IIFE patterns
+  const iifePatterns = [
+    /^\s*\(\s*function\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /^\s*\(\s*function\s+\w+\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /^\s*\(\s*\([^)]*\)\s*=>\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/
+  ];
+
+  return iifePatterns.some(pattern => pattern.test(code.trim()));
+}
+
 // Helper function to wrap code in IIFE if it has top-level returns
 function wrapCodeIfNeeded(code) {
   // Check if it's an async IIFE - if so, return as-is since it's already wrapped
@@ -412,20 +438,21 @@ function wrapCodeIfNeeded(code) {
     return code;
   }
 
+  // Check if it's a regular IIFE - if so, return as-is since it's already wrapped
+  if (isRegularIIFE(code)) {
+    log("Detected regular IIFE pattern, using as-is");
+    return code;
+  }
+
   if (hasTopLevelReturn(code)) {
     log("Detected top-level return statement, wrapping in IIFE");
     return `(function() {\n${code}\n})()`;
   }
 
-  // For code without top-level returns, use eval to capture last expression
-  // while still providing a clean scope
-  log("Wrapping code in clean scope using eval for last expression capture");
-  return `(function() {
-  'use strict';
-  // Use eval to capture the last expression value
-  // This provides a clean scope and returns the last expression
-  return eval(${JSON.stringify(code)});
-})()`;
+  // For code without top-level returns, wrap in eval to capture last expression
+  // This creates a clean scope while still returning the last expression
+  log("Wrapping in eval to capture last expression and create clean scope");
+  return `(function() { return eval(${JSON.stringify(code)}); })()`;
 }
 
 async function evalInTab(tabId, code, awaitPromise, evalId) {

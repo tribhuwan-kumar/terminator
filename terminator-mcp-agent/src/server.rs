@@ -4847,7 +4847,12 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         // Inject individual variables from env (browser scripts are always JavaScript)
         let merged_env = if explicit_env_json != "{}" {
             // Merge accumulated and explicit env for individual vars
-            format!("Object.assign({{}}, {accumulated_env_json}, {explicit_env_json})")
+            let mut base: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&accumulated_env_json).unwrap_or_default();
+            if let Ok(explicit) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&explicit_env_json) {
+                base.extend(explicit);
+            }
+            serde_json::to_string(&base).unwrap_or_else(|_| "{}".to_string())
         } else {
             accumulated_env_json.clone()
         };
@@ -4859,6 +4864,8 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env)
         {
             for (key, value) in env_obj {
+                // Inject all valid JavaScript identifiers from env
+                // The IIFE wrapper prevents conflicts with previous script executions
                 if Self::is_valid_js_identifier(&key) {
                     // Smart handling of potentially double-stringified JSON
                     let injectable_value = if let Some(str_val) = value.as_str() {
@@ -4894,7 +4901,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
                         injected_vars.insert(key.clone()); // Track this variable
-                        tracing::debug!(
+                        tracing::info!(
                             "[execute_browser_script] Injected env.{} as individual variable (type: {})",
                             key,
                             if injectable_value.is_string() { "string" }
@@ -4909,14 +4916,63 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         // Inject variables
         final_script.push_str(&format!("var variables = {variables_json};\n"));
+
+        // Parse and inject individual workflow variables
+        if let Ok(variables_obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&variables_json) {
+            for (key, value) in variables_obj {
+                // Inject all valid JavaScript identifiers from variables
+                if Self::is_valid_js_identifier(&key) {
+                    // Smart handling of potentially double-stringified JSON
+                    let injectable_value = if let Some(str_val) = value.as_str() {
+                        let trimmed = str_val.trim();
+                        // Check if it looks like JSON (object or array)
+                        if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                            || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                        {
+                            // Try to parse as JSON to avoid double stringification
+                            match serde_json::from_str::<serde_json::Value>(str_val) {
+                                Ok(parsed) => {
+                                    tracing::debug!(
+                                        "[execute_browser_script] Detected JSON string for variables.{}, parsing to avoid double stringification",
+                                        key
+                                    );
+                                    parsed
+                                }
+                                Err(_) => {
+                                    // Not valid JSON despite looking like it, keep as string
+                                    value.clone()
+                                }
+                            }
+                        } else {
+                            // Regular string value, keep as is
+                            value.clone()
+                        }
+                    } else {
+                        // Not a string (number, bool, object, etc.), keep as is
+                        value.clone()
+                    };
+
+                    // Now stringify for injection (single level of stringification)
+                    if let Ok(value_json) = serde_json::to_string(&injectable_value) {
+                        final_script.push_str(&format!("var {key} = {value_json};\n"));
+                        injected_vars.insert(key.clone()); // Track this variable for smart replacement
+                        tracing::info!(
+                            "[execute_browser_script] Injected variables.{} as individual variable",
+                            key
+                        );
+                    }
+                }
+            }
+        }
+
         tracing::debug!("[execute_browser_script] Injected accumulated env, explicit env, individual vars, and workflow variables");
 
         // Smart replacement of declarations with assignments for already-injected variables
         let mut modified_script = script_content.clone();
         if !injected_vars.is_empty() {
-            tracing::debug!(
-                "[execute_browser_script] Checking for variable declarations to replace. Injected vars: {:?}",
-                injected_vars
+            tracing::info!(
+                "[execute_browser_script] Checking for variable declarations to replace. Injected vars count: {}",
+                injected_vars.len()
             );
 
             for var_name in &injected_vars {
