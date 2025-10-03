@@ -4583,7 +4583,7 @@ impl DesktopWrapper {
     // Removed: run_javascript tool (merged into run_command with engine)
 
     #[tool(
-        description = "Execute JavaScript in a browser using the Chrome extension bridge. Provides full access to the HTML DOM for data extraction, page analysis, and manipulation. Returns serializable data (strings, numbers, objects, arrays). 
+        description = "Execute JavaScript in a browser using the Chrome extension bridge. Provides full access to the HTML DOM for data extraction, page analysis, and manipulation. Returns serializable data (strings, numbers, objects, arrays).
 
 Key uses:
 - Extract full HTML DOM: document.documentElement.outerHTML
@@ -4613,6 +4613,36 @@ Size limits: Response must be <30KB. For large DOMs, use truncation:
 const html = document.documentElement.outerHTML;
 const max = 30000;
 return html.length > max ? html.substring(0, max) + '...' : html;
+
+Script Format Requirements:
+The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns:
+
+✅ RECOMMENDED: Promise Chain as Last Expression
+const config = (typeof user_config !== 'undefined') ? user_config : {};
+navigator.clipboard.readText().then(clipboardText => {
+  console.log('Success:', clipboardText);
+  return JSON.stringify({ success: true, data: clipboardText });
+}).catch(error => {
+  console.error('Error:', error);
+  return JSON.stringify({ success: false, error: error.message });
+});
+
+Key Rules:
+- Both .then() and .catch() handlers MUST return values (use JSON.stringify())
+- Promise as last expression is automatically detected and awaited
+- Do synchronous variable setup BEFORE the Promise chain
+- Avoid async IIFE - use Promise chain pattern instead
+
+❌ WRONG: Missing Return Values
+navigator.clipboard.readText().then(result => {
+  console.log(result); // Missing return! Causes NULL_RESULT error
+});
+
+❌ WRONG: Async IIFE Pattern
+(async function() {
+  const result = await navigator.clipboard.readText();
+  return JSON.stringify({ result });
+})(); // Worker.js can't capture async function results via eval()
 
 Requires Chrome extension to be installed. See browser_dom_extraction.yml and demo_bidirectional_vars.yml for examples."
     )]

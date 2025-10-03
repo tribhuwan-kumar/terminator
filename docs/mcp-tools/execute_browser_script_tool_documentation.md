@@ -296,7 +296,55 @@ console.log(env.username);  // Wrong - no env prefix exists
 
 **Note**: Variables are automatically parsed from JSON when injected, so you don't need `JSON.parse()` on incoming data.
 
-### 2. Return JSON Strings
+### 2. Use Promise Chain Pattern for Async Operations
+
+The Chrome extension bridge automatically detects and awaits Promises. Use this pattern for async operations:
+
+```javascript
+// ✅ RECOMMENDED: Promise Chain as Last Expression
+const config = (typeof user_config !== 'undefined') ? user_config : {};
+const data = (typeof table_data !== 'undefined') ? table_data : [];
+
+// Promise as last expression (NO explicit return keyword)
+navigator.clipboard.readText().then(clipboardText => {
+  console.log('Success:', clipboardText);
+  // MUST return value from .then() handler
+  return JSON.stringify({
+    success: true,
+    data: clipboardText
+  });
+}).catch(error => {
+  console.error('Error:', error);
+  // MUST return value from .catch() handler
+  return JSON.stringify({
+    success: false,
+    error: error.message
+  });
+});
+```
+
+**Key Rules:**
+- Both `.then()` and `.catch()` handlers MUST return values (use `JSON.stringify()`)
+- Promise as last expression is automatically detected and awaited by worker.js
+- Do synchronous variable setup BEFORE the Promise chain
+- Avoid async IIFE - use Promise chain pattern instead
+
+```javascript
+// ❌ WRONG: Missing Return Values in Handlers
+navigator.clipboard.readText().then(result => {
+  console.log(result); // Missing return! Causes NULL_RESULT error
+}).catch(error => {
+  console.error(error); // Missing return! Causes NULL_RESULT error
+});
+
+// ❌ WRONG: Async IIFE Pattern
+(async function() {
+  const result = await navigator.clipboard.readText();
+  return JSON.stringify({ result });
+})(); // Worker.js can't capture async function results via eval()
+```
+
+### 3. Return JSON Strings
 
 Browser scripts must return serializable data. Use `JSON.stringify()`:
 
@@ -308,7 +356,7 @@ JSON.stringify({ status: "success", data: values });
 return { status: "success", data: values };
 ```
 
-### 3. Use set_env for Workflow Variables
+### 4. Use set_env for Workflow Variables
 
 To pass data to subsequent workflow steps:
 
@@ -322,7 +370,7 @@ JSON.stringify({
 });
 ```
 
-### 4. Handle Missing Elements Gracefully
+### 5. Handle Missing Elements Gracefully
 
 ```javascript
 const element = document.querySelector("#target");
@@ -333,7 +381,7 @@ if (!element) {
 }
 ```
 
-### 5. Respect Size Limits
+### 6. Respect Size Limits
 
 The MCP protocol has a ~30KB response limit. Truncate large data:
 
