@@ -349,8 +349,8 @@ Browser scripts should **return data describing what they found**, NOT success/f
 **Pattern: Detection Scripts vs Action Scripts**
 
 - **Detection scripts**: Check UI state, always return data (never fail)
-  - Example: `check_login_status.js` returns `{{ needs_login: 'true' }}` or `{{ needs_login: 'false' }}`
-  - Use workflow `if` conditions to act on the data: `if: "needs_login == 'true'"`
+  - Example: check_login_status.js returns needs_login: true or needs_login: false
+  - Use workflow if conditions to act on the data: if: \"needs_login == 'true'\"
 
 - **Action scripts**: Perform operations, can legitimately fail
   - Example: Click specific button, set form value
@@ -367,9 +367,9 @@ execute_browser_script({{
 
 // Later in workflow, use the data conditionally:
 // - tool_name: click_element
-//   if: "needs_login == 'true'"
+//   if: needs_login == true
 //   arguments:
-//     selector: "role:Button|name:Login"
+//     selector: role:Button
 ```
 
 **Type Conversion Before String Methods:**
@@ -409,9 +409,9 @@ Scripts that trigger page navigation (clicking links, submitting forms, closing 
 
 // Step 2: Click Yes button (action step with delay)
 // - tool_name: click_element
-//   if: "dialog_found == 'true'"
+//   if: dialog_found == true
 //   arguments:
-//     selector: "role:Button|name:Yes"
+//     selector: role:Button
 //   delay_ms: 3000  // Wait for navigation to complete
 ```
 
