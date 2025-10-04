@@ -166,15 +166,44 @@ The new syntax automatically detects the platform and uses the appropriate comma
 
 ## Pattern: Optional Element Detection
 
-For optional UI elements (dialogs, popups, confirmation buttons) that may or may not appear, use `desktop.locator()` with try/catch to check existence. This prevents timeout errors and enables conditional workflow execution.
+For optional UI elements (dialogs, popups, confirmation buttons) that may or may not appear, you have two approaches:
 
-### Why Use This Pattern
+### Approach 1: validate_element (PREFERRED - Simpler)
 
-- **Never fails the step** - Returns data even when element not found
-- **Avoids timeouts** - Uses fast `.first()` with try/catch
-- **Enables conditionals** - Return data that workflow can use with `if` expressions
-- **More robust** - Better than `validate_element` which fails when element not found
-- **Performance** - `.first()` with try/catch is ~8x faster than `.all()` (1.3s vs 10.8s)
+Use the `validate_element` tool which never throws errors and returns structured existence information.
+
+**Advantages:**
+- **Built-in tool** - No JavaScript required
+- **Never fails** - Returns `status: "success"` with `exists: true` OR `status: "failed"` with `exists: false`
+- **Rich metadata** - Returns element details (role, name, enabled, bounds) when found
+- **Retry logic** - Supports `alternative_selectors`, `fallback_selectors`, and configurable timeout
+- **Simple conditionals** - Use `{step_id}_status` or `{step_id}_result.exists` in workflow `if` expressions
+
+**Example:**
+```yaml
+- tool_name: validate_element
+  id: check_dialog
+  selector: "role:Button|name:Leave"
+  timeout_ms: 1000
+
+- tool_name: click_element
+  if: 'check_dialog_status == "success"'
+  selector: "role:Button|name:Leave"
+```
+
+### Approach 2: desktop.locator() with try/catch (For Window-Scoped Checks)
+
+Use `desktop.locator()` with try/catch when you need to scope the search to a specific window to avoid false positives.
+
+**Advantages:**
+- **Window scoping** - Can check element exists within a specific window only
+- **Performance** - `.first(0)` with try/catch is ~8x faster than `.all()` (0.5s vs 10.8s)
+- **Programmatic control** - Multiple checks in one script, complex conditional logic
+
+**When to use:**
+- Element must be in a specific window (e.g., Chrome dialog vs Firefox dialog)
+- Need to combine multiple element checks in one script
+- Require complex conditional logic beyond simple existence
 
 ### Pattern Example - Window-Scoped (Recommended)
 
@@ -257,32 +286,41 @@ For optional UI elements (dialogs, popups, confirmation buttons) that may or may
     timeout_ms: 3000
 ```
 
-### Comparison with validate_element
+### Choosing Between validate_element and desktop.locator()
 
-**❌ Using validate_element (fails when not found)**
+**✅ Use validate_element (simpler, preferred for most cases):**
 ```yaml
 - tool_name: validate_element
   id: check_dialog
-  arguments:
-    selector: "role:Button|name:Leave"
-# Problem: Step FAILS if button doesn't exist, stopping workflow
-```
+  selector: "role:Button|name:Leave"
+  timeout_ms: 1000
 
-**✅ Using locator with try/catch pattern (always succeeds)**
+- tool_name: click_element
+  if: 'check_dialog_status == "success"'
+  selector: "role:Button|name:Leave"
+```
+**Advantages:** Built-in, no JavaScript, returns `status: "success"/"failed"` with `exists: true/false`, includes element metadata
+
+**✅ Use desktop.locator() (for window-scoped checks):**
 ```yaml
 - tool_name: run_command
-  id: check_dialog
+  id: check_dialog_in_chrome
   arguments:
     engine: javascript
     run: |
       try {
-        await desktop.locator('role:Button|name:Leave').first();
+        const chromeWindow = await desktop.locator('role:Window|name:Chrome').first(0);
+        await chromeWindow.locator('role:Button|name:Leave').first(0);
         return JSON.stringify({ exists: "true" });
       } catch (e) {
         return JSON.stringify({ exists: "false" });
       }
-# Always succeeds - returns data about existence
+
+- tool_name: click_element
+  if: 'exists == "true"'
+  selector: "role:Button|name:Leave"
 ```
+**Advantages:** Window scoping prevents false positives (e.g., finding button in wrong window), faster (0.5s), allows complex multi-check logic
 
 ## Error Handling
 
