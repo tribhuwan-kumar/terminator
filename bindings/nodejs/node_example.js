@@ -16,7 +16,7 @@ async function main() {
   // Find an element using a selector (async)
   const locator = desktop.locator('role:button');
   try {
-    const button = await locator.first();
+    const button = await locator.first(0); // timeout in ms (0 = immediate, no retry)
     console.log('Found button:', button.role(), button.name());
     await button.click();
   } catch (e) {

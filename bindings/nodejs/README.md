@@ -27,7 +27,7 @@ async function main() {
   // Find and click a button
   const locator = desktop.locator('role:button');
   try {
-    const button = await locator.first();
+    const button = await locator.first(0); // timeout in ms (0 = immediate, no retry)
     console.log('Found button:', button.name());
     await button.click();
   } catch (error) {
@@ -70,7 +70,7 @@ const {
 } = require('terminator.js');
 
 try {
-  const button = await desktop.locator('role:button').first();
+  const button = await desktop.locator('role:button').first(1000); // wait up to 1 second
   await button.click();
 } catch (error) {
   if (error instanceof ElementNotFoundError) {
@@ -108,9 +108,11 @@ try {
 
 ### Locator
 
-- `first()` - Get the first matching element
-- `all()` - Get all matching elements
-- `count()` - Count matching elements
+- `first(timeoutMs)` - Get the first matching element (timeout in milliseconds required)
+- `all(timeoutMs, depth?)` - Get all matching elements (timeout in milliseconds required)
+- `timeout(timeoutMs)` - Set default timeout for this locator
+- `within(element)` - Scope search to an element
+- `locator(selector)` - Chain another selector
 
 ## Examples
 

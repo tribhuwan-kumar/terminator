@@ -76,7 +76,7 @@ async function testWikipediaChaining() {
     // Try to find Wikipedia page
     try {
       const wikipediaLocator = desktop.locator("role:document|wikipedia");
-      const w = await wikipediaLocator.first();
+      const w = await wikipediaLocator.first(0); // timeout in ms (0 = immediate)
       console.log(`📖 Found Wikipedia page: ${w.name()}`);
 
       // Test the original failing case
