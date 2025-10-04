@@ -589,24 +589,18 @@ export declare class Locator {
   /**
    * (async) Get the first matching element.
    *
+   * @param {number} timeoutMs - Timeout in milliseconds (required).
    * @returns {Promise<Element>} The first matching element.
    */
-  first(): Promise<Element>
+  first(timeoutMs: number): Promise<Element>
   /**
    * (async) Get all matching elements.
    *
-   * @param {number} [timeoutMs] - Timeout in milliseconds.
+   * @param {number} timeoutMs - Timeout in milliseconds (required).
    * @param {number} [depth] - Maximum depth to search.
    * @returns {Promise<Array<Element>>} List of matching elements.
    */
-  all(timeoutMs?: number | undefined | null, depth?: number | undefined | null): Promise<Array<Element>>
-  /**
-   * (async) Wait for the first matching element.
-   *
-   * @param {number} [timeoutMs] - Timeout in milliseconds.
-   * @returns {Promise<Element>} The first matching element.
-   */
-  wait(timeoutMs?: number | undefined | null): Promise<Element>
+  all(timeoutMs: number, depth?: number | undefined | null): Promise<Array<Element>>
   /**
    * Set a default timeout for this locator.
    *

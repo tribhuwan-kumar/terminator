@@ -28,11 +28,14 @@ impl From<TerminatorLocator> for Locator {
 impl Locator {
     /// (async) Get the first matching element.
     ///
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
     /// @returns {Promise<Element>} The first matching element.
     #[napi]
-    pub async fn first(&self) -> napi::Result<Element> {
+    pub async fn first(&self, timeout_ms: f64) -> napi::Result<Element> {
+        use std::time::Duration;
+        let timeout = Duration::from_millis(timeout_ms as u64);
         self.inner
-            .first(None)
+            .first(Some(timeout))
             .await
             .map(Element::from)
             .map_err(map_error)
@@ -40,37 +43,18 @@ impl Locator {
 
     /// (async) Get all matching elements.
     ///
-    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
     /// @param {number} [depth] - Maximum depth to search.
     /// @returns {Promise<Array<Element>>} List of matching elements.
     #[napi]
-    pub async fn all(
-        &self,
-        timeout_ms: Option<f64>,
-        depth: Option<u32>,
-    ) -> napi::Result<Vec<Element>> {
+    pub async fn all(&self, timeout_ms: f64, depth: Option<u32>) -> napi::Result<Vec<Element>> {
         use std::time::Duration;
-        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        let timeout = Duration::from_millis(timeout_ms as u64);
         let depth = depth.map(|d| d as usize);
         self.inner
-            .all(timeout, depth)
+            .all(Some(timeout), depth)
             .await
             .map(|els| els.into_iter().map(Element::from).collect())
-            .map_err(map_error)
-    }
-
-    /// (async) Wait for the first matching element.
-    ///
-    /// @param {number} [timeoutMs] - Timeout in milliseconds.
-    /// @returns {Promise<Element>} The first matching element.
-    #[napi]
-    pub async fn wait(&self, timeout_ms: Option<f64>) -> napi::Result<Element> {
-        use std::time::Duration;
-        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
-        self.inner
-            .wait(timeout)
-            .await
-            .map(Element::from)
             .map_err(map_error)
     }
 
