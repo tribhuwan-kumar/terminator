@@ -4599,15 +4599,55 @@ Parameters:
 - env: Environment variables to inject as 'var env = {...}' (optional)
 - outputs: Outputs from previous steps to inject as 'var outputs = {...}' (optional)
 
-Data injection: When env/outputs are provided, they're injected as JavaScript variables at the start of your script. Parse them if they're JSON strings:
-const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-const parsedOutputs = typeof outputs === 'string' ? JSON.parse(outputs) : outputs;
+⚠️ CRITICAL: Never Use success: true/false Pattern
+Scripts should return DATA describing what they found, NOT success/failure status.
+Using success: false causes the workflow step to fail.
 
-Returning data: Scripts can set environment variables for subsequent steps:
+❌ WRONG - Causes step failure:
+(function() {
+  const dialog = document.querySelector('.dialog');
+  if (!dialog) {
+    return JSON.stringify({ success: false, message: 'Not found' }); // ❌ Step fails!
+  }
+  return JSON.stringify({ success: true, dialog_closed: 'true' });
+})()
+
+✅ CORRECT - Always return data:
+(function() {
+  const dialog = document.querySelector('.dialog');
+  return JSON.stringify({
+    dialog_found: dialog ? 'true' : 'false',  // ✅ Just data
+    message: dialog ? 'Dialog found' : 'No dialog'
+  });
+})()
+
+Pattern: Detection Scripts vs Action Scripts
+- Detection scripts: Check UI state, always return data (never fail)
+  Example: Return { needs_login: 'true' } or { needs_login: 'false' }
+  Use workflow 'if' conditions to act on the data
+- Action scripts: Perform operations, can legitimately fail
+  Example: Click specific button, set form value
+
+Data injection: Variables are injected with 'var' - ALWAYS use typeof checks:
+const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
+const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+const config = (typeof app_config !== 'undefined') ? app_config : {};
+
+Returning data: Return data fields directly (auto-merge to env):
 return JSON.stringify({
-  set_env: { key: 'value' },
-  result: 'success'
+  status: 'completed',           // Reserved field (not auto-merged)
+  login_status: 'on_login_page', // Auto-merged as login_status
+  needs_login: 'true',           // Auto-merged as needs_login
+  form_count: 3                  // Auto-merged as form_count
 });
+
+Type Conversion: Convert objects/arrays to strings before string methods:
+const result = JSON.stringify(troubleshoot_result).toLowerCase();
+const hasError = JSON.stringify(data).includes('error');
+
+Avoiding Page Navigation: Scripts triggering navigation (clicking links, submitting forms)
+can be killed before return executes, causing NULL_RESULT. Separate navigation actions
+into dedicated workflow steps with delays.
 
 Size limits: Response must be <30KB. For large DOMs, use truncation:
 const html = document.documentElement.outerHTML;
@@ -4617,14 +4657,23 @@ return html.length > max ? html.substring(0, max) + '...' : html;
 Script Format Requirements:
 The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns:
 
+✅ RECOMMENDED: IIFE Pattern for Sync Scripts
+(function() {
+  const data = document.querySelector('.data');
+  return JSON.stringify({
+    data_found: data ? 'true' : 'false',
+    data_text: data ? data.textContent : ''
+  });
+})()
+
 ✅ RECOMMENDED: Promise Chain as Last Expression
 const config = (typeof user_config !== 'undefined') ? user_config : {};
 navigator.clipboard.readText().then(clipboardText => {
   console.log('Success:', clipboardText);
-  return JSON.stringify({ success: true, data: clipboardText });
+  return JSON.stringify({ clipboard_text: clipboardText });
 }).catch(error => {
   console.error('Error:', error);
-  return JSON.stringify({ success: false, error: error.message });
+  return JSON.stringify({ error_message: error.message });
 });
 
 Key Rules:
@@ -4632,6 +4681,7 @@ Key Rules:
 - Promise as last expression is automatically detected and awaited
 - Do synchronous variable setup BEFORE the Promise chain
 - Avoid async IIFE - use Promise chain pattern instead
+- Never use success: true/false pattern - return descriptive data instead
 
 ❌ WRONG: Missing Return Values
 navigator.clipboard.readText().then(result => {

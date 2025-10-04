@@ -248,33 +248,66 @@ execute_browser_script({
 execute_browser_script({
   selector: "role:Window",
   script: `
-    try {
+    (function() {
       const data = document.querySelector('#data-container');
       if (!data) {
-        throw new Error('Data container not found');
+        return JSON.stringify({
+          data_found: 'false',  // ✅ Data, not success: false
+          error_message: 'Data container not found',
+          timestamp: new Date().toISOString()
+        });
       }
-      
-      const result = {
-        status: 'success',
-        data: data.textContent,
+
+      return JSON.stringify({
+        data_found: 'true',
+        data_text: data.textContent,
         timestamp: new Date().toISOString()
-      };
-      
-      JSON.stringify(result);
-    } catch (error) {
-      JSON.stringify({
-        status: 'error',
-        error: error.message,
-        stack: error.stack
       });
-    }
+    })()
   `,
 });
 ```
 
 ## Best Practices
 
-### 1. Always Use Safe Variable Access
+### 1. ⚠️ CRITICAL: Never Use success: true/false Pattern
+
+Browser scripts should **return data describing what they found**, NOT success/failure status. Using `success: false` causes the workflow step to fail.
+
+```javascript
+// ❌ WRONG - Causes step failure when dialog not found
+(function() {
+  const dialog = document.querySelector('.dialog');
+  if (!dialog) {
+    return JSON.stringify({
+      success: false,  // ❌ This causes step to fail!
+      message: 'Dialog not found'
+    });
+  }
+  return JSON.stringify({ success: true, dialog_closed: 'true' });
+})()
+
+// ✅ CORRECT - Always return data, let workflow use it conditionally
+(function() {
+  const dialog = document.querySelector('.dialog');
+  return JSON.stringify({
+    dialog_found: dialog ? 'true' : 'false',  // ✅ Just data
+    message: dialog ? 'Dialog found' : 'No dialog found'
+  });
+})()
+```
+
+**Pattern: Detection Scripts vs Action Scripts**
+
+- **Detection scripts**: Check UI state, always return data (never fail)
+  - Example: `check_login_status.js` returns `{ needs_login: 'true' }` or `{ needs_login: 'false' }`
+  - Use workflow `if` conditions to act on the data: `if: "needs_login == 'true'"`
+
+- **Action scripts**: Perform operations, can legitimately fail
+  - Example: Click specific button, set form value
+  - These should fail if the target element doesn't exist
+
+### 2. Always Use Safe Variable Access
 
 Due to how Terminator injects variables with `var` declarations, always use typeof checks:
 
@@ -296,7 +329,52 @@ console.log(env.username);  // Wrong - no env prefix exists
 
 **Note**: Variables are automatically parsed from JSON when injected, so you don't need `JSON.parse()` on incoming data.
 
-### 2. Use Promise Chain Pattern for Async Operations
+### 3. Type Conversion Before String Methods
+
+Always convert objects/arrays to strings before calling string methods:
+
+```javascript
+// ❌ WRONG - Calling string methods on objects/arrays
+const result = troubleshoot_result.toLowerCase();  // Error if object/array
+
+// ✅ CORRECT - Convert to string first
+const result = JSON.stringify(troubleshoot_result).toLowerCase();
+const hasError = JSON.stringify(data).includes('error');
+```
+
+### 4. Avoiding Page Navigation Issues
+
+Scripts that trigger page navigation (clicking links, submitting forms, closing dialogs) can be killed before the return statement executes, causing NULL_RESULT errors.
+
+```javascript
+// ❌ WRONG - Navigation kills script before return
+(function() {
+  const dialog = document.querySelector('.system-message');
+  const yesButton = dialog.querySelector('button.yes');
+  yesButton.click();  // This navigates/reloads page
+
+  // Script killed here - return never executes
+  return JSON.stringify({ clicked: true });  // NULL_RESULT
+})()
+
+// ✅ CORRECT - Separate navigation actions into dedicated workflow steps
+// Step 1: Detect dialog (detection script)
+(function() {
+  const dialog = document.querySelector('.system-message');
+  return JSON.stringify({
+    dialog_found: dialog ? 'true' : 'false'
+  });
+})()
+
+// Step 2: Click Yes button (action step with delay)
+// - tool_name: click_element
+//   if: "dialog_found == 'true'"
+//   arguments:
+//     selector: "role:Button|name:Yes"
+//   delay_ms: 3000  // Wait for navigation to complete
+```
+
+### 5. Use Promise Chain Pattern for Async Operations
 
 The Chrome extension bridge automatically detects and awaits Promises. Use this pattern for async operations:
 
@@ -310,15 +388,13 @@ navigator.clipboard.readText().then(clipboardText => {
   console.log('Success:', clipboardText);
   // MUST return value from .then() handler
   return JSON.stringify({
-    success: true,
-    data: clipboardText
+    clipboard_text: clipboardText  // ✅ Descriptive field, not success: true
   });
 }).catch(error => {
   console.error('Error:', error);
   // MUST return value from .catch() handler
   return JSON.stringify({
-    success: false,
-    error: error.message
+    error_message: error.message  // ✅ Descriptive field, not success: false
   });
 });
 ```
@@ -328,6 +404,7 @@ navigator.clipboard.readText().then(clipboardText => {
 - Promise as last expression is automatically detected and awaited by worker.js
 - Do synchronous variable setup BEFORE the Promise chain
 - Avoid async IIFE - use Promise chain pattern instead
+- Never use success: true/false pattern - return descriptive data instead
 
 ```javascript
 // ❌ WRONG: Missing Return Values in Handlers
@@ -344,44 +421,59 @@ navigator.clipboard.readText().then(result => {
 })(); // Worker.js can't capture async function results via eval()
 ```
 
-### 3. Return JSON Strings
+### 6. Return JSON Strings
 
 Browser scripts must return serializable data. Use `JSON.stringify()`:
 
 ```javascript
 // ✅ Good
-JSON.stringify({ status: "success", data: values });
+JSON.stringify({ login_status: "on_login_page", needs_login: "true" });
 
 // ❌ Bad - returns object directly
-return { status: "success", data: values };
+return { login_status: "on_login_page" };
 ```
 
-### 4. Use set_env for Workflow Variables
+### 7. Returning Data and Auto-Merge Behavior
 
-To pass data to subsequent workflow steps:
+Non-reserved fields automatically merge into env for subsequent steps:
 
 ```javascript
-JSON.stringify({
-  result: "success",
-  set_env: {
-    key1: "value1",
-    key2: "value2",
-  },
+// Return data directly - auto-merges to env
+return JSON.stringify({
+  status: 'completed',           // Reserved field (not auto-merged)
+  login_status: 'on_login_page', // Auto-merged as login_status
+  needs_login: 'true',           // Auto-merged as needs_login
+  form_count: 3                  // Auto-merged as form_count
 });
+
+// Reserved fields: status, error, logs, duration_ms, set_env
+// All other fields auto-merge and are accessible in later steps
 ```
 
-### 5. Handle Missing Elements Gracefully
+Use string values like `'true'`/`'false'` for boolean-like fields to work with YAML `if` expressions:
+```yaml
+- tool_name: click_element
+  if: "needs_login == 'true'"  # String comparison
+```
+
+### 8. Handle Missing Elements Gracefully
 
 ```javascript
 const element = document.querySelector("#target");
 if (!element) {
-  JSON.stringify({ error: "Element not found", selector: "#target" });
+  JSON.stringify({
+    element_found: "false",  // ✅ Data, not success: false
+    selector: "#target"
+  });
 } else {
-  // Process element
+  JSON.stringify({
+    element_found: "true",
+    element_text: element.textContent
+  });
 }
 ```
 
-### 6. Respect Size Limits
+### 9. Respect Size Limits
 
 The MCP protocol has a ~30KB response limit. Truncate large data:
 

@@ -12,6 +12,24 @@ pub fn get_server_instructions() -> String {
         "
 You are an AI assistant designed to control a computer desktop. Your primary goal is to understand the user's request and translate it into a sequence of tool calls to automate GUI interactions.
 
+**Table of Contents**
+
+1. [Golden Rules for Robust Automation](#golden-rules)
+2. [Tool Behavior & Metadata](#tool-behavior)
+3. [Core Workflow: Discover, then Act with Precision](#core-workflow)
+4. [Action Examples](#action-examples)
+5. [Code Execution via run_command](#code-execution)
+6. [Browser DOM Inspection with execute_browser_script](#browser-dom)
+   - [Critical: Never Use success: true/false Pattern](#never-use-success-false)
+   - [Pattern: Detection Scripts vs Action Scripts](#detection-vs-action)
+   - [Type Conversion Before String Methods](#type-conversion)
+   - [Avoiding Page Navigation Issues](#page-navigation)
+   - [Browser Script Format Requirements](#browser-script-format)
+7. [Core Desktop APIs](#desktop-apis)
+8. [Workflow State Persistence & Partial Execution](#workflow-state)
+9. [Common Pitfalls & Solutions](#common-pitfalls)
+10. [Troubleshooting & Debugging](#troubleshooting)
+
 **Golden Rules for Robust Automation**
 
 1.  **CHECK FOCUS FIRST:** Before any `click`, `type`, or `press_key` action, you **MUST** verify the target application `is_focused` using `get_applications`. If it's not, you **MUST** call `activate_element` before proceeding. This is the #1 way to prevent sending commands to the wrong window.
@@ -289,12 +307,112 @@ execute_browser_script({{
 ```
 
 **Returning Data FROM Browser Scripts:**
+
+**⚠️ CRITICAL: Never Use success: true/false Pattern**
+
+Browser scripts should **return data describing what they found**, NOT success/failure status. Using `success: false` causes the workflow step to fail.
+
 ```javascript
-// Return fields directly - they auto-merge into env
+// ❌ WRONG - Causes step failure when dialog not found
+(function() {{
+  const dialog = document.querySelector('.dialog');
+  if (dialog) {{
+    dialog.remove();
+    return JSON.stringify({{
+      success: true,
+      dialog_closed: 'true'
+    }});
+  }}
+  return JSON.stringify({{
+    success: false,  // ❌ This causes step to fail!
+    message: 'No dialog found'
+  }});
+}})()
+
+// ✅ CORRECT - Always return data, let workflow use it conditionally
+(function() {{
+  const dialog = document.querySelector('.dialog');
+  if (dialog) {{
+    dialog.remove();
+    return JSON.stringify({{
+      dialog_closed: 'true',
+      message: 'Dialog closed'
+    }});
+  }}
+  return JSON.stringify({{
+    dialog_closed: 'false',  // ✅ Just data, not success/failure
+    message: 'No dialog found'
+  }});
+}})()
+```
+
+**Pattern: Detection Scripts vs Action Scripts**
+
+- **Detection scripts**: Check UI state, always return data (never fail)
+  - Example: `check_login_status.js` returns `{{ needs_login: 'true' }}` or `{{ needs_login: 'false' }}`
+  - Use workflow `if` conditions to act on the data: `if: "needs_login == 'true'"`
+
+- **Action scripts**: Perform operations, can legitimately fail
+  - Example: Click specific button, set form value
+  - These should fail if the target element doesn't exist
+
+**Data Return Best Practices:**
+
+```javascript
+// ✅ Return data with string boolean-like fields for workflow conditionals
 execute_browser_script({{
   selector: \"role:Window\",
-  script: \"const pageData = {{\\n  title: document.title,\\n  url: window.location.href,\\n  formCount: document.forms.length\\n}};\\n\\n// Return data directly (no set_env wrapper needed)\\nJSON.stringify({{\\n  status: 'success',\\n  page_title: pageData.title,     // Available as page_title\\n  page_url: pageData.url,         // Available as page_url\\n  form_count: pageData.formCount  // Available as form_count\\n}});\"
+  script: \"(function() {{\\n  const hasLoginFields = !!(document.getElementById('username') && document.getElementById('password'));\\n  const hasSAPInterface = !!document.querySelector('.sap-shell');\\n  \\n  let loginStatus = 'unknown';\\n  let needsLogin = 'true';\\n  \\n  if (hasLoginFields) {{\\n    loginStatus = 'on_login_page';\\n    needsLogin = 'true';\\n  }} else if (hasSAPInterface) {{\\n    loginStatus = 'already_logged_in';\\n    needsLogin = 'false';\\n  }}\\n  \\n  // Return data - no 'success' field\\n  return JSON.stringify({{\\n    login_status: loginStatus,\\n    needs_login: needsLogin,\\n    has_login_fields: hasLoginFields\\n  }});\\n}})()\"
 }})
+
+// Later in workflow, use the data conditionally:
+// - tool_name: click_element
+//   if: "needs_login == 'true'"
+//   arguments:
+//     selector: "role:Button|name:Login"
+```
+
+**Type Conversion Before String Methods:**
+
+```javascript
+// ❌ WRONG - Calling string methods on objects/arrays
+const result = troubleshoot_result.toLowerCase();  // Error if object/array
+
+// ✅ CORRECT - Convert to string first
+const result = JSON.stringify(troubleshoot_result).toLowerCase();
+const hasError = JSON.stringify(data).includes('error');
+```
+
+**Avoiding Page Navigation Issues:**
+
+Scripts that trigger page navigation (clicking links, submitting forms, closing dialogs) can be killed before the return statement executes, causing NULL_RESULT errors.
+
+```javascript
+// ❌ WRONG - Navigation kills script before return
+(function() {{
+  const dialog = document.querySelector('.system-message');
+  const yesButton = dialog.querySelector('button.yes');
+  yesButton.click();  // This navigates/reloads page
+
+  // Script killed here - return never executes
+  return JSON.stringify({{ clicked: true }});  // NULL_RESULT
+}})()
+
+// ✅ CORRECT - Separate navigation actions into dedicated workflow steps
+// Step 1: Detect dialog (detection script)
+(function() {{
+  const dialog = document.querySelector('.system-message');
+  return JSON.stringify({{
+    dialog_found: dialog ? 'true' : 'false'
+  }});
+}})()
+
+// Step 2: Click Yes button (action step with delay)
+// - tool_name: click_element
+//   if: "dialog_found == 'true'"
+//   arguments:
+//     selector: "role:Button|name:Yes"
+//   delay_ms: 3000  // Wait for navigation to complete
 ```
 
 **Loading Scripts from Files:**
