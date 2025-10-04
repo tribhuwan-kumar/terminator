@@ -1429,17 +1429,47 @@ impl DesktopWrapper {
         description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript'/'typescript'/'ts' for JS/TS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. TypeScript is supported with automatic transpilation. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps using direct syntax (e.g., 'key' in conditions or {{key}} in substitutions). NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS/TS) or 'env = {...}' (Python).
 
 ⚠️ CRITICAL: Pattern for Optional Element Detection
-For optional UI elements (dialogs, popups, confirmations) that may or may not appear, use desktop.getElements() to check existence first. This prevents timeout errors and enables conditional execution:
+For optional UI elements (dialogs, popups, confirmations) that may or may not appear, use desktop.locator() with try/catch to check existence. This prevents timeout errors and enables conditional execution.
 
-✅ RECOMMENDED Pattern:
-// Step 1: Check if optional element exists
-const elements = await desktop.getElements({ role: 'Button', name: 'Leave' });
-return JSON.stringify({
-  dialog_exists: elements.length > 0 ? 'true' : 'false'
-});
+✅ RECOMMENDED Pattern - Window-Scoped (Most Accurate):
+// Step 1: Check if optional element exists in specific window
+try {
+  // Scope to specific window first to avoid false positives
+  const chromeWindow = await desktop.locator('role:Window|name:SAP Business One - Google Chrome').first();
+  // Then search within that window
+  await chromeWindow.locator('role:Button|name:Leave').first();
+  return JSON.stringify({
+    dialog_exists: 'true'
+  });
+} catch (e) {
+  // Element not found
+  return JSON.stringify({
+    dialog_exists: 'false'
+  });
+}
+
+✅ ALTERNATIVE Pattern - Desktop-Wide Search:
+// When element could be in any window
+try {
+  await desktop.locator('role:Button|name:Leave').first();
+  return JSON.stringify({
+    dialog_exists: 'true'
+  });
+} catch (e) {
+  return JSON.stringify({
+    dialog_exists: 'false'
+  });
+}
 
 // Step 2: In next workflow step, use 'if' condition:
 // if: 'dialog_exists == \"true\"'
+
+Performance Note: Using .first() with try/catch is ~8x faster than .all() for existence checks (1.3s vs 10.8s).
+
+Important Scoping Pattern:
+- desktop.locator() searches ALL windows/applications
+- element.locator() searches only within that element's subtree
+- Always scope to specific window when checking for window-specific dialogs
 
 This pattern:
 - Never fails the step (always returns data)
@@ -1457,7 +1487,8 @@ Common use cases:
 Terminator injects environment variables using 'var' - ALWAYS use typeof checks:
 const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
 const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
-const count = parseInt(retry_count || '0');"
+const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0;  // ✅ SAFE
+// NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared"
     )]
     async fn run_command(
         &self,

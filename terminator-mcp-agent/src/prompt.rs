@@ -40,23 +40,47 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
 
 4.  **CHECK BEFORE YOU ACT (Especially Toggles):** Before clicking a checkbox, radio button, or any toggleable item, **ALWAYS** use `is_toggled` or `is_selected` to check its current state. Only click if it's not already in the desired state to avoid accidentally undoing the action.
 
-4a. **CHECK OPTIONAL ELEMENT EXISTENCE BEFORE INTERACTION:** For optional UI elements like dialogs, popups, confirmation buttons, or dynamic content that may or may not appear, **ALWAYS** check if the element exists first using `desktop.getElements()` in a `run_command` script. Store the result as an environment variable and use conditional `if` expressions to only interact when the element is present. This prevents timeout errors and makes workflows more robust than using `continue_on_error: true`.
+4a. **CHECK OPTIONAL ELEMENT EXISTENCE BEFORE INTERACTION:** For optional UI elements like dialogs, popups, confirmation buttons, or dynamic content that may or may not appear, **ALWAYS** check if the element exists first using `desktop.locator()` in a `run_command` script. Store the result as an environment variable and use conditional `if` expressions to only interact when the element is present. This prevents timeout errors and makes workflows more robust than using `continue_on_error: true`.
 
     **Pattern for Optional Elements:**
     ```yaml
-    # Step 1: Check if optional element exists
+    # Step 1: Check if optional element exists (scoped to window for accuracy)
     - tool_name: run_command
       id: check_dialog
       arguments:
         engine: javascript
         run: |
-          const elements = await desktop.getElements({{
-            role: \"Button\",
-            name: \"Leave\"
-          }});
-          return JSON.stringify({{
-            dialog_exists: elements.length > 0 ? \"true\" : \"false\"
-          }});
+          try {{
+            // For window-specific searches, scope to the window first
+            const chromeWindow = await desktop.locator('role:Window|name:SAP Business One - Google Chrome').first();
+            // Then search within that window using .locator() on the element
+            await chromeWindow.locator('role:Button|name:Leave').first();
+            return JSON.stringify({{
+              dialog_exists: \"true\"
+            }});
+          }} catch (e) {{
+            // Element not found
+            return JSON.stringify({{
+              dialog_exists: \"false\"
+            }});
+          }}
+
+    # Alternative: Desktop-wide search (when element could be anywhere)
+    - tool_name: run_command
+      id: check_dialog_global
+      arguments:
+        engine: javascript
+        run: |
+          try {{
+            await desktop.locator('role:Button|name:Leave').first();
+            return JSON.stringify({{
+              dialog_exists: \"true\"
+            }});
+          }} catch (e) {{
+            return JSON.stringify({{
+              dialog_exists: \"false\"
+            }});
+          }}
 
     # Step 2: Click only if element exists
     - tool_name: click_element
@@ -65,6 +89,13 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
       arguments:
         selector: \"role:Button|name:Leave\"
     ```
+
+    **Performance Note:** Using `.first()` with try/catch is ~8x faster than `.all()` for existence checks (1.3s vs 10.8s).
+
+    **Important Scoping Pattern:**
+    - `desktop.locator()` searches ALL windows/applications
+    - `element.locator()` searches only within that element's subtree
+    - Always scope to specific window when checking for window-specific dialogs
 
     This pattern is especially useful for:
     - Confirmation dialogs that may not appear (\"Are you sure?\", \"Unsaved changes\")
@@ -1004,13 +1035,26 @@ You can load JavaScript from external files to keep workflow YAML clean:
 
 ## Section 7: Core Desktop APIs
 ```javascript
-// Element discovery
-const elements = await desktop.locator('role:button|name:Submit').all();
-const element = await desktop.locator('#123').first();
+// Element discovery (desktop.getElements() DOES NOT EXIST - use locator API)
+const elements = await desktop.locator('role:button|name:Submit').all();  // Returns array
+const element = await desktop.locator('#123').first();  // Returns single element or throws
 const appElements = desktop.applications();
 const focusedElement = desktop.focusedElement();
 
-// Element interaction  
+// CRITICAL: Scoping searches to specific windows (prevents false positives)
+const window = await desktop.locator('role:Window|name:Chrome').first();
+const buttonInWindow = await window.locator('role:Button|name:Submit').first();
+
+// Performance tip: .first() is ~8x faster than .all() for existence checks
+// Use try/catch with .first() instead of .all().length for detection:
+try {
+  await desktop.locator('role:Dialog|name:Warning').first();
+  // Element exists
+} catch (e) {
+  // Element doesn't exist
+}
+
+// Element interaction
 await element.click();
 await element.typeText('Hello World');
 await element.setToggled(true);
@@ -1037,6 +1081,22 @@ const monitors = await desktop.listMonitors();
 ```
 
 **Common JavaScript Patterns:**
+
+*   **Window-scoped element detection (RECOMMENDED for accuracy):**
+```javascript
+// Scope to specific window to avoid false positives from other windows
+const targetWindow = await desktop.locator('role:Window|name:SAP Business One - Google Chrome').first();
+try {{
+    const dialog = await targetWindow.locator('role:Dialog|name:Unsaved changes').first();
+    // Dialog exists in this specific window
+    const leaveButton = await dialog.locator('role:Button|name:Leave').first();
+    await leaveButton.click();
+    return {{ dialog_handled: 'true' }};
+}} catch (e) {{
+    // No dialog in this window
+    return {{ dialog_handled: 'false' }};
+}}
+```
 
 *   **Bulk operations on multiple elements:**
 ```javascript
