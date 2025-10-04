@@ -384,63 +384,198 @@ ALL tools with `id` field store results in env:
 
 **Browser DOM Inspection with execute_browser_script**
 
-The `execute_browser_script` tool executes JavaScript directly in browser contexts, providing full access to the HTML DOM. It supports bidirectional data flow with workflows through environment variables.
+The `execute_browser_script` tool executes JavaScript in browser contexts (Chrome/Edge), providing full DOM access.
 
-**When to use execute_browser_script:**
-*   Extracting full HTML DOM or specific HTML elements
-*   Getting data attributes, hidden inputs, meta tags
-*   Analyzing page structure (forms, links, headings)
-*   Debugging why elements don't appear in accessibility tree
-*   Scraping structured data from HTML patterns
-*   Passing data between workflow steps (set_env support)
-*   Loading reusable scripts from files
-*   Accessing results from previous non-script tools via {{step_id}}_result pattern
+**Chrome extension required:** This tool requires the Terminator Chrome extension to be installed and the browser window to be open.
 
-**Basic DOM Extraction:**
-```javascript
-// Get full HTML (watch size limits ~30KB)
-execute_browser_script({{
-  selector: \"role:Window|name:Chrome\",
-  script: \"document.documentElement.outerHTML\"
-}})
+### When to Use Browser Scripts
 
-// Get structured page data
-execute_browser_script({{
-  selector: \"role:Window|name:Chrome\",
-  script: \"({{\\n    url: window.location.href,\\n    title: document.title,\\n    forms: Array.from(document.forms).map(f => ({{\\n      id: f.id,\\n      action: f.action,\\n      inputs: f.elements.length\\n    }})),\\n    hiddenInputs: document.querySelectorAll('input[type=\\\\\"hidden\\\\\"]').length,\\n    bodyText: document.body.innerText.substring(0, 1000)\\n  }})\"
-}})
-```
+**Use execute_browser_script for:**
+- Extracting HTML DOM elements not in accessibility tree
+- Getting data attributes, hidden inputs, meta tags, computed styles
+- Analyzing page structure (forms, links, tables, headings)
+- Reading/writing clipboard in browser context
+- Scraping structured data from HTML patterns
+- Filling complex forms using DOM selectors
+- Triggering JavaScript events (input, change, click)
 
-**Accessing Data in Browser Scripts:**
+**Don't use browser scripts for:**
+- Simple element clicks (use click_element instead)
+- Text input into standard form fields (use type_into_element)
+- Navigation (use navigate_browser)
+- Anything accessible via UI Automation tree
 
-**⚠️ CRITICAL: Variable Declaration Pattern**
-Terminator injects environment variables using `var` declarations. To avoid \"already declared\" errors, **ALWAYS** use the typeof check pattern:
+### Environment Variable Access in Browser Scripts
+
+**THE SAME RULE APPLIES:** ALL env variable access MUST use typeof checks.
+
+Browser scripts receive the same var injection as Node.js scripts.
 
 ```javascript
-// ✅ CORRECT - Safe variable access pattern
-const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default_value';
-const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
-const errorMsg = (typeof error_message !== 'undefined' && error_message !== null) ? error_message : '';
-const count = parseInt(retry_count || '0');
+// ✅ CORRECT - Browser script with safe variable access
+(function() {{
+  // Safe env variable access with typeof checks
+  const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
+  const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+  const config = (typeof app_config !== 'undefined') ? app_config : {{}};
+  const columnMapping = (typeof column_mapping !== 'undefined') ? column_mapping : {{}};
 
-// ❌ WRONG - Will fail if variable was already declared
-const myVar = env_var_name;  // Error: env_var_name already declared
-let isActive = is_active === 'true';  // Error: is_active already declared
+  // Use the variables safely
+  const searchBox = document.querySelector('input[name=\"q\"]');
+  if (searchBox) {{
+    searchBox.value = searchTerm;
+    searchBox.form.submit();
+  }}
+
+  // Return data as JSON string
+  return JSON.stringify({{
+    search_submitted: true,
+    term: searchTerm,
+    entries_count: entries.length
+  }});
+}})()
 ```
 
+**Error if you violate this in browser context:**
+```
+EVAL_ERROR: Uncaught SyntaxError: Identifier 'message' has already been declared
+    at <anonymous>:1:15
+    at <anonymous>:1:500836
+```
+
+### Browser Script Return Patterns
+
+**⚠️ CRITICAL: Browser scripts MUST return a value**
+
+Browser scripts run via `eval()` and MUST return a serializable value. The last expression is the return value.
+
+**🚨 IMPORTANT: For Promises, you MUST capture and return explicitly**
+
+Due to eval() context limitations, bare Promises as the last expression cause NULL_RESULT errors. Always use:
 ```javascript
-// Full example with safe variable access
-execute_browser_script({{
-  selector: \"role:Window\",
-  script: \"// Safe variable access with typeof checks\\nconst searchTerm = (typeof search_term !== 'undefined') ? search_term : '';\\nconst entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];\\nconst config = (typeof app_config !== 'undefined') ? app_config : {{}};\\n\\n// Fill search form\\nconst searchBox = document.querySelector('input[name=\\\\\"q\\\\\"]');\\nsearchBox.value = searchTerm;\\nsearchBox.form.submit();\\n\\n// Return data directly (auto-merges to env)\\nJSON.stringify({{\\n  status: 'success',\\n  search_submitted: true,\\n  term: searchTerm\\n}});\"
-}})
+const result = someAsyncFunction().then(...).catch(...);
+return result;
 ```
 
-**Returning Data FROM Browser Scripts:**
+**✅ CORRECT Patterns:**
 
-**⚠️ CRITICAL: Never Use success: true/false Pattern**
+**Pattern 1: Self-Executing IIFE (recommended for sync operations)**
+```javascript
+(function() {{
+  const data = document.title;
+  const url = window.location.href;
 
-Browser scripts should **return data describing what they found**, NOT success/failure status. Using `success: false` causes the workflow step to fail.
+  return JSON.stringify({{
+    title: data,
+    url: url
+  }});
+}})()
+```
+
+**Pattern 2: Promise Chain with Capture and Return (for async operations)**
+```javascript
+// Setup variables first (synchronously) with typeof checks
+const targetText = (typeof target_text !== 'undefined') ? target_text : '';
+
+// ✅ CRITICAL: Capture Promise in const and explicitly return it
+// This is REQUIRED for eval() context - bare Promise as last expression causes NULL_RESULT
+const result = navigator.clipboard.writeText(targetText).then(() => {{
+  console.log('Clipboard write success');
+
+  // MUST return value from .then() handler
+  return JSON.stringify({{
+    clipboard_written: true,
+    text_length: targetText.length
+  }});
+
+}}).catch(error => {{
+  console.error('Clipboard error:', error);
+
+  // MUST return value from .catch() handler
+  return JSON.stringify({{
+    clipboard_written: false,
+    error: error.message
+  }});
+}});
+
+return result;
+```
+
+**❌ WRONG Patterns:**
+
+**Wrong 1: Variable assignment then reference (returns undefined)**
+```javascript
+// ❌ DO NOT USE - Result evaluates to undefined
+const result = (function() {{
+  return JSON.stringify({{ data: 'value' }});
+}})();
+result;  // This statement returns undefined in eval() context
+
+// Error you'll see:
+// NULL_RESULT: JavaScript execution returned null or undefined
+```
+
+**Wrong 2: Async IIFE**
+```javascript
+// ❌ DO NOT USE - eval() can't capture async IIFE results
+(async function() {{
+  const result = await navigator.clipboard.readText();
+  return JSON.stringify({{ result }});
+}})();
+
+// Error: NULL_RESULT (Worker.js can't capture async function return)
+```
+
+**Wrong 3: Missing returns in Promise handlers**
+```javascript
+// ❌ DO NOT USE - handlers must return values
+navigator.clipboard.readText().then(result => {{
+  console.log(result);
+  // Missing return! Causes NULL_RESULT
+}}).catch(error => {{
+  console.error(error);
+  // Missing return! Causes NULL_RESULT
+}});
+
+// Error: NULL_RESULT (handlers didn't return anything)
+```
+
+**Wrong 4: Bare Promise as last expression (without capture)**
+```javascript
+// ❌ DO NOT USE - Promise not captured, eval() can't access result
+navigator.clipboard.readText().then(clipboardText => {{
+  console.log('Read from clipboard');
+  return JSON.stringify({{ data: clipboardText }});
+}}).catch(error => {{
+  return JSON.stringify({{ error: error.message }});
+}});
+// No const result = ... and no return statement!
+
+// Error: NULL_RESULT - Script executed but result wasn't captured
+// This pattern works in some JS contexts but NOT in browser eval() injection
+```
+
+### Script Return Values vs Step Execution Status
+
+**Understanding failure modes:**
+
+A browser script step can fail in two ways:
+
+1. **Script execution failure** (step fails):
+   - JavaScript exception thrown
+   - Returns null or undefined (NULL_RESULT)
+   - Promise rejected without .catch() handler
+   - Script timeout
+
+2. **Data indicates condition not met** (step succeeds, data used conditionally):
+   - Returns `{{ dialog_found: 'false' }}` - step succeeds, workflow uses if condition
+   - Returns `{{ validation_passed: false }}` - step succeeds, workflow decides what to do
+
+**⚠️ CRITICAL: Detection Scripts vs Action Scripts**
+
+**Detection Scripts - Always Return Data (Never Fail)**
+
+Detection scripts check UI state and MUST always return data, even when condition isn't met:
 
 ```javascript
 // ❌ WRONG - Causes step failure when dialog not found
@@ -459,6 +594,8 @@ Browser scripts should **return data describing what they found**, NOT success/f
   }});
 }})()
 
+// Error you'll see: Step status shows 'failed' because success: false was returned
+
 // ✅ CORRECT - Always return data, let workflow use it conditionally
 (function() {{
   const dialog = document.querySelector('.dialog');
@@ -476,206 +613,359 @@ Browser scripts should **return data describing what they found**, NOT success/f
 }})()
 ```
 
-**Pattern: Detection Scripts vs Action Scripts**
-
-- **Detection scripts**: Check UI state, always return data (never fail)
-  - Example: check_login_status.js returns needs_login: true or needs_login: false
-  - Use workflow if conditions to act on the data: if: \"needs_login == 'true'\"
-
-- **Action scripts**: Perform operations, can legitimately fail
-  - Example: Click specific button, set form value
-  - These should fail if the target element doesn't exist
-
-**Data Return Best Practices:**
+**Detection Scripts - Always Return Data (Never Fail):**
 
 ```javascript
-// ✅ Return data with string boolean-like fields for workflow conditionals
-execute_browser_script({{
-  selector: \"role:Window\",
-  script: \"(function() {{\\n  const hasLoginFields = !!(document.getElementById('username') && document.getElementById('password'));\\n  const hasSAPInterface = !!document.querySelector('.sap-shell');\\n  \\n  let loginStatus = 'unknown';\\n  let needsLogin = 'true';\\n  \\n  if (hasLoginFields) {{\\n    loginStatus = 'on_login_page';\\n    needsLogin = 'true';\\n  }} else if (hasSAPInterface) {{\\n    loginStatus = 'already_logged_in';\\n    needsLogin = 'false';\\n  }}\\n  \\n  // Return data - no 'success' field\\n  return JSON.stringify({{\\n    login_status: loginStatus,\\n    needs_login: needsLogin,\\n    has_login_fields: hasLoginFields\\n  }});\\n}})()\"
-}})
+// ✅ Detection script for login status
+(function() {{
+  const hasLoginFields = !!(document.getElementById('username') && document.getElementById('password'));
+  const hasSAPInterface = !!document.querySelector('.sap-shell');
 
-// Later in workflow, use the data conditionally:
+  let loginStatus = 'unknown';
+  let needsLogin = 'true';
+
+  if (hasLoginFields) {{
+    loginStatus = 'on_login_page';
+    needsLogin = 'true';
+  }} else if (hasSAPInterface) {{
+    loginStatus = 'already_logged_in';
+    needsLogin = 'false';
+  }}
+
+  // Return data - no 'success' field
+  return JSON.stringify({{
+    login_status: loginStatus,
+    needs_login: needsLogin,
+    has_login_fields: hasLoginFields
+  }});
+}})()
+
+// In workflow YAML, use the data conditionally:
 // - tool_name: click_element
-//   if: needs_login == true
+//   id: click_login
+//   if: needs_login == 'true'
 //   arguments:
-//     selector: role:Button
+//     selector: role:Button|name:Login
 ```
 
-**Type Conversion Before String Methods:**
+**Action Scripts - Can Legitimately Fail:**
+
+```javascript
+// ✅ Action script that should fail if element not found
+(function() {{
+  const saveButton = document.querySelector('#save-button');
+  if (!saveButton) {{
+    throw new Error('Save button not found');
+  }}
+
+  saveButton.click();
+
+  return JSON.stringify({{
+    clicked: 'true',
+    button_text: saveButton.textContent
+  }});
+}})()
+
+// This script will fail the step if save button doesn't exist - that's correct behavior
+```
+
+---
+
+### 6.5 Common Browser Script Patterns
+
+**Pattern: Type Conversion Before String Methods**
 
 ```javascript
 // ❌ WRONG - Calling string methods on objects/arrays
 const result = troubleshoot_result.toLowerCase();  // Error if object/array
 
+// Error you'll see: TypeError: troubleshoot_result.toLowerCase is not a function
+
 // ✅ CORRECT - Convert to string first
-const result = JSON.stringify(troubleshoot_result).toLowerCase();
+const resultStr = (typeof troubleshoot_result !== 'undefined')
+  ? (typeof troubleshoot_result === 'string' ? troubleshoot_result : JSON.stringify(troubleshoot_result))
+  : '';
+const result = resultStr.toLowerCase();
 const hasError = JSON.stringify(data).includes('error');
 ```
 
-**Avoiding Page Navigation Issues:**
+**Pattern: Read Clipboard**
 
-Scripts that trigger page navigation (clicking links, submitting forms, closing dialogs) can be killed before the return statement executes, causing NULL_RESULT errors.
+```javascript
+// ⚠️ Use typeof checks for env variables
+const fallbackText = (typeof default_text !== 'undefined') ? default_text : '';
+
+// ✅ CRITICAL: Capture Promise and explicitly return it
+// DO NOT use Promise as bare last expression - eval() context requires explicit return
+const result = navigator.clipboard.readText().then(clipboardText => {{
+  console.log('Read from clipboard:', clipboardText.substring(0, 100));
+
+  // ⚠️ MUST return in .then() handler
+  return JSON.stringify({{
+    clipboard_content: clipboardText,
+    length: clipboardText.length,
+    has_content: clipboardText.length > 0
+  }});
+
+}}).catch(error => {{
+  console.error('Clipboard read failed:', error);
+
+  // ⚠️ MUST return in .catch() handler
+  return JSON.stringify({{
+    clipboard_content: fallbackText,
+    length: 0,
+    error: error.message
+  }});
+}});
+
+return result;
+```
+
+---
+
+### 6.6 Avoiding Page Navigation Issues
+
+Scripts that trigger page navigation/reload are killed before return executes, causing NULL_RESULT.
 
 ```javascript
 // ❌ WRONG - Navigation kills script before return
 (function() {{
   const dialog = document.querySelector('.system-message');
   const yesButton = dialog.querySelector('button.yes');
-  yesButton.click();  // This navigates/reloads page
+  yesButton.click();  // Triggers page reload
 
   // Script killed here - return never executes
-  return JSON.stringify({{ clicked: true }});  // NULL_RESULT
+  return JSON.stringify({{ clicked: true }});  // NULL_RESULT error
 }})()
 
-// ✅ CORRECT - Separate navigation actions into dedicated workflow steps
+// Error you'll see: NULL_RESULT: JavaScript execution returned null or undefined
+
+// ✅ CORRECT - Separate detection from action
 // Step 1: Detect dialog (detection script)
-(function() {{
-  const dialog = document.querySelector('.system-message');
-  return JSON.stringify({{
-    dialog_found: dialog ? 'true' : 'false'
-  }});
-}})()
-
-// Step 2: Click Yes button (action step with delay)
-// - tool_name: click_element
-//   if: dialog_found == true
-//   arguments:
-//     selector: role:Button
-//   delay_ms: 3000  // Wait for navigation to complete
-```
-
-**Loading Scripts from Files:**
-```javascript
-// Load and execute JavaScript from external file
-execute_browser_script({{
-  selector: \"role:Window\",
-  script_file: \"scripts/extract_table_data.js\",
-  env: {{
-    tableName: \"#data-table\"
-  }}
-}})
-```
-
-**Finding and Setting Form Fields by Label Text:**
-```javascript
-// Reliable pattern for setting form fields using their label text
-// instead of IDs or selectors that might change
 execute_browser_script({{
   selector: \"role:Window|name:Chrome\",
-  script: \"(function() {{\\n  // Find input field below a label with specific text\\n  function findInputByLabel(labelText) {{\\n    const labels = Array.from(document.querySelectorAll('label'));\\n    const label = labels.find(l => l.textContent.trim() === labelText);\\n    \\n    if (!label) return null;\\n    \\n    const labelRect = label.getBoundingClientRect();\\n    const inputs = Array.from(document.querySelectorAll('input[type=\\\\\"text\\\\\"]'));\\n    \\n    // Find input directly below the label\\n    return inputs.find(input => {{\\n      const inputRect = input.getBoundingClientRect();\\n      const isBelow = inputRect.top > labelRect.bottom;\\n      const isAligned = Math.abs(inputRect.left - labelRect.left) < 10;\\n      const isClose = inputRect.top - labelRect.bottom < 30;\\n      return isBelow && isAligned && isClose;\\n    }});\\n  }}\\n  \\n  // Set date fields using labels\\n  const dateValue = date_sap_format || '01.01.2025';  // From workflow env\\n  const fields = [\\n    {{ label: 'Posting Date', value: dateValue }},\\n    {{ label: 'Due Date', value: dateValue }},\\n    {{ label: 'Doc. Date', value: dateValue }}\\n  ];\\n  \\n  const results = [];\\n  fields.forEach(field => {{\\n    const input = findInputByLabel(field.label);\\n    if (input) {{\\n      input.value = field.value;\\n      input.dispatchEvent(new Event('input', {{ bubbles: true }}));\\n      input.dispatchEvent(new Event('change', {{ bubbles: true }}));\\n      results.push({{ label: field.label, success: true }});\\n    }}\\n  }});\\n  \\n  return JSON.stringify({{ fields_set: results.length, results }});\\n}})()\"
+  script: \"(function() {{\\n  const dialog = document.querySelector('.system-message');\\n  return JSON.stringify({{\\n    dialog_found: dialog ? 'true' : 'false'\\n  }});\\n}})()\"
 }})
+
+// Step 2: Click Yes button (use UI automation instead)
+// - tool_name: click_element
+//   id: click_yes
+//   if: dialog_found == 'true'
+//   arguments:
+//     selector: role:Button|name:Yes
+//   delay_ms: 3000  # Wait for navigation to complete
 ```
 
-**Browser Script Format Requirements:**
+**Actions that trigger navigation:**
+- Clicking links (`<a href>`)
+- Submitting forms (`.submit()` or submit button clicks)
+- Dialog buttons that reload/navigate (OK, Yes on system dialogs)
+- Any JavaScript that calls `window.location.href =` or `window.location.reload()`
 
-The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns for reliable execution:
+**Solution:** Use UI Automation (click_element) for navigation-triggering actions, use browser scripts only for detection.
 
-**✅ RECOMMENDED: Promise Chain as Last Expression**
+---
+
+### 6.7 Type Safety and Edge Cases
+
+**Safe Type Conversions:**
+
 ```javascript
-// Setup variables first (synchronously)
-const config = (typeof user_config !== 'undefined') ? user_config : {{}};
-const data = (typeof table_data !== 'undefined') ? table_data : [];
+// ✅ Safe string method calls on potentially non-string data
+const resultStr = (typeof troubleshoot_result !== 'undefined')
+  ? (typeof troubleshoot_result === 'string'
+      ? troubleshoot_result
+      : JSON.stringify(troubleshoot_result))
+  : '';
 
-// Promise as last expression (NO explicit return keyword)
-navigator.clipboard.readText().then(clipboardText => {{
-    console.log('Success:', clipboardText);
+const hasError = resultStr.toLowerCase().includes('error');
 
-    // MUST return value from .then() handler
-    return JSON.stringify({{
-        success: true,
-        data: clipboardText
-    }});
+// ✅ Safe array operations
+const entries = (typeof journal_entries !== 'undefined' && Array.isArray(journal_entries))
+  ? journal_entries
+  : [];
 
-}}).catch(error => {{
-    console.error('Error:', error);
+const firstEntry = entries.length > 0 ? entries[0] : null;
 
-    // MUST return value from .catch() handler
-    return JSON.stringify({{
-        success: false,
-        error: error.message
-    }});
-}});
+// ✅ Safe object property access
+const config = (typeof app_config !== 'undefined' && app_config !== null)
+  ? app_config
+  : {{}};
+
+const timeout = config.timeout || 5000;
 ```
 
-**✅ ALTERNATIVE: Self-Executing IIFE**
+**JSON.stringify Edge Cases:**
+
+```javascript
+// Circular reference protection
+function safeStringify(obj) {{
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (key, value) => {{
+    if (typeof value === 'object' && value !== null) {{
+      if (seen.has(value)) {{
+        return '[Circular]';
+      }}
+      seen.add(value);
+    }}
+    return value;
+  }});
+}}
+
+// Use it to safely stringify unknown data
+return safeStringify({{ data: complexObject }});
+```
+
+---
+
+### 6.8 Loading Scripts from Files
+
+You can load JavaScript from external files to keep workflow YAML clean:
+
+```yaml
+- tool_name: execute_browser_script
+  id: extract_table
+  arguments:
+    selector: \"role:Window|name:Chrome\"
+    script_file: \"scripts/extract_table_data.js\"
+    # No env parameter needed - all env auto-injected
+```
+
+**In scripts/extract_table_data.js:**
+
 ```javascript
 (function() {{
-    const data = document.title;
-    return JSON.stringify({{ title: data }});
+  // ⚠️ MUST use typeof checks for ALL env variables
+  const tableName = (typeof table_name !== 'undefined') ? table_name : '#data-table';
+  const maxRows = (typeof max_rows !== 'undefined') ? parseInt(max_rows) : 100;
+  const columnMapping = (typeof column_mapping !== 'undefined') ? column_mapping : {{}};
+
+  // Script logic using env variables
+  const table = document.querySelector(tableName);
+
+  // ... extraction logic ...
+
+  return JSON.stringify({{
+    rows: extractedRows,
+    table_name: tableName
+  }});
 }})()
 ```
 
-**❌ WRONG: Async IIFE Pattern**
-```javascript
-// DO NOT USE - causes NULL_RESULT errors
-(async function() {{
-    const result = await navigator.clipboard.readText();
-    return JSON.stringify({{ result }});
-}})();
-// Worker.js detects async IIFE but eval() wrapper can't capture async function results
-```
+**Important:**
+- script_file paths resolved relative to workflow directory
+- All accumulated env is injected before execution
+- Chrome extension must be installed and window must be open
+- Scripts execute in page context (has access to page's JavaScript environment)
 
-**❌ WRONG: Top-Level Return Statement**
+---
+
+### 6.9 Complete Example: verify_paste.js
+
+**Real-world script showing all best practices:**
+
 ```javascript
-// DO NOT USE - illegal return statement
-return (function() {{
-    const data = document.title;
-    return JSON.stringify({{ title: data }});
+// File: verify_paste.js
+(function() {{
+  console.log('🔍 Validating pasted entries against original data...');
+
+  // ✅ Safe env variable access with typeof checks
+  const original = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+  const pasted = (typeof table_data !== 'undefined') ? table_data : [];
+  const expectedDebit = (typeof total_debit !== 'undefined') ? parseFloat(total_debit) : 0;
+  const expectedCredit = (typeof total_credit !== 'undefined') ? parseFloat(total_credit) : 0;
+
+  console.log(`📊 Comparing ${{original.length}} original entries with ${{pasted.length}} pasted entries`);
+
+  // Filter out header row
+  const pastedData = pasted.filter(row => row.account && row.account !== 'G/L Acct/BP Code');
+
+  // Validation logic
+  const mismatches = [];
+  let matchedCount = 0;
+
+  for (let i = 0; i < original.length && i < pastedData.length; i++) {{
+    const orig = original[i];
+    const paste = pastedData[i];
+
+    if (orig.account !== paste.account) {{
+      mismatches.push({{
+        row: i + 1,
+        field: 'account',
+        expected: orig.account,
+        actual: paste.account
+      }});
+    }} else {{
+      matchedCount++;
+    }}
+  }}
+
+  // Calculate totals
+  const actualDebit = pastedData.reduce((sum, row) => sum + (row.debit || 0), 0);
+  const actualCredit = pastedData.reduce((sum, row) => sum + (row.credit || 0), 0);
+
+  const debitMatches = Math.abs(actualDebit - expectedDebit) < 0.01;
+  const creditMatches = Math.abs(actualCredit - expectedCredit) < 0.01;
+
+  const success = mismatches.length === 0 && debitMatches && creditMatches;
+
+  // ✅ CRITICAL: Use unique variable name (not 'message' which might be in env)
+  const validationMessage = success
+    ? `All ${{original.length}} entries validated successfully`
+    : `Validation failed: ${{mismatches.length}} mismatches found`;
+
+  console.log(`📊 Validation Results:`);
+  console.log(`  Matched: ${{matchedCount}}/${{original.length}}`);
+  console.log(`  Success: ${{success}}`);
+
+  // ✅ Return data (fields auto-merge to env for next steps)
+  return JSON.stringify({{
+    validation_passed: success,
+    validation_message: validationMessage,
+    matched_count: matchedCount,
+    total_entries: original.length,
+    mismatches: mismatches.slice(0, 10),
+    actual: {{
+      debit: actualDebit,
+      credit: actualCredit
+    }},
+    expected: {{
+      debit: expectedDebit,
+      credit: expectedCredit
+    }},
+    paste_verified: success.toString(),
+    should_move_file: success ? 'true' : 'false'
+  }});
 }})()
 ```
 
-**❌ WRONG: Missing Return Values in Handlers**
-```javascript
-// DO NOT USE - handlers must return values
-navigator.clipboard.readText().then(result => {{
-    console.log(result);
-    // Missing return! Causes NULL_RESULT error
-}}).catch(error => {{
-    console.error(error);
-    // Missing return! Causes NULL_RESULT error
-}});
+**Usage in workflow:**
+
+```yaml
+- tool_name: execute_browser_script
+  id: verify_paste
+  arguments:
+    selector: \"role:Window|name:SAP Business One - Google Chrome\"
+    script_file: \"verify_paste.js\"
+  fallback_id: activate_chrome
+  delay_ms: 1000
+
+- tool_name: run_command
+  id: move_to_processed
+  if: paste_verified == 'true'  # Use returned data in conditionals
+  arguments:
+    engine: node
+    command: \"mv ${{target_file}} /processed/\"
 ```
 
-**❌ WRONG: Top-Level Await**
-```javascript
-// DO NOT USE - not supported
-const result = await navigator.clipboard.readText();
-return JSON.stringify({{ result }});
-```
+**Key Takeaways from verify_paste.js:**
+- ✅ Use typeof checks for ALL env variables
+- ✅ Avoid common variable names (message, result, data) that might collide
+- ✅ Detection scripts always return data (no success: false)
+- ✅ Return fields auto-merge to env for next steps
+- ✅ Use unique, descriptive variable names (validationMessage vs message)
 
-**Key Rules:**
-- Both `.then()` and `.catch()` handlers MUST return values (use `JSON.stringify()`)
-- Promise as last expression is automatically detected and awaited by worker.js
-- Do synchronous variable setup BEFORE the Promise chain
-- Avoid async IIFE - use Promise chain pattern instead
-
-**IIFE Return Pattern for Non-Browser Scripts:**
-When using IIFE patterns in Node.js scripts (run_command with engine), capture and return the result:
-```javascript
-// Correct - capture IIFE result
-const result = (async function() {{
-    await someAsyncOperation();
-    return {{ success: true, data: 'value' }};
-}})();
-return result;  // Must return the Promise
-
-// Incorrect - IIFE result not captured
-(async function() {{
-    await someAsyncOperation();
-    return {{ success: true }};
-}})();  // ❌ Result is lost
-```
-
-**Important Notes:**
-- Chrome extension must be installed for execute_browser_script to work
-- Scripts run in page context and must return serializable data using JSON.stringify()
-- Environment variables are automatically injected with smart JSON detection - JSON strings are parsed into proper JavaScript objects/arrays
-- Variables are available directly (e.g., `user_data`, `file_path`) without the `env.` prefix
-- Size limit ~30KB for responses - truncate large DOMs
-- The system will auto-fix some common format errors but it's better to use the correct format
-
-**Core Desktop APIs:**
+## Section 7: Core Desktop APIs
 ```javascript
 // Element discovery
 const elements = await desktop.locator('role:button|name:Submit').all();
