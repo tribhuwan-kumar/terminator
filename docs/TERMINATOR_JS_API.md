@@ -63,8 +63,9 @@ new Desktop(useBackgroundApps?: boolean, activateApp?: boolean, logLevel?: strin
 
 ### Element Location
 - `locator(selector: string | Selector): Locator` - Create element locator
+  - **Important:** `desktop.locator()` searches ALL windows/applications
+  - For window-specific searches, use `element.locator()` on a window element
 - `focusedElement(): Element` - Get currently focused element
-- `getElements(selector: {role?: string, name?: string}): Promise<Array<Element>>` - Find elements without throwing error if not found. Returns empty array when no matches. Ideal for checking optional element existence before interaction.
 
 ### Browser & File Operations
 - `openUrl(url: string, browser?: string): Element` - Open URL in browser
@@ -304,23 +305,36 @@ desktop.openUrl('https://example.com', 'Chrome');
 
 ### Checking Optional Elements
 ```javascript
-// Check if optional dialog/button exists before interacting
-const elements = await desktop.getElements({
-  role: 'Button',
-  name: 'Leave'
-});
+// ✅ RECOMMENDED: Window-scoped search (most accurate)
+// Check if optional dialog/button exists in specific window
+try {
+  // Scope to specific window first to avoid false positives
+  const chromeWindow = await desktop.locator('role:Window|name:Chrome').first();
+  // Then search within that window
+  const leaveButton = await chromeWindow.locator('role:Button|name:Leave').first();
 
-if (elements.length > 0) {
   console.log('Dialog found, clicking Leave button');
-  await elements[0].click();
-} else {
+  await leaveButton.click();
+
+  return JSON.stringify({
+    dialog_exists: 'true'
+  });
+} catch (e) {
   console.log('No dialog present, continuing');
+  return JSON.stringify({
+    dialog_exists: 'false'
+  });
 }
 
-// Return data for workflow conditional execution
-return JSON.stringify({
-  dialog_exists: elements.length > 0 ? 'true' : 'false'
-});
+// Alternative: Desktop-wide search (when element could be anywhere)
+try {
+  await desktop.locator('role:Button|name:Leave').first();
+  // Element exists
+} catch (e) {
+  // Element doesn't exist
+}
+
+// Performance note: .first() with try/catch is ~8x faster than .all()
 ```
 
 ### Window Management

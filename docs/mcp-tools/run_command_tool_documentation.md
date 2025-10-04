@@ -166,24 +166,38 @@ The new syntax automatically detects the platform and uses the appropriate comma
 
 ## Pattern: Optional Element Detection
 
-For optional UI elements (dialogs, popups, confirmation buttons) that may or may not appear, use `desktop.getElements()` to check existence first. This prevents timeout errors and enables conditional workflow execution.
+For optional UI elements (dialogs, popups, confirmation buttons) that may or may not appear, use `desktop.locator()` with try/catch to check existence. This prevents timeout errors and enables conditional workflow execution.
 
 ### Why Use This Pattern
 
-- **Never fails the step** - Returns empty array when element not found, instead of throwing error
-- **Avoids timeouts** - No waiting for non-existent elements
+- **Never fails the step** - Returns data even when element not found
+- **Avoids timeouts** - Uses fast `.first()` with try/catch
 - **Enables conditionals** - Return data that workflow can use with `if` expressions
 - **More robust** - Better than `validate_element` which fails when element not found
+- **Performance** - `.first()` with try/catch is ~8x faster than `.all()` (1.3s vs 10.8s)
 
-### Pattern Example
+### Pattern Example - Window-Scoped (Recommended)
 
-**Step 1: Check if optional element exists**
+**Step 1: Check if optional element exists in specific window**
 ```javascript
 {
   "tool_name": "run_command",
   "arguments": {
     "engine": "javascript",
-    "run": "const elements = await desktop.getElements({ role: 'Button', name: 'Leave' });\nreturn JSON.stringify({ dialog_exists: elements.length > 0 ? 'true' : 'false' });"
+    "run": "try {\n  const chromeWindow = await desktop.locator('role:Window|name:Chrome').first();\n  await chromeWindow.locator('role:Button|name:Leave').first();\n  return JSON.stringify({ dialog_exists: 'true' });\n} catch (e) {\n  return JSON.stringify({ dialog_exists: 'false' });\n}"
+  }
+}
+```
+
+### Pattern Example - Desktop-Wide Search
+
+**Step 1: Check if optional element exists anywhere**
+```javascript
+{
+  "tool_name": "run_command",
+  "arguments": {
+    "engine": "javascript",
+    "run": "try {\n  await desktop.locator('role:Button|name:Leave').first();\n  return JSON.stringify({ dialog_exists: 'true' });\n} catch (e) {\n  return JSON.stringify({ dialog_exists: 'false' });\n}"
   }
 }
 ```
@@ -195,6 +209,12 @@ For optional UI elements (dialogs, popups, confirmation buttons) that may or may
   arguments:
     selector: "role:Button|name:Leave"
 ```
+
+### Important Scoping Pattern
+
+- **`desktop.locator()`** - Searches ALL windows/applications (desktop-wide)
+- **`element.locator()`** - Searches only within that element's subtree
+- **Always scope to specific window** when checking for window-specific dialogs to avoid false positives
 
 ### Common Use Cases
 
@@ -208,21 +228,25 @@ For optional UI elements (dialogs, popups, confirmation buttons) that may or may
 ### Complete Workflow Example
 
 ```yaml
-# Step 1: Check for optional "Leave" button dialog
+# Step 1: Check for optional "Leave" button dialog (window-scoped)
 - tool_name: run_command
   id: check_leave_dialog
   arguments:
     engine: javascript
     run: |
-      const elements = await desktop.getElements({
-        role: "Button",
-        name: "Leave"
-      });
+      try {
+        // Scope to specific window to avoid false positives
+        const chromeWindow = await desktop.locator('role:Window|name:Chrome').first();
+        await chromeWindow.locator('role:Button|name:Leave').first();
 
-      return JSON.stringify({
-        dialog_exists: elements.length > 0 ? "true" : "false",
-        element_count: elements.length
-      });
+        return JSON.stringify({
+          dialog_exists: "true"
+        });
+      } catch (e) {
+        return JSON.stringify({
+          dialog_exists: "false"
+        });
+      }
 
 # Step 2: Click button only if dialog exists
 - tool_name: click_element
@@ -244,15 +268,19 @@ For optional UI elements (dialogs, popups, confirmation buttons) that may or may
 # Problem: Step FAILS if button doesn't exist, stopping workflow
 ```
 
-**✅ Using getElements pattern (always succeeds)**
+**✅ Using locator with try/catch pattern (always succeeds)**
 ```yaml
 - tool_name: run_command
   id: check_dialog
   arguments:
     engine: javascript
     run: |
-      const elements = await desktop.getElements({ role: "Button", name: "Leave" });
-      return JSON.stringify({ exists: elements.length > 0 ? "true" : "false" });
+      try {
+        await desktop.locator('role:Button|name:Leave').first();
+        return JSON.stringify({ exists: "true" });
+      } catch (e) {
+        return JSON.stringify({ exists: "false" });
+      }
 # Always succeeds - returns data about existence
 ```
 
