@@ -9,7 +9,8 @@ use std::time::Duration;
 use tokio::task;
 
 // Default timeout if none is specified on the locator itself
-const DEFAULT_LOCATOR_TIMEOUT: Duration = Duration::from_secs(30);
+// Set to 0 for one-time search (no polling) - add explicit timeout where waiting is needed
+const DEFAULT_LOCATOR_TIMEOUT: Duration = Duration::from_secs(0);
 
 /// A high-level API for finding and interacting with UI elements
 ///

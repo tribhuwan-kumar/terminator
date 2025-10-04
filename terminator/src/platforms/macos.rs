@@ -2659,7 +2659,8 @@ impl AccessibilityEngine for MacOSEngine {
         };
 
         // Set up timeout handling
-        let effective_timeout = timeout.unwrap_or(Duration::from_secs(30));
+        // Set to 0 for one-time search (no polling) - add explicit timeout where waiting is needed
+        let effective_timeout = timeout.unwrap_or(Duration::from_secs(0));
         let start_time = std::time::Instant::now();
 
         // Now call the original logic with the resolved root and selector

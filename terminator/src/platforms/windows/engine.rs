@@ -41,7 +41,8 @@ use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 // Define a default timeout duration
-const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
+// Set to 0 for one-time search (no polling) - add explicit timeout where waiting is needed
+const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(0);
 
 // List of common browser process names (without .exe)
 const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
