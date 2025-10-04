@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import jpeg from "jpeg-js";
 import { Buffer } from "buffer";
-import { Desktop, type ScreenshotResult } from "terminator.js";
+import { Desktop, type ScreenshotResult, type Locator } from "terminator.js";
 
 const sleep = async (ms: number) => {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -14,17 +14,27 @@ async function runResolverAutomation(): Promise<string> {
     chrome_app?.focus();
 
     const browser_webview = chrome_app.locator("classname:BrowserRootView >> nativeid:RootWebArea");
-    browser_webview.wait(5000)
+    await browser_webview.wait(5000)
 
     const solve_captcha_btn = await browser_webview.locator("nativeid:recaptcha-anchor").first();
 
     if (solve_captcha_btn.isVisible()) {
       solve_captcha_btn.click();
 
-      const recaptcha_webview_sel = browser_webview.locator("nativeid:rc-imageselect");
-      recaptcha_webview_sel.wait(30000)
-  
-      const recaptcha_webview = await recaptcha_webview_sel.first();
+      let recaptcha_webview_sel_clone: Locator;
+      try {
+        const recaptcha_webview_sel = browser_webview.locator("nativeid:rc-imageselect");
+        await recaptcha_webview_sel.wait(30000)
+        recaptcha_webview_sel_clone = recaptcha_webview_sel;
+      } catch (e) {
+        const result = {
+          status: 'unknown',
+          message: "recaptcha webview doesn't exist, it seems recaptcha might have solved by just clicking",
+        };
+        return JSON.stringify(result);
+      }
+
+      const recaptcha_webview = await recaptcha_webview_sel_clone.first();
       await sleep(10000)
 
       const recaptcha_image: ScreenshotResult = recaptcha_webview.capture();
@@ -123,26 +133,32 @@ async function runResolverAutomation(): Promise<string> {
         })
       `);
 
-      const result = {
-        status: 'success',
-        message: 'captcha resolver automation completed successfully',
-        clickResult: clickResult,
-      };
-
-      return JSON.stringify(result);
+      if (clickResult) {
+        const result = {
+          status: 'success',
+          message: `successfully resolved imgaed based recaptcha: ${clickResult}`,
+        }
+        return JSON.stringify(result);
+      } else {
+        const result = {
+          status: 'failed',
+          message: `failed to resolved imgaed based recaptcha, browser script execution failed`,
+        }
+        return JSON.stringify(result);
+      }
     } else {
       const result = {
         status: 'failed',
-        message: 'failed to resolve captcha, something went wrong',
+        message: 'Captcha checkbox button is not visible.',
       };
       return JSON.stringify(result);
     }
-  } catch (error: any) {
-    console.error('❌ Error in automation:', error);
-    return JSON.stringify({
-      status: 'error',
-      message: error.message || String(error)
-    });
+  } catch(e) {
+    const result = {
+      status: 'failed',
+      message: `failed to find root of captcha, make sure your opened site have captcha visible:\n ${e instanceof Error ? e.message : String(e)}`,
+    };
+    return JSON.stringify(result);
   }
 }
 
