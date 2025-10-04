@@ -164,6 +164,98 @@ The new syntax automatically detects the platform and uses the appropriate comma
 4. **Use working_directory** instead of `cd` commands when possible
 5. **Handle errors** by checking the `exit_status` field
 
+## Pattern: Optional Element Detection
+
+For optional UI elements (dialogs, popups, confirmation buttons) that may or may not appear, use `desktop.getElements()` to check existence first. This prevents timeout errors and enables conditional workflow execution.
+
+### Why Use This Pattern
+
+- **Never fails the step** - Returns empty array when element not found, instead of throwing error
+- **Avoids timeouts** - No waiting for non-existent elements
+- **Enables conditionals** - Return data that workflow can use with `if` expressions
+- **More robust** - Better than `validate_element` which fails when element not found
+
+### Pattern Example
+
+**Step 1: Check if optional element exists**
+```javascript
+{
+  "tool_name": "run_command",
+  "arguments": {
+    "engine": "javascript",
+    "run": "const elements = await desktop.getElements({ role: 'Button', name: 'Leave' });\nreturn JSON.stringify({ dialog_exists: elements.length > 0 ? 'true' : 'false' });"
+  }
+}
+```
+
+**Step 2: In workflow YAML, use conditional execution**
+```yaml
+- tool_name: click_element
+  if: 'dialog_exists == "true"'
+  arguments:
+    selector: "role:Button|name:Leave"
+```
+
+### Common Use Cases
+
+- Confirmation dialogs ("Are you sure?", "Unsaved changes", "Leave page")
+- Session/login dialogs that depend on authentication state
+- Browser restore prompts
+- Password save dialogs
+- Cookie consent banners
+- Any conditionally-appearing UI element
+
+### Complete Workflow Example
+
+```yaml
+# Step 1: Check for optional "Leave" button dialog
+- tool_name: run_command
+  id: check_leave_dialog
+  arguments:
+    engine: javascript
+    run: |
+      const elements = await desktop.getElements({
+        role: "Button",
+        name: "Leave"
+      });
+
+      return JSON.stringify({
+        dialog_exists: elements.length > 0 ? "true" : "false",
+        element_count: elements.length
+      });
+
+# Step 2: Click button only if dialog exists
+- tool_name: click_element
+  id: click_leave
+  if: 'dialog_exists == "true"'
+  arguments:
+    selector: "role:Button|name:Leave"
+    timeout_ms: 3000
+```
+
+### Comparison with validate_element
+
+**❌ Using validate_element (fails when not found)**
+```yaml
+- tool_name: validate_element
+  id: check_dialog
+  arguments:
+    selector: "role:Button|name:Leave"
+# Problem: Step FAILS if button doesn't exist, stopping workflow
+```
+
+**✅ Using getElements pattern (always succeeds)**
+```yaml
+- tool_name: run_command
+  id: check_dialog
+  arguments:
+    engine: javascript
+    run: |
+      const elements = await desktop.getElements({ role: "Button", name: "Leave" });
+      return JSON.stringify({ exists: elements.length > 0 ? "true" : "false" });
+# Always succeeds - returns data about existence
+```
+
 ## Error Handling
 
 Commands that fail will return:

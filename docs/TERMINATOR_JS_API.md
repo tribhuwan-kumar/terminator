@@ -64,6 +64,7 @@ new Desktop(useBackgroundApps?: boolean, activateApp?: boolean, logLevel?: strin
 ### Element Location
 - `locator(selector: string | Selector): Locator` - Create element locator
 - `focusedElement(): Element` - Get currently focused element
+- `getElements(selector: {role?: string, name?: string}): Promise<Array<Element>>` - Find elements without throwing error if not found. Returns empty array when no matches. Ideal for checking optional element existence before interaction.
 
 ### Browser & File Operations
 - `openUrl(url: string, browser?: string): Element` - Open URL in browser
@@ -299,6 +300,27 @@ input.typeText('Hello World');
 
 // Open a URL
 desktop.openUrl('https://example.com', 'Chrome');
+```
+
+### Checking Optional Elements
+```javascript
+// Check if optional dialog/button exists before interacting
+const elements = await desktop.getElements({
+  role: 'Button',
+  name: 'Leave'
+});
+
+if (elements.length > 0) {
+  console.log('Dialog found, clicking Leave button');
+  await elements[0].click();
+} else {
+  console.log('No dialog present, continuing');
+}
+
+// Return data for workflow conditional execution
+return JSON.stringify({
+  dialog_exists: elements.length > 0 ? 'true' : 'false'
+});
 ```
 
 ### Window Management

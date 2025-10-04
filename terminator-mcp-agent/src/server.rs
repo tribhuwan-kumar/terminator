@@ -1426,7 +1426,38 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript'/'typescript'/'ts' for JS/TS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. TypeScript is supported with automatic transpilation. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps using direct syntax (e.g., 'key' in conditions or {{key}} in substitutions). NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS/TS) or 'env = {...}' (Python)."
+        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript'/'typescript'/'ts' for JS/TS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. TypeScript is supported with automatic transpilation. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps using direct syntax (e.g., 'key' in conditions or {{key}} in substitutions). NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS/TS) or 'env = {...}' (Python).
+
+⚠️ CRITICAL: Pattern for Optional Element Detection
+For optional UI elements (dialogs, popups, confirmations) that may or may not appear, use desktop.getElements() to check existence first. This prevents timeout errors and enables conditional execution:
+
+✅ RECOMMENDED Pattern:
+// Step 1: Check if optional element exists
+const elements = await desktop.getElements({ role: 'Button', name: 'Leave' });
+return JSON.stringify({
+  dialog_exists: elements.length > 0 ? 'true' : 'false'
+});
+
+// Step 2: In next workflow step, use 'if' condition:
+// if: 'dialog_exists == \"true\"'
+
+This pattern:
+- Never fails the step (always returns data)
+- Avoids timeout waiting for non-existent elements
+- Enables conditional workflow execution
+- More robust than validate_element which fails when element not found
+
+Common use cases:
+- Confirmation dialogs ('Are you sure?', 'Unsaved changes', 'Leave')
+- Session/login dialogs that depend on state
+- Browser restore prompts, password save dialogs
+- Any conditionally-appearing UI element
+
+⚠️ Variable Declaration Safety:
+Terminator injects environment variables using 'var' - ALWAYS use typeof checks:
+const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
+const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
+const count = parseInt(retry_count || '0');"
     )]
     async fn run_command(
         &self,
@@ -2966,7 +2997,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Opens a URL in the specified browser (uses SDK's built-in browser automation)."
+        description = "Opens a URL in the specified browser (uses SDK's built-in browser automation). This is the RECOMMENDED method for browser navigation - more reliable than manually manipulating the address bar with keyboard/mouse actions. Handles page loading, waiting, and error recovery automatically."
     )]
     async fn navigate_browser(
         &self,
