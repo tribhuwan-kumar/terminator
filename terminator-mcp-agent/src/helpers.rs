@@ -110,7 +110,7 @@ pub fn build_element_not_found_error(
             "Call `get_window_tree` again to get a fresh view of the UI; it might have changed.",
             "Verify the element's 'name' and 'role' in the new UI tree. The 'name' attribute might be empty or different from the visible text.",
             "If the element has no 'name', use its numeric ID selector (e.g., '#12345'). This is required for many clickable 'Group' elements.",
-            "Use `validate_element` with your selectors to debug existence issues before calling an action tool."
+            "Use `validate_element` (which never throws errors) to debug existence issues, or check if the element is conditionally rendered and may not always be present."
         ]
     });
 

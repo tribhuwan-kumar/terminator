@@ -2582,7 +2582,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
     }
 
     #[tool(
-        description = "Validates that an element exists and provides detailed information about it. This is a read-only operation."
+        description = "Validates that an element exists and provides detailed information about it. This is a read-only operation that NEVER throws errors. Returns status='success' with exists=true when found, or status='failed' with exists=false when not found. Use {step_id}_status or {step_id}_result.exists for conditional logic. This is the preferred tool for checking optional/conditional UI elements."
     )]
     pub async fn validate_element(
         &self,
@@ -2666,9 +2666,11 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     "message": format!("The specified element could not be found after trying all selectors. Original error: {}", e),
                     "selectors_tried": selectors_tried,
                     "suggestions": [
+                        "This is normal if the element is optional/conditional. Use the 'exists: false' result in conditional logic (if expressions, jumps, or run_command scripts).",
                         "Call `get_window_tree` again to get a fresh view of the UI; it might have changed.",
                         "Verify the element's 'name' and 'role' in the new UI tree. The 'name' attribute might be empty or different from the visible text.",
-                        "If the element has no 'name', use its numeric ID selector (e.g., '#12345')."
+                        "If the element has no 'name', use its numeric ID selector (e.g., '#12345').",
+                        "Consider using alternative_selectors or fallback_selectors for elements with multiple possible states."
                     ]
                 });
 
@@ -4304,7 +4306,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
     }
     // Tool functions continue below - part of impl block with #[tool_router]
     #[tool(
-        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step. Access variables using direct syntax (e.g., 'key == \"value\"' in conditions or {{key}} in substitutions). Supports conditional jumps with 'jumps' array - each jump has 'if' (expression evaluated on success), 'to_id' (target step), and optional 'reason' (logged explanation). Multiple jump conditions are evaluated in order with first-match-wins. Step results are accessible as {step_id}_status and {step_id}_result in jump expressions. Supports partial execution with 'start_from_step' and 'end_at_step' parameters to run specific step ranges. By default, jumps are skipped at the 'end_at_step' boundary for predictable execution; use 'execute_jumps_at_end: true' to allow jumps at the boundary (e.g., for loops). State is automatically persisted to .workflow_state folder in workflow's directory when using file:// URLs, allowing workflows to be resumed from any step."
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step. Access variables using direct syntax (e.g., 'key == \"value\"' in conditions or {{key}} in substitutions). IMPORTANT: Locator methods (.first, .all) require mandatory timeout parameters in milliseconds - use .first(0) for immediate search (no polling/retry), .first(1000) to retry for 1 second, or .first(5000) for slow-loading UI. Default timeout changed from 30s to 0ms (no polling) for performance. Supports conditional jumps with 'jumps' array - each jump has 'if' (expression evaluated on success), 'to_id' (target step), and optional 'reason' (logged explanation). Multiple jump conditions are evaluated in order with first-match-wins. Step results are accessible as {step_id}_status and {step_id}_result in jump expressions. Supports partial execution with 'start_from_step' and 'end_at_step' parameters to run specific step ranges. By default, jumps are skipped at the 'end_at_step' boundary for predictable execution; use 'execute_jumps_at_end: true' to allow jumps at the boundary (e.g., for loops). State is automatically persisted to .workflow_state folder in workflow's directory when using file:// URLs, allowing workflows to be resumed from any step."
     )]
     pub async fn execute_sequence(
         &self,
