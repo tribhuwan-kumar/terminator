@@ -315,7 +315,44 @@ return {{
 }};
 ```
 
-**Reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
+**System-reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
+
+**⚠️ CRITICAL: Variable Names to Avoid - High Collision Risk**
+
+These variable names are either system-reserved OR commonly used across workflows, leading to frequent collisions. **Never use these names in your scripts without typeof checks:**
+
+**Reserved (system-internal, won't auto-merge):**
+- `status`, `error`, `logs`, `duration_ms`, `set_env`
+
+**Collision-prone (auto-merge but used everywhere, very high risk):**
+- `message` - Use: `validationMessage`, `errorMessage`, `statusMessage`
+- `result` - Use: `validationResult`, `queryResult`, `checkResult`
+- `data` - Use: `tableData`, `jsonData`, `userData`, `responseData`
+- `success` - Use: `operationSuccessful`, `validationPassed`
+- `value` - Use: `inputValue`, `configValue`, `calculatedValue`
+- `count` - Use: `entriesCount`, `rowCount`, `retryCount`
+- `total` - Use: `totalDebit`, `totalCredit`, `grandTotal`
+- `found` - Use: `dialogFound`, `elementFound`, `chromeExists`
+- `text` - Use: `buttonText`, `labelText`, `inputText`
+- `type` - Use: `errorType`, `actionType`, `entryType`
+- `name` - Use: `fileName`, `accountName`, `outletName`
+- `index` - Use: `currentIndex`, `entryIndex`, `loopIndex`
+
+**Example collision error:**
+```javascript
+// ❌ WRONG - message already in env from previous step
+let message;
+if (success) {{
+  message = 'Operation completed';
+}}
+
+// Error: Identifier 'message' has already been declared
+
+// ✅ CORRECT - Use specific name with typeof check
+const validationMessage = (typeof validation_message !== 'undefined')
+  ? validation_message
+  : (success ? 'Operation completed' : 'Operation failed');
+```
 
 **Data passing between steps:**
 
