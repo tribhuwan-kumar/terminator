@@ -17,7 +17,7 @@ use tracing::{debug, error, info, warn};
 use uiautomation::controls::ControlType;
 use uiautomation::inputs::Mouse;
 use uiautomation::patterns;
-use uiautomation::types::{Point, TreeScope, UIProperty};
+use uiautomation::types::{TreeScope, UIProperty};
 use uiautomation::variants::Variant;
 use uiautomation::UIAutomation;
 
@@ -312,7 +312,7 @@ impl WindowsUIElement {
         const MAX_ATTEMPTS: u8 = 50; // ~800ms max wait
 
         let mut prev_bounds = self.bounds().map_err(|e| {
-            AutomationError::ElementNotStable(format!("Cannot get initial bounds: {}", e))
+            AutomationError::ElementNotStable(format!("Cannot get initial bounds: {e}"))
         })?;
 
         let mut stable_count = 0;
@@ -322,7 +322,7 @@ impl WindowsUIElement {
             std::thread::sleep(std::time::Duration::from_millis(CHECK_INTERVAL_MS));
 
             let current_bounds = self.bounds().map_err(|e| {
-                AutomationError::ElementNotStable(format!("Bounds changed to invalid: {}", e))
+                AutomationError::ElementNotStable(format!("Bounds changed to invalid: {e}"))
             })?;
 
             if self.bounds_approximately_equal(prev_bounds, current_bounds) {
@@ -373,7 +373,7 @@ impl WindowsUIElement {
     fn validate_clickable(&self) -> Result<(), AutomationError> {
         // 1. Check element is attached (not detached from DOM)
         if self.element.0.is_offscreen().map_err(|e| {
-            AutomationError::ElementDetached(format!("Element detached or invalid: {}", e))
+            AutomationError::ElementDetached(format!("Element detached or invalid: {e}"))
         })? {
             return Err(AutomationError::ElementNotVisible(
                 "Element is offscreen".to_string(),
@@ -409,21 +409,35 @@ impl WindowsUIElement {
         // Try ClickablePoint first (UIA-recommended point)
         match self.element.0.get_clickable_point() {
             Ok(Some(point)) => {
-                tracing::debug!("Using ClickablePoint: ({}, {})", point.get_x(), point.get_y());
-                Ok((point.get_x() as f64, point.get_y() as f64, "ClickablePoint".to_string(), "UIA::GetClickablePoint".to_string()))
+                tracing::debug!(
+                    "Using ClickablePoint: ({}, {})",
+                    point.get_x(),
+                    point.get_y()
+                );
+                Ok((
+                    point.get_x() as f64,
+                    point.get_y() as f64,
+                    "ClickablePoint".to_string(),
+                    "UIA::GetClickablePoint".to_string(),
+                ))
             }
             Ok(None) | Err(_) => {
                 tracing::debug!("ClickablePoint unavailable, falling back to BoundsCenter");
 
                 let bounds = self.bounds().map_err(|e| {
-                    AutomationError::PlatformError(format!("Cannot get bounds for click: {}", e))
+                    AutomationError::PlatformError(format!("Cannot get bounds for click: {e}"))
                 })?;
 
                 let center_x = bounds.0 + (bounds.2 / 2.0);
                 let center_y = bounds.1 + (bounds.3 / 2.0);
 
                 tracing::debug!("Using BoundsCenter: ({}, {})", center_x, center_y);
-                Ok((center_x, center_y, "BoundsCenter".to_string(), "UIA::BoundingRectangle".to_string()))
+                Ok((
+                    center_x,
+                    center_y,
+                    "BoundsCenter".to_string(),
+                    "UIA::BoundingRectangle".to_string(),
+                ))
             }
         }
     }
@@ -431,8 +445,8 @@ impl WindowsUIElement {
     // Helper: Execute physical mouse click
     fn execute_mouse_click(&self, x: f64, y: f64) -> Result<(), AutomationError> {
         use windows::Win32::UI::Input::KeyboardAndMouse::{
-            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
-            MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEINPUT,
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
+            MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEINPUT,
         };
         use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
 
@@ -443,7 +457,7 @@ impl WindowsUIElement {
             let abs_x = ((x * 65535.0) / screen_width) as i32;
             let abs_y = ((y * 65535.0) / screen_height) as i32;
 
-            let mut inputs = [
+            let inputs = [
                 INPUT {
                     r#type: INPUT_MOUSE,
                     Anonymous: INPUT_0 {
@@ -485,19 +499,17 @@ impl WindowsUIElement {
                 },
             ];
 
-            let result = SendInput(&mut inputs, std::mem::size_of::<INPUT>() as i32);
+            let result = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
 
             if result != 3 {
                 return Err(AutomationError::PlatformError(format!(
-                    "SendInput sent only {} of 3 events",
-                    result
+                    "SendInput sent only {result} of 3 events"
                 )));
             }
         }
 
         Ok(())
     }
-
 }
 
 impl Debug for WindowsUIElement {
@@ -701,16 +713,32 @@ impl UIElementImpl for WindowsUIElement {
         let (click_x, click_y, method, path_used) = self.determine_click_coordinates()?;
 
         // PHASE 3: CAPTURE PRE-STATE
-        let pre_window_title = self.window().ok().flatten().map(|w| w.name_or_empty()).unwrap_or_default();
+        let pre_window_title = self
+            .window()
+            .ok()
+            .flatten()
+            .map(|w| w.name_or_empty())
+            .unwrap_or_default();
         let pre_bounds = self.bounds().ok();
 
         // PHASE 4: EXECUTE PHYSICAL CLICK
-        tracing::info!("Phase 4: Executing {} click at ({}, {}) via {}", method, click_x, click_y, path_used);
+        tracing::info!(
+            "Phase 4: Executing {} click at ({}, {}) via {}",
+            method,
+            click_x,
+            click_y,
+            path_used
+        );
         self.execute_mouse_click(click_x, click_y)?;
 
         // PHASE 5: POST-ACTION VERIFICATION
         std::thread::sleep(std::time::Duration::from_millis(200));
-        let post_window_title = self.window().ok().flatten().map(|w| w.name_or_empty()).unwrap_or_default();
+        let post_window_title = self
+            .window()
+            .ok()
+            .flatten()
+            .map(|w| w.name_or_empty())
+            .unwrap_or_default();
         let post_bounds = self.bounds().ok();
 
         let window_title_changed = pre_window_title != post_window_title;
@@ -726,7 +754,6 @@ impl UIElementImpl for WindowsUIElement {
             details,
         })
     }
-
 
     fn double_click(&self) -> Result<ClickResult, AutomationError> {
         self.element.0.try_focus();
