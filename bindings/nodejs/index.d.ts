@@ -341,6 +341,16 @@ export declare class Desktop {
    */
   delay(delayMs: number): Promise<void>
   /**
+   * Navigate to a URL in a browser.
+   * This is the recommended method for browser navigation - more reliable than
+   * manually manipulating the address bar with keyboard/mouse actions.
+   *
+   * @param {string} url - URL to navigate to
+   * @param {string | null} browser - Optional browser name ('Chrome', 'Firefox', 'Edge', 'Brave', 'Opera', 'Vivaldi', or 'Default')
+   * @returns {Promise<Element>} The browser window element
+   */
+  navigateBrowser(url: string, browser?: string | undefined | null): Element
+  /**
    * (async) Zoom in by a specified number of levels.
    *
    * @param {number} level - Number of zoom-in steps to perform.

@@ -657,6 +657,26 @@ impl ExtensionBridge {
     }
 }
 
+/// Close the global ExtensionBridge to release port 17373.
+/// Used when spawning child processes that need to create their own bridge.
+pub async fn close_global_bridge() {
+    if let Some(supervisor) = BRIDGE_SUPERVISOR.get() {
+        let mut guard = supervisor.write().await;
+        if let Some(bridge) = guard.take() {
+            tracing::info!("Closing global ExtensionBridge to release port 17373");
+            drop(bridge); // Drop the Arc, bridge will clean up when last ref is dropped
+
+            // Wait a bit for port to be fully released
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            tracing::info!("Global ExtensionBridge closed, port 17373 released");
+        } else {
+            tracing::debug!("close_global_bridge called but bridge was already None");
+        }
+    } else {
+        tracing::debug!("close_global_bridge called but BRIDGE_SUPERVISOR not initialized");
+    }
+}
+
 pub async fn try_eval_via_extension(
     code: &str,
     timeout: Duration,
