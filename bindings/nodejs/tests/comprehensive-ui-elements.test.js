@@ -4,10 +4,17 @@ async function testUIElements() {
   const desktop = new Desktop();
   console.log('=== Comprehensive UI Elements Test ===\n');
 
+  // Array to track highlight handles for cleanup
+  const highlights = [];
+
   // Test 1: Navigate using navigateBrowser()
   console.log('Step 1: Navigating to example.com...');
   const exampleWindow = desktop.navigateBrowser('https://example.com', 'Chrome');
   console.log('✓ Navigated to:', exampleWindow.name());
+
+  // Highlight the browser window
+  const windowHighlight = exampleWindow.highlight(0x00FF00, 3000, 'Chrome Window', 'TopLeft');
+  highlights.push(windowHighlight);
   await desktop.delay(3000);
 
   // Verify page content
@@ -19,6 +26,10 @@ async function testUIElements() {
   console.log('\nStep 2: Navigating to Wikipedia...');
   const wikiWindow = desktop.navigateBrowser('https://wikipedia.org', 'Chrome');
   console.log('✓ Navigated to:', wikiWindow.name());
+
+  // Highlight with different color
+  const wikiHighlight = wikiWindow.highlight(0x0000FF, 3000, 'Wikipedia', 'TopRight');
+  highlights.push(wikiHighlight);
   await desktop.delay(3000);
 
   const wikiTitle = await desktop.executeBrowserScript('document.title');
@@ -110,6 +121,13 @@ async function testUIElements() {
 
   // Test 3: getValue() - Read input field
   console.log('=== Test: getValue() on text input ===');
+
+  // Find and highlight the input element
+  const inputElement = await desktop.locator('role:edit').first(2000);
+  const inputHighlight = inputElement.highlight(0x00FF00, 2000, 'Test Input', 'TopLeft');
+  highlights.push(inputHighlight);
+  await desktop.delay(500);
+
   const inputValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testInput').value;
   `);
@@ -127,6 +145,10 @@ async function testUIElements() {
 
   // Test 4: isSelected() / setSelected() on checkbox
   console.log('=== Test: isSelected/setSelected on checkbox ===');
+
+  // Note: Browser HTML elements may not expose to accessibility tree
+  // Skipping highlight for checkbox as it's not accessible via UI Automation
+
   const checkboxState1 = await desktop.executeBrowserScript(`
     document.getElementById('testCheckbox').checked;
   `);
@@ -151,6 +173,7 @@ async function testUIElements() {
 
   // Test 5: getRangeValue() / setRangeValue() on slider
   console.log('=== Test: getRangeValue/setRangeValue on slider ===');
+
   const sliderValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testSlider').value;
   `);
@@ -177,6 +200,7 @@ async function testUIElements() {
 
   // Test 6: Radio button selection
   console.log('=== Test: isSelected on radio buttons ===');
+
   const radio2State = await desktop.executeBrowserScript(`
     document.getElementById('radio2').checked;
   `);
@@ -196,6 +220,7 @@ async function testUIElements() {
 
   // Test 7: Select dropdown
   console.log('=== Test: getValue on select dropdown ===');
+
   const selectValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testSelect').value;
   `);
@@ -212,6 +237,7 @@ async function testUIElements() {
 
   // Test 8: Textarea value
   console.log('=== Test: getValue on textarea ===');
+
   const textareaValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testTextarea').value;
   `);
@@ -228,6 +254,7 @@ async function testUIElements() {
 
   // Test 9: Button click simulation and state tracking
   console.log('=== Test: Button interaction tracking ===');
+
   const clicks1 = await desktop.executeBrowserScript(`
     document.getElementById('buttonClicks').textContent;
   `);
@@ -259,8 +286,8 @@ async function testUIElements() {
   console.log('=== Test: pressKey() with focused input ===');
 
   // Click on the input to ensure OS-level focus
-  const inputElement = await desktop.locator('role:edit').first(2000);
-  await inputElement.click();
+  const inputElementForTyping = await desktop.locator('role:edit').first(2000);
+  await inputElementForTyping.click();
   await desktop.delay(300);
 
   // Select all and delete first
@@ -343,6 +370,15 @@ async function testUIElements() {
 
   // Cleanup
   console.log('=== Cleanup ===');
+
+  // Close all highlights
+  console.log(`Closing ${highlights.length} active highlights...`);
+  for (const highlight of highlights) {
+    highlight.close();
+  }
+  console.log('✓ All highlights closed');
+  await desktop.delay(500);
+
   await desktop.pressKey('{Ctrl}w');
   await desktop.delay(500);
   console.log('✓ Browser tab closed');
