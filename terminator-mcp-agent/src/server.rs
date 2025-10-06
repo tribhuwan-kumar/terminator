@@ -1201,7 +1201,6 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-
         maybe_attach_tree(
             &self.desktop,
             args.include_tree,

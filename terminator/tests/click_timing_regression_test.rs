@@ -55,7 +55,9 @@ async fn test_click_hover_layout_shift_flaky() {
 
     // Attempt a single click. With the new validation implementation, the click should succeed
     // because we now wait for stable bounds before clicking (Playwright-style actionability checks).
-    let click_result = target.click().expect("Click should succeed with validated implementation");
+    let click_result = target
+        .click()
+        .expect("Click should succeed with validated implementation");
 
     // Verify the click used validated approach
     assert!(

@@ -111,7 +111,10 @@ impl Locator {
     /// Returns Ok(Some(element)) if found, Ok(None) if not found.
     /// Only returns Err for invalid selectors or platform errors.
     #[instrument(level = "debug", skip(self, timeout))]
-    pub async fn validate(&self, timeout: Option<Duration>) -> Result<Option<UIElement>, AutomationError> {
+    pub async fn validate(
+        &self,
+        timeout: Option<Duration>,
+    ) -> Result<Option<UIElement>, AutomationError> {
         debug!("Validating element matching selector: {:?}", self.selector);
 
         if let Selector::Invalid(reason) = &self.selector {
