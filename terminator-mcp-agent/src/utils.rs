@@ -1247,29 +1247,93 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
     let log_capture = LogCapture::new(1000);
     let capture_layer = LogCaptureLayer::new(log_capture.clone());
 
-    // Build the subscriber with stderr output, file output, and log capture
-    tracing_subscriber::registry()
-        .with(
-            // Console/stderr layer
-            tracing_subscriber::fmt::layer()
-                .with_writer(std::io::stderr)
-                .with_ansi(false)
-                .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
-        )
-        .with(
-            // File layer with timestamps
-            tracing_subscriber::fmt::layer()
-                .with_writer(file_appender)
-                .with_ansi(false)
-                .with_target(true)
-                .with_thread_ids(true)
-                .with_thread_names(false)
-                .with_file(true)
-                .with_line_number(true)
-                .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
-        )
-        .with(capture_layer)
-        .init();
+    // Build the subscriber with stderr output, file output, log capture, and optional OTLP
+    #[cfg(feature = "telemetry")]
+    {
+        // Try to create OTLP layer - ADD IT FIRST so it works with Registry type
+        match crate::telemetry::create_otel_logs_layer() {
+            Some(otel_layer) => {
+                use tracing_subscriber::layer::SubscriberExt;
+                let subscriber = tracing_subscriber::registry()
+                    .with(otel_layer) // OTEL layer must be added first to work with Registry type
+                    .with(
+                        // Console/stderr layer
+                        tracing_subscriber::fmt::layer()
+                            .with_writer(std::io::stderr)
+                            .with_ansi(false)
+                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                    )
+                    .with(
+                        // File layer with timestamps
+                        tracing_subscriber::fmt::layer()
+                            .with_writer(file_appender)
+                            .with_ansi(false)
+                            .with_target(true)
+                            .with_thread_ids(true)
+                            .with_thread_names(false)
+                            .with_file(true)
+                            .with_line_number(true)
+                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                    )
+                    .with(capture_layer);
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("Failed to set subscriber");
+                eprintln!("✓ OTLP logs exporter enabled - logs will be sent to OpenTelemetry collector");
+            }
+            None => {
+                // No OTLP layer - standard logging only
+                tracing_subscriber::registry()
+                    .with(
+                        // Console/stderr layer
+                        tracing_subscriber::fmt::layer()
+                            .with_writer(std::io::stderr)
+                            .with_ansi(false)
+                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                    )
+                    .with(
+                        // File layer with timestamps
+                        tracing_subscriber::fmt::layer()
+                            .with_writer(file_appender)
+                            .with_ansi(false)
+                            .with_target(true)
+                            .with_thread_ids(true)
+                            .with_thread_names(false)
+                            .with_file(true)
+                            .with_line_number(true)
+                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                    )
+                    .with(capture_layer)
+                    .init();
+            }
+        }
+    }
+
+    #[cfg(not(feature = "telemetry"))]
+    {
+        // No OTLP layer when telemetry feature is disabled
+        tracing_subscriber::registry()
+            .with(
+                // Console/stderr layer
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stderr)
+                    .with_ansi(false)
+                    .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+            )
+            .with(
+                // File layer with timestamps
+                tracing_subscriber::fmt::layer()
+                    .with_writer(file_appender)
+                    .with_ansi(false)
+                    .with_target(true)
+                    .with_thread_ids(true)
+                    .with_thread_names(false)
+                    .with_file(true)
+                    .with_line_number(true)
+                    .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+            )
+            .with(capture_layer)
+            .init();
+    }
 
     // Log the log directory location on startup
     tracing::info!("Log files will be written to: {}", log_dir.display());
