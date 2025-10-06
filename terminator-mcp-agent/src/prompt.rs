@@ -56,30 +56,24 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
       selector: \"role:Button|name:Leave\"
     ```
 
-    **ALTERNATIVE: Use `desktop.locator()` for window-scoped checks:**
+    **ALTERNATIVE: Use `locator.validate()` for window-scoped checks:**
     ```yaml
-    # Only needed when element must be within a specific window
     - tool_name: run_command
       id: check_dialog_in_window
       arguments:
         engine: javascript
         run: |
-          try {{
-            // Scope to specific window first (timeout in ms)
-            const chromeWindow = await desktop.locator('role:Window|name:SAP Business One - Google Chrome').first(0);
-            // Then search within that window
-            await chromeWindow.locator('role:Button|name:Leave').first(0);
-            return JSON.stringify({{ dialog_exists: \"true\" }});
-          }} catch (e) {{
-            return JSON.stringify({{ dialog_exists: \"false\" }});
-          }}
+          const window = (typeof target_window !== 'undefined') ? target_window : 'role:Window|name:Chrome';
+          const chromeWindow = await desktop.locator(window).first(0);
+          const dialogCheck = await chromeWindow.locator('role:Button|name:Leave').validate(1000);
+          return JSON.stringify({{ dialog_exists: dialogCheck.exists ? \"true\" : \"false\" }});
 
     - tool_name: click_element
       if: 'dialog_exists == \"true\"'
       selector: \"role:Button|name:Leave\"
     ```
 
-    **Performance Note:** Using `.first(0)` with try/catch is ~8x faster than `.all(0)` for existence checks (0.5s vs 10.8s). Both `.first()` and `.all()` require mandatory timeout parameters - use `0` for immediate search (no retry/polling).
+    **Performance:** `validate()` is cleaner than try/catch and never throws errors.
 
     **Important Scoping Pattern:**
     - `desktop.locator()` searches ALL windows/applications
@@ -278,87 +272,38 @@ Your most reliable strategy is to inspect the application's UI structure *before
 
 **Code Execution via run_command**
 
-### Environment Variable Access - THE UNIVERSAL PATTERN
+### Environment Variable Access - CRITICAL PATTERN
 
-**⚠️ CRITICAL - READ THIS FIRST**
-
-Terminator injects environment variables into all script contexts using `var` declarations. This causes \"already declared\" errors if you try to redeclare variables.
-
-**THE RULE: ALL environment variable access MUST use typeof checks.**
-
-**The Pattern (use this everywhere):**
-```javascript
-const variableName = (typeof env_variable !== 'undefined') ? env_variable : defaultValue;
-```
-
-**This applies to:**
-- ✅ run_command with engine (Node.js/Bun scripts)
-- ✅ execute_browser_script (browser context)
-- ✅ Tool result variables (check_apps_result, validate_login_status, etc.)
-- ✅ ALL workflow environment variables (file_path, journal_entries, message, etc.)
-- ✅ Variables from previous steps via set_env
-- ✅ script_file external scripts
-
-**Error if you violate this:**
-```
-SyntaxError: Identifier 'variable_name' has already been declared
-    at <anonymous>:1:15
-```
-
-**Common Examples:**
+**⚠️ ALL env variable access MUST use typeof checks:**
 
 ```javascript
-// ✅ CORRECT - Strings
-const filePath = (typeof file_path !== 'undefined') ? file_path : './default.txt';
-const message = (typeof message !== 'undefined') ? message : 'No message';
+const varName = (typeof env_var !== 'undefined') ? env_var : default;
+```
 
-// ✅ CORRECT - Booleans (env values are strings)
-const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
-const needsLogin = (typeof needs_login !== 'undefined' && needs_login === 'true') : true;
+**Why:** Terminator injects env vars with `var`. Redeclaring causes `SyntaxError: Identifier 'X' has already been declared`.
 
-// ✅ CORRECT - Numbers
-const maxRetries = (typeof max_retries !== 'undefined') ? parseInt(max_retries) : 3;
-const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count || '0') : 0;
+**Applies to:** All scripts (run_command, browser), tool results (`step_id_result`), workflow env vars, script_file.
 
-// ✅ CORRECT - Arrays (auto-parsed from JSON)
+**Examples:**
+
+```javascript
+// Primitives
+const path = (typeof file_path !== 'undefined') ? file_path : './default';
+const active = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
+const max = (typeof max_retries !== 'undefined') ? parseInt(max_retries) : 3;
+
+// Collections (auto-parsed from JSON)
 const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
-const items = (typeof data_items !== 'undefined' && Array.isArray(data_items)) ? data_items : [];
-
-// ✅ CORRECT - Objects (auto-parsed from JSON)
 const config = (typeof app_config !== 'undefined') ? app_config : {{}};
-const data = (typeof json_data !== 'undefined' && json_data !== null) ? json_data : {{}};
 
-// ✅ CORRECT - Tool results from previous steps
+// Tool results (step_id_result, step_id_status)
 const apps = (typeof check_apps_result !== 'undefined') ? check_apps_result : [];
-const appsStatus = (typeof check_apps_status !== 'undefined') ? check_apps_status : 'unknown';
-const loginExists = (typeof validate_login_status !== 'undefined') ? validate_login_status === 'success' : false;
+const loginOk = (typeof validate_login_status !== 'undefined') ? validate_login_status === 'success' : false;
 
-// ❌ WRONG - Direct assignment
-const filePath = file_path;  // Error: file_path has already been declared
-let message = 'default';     // Error: message has already been declared
-const count = parseInt(retry_count || '0');  // Error: retry_count has already been declared
-
-// ❌ WRONG - Using logical OR without typeof
-const value = retry_count || '0';  // Error if retry_count already declared
-```
-
-**Edge Cases:**
-
-```javascript
-// Null safety for objects
-const errorMsg = (typeof error_message !== 'undefined' && error_message !== null && typeof error_message === 'string')
-  ? error_message
+// Type safety before string methods
+const str = (typeof result !== 'undefined')
+  ? (typeof result === 'string' ? result : JSON.stringify(result))
   : '';
-
-// Type checking before calling methods
-const resultStr = (typeof troubleshoot_result !== 'undefined')
-  ? (typeof troubleshoot_result === 'string' ? troubleshoot_result : JSON.stringify(troubleshoot_result))
-  : '';
-
-// Safe string method calls
-const hasError = (typeof error_data !== 'undefined' && typeof error_data === 'string')
-  ? error_data.toLowerCase().includes('error')
-  : JSON.stringify(error_data || {{}}).toLowerCase().includes('error');
 ```
 
 ### run_command with Engine Mode
@@ -430,107 +375,19 @@ return {{
 
 **System-reserved fields (don't auto-merge):** `status`, `error`, `logs`, `duration_ms`, `set_env`
 
-**⚠️ CRITICAL: Variable Names to Avoid - High Collision Risk**
+**⚠️ Avoid collision-prone names:** `message`, `result`, `data`, `success`, `value`, `count`, `total`, `found`, `text`, `type`, `name`, `index`
+Use specific names: `validationMessage`, `queryResult`, `tableData`, `entriesCount`, etc.
 
-These variable names are either system-reserved OR commonly used across workflows, leading to frequent collisions. **Never use these names in your scripts without typeof checks:**
-
-**Reserved (system-internal, won't auto-merge):**
-- `status`, `error`, `logs`, `duration_ms`, `set_env`
-
-**Collision-prone (auto-merge but used everywhere, very high risk):**
-- `message` - Use: `validationMessage`, `errorMessage`, `statusMessage`
-- `result` - Use: `validationResult`, `queryResult`, `checkResult`
-- `data` - Use: `tableData`, `jsonData`, `userData`, `responseData`
-- `success` - Use: `operationSuccessful`, `validationPassed`
-- `value` - Use: `inputValue`, `configValue`, `calculatedValue`
-- `count` - Use: `entriesCount`, `rowCount`, `retryCount`
-- `total` - Use: `totalDebit`, `totalCredit`, `grandTotal`
-- `found` - Use: `dialogFound`, `elementFound`, `chromeExists`
-- `text` - Use: `buttonText`, `labelText`, `inputText`
-- `type` - Use: `errorType`, `actionType`, `entryType`
-- `name` - Use: `fileName`, `accountName`, `outletName`
-- `index` - Use: `currentIndex`, `entryIndex`, `loopIndex`
-
-**Example collision error:**
+**Data passing:** Return fields (non-reserved) auto-merge to env for next steps.
 ```javascript
-// ❌ WRONG - message already in env from previous step
-let message;
-if (success) {{
-  message = 'Operation completed';
-}}
-
-// Error: Identifier 'message' has already been declared
-
-// ✅ CORRECT - Use specific name with typeof check
-const validationMessage = (typeof validation_message !== 'undefined')
-  ? validation_message
-  : (success ? 'Operation completed' : 'Operation failed');
+return {{ file_path: '/data.txt', count: 42 }};  // Available as file_path, count
 ```
 
-**Data passing between steps:**
-
-1. **Direct return (recommended):**
+**Tool results:** Tools with `id` store `{{step_id}}_result` and `{{step_id}}_status` in env.
 ```javascript
-return {{
-  status: 'success',
-  file_path: '/data/file.txt',  // Available as file_path in next step
-  item_count: 42                 // Available as item_count in next step
-}};
+const apps = (typeof check_apps_result !== 'undefined') ? check_apps_result : [];
+const ok = (typeof validate_login_status !== 'undefined') ? validate_login_status === 'success' : false;
 ```
-
-2. **Explicit set_env (backward compatible):**
-```javascript
-return {{
-  set_env: {{
-    key: 'value',
-    another_key: 'data'
-  }}
-}};
-```
-
-3. **GitHub Actions style:**
-```javascript
-console.log('::set-env name=key::value');
-```
-
-**Accessing tool results from previous steps:**
-
-ALL tools with `id` field store results in env:
-- `{{step_id}}_result` - Tool's output data
-- `{{step_id}}_status` - Execution status (\"success\" or \"error\")
-
-```yaml
-- tool_name: get_applications
-  id: check_apps
-
-- tool_name: validate_element
-  id: validate_login
-  arguments:
-    selector: \"role:button|name:Login\"
-
-- tool_name: run_command
-  id: process_results
-  arguments:
-    engine: javascript
-    run: |
-      // ⚠️ MUST use typeof checks even for tool results
-      const apps = (typeof check_apps_result !== 'undefined') ? check_apps_result : [];
-      const appsStatus = (typeof check_apps_status !== 'undefined') ? check_apps_status : 'unknown';
-      const loginExists = (typeof validate_login_status !== 'undefined') ? validate_login_status === 'success' : false;
-
-      console.log(`Found ${{apps.length}} apps, login button exists: ${{loginExists}}`);
-
-      return {{
-        app_count: apps.length,
-        requires_login: !loginExists
-      }};
-```
-
-**Important notes:**
-- Data passing ONLY works with engine mode, NOT shell commands
-- script_file paths are resolved relative to workflow directory
-- Smart JSON detection: JSON strings in env are automatically parsed to objects/arrays
-- Watch for Windows path escaping issues - use forward slashes or double-escape backslashes
 
 **Browser DOM Inspection with execute_browser_script**
 
@@ -1118,28 +975,32 @@ You can load JavaScript from external files to keep workflow YAML clean:
 ## Section 7: Core Desktop APIs
 ```javascript
 // Element discovery (desktop.getElements() DOES NOT EXIST - use locator API)
-const elements = await desktop.locator('role:button|name:Submit').all(0);  // Returns array (timeout required)
-const element = await desktop.locator('#123').first(0);  // Returns single element or throws (timeout required)
+const element = await desktop.locator('#123').first(5000);  // Throws if not found
+const elements = await desktop.locator('role:button').all(5000);  // Returns array or throws
 const appElements = desktop.applications();
 const focusedElement = desktop.focusedElement();
 
-// CRITICAL: Scoping searches to specific windows (prevents false positives)
+// Scoping to windows (prevents false positives)
 const window = await desktop.locator('role:Window|name:Chrome').first(0);
-const buttonInWindow = await window.locator('role:Button|name:Submit').first(0);
+const button = await window.locator('role:Button|name:Submit').first(0);
 
-// IMPORTANT: Locator methods (.first, .all) require mandatory timeout parameters
-// - timeout 0 = immediate search, no retry/polling (fastest, use for element checks)
-// - timeout 1000 = retry for up to 1 second (for elements that may take time to appear)
-// - timeout 5000 = retry for up to 5 seconds (for slow-loading UI)
+// Locator method comparison (all require timeout in ms):
+// .first(timeout)     - Returns element, THROWS if not found
+// .validate(timeout)  - Returns {{exists, element?, error?}}, NEVER throws
+// .waitFor(condition, timeout) - Waits for condition, THROWS on timeout
+// .all(timeout)       - Returns array, THROWS if none found
 
-// Performance tip: .first(0) is ~8x faster than .all(0) for existence checks
-// Use try/catch with .first(0) instead of .all(0).length for detection:
-try {{
-  await desktop.locator('role:Dialog|name:Warning').first(0);
-  // Element exists
-}} catch (e) {{
-  // Element doesn't exist
+// Element validation (non-throwing existence check)
+const validation = await desktop.locator('role:button|name:Submit').validate(1000);
+if (validation.exists) {{
+  await validation.element.click();
+}} else {{
+  log('Button not found');
 }}
+
+// Conditional waiting (wait for specific state)
+await desktop.locator('role:button|name:Submit').waitFor('enabled', 5000);
+// Conditions: 'exists', 'visible', 'enabled', 'focused'
 
 // Element interaction
 await element.click();
@@ -1169,20 +1030,15 @@ const monitors = await desktop.listMonitors();
 
 **Common JavaScript Patterns:**
 
-*   **Window-scoped element detection (RECOMMENDED for accuracy):**
+*   **Window-scoped detection (use validate, not try/catch):**
 ```javascript
-// Scope to specific window to avoid false positives from other windows
-const targetWindow = await desktop.locator('role:Window|name:SAP Business One - Google Chrome').first(0);
-try {{
-    const dialog = await targetWindow.locator('role:Dialog|name:Unsaved changes').first(0);
-    // Dialog exists in this specific window
-    const leaveButton = await dialog.locator('role:Button|name:Leave').first(0);
-    await leaveButton.click();
+const window = await desktop.locator('role:Window|name:Chrome').first(0);
+const dialogCheck = await window.locator('role:Dialog|name:Unsaved').validate(1000);
+if (dialogCheck.exists) {{
+    await dialogCheck.element.locator('role:Button|name:Leave').first(0).click();
     return {{ dialog_handled: 'true' }};
-}} catch (e) {{
-    // No dialog in this window
-    return {{ dialog_handled: 'false' }};
 }}
+return {{ dialog_handled: 'false' }};
 ```
 
 *   **Bulk operations on multiple elements:**
@@ -1193,16 +1049,16 @@ for (const checkbox of checkboxes) {{
 }}
 ```
 
-*   **Conditional logic based on UI state:**
+*   **Conditional logic (validate + waitFor):**
 ```javascript
-const submitButton = await desktop.locator('role:button|name:Submit').first(0);
-if (await submitButton.isEnabled()) {{
-    await submitButton.click();
+const buttonCheck = await desktop.locator('role:button|name:Submit').validate(1000);
+if (buttonCheck.exists) {{
+    // Wait for button to become enabled
+    const button = await desktop.locator('role:button|name:Submit').waitFor('enabled', 5000);
+    await button.click();
     return {{ action: 'submitted' }};
-}} else {{
-    log('Submit button disabled, checking form validation...');
-    return {{ action: 'validation_needed' }};
 }}
+return {{ action: 'button_not_found' }};
 ```
 
 *   **Find and configure elements dynamically:**
