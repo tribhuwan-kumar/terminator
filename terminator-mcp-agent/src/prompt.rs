@@ -1144,6 +1144,12 @@ element.close();
 const pageTitle = await desktop.executeBrowserScript('return document.title;');
 const links = await desktop.executeBrowserScript('return document.querySelectorAll(\"a\").length;');
 
+// Browser control
+await desktop.setZoom(50);    // Set zoom to 50%
+await desktop.setZoom(100);   // Reset to 100%
+await desktop.setZoom(150);   // Zoom to 150%
+const window = await desktop.navigateBrowser('https://example.com', 'Chrome');  // Returns window element
+
 // Screenshots and monitoring
 const screenshot = await desktop.captureScreen();
 const monitors = await desktop.listMonitors();
