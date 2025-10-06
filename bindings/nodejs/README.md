@@ -110,11 +110,48 @@ try {
 
 - `first(timeoutMs)` - Get the first matching element (timeout in milliseconds required)
 - `all(timeoutMs, depth?)` - Get all matching elements (timeout in milliseconds required)
+- `validate(timeoutMs)` - Validate element existence without throwing (returns `{exists, element?, error?}`)
 - `timeout(timeoutMs)` - Set default timeout for this locator
 - `within(element)` - Scope search to an element
 - `locator(selector)` - Chain another selector
 
 ## Examples
+
+### Element Validation
+
+The `validate()` method is useful for conditional logic when you need to check if an element exists without throwing an error:
+
+```javascript
+const { Desktop } = require('terminator.js');
+
+async function main() {
+  const desktop = new Desktop();
+
+  // Check if a submit button exists
+  const result = await desktop.locator('role:button|Submit').validate(5000);
+
+  if (result.exists) {
+    console.log('Submit button found!');
+    await result.element.click();
+  } else {
+    console.log('Submit button not found, showing alternative flow');
+    // Handle the case where element doesn't exist
+  }
+
+  // You can also check for errors (invalid selector, platform errors)
+  if (result.error) {
+    console.error('Validation error:', result.error);
+  }
+}
+
+main().catch(console.error);
+```
+
+**Key differences between `validate()` and `first()`:**
+- `first()` throws an error if element is not found
+- `validate()` returns `{exists: false}` if element is not found
+- Use `validate()` for optional elements or conditional logic
+- Use `first()` when you expect the element to exist
 
 See the [examples directory](https://github.com/mediar-ai/terminator/tree/main/examples) for more usage examples.
 

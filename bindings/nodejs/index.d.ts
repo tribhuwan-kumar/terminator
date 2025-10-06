@@ -584,6 +584,14 @@ export declare class Element {
    */
   executeBrowserScript(script: string): Promise<string>
 }
+export interface ValidationResult {
+  /** Whether the element exists */
+  exists: boolean
+  /** The element if found */
+  element?: Element
+  /** Error message if validation failed (not element not found, but actual error) */
+  error?: string
+}
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
   /**
@@ -623,6 +631,13 @@ export declare class Locator {
    * @returns {Locator} A new locator with the chained selector.
    */
   locator(selector: string | Selector): Locator
+  /**
+   * (async) Validate element existence without throwing an error.
+   *
+   * @param {number} timeoutMs - Timeout in milliseconds (required).
+   * @returns {Promise<ValidationResult>} Validation result with exists flag and optional element.
+   */
+  validate(timeoutMs: number): Promise<ValidationResult>
 }
 /** Selector for locating UI elements. Provides a typed alternative to the string based selector API. */
 export declare class Selector {

@@ -99,4 +99,42 @@ impl Locator {
         let loc = self.inner.clone().locator(sel_rust);
         Ok(Locator::from(loc))
     }
+
+    /// (async) Validate element existence without throwing an error.
+    ///
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
+    /// @returns {Promise<ValidationResult>} Validation result with exists flag and optional element.
+    #[napi]
+    pub async fn validate(&self, timeout_ms: f64) -> napi::Result<ValidationResult> {
+        use std::time::Duration;
+        let timeout = Duration::from_millis(timeout_ms as u64);
+        match self.inner.validate(Some(timeout)).await {
+            Ok(Some(element)) => Ok(ValidationResult {
+                exists: true,
+                element: Some(Element::from(element)),
+                error: None,
+            }),
+            Ok(None) => Ok(ValidationResult {
+                exists: false,
+                element: None,
+                error: None,
+            }),
+            Err(e) => Ok(ValidationResult {
+                exists: false,
+                element: None,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+}
+
+/// Result of element validation
+#[napi(object)]
+pub struct ValidationResult {
+    /// Whether the element exists
+    pub exists: bool,
+    /// The element if found
+    pub element: Option<Element>,
+    /// Error message if validation failed (not element not found, but actual error)
+    pub error: Option<String>,
 }

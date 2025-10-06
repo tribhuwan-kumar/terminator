@@ -107,6 +107,40 @@ impl Locator {
         })
     }
 
+    /// Validate element existence without throwing an error.
+    /// Returns Ok(Some(element)) if found, Ok(None) if not found.
+    /// Only returns Err for invalid selectors or platform errors.
+    #[instrument(level = "debug", skip(self, timeout))]
+    pub async fn validate(&self, timeout: Option<Duration>) -> Result<Option<UIElement>, AutomationError> {
+        debug!("Validating element matching selector: {:?}", self.selector);
+
+        if let Selector::Invalid(reason) = &self.selector {
+            return Err(AutomationError::InvalidSelector(reason.clone()));
+        }
+
+        let effective_timeout = timeout.unwrap_or(self.timeout);
+
+        let engine = self.engine.clone();
+        let selector = self.selector.clone();
+        let root = self.root.clone();
+
+        task::spawn_blocking(move || {
+            engine.find_element(&selector, root.as_ref(), Some(effective_timeout))
+        })
+        .await
+        .map_err(|e| AutomationError::PlatformError(format!("Task join error: {e}")))?
+        .map_or_else(
+            |e| {
+                // For ElementNotFound or Timeout, return Ok(None) instead of error
+                match e {
+                    AutomationError::ElementNotFound(_) | AutomationError::Timeout(_) => Ok(None),
+                    other => Err(other),
+                }
+            },
+            |element| Ok(Some(element)),
+        )
+    }
+
     fn append_selector(&self, selector_to_append: Selector) -> Locator {
         let mut new_chain = match self.selector.clone() {
             Selector::Chain(existing_chain) => existing_chain,
