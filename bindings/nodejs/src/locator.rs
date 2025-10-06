@@ -1,4 +1,5 @@
 use napi_derive::napi;
+use terminator::locator::WaitCondition as TerminatorWaitCondition;
 use terminator::Locator as TerminatorLocator;
 
 use crate::map_error;
@@ -126,6 +127,24 @@ impl Locator {
             }),
         }
     }
+
+    /// (async) Wait for an element to meet a specific condition.
+    ///
+    /// @param {string} condition - Condition to wait for: 'exists', 'visible', 'enabled', 'focused'
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
+    /// @returns {Promise<Element>} The element when condition is met.
+    #[napi]
+    pub async fn wait_for(&self, condition: String, timeout_ms: f64) -> napi::Result<Element> {
+        use std::time::Duration;
+        let wait_condition = parse_condition(&condition)?;
+        let timeout = Duration::from_millis(timeout_ms as u64);
+
+        self.inner
+            .wait_for(wait_condition, Some(timeout))
+            .await
+            .map(Element::from)
+            .map_err(map_error)
+    }
 }
 
 /// Result of element validation
@@ -137,4 +156,34 @@ pub struct ValidationResult {
     pub element: Option<Element>,
     /// Error message if validation failed (not element not found, but actual error)
     pub error: Option<String>,
+}
+
+/// Result of waiting for a condition
+#[napi(object)]
+pub struct WaitForResult {
+    /// Whether the condition was met
+    pub condition_met: bool,
+    /// The element if condition was met
+    pub element: Option<Element>,
+    /// Time elapsed in milliseconds
+    pub elapsed_ms: f64,
+    /// Error message if wait failed
+    pub error: Option<String>,
+}
+
+/// Convert string condition to WaitCondition enum
+fn parse_condition(condition: &str) -> napi::Result<TerminatorWaitCondition> {
+    match condition.to_lowercase().as_str() {
+        "exists" => Ok(TerminatorWaitCondition::Exists),
+        "visible" => Ok(TerminatorWaitCondition::Visible),
+        "enabled" => Ok(TerminatorWaitCondition::Enabled),
+        "focused" => Ok(TerminatorWaitCondition::Focused),
+        _ => Err(napi::Error::new(
+            napi::Status::InvalidArg,
+            format!(
+                "Invalid condition '{}'. Valid: exists, visible, enabled, focused",
+                condition
+            ),
+        )),
+    }
 }

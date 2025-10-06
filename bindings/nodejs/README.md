@@ -111,6 +111,7 @@ try {
 - `first(timeoutMs)` - Get the first matching element (timeout in milliseconds required)
 - `all(timeoutMs, depth?)` - Get all matching elements (timeout in milliseconds required)
 - `validate(timeoutMs)` - Validate element existence without throwing (returns `{exists, element?, error?}`)
+- `waitFor(condition, timeoutMs)` - Wait for element to meet condition ('exists', 'visible', 'enabled', 'focused')
 - `timeout(timeoutMs)` - Set default timeout for this locator
 - `within(element)` - Scope search to an element
 - `locator(selector)` - Chain another selector
@@ -152,6 +153,50 @@ main().catch(console.error);
 - `validate()` returns `{exists: false}` if element is not found
 - Use `validate()` for optional elements or conditional logic
 - Use `first()` when you expect the element to exist
+
+### Conditional Waiting
+
+The `waitFor()` method waits for an element to meet a specific condition. This is useful for dynamic UIs where elements change state:
+
+```javascript
+const { Desktop } = require('terminator.js');
+
+async function main() {
+  const desktop = new Desktop();
+
+  // Wait for a button to become visible (not just exist)
+  const submitButton = await desktop
+    .locator('role:button|Submit')
+    .waitFor('visible', 10000);
+
+  await submitButton.click();
+
+  // Wait for a button to become enabled after form validation
+  const nextButton = await desktop
+    .locator('role:button|Next')
+    .waitFor('enabled', 5000);
+
+  await nextButton.click();
+
+  // Wait for an input field to receive focus
+  const nameInput = await desktop
+    .locator('role:textfield|Name')
+    .waitFor('focused', 3000);
+}
+
+main().catch(console.error);
+```
+
+**Available conditions:**
+- `'exists'` - Wait for element to appear in the UI
+- `'visible'` - Wait for element to be visible
+- `'enabled'` - Wait for element to be enabled (not disabled)
+- `'focused'` - Wait for element to have keyboard focus
+
+**Key differences:**
+- `first()` - Waits for element to exist, throws if not found
+- `validate()` - Checks if element exists, never throws
+- `waitFor()` - Waits for specific condition to be met, throws on timeout
 
 See the [examples directory](https://github.com/mediar-ai/terminator/tree/main/examples) for more usage examples.
 

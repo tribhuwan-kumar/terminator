@@ -12,6 +12,17 @@ export interface ValidationResult {
   /** Error message if validation failed (not element not found, but actual error) */
   error?: string
 }
+/** Result of waiting for a condition */
+export interface WaitForResult {
+  /** Whether the condition was met */
+  conditionMet: boolean
+  /** The element if condition was met */
+  element?: Element
+  /** Time elapsed in milliseconds */
+  elapsedMs: number
+  /** Error message if wait failed */
+  error?: string
+}
 export interface Bounds {
   x: number
   y: number
@@ -639,6 +650,14 @@ export declare class Locator {
    * @returns {Promise<ValidationResult>} Validation result with exists flag and optional element.
    */
   validate(timeoutMs: number): Promise<ValidationResult>
+  /**
+   * (async) Wait for an element to meet a specific condition.
+   *
+   * @param {string} condition - Condition to wait for: 'exists', 'visible', 'enabled', 'focused'
+   * @param {number} timeoutMs - Timeout in milliseconds (required).
+   * @returns {Promise<Element>} The element when condition is met.
+   */
+  waitFor(condition: string, timeoutMs: number): Promise<Element>
 }
 /** Selector for locating UI elements. Provides a typed alternative to the string based selector API. */
 export declare class Selector {
