@@ -22,7 +22,13 @@ async function testUIElements() {
   await window.click();
   await desktop.delay(1000);
 
-  // Test 2: Inject a comprehensive test UI with ARIA attributes
+  // Test 2: Set zoom to 50%
+  console.log('\n=== Test: Set zoom to 50% ===');
+  await desktop.setZoom(50);
+  console.log('✓ Zoom set to 50%');
+  await desktop.delay(2000);
+
+  // Test 3: Inject a comprehensive test UI with ARIA attributes
   console.log('\n=== Test: Setting up test UI ===');
   await desktop.executeBrowserScript(`
     document.body.innerHTML = \`
@@ -493,6 +499,12 @@ async function testUIElements() {
 
   // Cleanup
   console.log('=== Cleanup ===');
+
+  // Reset zoom to 100%
+  console.log('Resetting zoom to 100%...');
+  await desktop.setZoom(100);
+  console.log('✓ Zoom reset to 100%');
+  await desktop.delay(1000);
 
   // Close all highlights
   console.log(`Closing ${highlights.length} active highlights...`);
