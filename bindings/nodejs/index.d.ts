@@ -596,6 +596,20 @@ export declare class Element {
    */
   setToggled(state: boolean): void
   /**
+   * Checks if an element is selected (e.g., list item, tree node, tab).
+   *
+   * @returns {boolean} True if the element is selected, false otherwise.
+   */
+  isSelected(): boolean
+  /**
+   * Sets the selection state of a selectable item.
+   * Only performs an action if the element is not already in the desired state.
+   *
+   * @param {boolean} state - The desired selection state.
+   * @returns {void}
+   */
+  setSelected(state: boolean): void
+  /**
    * Execute JavaScript in web browser using dev tools console.
    * Returns the result of the script execution as a string.
    *

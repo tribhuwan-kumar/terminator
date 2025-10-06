@@ -105,6 +105,10 @@ try {
 - `role()` - Get element role
 - `name()` - Get element name
 - `children()` - Get child elements
+- `isToggled()` - Check if toggleable control is toggled
+- `setToggled(state)` - Set toggle state (checkbox, toggle switch)
+- `isSelected()` - Check if element is selected (list item, tree node, tab)
+- `setSelected(state)` - Set selection state
 
 ### Locator
 

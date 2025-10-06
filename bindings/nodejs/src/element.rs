@@ -502,6 +502,24 @@ impl Element {
         self.inner.set_toggled(state).map_err(map_error)
     }
 
+    /// Checks if an element is selected (e.g., list item, tree node, tab).
+    ///
+    /// @returns {boolean} True if the element is selected, false otherwise.
+    #[napi]
+    pub fn is_selected(&self) -> napi::Result<bool> {
+        self.inner.is_selected().map_err(map_error)
+    }
+
+    /// Sets the selection state of a selectable item.
+    /// Only performs an action if the element is not already in the desired state.
+    ///
+    /// @param {boolean} state - The desired selection state.
+    /// @returns {void}
+    #[napi]
+    pub fn set_selected(&self, state: bool) -> napi::Result<()> {
+        self.inner.set_selected(state).map_err(map_error)
+    }
+
     /// Execute JavaScript in web browser using dev tools console.
     /// Returns the result of the script execution as a string.
     ///
