@@ -1054,7 +1054,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Clicks a UI element. This action requires the application to be focused and may change the UI."
+        description = "Clicks a UI element using Playwright-style actionability validation. Performs comprehensive pre-action checks: element must be visible (non-zero bounds), enabled, in viewport, and have stable bounds (3 consecutive checks at 16ms intervals, max ~800ms wait). Returns success with 'validated=true' in click_result.details when all checks pass. Fails explicitly with specific errors: ElementNotVisible (zero-size bounds/offscreen/not in viewport), ElementNotEnabled (disabled/grayed out), ElementNotStable (bounds still animating after 800ms), ElementDetached (no longer in UI tree), ElementObscured (covered by another element), or ScrollFailed (could not scroll into view). For buttons, prefer invoke_element (uses UI Automation's native invoke pattern, doesn't require viewport visibility). Use click_element for links, hover-sensitive elements, or UI requiring actual mouse interaction. This action requires the application to be focused and may change the UI."
     )]
     pub async fn click_element(
         &self,
