@@ -297,13 +297,31 @@ async function testUIElements() {
 
   // Find and highlight button
   try {
-    const buttons = await desktop.locator('role:button').all(3000, 10);
-    console.log(`Found ${buttons.length} buttons`);
-    if (buttons.length > 0) {
-      const buttonHighlight = buttons[0].highlight(0x00FF00, 5000, 'Button', 'BottomRight');
+    const buttons = await desktop.locator('role:button').all(3000, 50);
+    console.log(`Found ${buttons.length} buttons, searching for our test button...`);
+
+    // Find the button with "Test button" aria-label or look through them
+    let testButton = null;
+    for (let i = 0; i < buttons.length; i++) {
+      const name = buttons[i].name();
+      if (name && (name.includes('Test button') || name.includes('Click Me'))) {
+        testButton = buttons[i];
+        console.log(`Found test button at index ${i}: "${name}"`);
+        break;
+      }
+    }
+
+    // If not found by name, use a button further in the list (likely in page content)
+    if (!testButton && buttons.length > 10) {
+      testButton = buttons[buttons.length - 1]; // Try last button
+      console.log(`Using last button in list: "${testButton.name()}"`);
+    }
+
+    if (testButton) {
+      const buttonHighlight = testButton.highlight(0x00FF00, 8000, 'Click Me Button', 'BottomRight');
       highlights.push(buttonHighlight);
       console.log('✓ Button highlighted (green)');
-      await desktop.delay(3000);
+      await desktop.delay(5000);
     }
   } catch (error) {
     console.log('○ Could not highlight button:', error.message);
