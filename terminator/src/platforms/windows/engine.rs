@@ -3394,8 +3394,12 @@ impl AccessibilityEngine for WindowsEngine {
     }
 
     fn press_key(&self, key: &str) -> Result<(), AutomationError> {
-        let focused_element = self.get_focused_element()?;
-        focused_element.press_key(key)
+        // Use global keyboard simulation directly (works without focused element)
+        use uiautomation::inputs::Keyboard;
+        Keyboard::new()
+            .interval(10)
+            .send_keys(key)
+            .map_err(|e| AutomationError::PlatformError(format!("Failed to press key: {e:?}")))
     }
 
     fn zoom_in(&self, level: u32) -> Result<(), AutomationError> {

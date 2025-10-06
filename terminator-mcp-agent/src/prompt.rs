@@ -318,7 +318,7 @@ Use `run_command` with `engine` to execute code with SDK bindings:
 - `desktop` - Main Desktop automation instance
 - All env variables (with typeof checks!)
 - `log(message)` - Console logging
-- `sleep(ms)` - Async delay (returns Promise)
+- `sleep(ms)` - Async delay (returns Promise) - Note: If unavailable, use `await new Promise(resolve => setTimeout(resolve, ms))`
 
 **Example: Inline script**
 ```yaml
@@ -395,6 +395,13 @@ The `execute_browser_script` tool executes JavaScript in browser contexts (Chrom
 
 **Chrome extension required:** This tool requires the Terminator Chrome extension to be installed and the browser window to be open.
 
+**Two ways to execute browser scripts:**
+1. `desktop.executeBrowserScript(script)` - Automatically finds active browser window (simpler)
+2. `element.executeBrowserScript(script)` - Execute on specific browser window element
+
+**Use desktop method when:** You want to run script in currently focused browser tab
+**Use element method when:** You need to target a specific browser window
+
 ### When to Use Browser Scripts
 
 **Use execute_browser_script for:**
@@ -411,6 +418,25 @@ The `execute_browser_script` tool executes JavaScript in browser contexts (Chrom
 - Text input into standard form fields (use type_into_element)
 - Navigation (use navigate_browser)
 - Anything accessible via UI Automation tree
+
+**⚠️ Important: Browser Script Timing**
+
+Multiple browser scripts in quick succession can cause Chrome extension bridge port conflicts. If you encounter port errors (e.g., \"port 17373 already in use\"), add `delay_ms: 2000` between browser script steps to allow the extension bridge to release resources.
+
+**Example:**
+```yaml
+- tool_name: execute_browser_script  # First browser script
+  id: write_clipboard
+  arguments:
+    script: \"...\"
+
+- tool_name: run_command             # Second browser script call
+  id: detect_column
+  arguments:
+    engine: javascript
+    script_file: \"detect.js\"
+  delay_ms: 2000  # Wait for extension bridge to release port
+```
 
 ### Environment Variable Access in Browser Scripts
 
@@ -1005,10 +1031,17 @@ await desktop.locator('role:button|name:Submit').waitFor('enabled', 5000);
 // Element interaction
 await element.click();
 await element.typeText('Hello World');
+element.pressKey('Enter');              // Press key while element has focus
 await element.setToggled(true);
 await element.selectOption('Option Text');
 await element.setValue('new value');
 await element.focus();
+
+// Global keyboard input
+await desktop.pressKey('{{Ctrl}}c');      // System-wide key press (curly braces format)
+await desktop.pressKey('{{Win}}r');       // Open Run dialog
+await desktop.pressKey('{{Alt}}{{Tab}}');   // Switch windows
+await desktop.pressKey('{{Tab}}');        // Send Tab key globally
 
 // Element properties
 const name = await element.name();
@@ -1022,6 +1055,10 @@ await desktop.openApplication('notepad');
 await desktop.activateApplication('calculator');
 element.activateWindow();
 element.close();
+
+// Browser DOM access (requires Chrome extension)
+const pageTitle = await desktop.executeBrowserScript('return document.title;');
+const links = await desktop.executeBrowserScript('return document.querySelectorAll(\"a\").length;');
 
 // Screenshots and monitoring
 const screenshot = await desktop.captureScreen();
@@ -1061,6 +1098,16 @@ if (buttonCheck.exists) {{
 return {{ action: 'button_not_found' }};
 ```
 
+*   **Browser script execution (desktop vs element):**
+```javascript
+// ✅ Simple: Use desktop method for active browser tab
+const pageTitle = await desktop.executeBrowserScript('return document.title;');
+
+// ✅ Specific: Find browser window first, then execute
+const chromeWindow = await desktop.locator('role:Window|name:Chrome').first(5000);
+const result = await chromeWindow.executeBrowserScript('return document.querySelector(\".data\").textContent;');
+```
+
 *   **Find and configure elements dynamically:**
 ```javascript
 // Enable specific products from a list
@@ -1086,7 +1133,8 @@ try {{
 ```
 
 **Performance Tips:**
-*   Use `await sleep(ms)` for delays instead of blocking operations
+*   Use `await sleep(ms)` for delays instead of blocking operations (or `await new Promise(resolve => setTimeout(resolve, ms))` if sleep unavailable)
+*   Use curly brace format for key names: `{{Tab}}`, `{{Enter}}`, `{{Ctrl}}c` (more reliable than plain 'Tab')
 *   Cache element references when performing multiple operations
 *   Use specific selectors (role:Type|name:Name) over generic ones
 *   Return structured data objects from scripts for output parsing

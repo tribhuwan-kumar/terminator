@@ -408,26 +408,34 @@ function hasTopLevelReturn(code) {
 
 // Helper function to detect async IIFE pattern
 function isAsyncIIFE(code) {
-  // Check for common async IIFE patterns
+  // Extract the last statement from the code (after any var declarations)
+  const trimmed = code.trim();
+
+  // Find the last complete statement by looking for the last IIFE pattern
+  // This handles cases where env vars are injected before the IIFE
   const asyncIIFEPatterns = [
-    /^\s*\(\s*async\s+function\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
-    /^\s*\(\s*async\s*\([^)]*\)\s*=>\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
-    /^\s*\(\s*async\s+function\s+\w+\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/
+    /\(\s*async\s+function\s*\([^)]*\)\s*{[\s\S]*?}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /\(\s*async\s*\([^)]*\)\s*=>\s*{[\s\S]*?}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /\(\s*async\s+function\s+\w+\s*\([^)]*\)\s*{[\s\S]*?}\s*\)\s*\(\s*\)\s*;?\s*$/
   ];
 
-  return asyncIIFEPatterns.some(pattern => pattern.test(code.trim()));
+  return asyncIIFEPatterns.some(pattern => pattern.test(trimmed));
 }
 
 // Helper function to detect regular (non-async) IIFE pattern
 function isRegularIIFE(code) {
-  // Check for common IIFE patterns
+  // Extract the last statement from the code (after any var declarations)
+  const trimmed = code.trim();
+
+  // Find the last complete statement by looking for the last IIFE pattern
+  // This handles cases where env vars are injected before the IIFE
   const iifePatterns = [
-    /^\s*\(\s*function\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
-    /^\s*\(\s*function\s+\w+\s*\([^)]*\)\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/,
-    /^\s*\(\s*\([^)]*\)\s*=>\s*{[\s\S]*}\s*\)\s*\(\s*\)\s*;?\s*$/
+    /\(\s*function\s*\([^)]*\)\s*{[\s\S]*?}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /\(\s*function\s+\w+\s*\([^)]*\)\s*{[\s\S]*?}\s*\)\s*\(\s*\)\s*;?\s*$/,
+    /\(\s*\([^)]*\)\s*=>\s*{[\s\S]*?}\s*\)\s*\(\s*\)\s*;?\s*$/
   ];
 
-  return iifePatterns.some(pattern => pattern.test(code.trim()));
+  return iifePatterns.some(pattern => pattern.test(trimmed));
 }
 
 // Helper function to wrap code in IIFE if it has top-level returns

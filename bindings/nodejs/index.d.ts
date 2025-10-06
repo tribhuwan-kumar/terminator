@@ -325,6 +325,22 @@ export declare class Desktop {
    */
   pressKey(key: string): Promise<void>
   /**
+   * (async) Execute JavaScript in the currently focused browser tab.
+   * Automatically finds the active browser window and executes the script.
+   *
+   * @param {string} script - The JavaScript code to execute in browser context.
+   * @returns {Promise<string>} The result of script execution.
+   */
+  executeBrowserScript(script: string): Promise<string>
+  /**
+   * (async) Delay execution for a specified number of milliseconds.
+   * Useful for waiting between actions to ensure UI stability.
+   *
+   * @param {number} delayMs - Delay in milliseconds.
+   * @returns {Promise<void>}
+   */
+  delay(delayMs: number): Promise<void>
+  /**
    * (async) Zoom in by a specified number of levels.
    *
    * @param {number} level - Number of zoom-in steps to perform.
@@ -569,6 +585,13 @@ export declare class Element {
    */
   monitor(): Monitor
   /**
+   * Scrolls the element into view within its window viewport.
+   * If the element is already visible, returns immediately.
+   *
+   * @returns {void}
+   */
+  scrollIntoView(): void
+  /**
    * Selects an option in a dropdown or combobox by its visible text.
    *
    * @param {string} optionName - The visible text of the option to select.
@@ -609,6 +632,25 @@ export declare class Element {
    * @returns {void}
    */
   setSelected(state: boolean): void
+  /**
+   * Gets the current value from a range-based control like a slider or progress bar.
+   *
+   * @returns {number} The current value of the range control.
+   */
+  getRangeValue(): number
+  /**
+   * Sets the value of a range-based control like a slider.
+   *
+   * @param {number} value - The value to set.
+   * @returns {void}
+   */
+  setRangeValue(value: number): void
+  /**
+   * Gets the value attribute of an element (text inputs, combo boxes, etc.).
+   *
+   * @returns {string | null} The value attribute, or null if not available.
+   */
+  getValue(): string | null
   /**
    * Execute JavaScript in web browser using dev tools console.
    * Returns the result of the script execution as a string.

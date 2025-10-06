@@ -1217,7 +1217,9 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Sends a key press to a UI element. Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc. This action requires the application to be focused and may change the UI."
+        description = "Sends a key press to a UI element. Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', '{Tab}', etc. This action requires the application to be focused and may change the UI.
+
+Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g., 'Tab')."
     )]
     async fn press_key(
         &self,
@@ -1332,7 +1334,9 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Sends a key press to the currently focused element (no selector required). Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc. This action requires the application to be focused and may change the UI."
+        description = "Sends a key press to the currently focused element (no selector required). Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', '{Tab}', etc. This action requires the application to be focused and may change the UI.
+
+Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g., 'Tab')."
     )]
     async fn press_key_global(
         &self,
@@ -4634,6 +4638,9 @@ Key uses:
 - Scrape data not available via accessibility APIs
 - Pass data between workflow steps using env/outputs parameters
 
+Alternative: In run_command with engine: javascript, use desktop.executeBrowserScript(script)
+to execute browser scripts directly without needing a selector. Automatically targets active browser tab.
+
 Parameters:
 - script: JavaScript code to execute (optional if script_file is provided)
 - script_file: Path to JavaScript file to load and execute (optional)
@@ -4694,6 +4701,12 @@ Size limits: Response must be <30KB. For large DOMs, use truncation:
 const html = document.documentElement.outerHTML;
 const max = 30000;
 return html.length > max ? html.substring(0, max) + '...' : html;
+
+⚠️ Port Conflicts: Multiple browser scripts in quick succession cause 'port already in use' errors.
+Add delay_ms: 2000 between consecutive execute_browser_script steps.
+
+Timing: Use await new Promise(resolve => setTimeout(resolve, ms)) for delays.
+The sleep() function is NOT available in browser context.
 
 Script Format Requirements:
 The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns:

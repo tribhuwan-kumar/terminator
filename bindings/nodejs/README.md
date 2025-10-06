@@ -97,11 +97,14 @@ try {
 - `locator(selector)` - Create a locator for finding elements
 - `captureScreen()` - Take a screenshot
 - `runCommand(windowsCmd, unixCmd)` - Run a system command
+- `executeBrowserScript(script)` - Execute JavaScript in focused browser tab
+- `delay(delayMs)` - Delay execution for specified milliseconds
 
 ### Element
 
 - `click()` - Click the element
 - `type(text)` - Type text into the element
+- `scrollIntoView()` - Scroll element into view if off-screen
 - `role()` - Get element role
 - `name()` - Get element name
 - `children()` - Get child elements
@@ -109,6 +112,9 @@ try {
 - `setToggled(state)` - Set toggle state (checkbox, toggle switch)
 - `isSelected()` - Check if element is selected (list item, tree node, tab)
 - `setSelected(state)` - Set selection state
+- `getRangeValue()` - Get value from range control (slider, progress bar)
+- `setRangeValue(value)` - Set value of range control
+- `getValue()` - Get value attribute (text inputs, combo boxes)
 
 ### Locator
 

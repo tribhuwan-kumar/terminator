@@ -581,6 +581,14 @@ impl Desktop {
         self.engine.get_current_browser_window().await
     }
 
+    /// Execute JavaScript in the currently focused browser tab.
+    /// Automatically finds the active browser window and executes the script.
+    #[instrument(skip(self, script))]
+    pub async fn execute_browser_script(&self, script: &str) -> Result<String, AutomationError> {
+        let browser_window = self.engine.get_current_browser_window().await?;
+        browser_window.execute_browser_script(script).await
+    }
+
     #[instrument(skip(self))]
     pub async fn get_current_window(&self) -> Result<UIElement, AutomationError> {
         self.engine.get_current_window().await
@@ -730,6 +738,13 @@ impl Desktop {
 
     pub async fn press_key(&self, key: &str) -> Result<(), AutomationError> {
         self.engine.press_key(key)
+    }
+
+    /// Delay execution for a specified number of milliseconds.
+    /// Useful for waiting between actions to ensure UI stability.
+    pub async fn delay(&self, delay_ms: u64) -> Result<(), AutomationError> {
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        Ok(())
     }
 
     pub async fn zoom_in(&self, level: u32) -> Result<(), AutomationError> {
