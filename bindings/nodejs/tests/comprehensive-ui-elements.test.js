@@ -198,14 +198,16 @@ async function testUIElements() {
   // Test 6: Radio button selection
   console.log('=== Test: isSelected on radio buttons ===');
 
-  // Find and highlight radio button
+  // Find and highlight radio button 2 (initially checked)
   try {
     const radios = await desktop.locator('role:radiobutton').all(3000, 10);
     console.log(`Found ${radios.length} radio buttons`);
-    if (radios.length > 0) {
-      const radioHighlight = radios[0].highlight(0x00FF00, 5000, 'Radio Button', 'BottomRight');
-      highlights.push(radioHighlight);
-      console.log('✓ Radio button highlighted (green)');
+
+    // Highlight radio 2 first (index 1, the checked one)
+    if (radios.length > 1) {
+      const radio2Highlight = radios[1].highlight(0x00FF00, 5000, 'Radio 2 (checked)', 'BottomRight');
+      highlights.push(radio2Highlight);
+      console.log('✓ Radio button 2 highlighted (green)');
       await desktop.delay(3000);
     }
   } catch (error) {
@@ -216,6 +218,19 @@ async function testUIElements() {
     document.getElementById('radio2').checked;
   `);
   console.log('✓ Radio 2 checked:', radio2State);
+
+  // Now highlight radio 3 before switching to it
+  try {
+    const radios = await desktop.locator('role:radiobutton').all(3000, 10);
+    if (radios.length > 2) {
+      const radio3Highlight = radios[2].highlight(0x00FF00, 5000, 'Radio 3 (switching)', 'BottomRight');
+      highlights.push(radio3Highlight);
+      console.log('✓ Radio button 3 highlighted (green)');
+      await desktop.delay(3000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight radio 3:', error.message);
+  }
 
   await desktop.executeBrowserScript(`
     document.getElementById('radio3').checked = true;
