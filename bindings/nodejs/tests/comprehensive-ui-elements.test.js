@@ -13,9 +13,10 @@ async function testUIElements() {
   console.log('✓ Navigated to:', window.name());
 
   // Highlight the browser window
-  const windowHighlight = window.highlight(0x00FF00, 3000, 'Chrome Window', 'TopLeft');
+  const windowHighlight = window.highlight(0x00FF00, 5000, 'Chrome Window', 'TopLeft');
   highlights.push(windowHighlight);
-  await desktop.delay(2000);
+  console.log('✓ Browser window highlighted (green)');
+  await desktop.delay(3000);
 
   // Ensure browser has focus
   await window.click();
@@ -90,10 +91,10 @@ async function testUIElements() {
     const inputElements = await desktop.locator('role:edit').all(3000, 10);
     console.log(`Found ${inputElements.length} edit fields`);
     if (inputElements.length > 0) {
-      const inputHighlight = inputElements[0].highlight(0x00FF00, 3000, 'Test Input', 'TopLeft');
+      const inputHighlight = inputElements[0].highlight(0x00FF00, 5000, 'Test Input', 'TopLeft');
       highlights.push(inputHighlight);
       console.log('✓ Input field highlighted (green)');
-      await desktop.delay(1000);
+      await desktop.delay(3000);
     }
   } catch (error) {
     console.log('○ Could not highlight input:', error.message);
@@ -122,10 +123,10 @@ async function testUIElements() {
     const checkboxes = await desktop.locator('role:checkbox').all(3000, 10);
     console.log(`Found ${checkboxes.length} checkboxes`);
     if (checkboxes.length > 0) {
-      const checkboxHighlight = checkboxes[0].highlight(0xFF0000, 3000, 'Checkbox', 'TopRight');
+      const checkboxHighlight = checkboxes[0].highlight(0x00FF00, 5000, 'Checkbox', 'TopRight');
       highlights.push(checkboxHighlight);
-      console.log('✓ Checkbox highlighted (red)');
-      await desktop.delay(1000);
+      console.log('✓ Checkbox highlighted (green)');
+      await desktop.delay(3000);
     }
   } catch (error) {
     console.log('○ Could not highlight checkbox:', error.message);
@@ -161,10 +162,10 @@ async function testUIElements() {
     const sliders = await desktop.locator('role:slider').all(3000, 10);
     console.log(`Found ${sliders.length} sliders`);
     if (sliders.length > 0) {
-      const sliderHighlight = sliders[0].highlight(0x0000FF, 3000, 'Slider', 'BottomLeft');
+      const sliderHighlight = sliders[0].highlight(0x00FF00, 5000, 'Slider', 'BottomLeft');
       highlights.push(sliderHighlight);
-      console.log('✓ Slider highlighted (blue)');
-      await desktop.delay(1000);
+      console.log('✓ Slider highlighted (green)');
+      await desktop.delay(3000);
     }
   } catch (error) {
     console.log('○ Could not highlight slider:', error.message);
@@ -202,10 +203,10 @@ async function testUIElements() {
     const radios = await desktop.locator('role:radiobutton').all(3000, 10);
     console.log(`Found ${radios.length} radio buttons`);
     if (radios.length > 0) {
-      const radioHighlight = radios[0].highlight(0xFF00FF, 3000, 'Radio Button', 'BottomRight');
+      const radioHighlight = radios[0].highlight(0x00FF00, 5000, 'Radio Button', 'BottomRight');
       highlights.push(radioHighlight);
-      console.log('✓ Radio button highlighted (magenta)');
-      await desktop.delay(1000);
+      console.log('✓ Radio button highlighted (green)');
+      await desktop.delay(3000);
     }
   } catch (error) {
     console.log('○ Could not highlight radio button:', error.message);
@@ -236,10 +237,10 @@ async function testUIElements() {
     const dropdowns = await desktop.locator('role:combobox').all(3000, 10);
     console.log(`Found ${dropdowns.length} dropdowns/comboboxes`);
     if (dropdowns.length > 0) {
-      const dropdownHighlight = dropdowns[0].highlight(0x00FFFF, 3000, 'Dropdown', 'TopLeft');
+      const dropdownHighlight = dropdowns[0].highlight(0x00FF00, 5000, 'Dropdown', 'TopLeft');
       highlights.push(dropdownHighlight);
-      console.log('✓ Dropdown highlighted (cyan)');
-      await desktop.delay(1000);
+      console.log('✓ Dropdown highlighted (green)');
+      await desktop.delay(3000);
     }
   } catch (error) {
     console.log('○ Could not highlight dropdown:', error.message);
@@ -261,6 +262,21 @@ async function testUIElements() {
 
   // Test 8: Textarea value
   console.log('=== Test: getValue on textarea ===');
+
+  // Find and highlight textarea
+  try {
+    const textareas = await desktop.locator('role:edit').all(3000, 10);
+    console.log(`Found ${textareas.length} edit fields (including textarea)`);
+    // Textarea is usually the second edit field after input
+    if (textareas.length > 1) {
+      const textareaHighlight = textareas[1].highlight(0x00FF00, 5000, 'Textarea', 'BottomLeft');
+      highlights.push(textareaHighlight);
+      console.log('✓ Textarea highlighted (green)');
+      await desktop.delay(3000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight textarea:', error.message);
+  }
 
   const textareaValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testTextarea').value;
@@ -284,10 +300,10 @@ async function testUIElements() {
     const buttons = await desktop.locator('role:button').all(3000, 10);
     console.log(`Found ${buttons.length} buttons`);
     if (buttons.length > 0) {
-      const buttonHighlight = buttons[0].highlight(0xFFFF00, 3000, 'Button', 'BottomRight');
+      const buttonHighlight = buttons[0].highlight(0x00FF00, 5000, 'Button', 'BottomRight');
       highlights.push(buttonHighlight);
-      console.log('✓ Button highlighted (yellow)');
-      await desktop.delay(1000);
+      console.log('✓ Button highlighted (green)');
+      await desktop.delay(3000);
     }
   } catch (error) {
     console.log('○ Could not highlight button:', error.message);
@@ -331,9 +347,10 @@ async function testUIElements() {
   try {
     // Address bar should be an edit field with focus
     const addressBar = await desktop.locator('role:edit').first(1000);
-    const addressHighlight = addressBar.highlight(0xFFA500, 3000, 'Address Bar', 'TopLeft');
+    const addressHighlight = addressBar.highlight(0x00FF00, 5000, 'Address Bar', 'TopLeft');
     highlights.push(addressHighlight);
-    console.log('✓ Address bar highlighted (orange)');
+    console.log('✓ Address bar highlighted (green)');
+    await desktop.delay(3000);
 
     // Type in the address bar
     await desktop.pressKey('github.com');
