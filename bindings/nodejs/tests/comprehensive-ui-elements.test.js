@@ -8,15 +8,50 @@ async function testUIElements() {
   console.log('Step 1: Navigating to example.com...');
   const exampleWindow = desktop.navigateBrowser('https://example.com', 'Chrome');
   console.log('✓ Navigated to:', exampleWindow.name());
+  await desktop.delay(3000);
+
+  // Verify page content
+  const exampleTitle = await desktop.executeBrowserScript('document.title');
+  console.log('✓ Page title:', exampleTitle);
   await desktop.delay(2000);
 
-  // Test 2: Navigate to about:blank for our test page
-  console.log('\nStep 2: Navigating to about:blank for test page...');
+  // Test 2: Navigate to Wikipedia
+  console.log('\nStep 2: Navigating to Wikipedia...');
+  const wikiWindow = desktop.navigateBrowser('https://wikipedia.org', 'Chrome');
+  console.log('✓ Navigated to:', wikiWindow.name());
+  await desktop.delay(3000);
+
+  const wikiTitle = await desktop.executeBrowserScript('document.title');
+  console.log('✓ Page title:', wikiTitle);
+  await desktop.delay(2000);
+
+  // Test 3: Navigate to GitHub
+  console.log('\nStep 3: Navigating to GitHub...');
+  const githubWindow = desktop.navigateBrowser('https://github.com', 'Chrome');
+  console.log('✓ Navigated to:', githubWindow.name());
+  await desktop.delay(3000);
+
+  const githubTitle = await desktop.executeBrowserScript('document.title');
+  console.log('✓ Page title:', githubTitle);
+  await desktop.delay(2000);
+
+  // Test 4: Navigate to MDN
+  console.log('\nStep 4: Navigating to MDN Web Docs...');
+  const mdnWindow = desktop.navigateBrowser('https://developer.mozilla.org', 'Chrome');
+  console.log('✓ Navigated to:', mdnWindow.name());
+  await desktop.delay(3000);
+
+  const mdnTitle = await desktop.executeBrowserScript('document.title');
+  console.log('✓ Page title:', mdnTitle);
+  await desktop.delay(2000);
+
+  // Test 5: Navigate to about:blank for our test page
+  console.log('\nStep 5: Navigating to about:blank for test page...');
   const blankWindow = desktop.navigateBrowser('about:blank', 'Chrome');
   console.log('✓ Navigated to:', blankWindow.name());
-  await desktop.delay(2000);
+  await desktop.delay(3000);
 
-  // Test 3: Inject a comprehensive test UI
+  // Test 6: Inject a comprehensive test UI
   console.log('\n=== Test: Setting up test UI ===');
   await desktop.executeBrowserScript(`
     document.body.innerHTML = \`
