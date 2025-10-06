@@ -22,13 +22,7 @@ async function testUIElements() {
   await window.click();
   await desktop.delay(1000);
 
-  // Test 2: Set zoom to 50%
-  console.log('\n=== Test: Set zoom to 50% ===');
-  await desktop.setZoom(50);
-  console.log('✓ Zoom set to 50%');
-  await desktop.delay(2000);
-
-  // Test 3: Inject a comprehensive test UI with ARIA attributes
+  // Test 2: Inject a comprehensive test UI with ARIA attributes
   console.log('\n=== Test: Setting up test UI ===');
   await desktop.executeBrowserScript(`
     document.body.innerHTML = \`
@@ -88,6 +82,12 @@ async function testUIElements() {
   console.log('Waiting 5 seconds for accessibility tree to update...');
   await desktop.delay(5000);
   console.log('✓ Accessibility tree ready\n');
+
+  // Set zoom to 50% after page is ready
+  console.log('=== Test: Set zoom to 50% ===');
+  await desktop.setZoom(50);
+  console.log('✓ Zoom set to 50%');
+  await desktop.delay(2000);
 
   // Test 3: getValue() - Read input field
   console.log('=== Test: getValue() on text input ===');
