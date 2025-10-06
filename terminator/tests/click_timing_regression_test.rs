@@ -53,14 +53,20 @@ async fn test_click_hover_layout_shift_flaky() {
         .await
         .expect("Failed to find target element");
 
-    // Attempt a single click. On some Windows builds, the mouse move can trigger a hover
-    // layout shift before the down event, making the clickable point stale and missing the target.
-    let _ = target.click();
+    // Attempt a single click. With the new validation implementation, the click should succeed
+    // because we now wait for stable bounds before clicking (Playwright-style actionability checks).
+    let click_result = target.click().expect("Click should succeed with validated implementation");
+
+    // Verify the click used validated approach
+    assert!(
+        click_result.details.contains("validated=true"),
+        "Click should use validated implementation"
+    );
 
     // Give the page a brief moment to process events
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // If the click missed, the status will remain "not clicked"
+    // The click should succeed and the page should show "clicked" status
     let clicked_probe = browser_window
         .locator(Selector::Role {
             role: "Text".to_string(),
@@ -70,10 +76,9 @@ async fn test_click_hover_layout_shift_flaky() {
         .first(Some(Duration::from_millis(500)))
         .await;
 
-    // This assertion intentionally expects a failure to reproduce the issue.
-    // If it doesn't fail on your system, the bug may not reproduce deterministically.
+    // This assertion now expects success because bounds stability prevents the hover layout shift bug
     assert!(
-        clicked_probe.is_err(),
-        "Expected first click to miss due to hover-induced layout shift; adjust the page if this passes."
+        clicked_probe.is_ok(),
+        "Expected click to succeed with validated implementation that waits for stable bounds"
     );
 }

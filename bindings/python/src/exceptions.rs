@@ -34,6 +34,36 @@ create_exception!(
     InvalidSelectorError,
     pyo3::exceptions::PyRuntimeError
 );
+create_exception!(
+    terminator,
+    ElementDetachedError,
+    pyo3::exceptions::PyRuntimeError
+);
+create_exception!(
+    terminator,
+    ElementNotVisibleError,
+    pyo3::exceptions::PyRuntimeError
+);
+create_exception!(
+    terminator,
+    ElementNotEnabledError,
+    pyo3::exceptions::PyRuntimeError
+);
+create_exception!(
+    terminator,
+    ElementNotStableError,
+    pyo3::exceptions::PyRuntimeError
+);
+create_exception!(
+    terminator,
+    ElementObscuredError,
+    pyo3::exceptions::PyRuntimeError
+);
+create_exception!(
+    terminator,
+    ScrollFailedError,
+    pyo3::exceptions::PyRuntimeError
+);
 
 use ::terminator_core::errors::AutomationError;
 
@@ -51,5 +81,11 @@ pub fn automation_error_to_pyerr(e: AutomationError) -> pyo3::PyErr {
         AutomationError::Internal(_) => InternalError::new_err(msg),
         AutomationError::InvalidSelector(_) => InvalidSelectorError::new_err(msg),
         AutomationError::UIAutomationAPIError { .. } => PlatformError::new_err(msg),
+        AutomationError::ElementDetached(_) => ElementDetachedError::new_err(msg),
+        AutomationError::ElementNotVisible(_) => ElementNotVisibleError::new_err(msg),
+        AutomationError::ElementNotEnabled(_) => ElementNotEnabledError::new_err(msg),
+        AutomationError::ElementNotStable(_) => ElementNotStableError::new_err(msg),
+        AutomationError::ElementObscured(_) => ElementObscuredError::new_err(msg),
+        AutomationError::ScrollFailed(_) => ScrollFailedError::new_err(msg),
     }
 }

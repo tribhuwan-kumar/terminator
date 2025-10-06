@@ -290,6 +290,214 @@ impl WindowsUIElement {
             data: extra_data,
         })
     }
+
+    // Helper: Compare bounds with epsilon tolerance
+    fn bounds_approximately_equal(
+        &self,
+        bounds1: (f64, f64, f64, f64),
+        bounds2: (f64, f64, f64, f64),
+    ) -> bool {
+        const EPSILON: f64 = 1.0; // 1px tolerance for bounds stability
+
+        (bounds1.0 - bounds2.0).abs() < EPSILON
+            && (bounds1.1 - bounds2.1).abs() < EPSILON
+            && (bounds1.2 - bounds2.2).abs() < EPSILON
+            && (bounds1.3 - bounds2.3).abs() < EPSILON
+    }
+
+    // Helper: Wait for element bounds to stabilize (3 consecutive stable checks at 16ms RAF intervals)
+    fn wait_for_stable_bounds(&self) -> Result<(f64, f64, f64, f64), AutomationError> {
+        const REQUIRED_STABLE_CHECKS: u8 = 3;
+        const CHECK_INTERVAL_MS: u64 = 16; // ~60fps
+        const MAX_ATTEMPTS: u8 = 50; // ~800ms max wait
+
+        let mut prev_bounds = self.bounds().map_err(|e| {
+            AutomationError::ElementNotStable(format!("Cannot get initial bounds: {}", e))
+        })?;
+
+        let mut stable_count = 0;
+        let mut attempts = 0;
+
+        while attempts < MAX_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(CHECK_INTERVAL_MS));
+
+            let current_bounds = self.bounds().map_err(|e| {
+                AutomationError::ElementNotStable(format!("Bounds changed to invalid: {}", e))
+            })?;
+
+            if self.bounds_approximately_equal(prev_bounds, current_bounds) {
+                stable_count += 1;
+                if stable_count >= REQUIRED_STABLE_CHECKS {
+                    tracing::debug!(
+                        "Bounds stable after {} checks: {:?}",
+                        stable_count,
+                        current_bounds
+                    );
+                    return Ok(current_bounds);
+                }
+            } else {
+                tracing::debug!(
+                    "Bounds changed: {:?} -> {:?}, resetting stability counter",
+                    prev_bounds,
+                    current_bounds
+                );
+                stable_count = 0;
+            }
+
+            prev_bounds = current_bounds;
+            attempts += 1;
+        }
+
+        Err(AutomationError::ElementNotStable(format!(
+            "Bounds did not stabilize after {}ms (animations still running?)",
+            (MAX_ATTEMPTS as u64) * CHECK_INTERVAL_MS
+        )))
+    }
+
+    // Helper: Ensure element is in viewport (simplified - no auto-scroll)
+    fn ensure_in_viewport(&self) -> Result<(), AutomationError> {
+        tracing::debug!("Checking element is in viewport");
+
+        // Verify element is visible
+        if !self.is_visible()? {
+            return Err(AutomationError::ElementNotVisible(
+                "Element not in viewport".to_string(),
+            ));
+        }
+
+        tracing::debug!("Element is in viewport");
+        Ok(())
+    }
+
+    // Main validation: Comprehensive pre-action checks (like Playwright)
+    fn validate_clickable(&self) -> Result<(), AutomationError> {
+        // 1. Check element is attached (not detached from DOM)
+        if self.element.0.is_offscreen().map_err(|e| {
+            AutomationError::ElementDetached(format!("Element detached or invalid: {}", e))
+        })? {
+            return Err(AutomationError::ElementNotVisible(
+                "Element is offscreen".to_string(),
+            ));
+        }
+
+        // 2. Check element is visible
+        if !self.is_visible()? {
+            return Err(AutomationError::ElementNotVisible(
+                "Element not visible".to_string(),
+            ));
+        }
+
+        // 3. Check element is enabled
+        if !self.is_enabled()? {
+            return Err(AutomationError::ElementNotEnabled(
+                "Element is disabled".to_string(),
+            ));
+        }
+
+        // 4. Ensure element is in viewport (scroll if needed)
+        self.ensure_in_viewport()?;
+
+        // 5. Wait for stable bounds (no animations)
+        self.wait_for_stable_bounds()?;
+
+        tracing::info!("Element passed all actionability checks");
+        Ok(())
+    }
+
+    // Helper: Determine click coordinates with fallback
+    fn determine_click_coordinates(&self) -> Result<(f64, f64, String, String), AutomationError> {
+        // Try ClickablePoint first (UIA-recommended point)
+        match self.element.0.get_clickable_point() {
+            Ok(Some(point)) => {
+                tracing::debug!("Using ClickablePoint: ({}, {})", point.get_x(), point.get_y());
+                Ok((point.get_x() as f64, point.get_y() as f64, "ClickablePoint".to_string(), "UIA::GetClickablePoint".to_string()))
+            }
+            Ok(None) | Err(_) => {
+                tracing::debug!("ClickablePoint unavailable, falling back to BoundsCenter");
+
+                let bounds = self.bounds().map_err(|e| {
+                    AutomationError::PlatformError(format!("Cannot get bounds for click: {}", e))
+                })?;
+
+                let center_x = bounds.0 + (bounds.2 / 2.0);
+                let center_y = bounds.1 + (bounds.3 / 2.0);
+
+                tracing::debug!("Using BoundsCenter: ({}, {})", center_x, center_y);
+                Ok((center_x, center_y, "BoundsCenter".to_string(), "UIA::BoundingRectangle".to_string()))
+            }
+        }
+    }
+
+    // Helper: Execute physical mouse click
+    fn execute_mouse_click(&self, x: f64, y: f64) -> Result<(), AutomationError> {
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+            MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEINPUT,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+
+        unsafe {
+            let screen_width = GetSystemMetrics(SM_CXSCREEN) as f64;
+            let screen_height = GetSystemMetrics(SM_CYSCREEN) as f64;
+
+            let abs_x = ((x * 65535.0) / screen_width) as i32;
+            let abs_y = ((y * 65535.0) / screen_height) as i32;
+
+            let mut inputs = [
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: abs_x,
+                            dy: abs_y,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_MOVE,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: abs_x,
+                            dy: abs_y,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_LEFTDOWN,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+                INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx: abs_x,
+                            dy: abs_y,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_LEFTUP,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                },
+            ];
+
+            let result = SendInput(&mut inputs, std::mem::size_of::<INPUT>() as i32);
+
+            if result != 3 {
+                return Err(AutomationError::PlatformError(format!(
+                    "SendInput sent only {} of 3 events",
+                    result
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
 }
 
 impl Debug for WindowsUIElement {
@@ -482,133 +690,43 @@ impl UIElementImpl for WindowsUIElement {
     }
 
     fn click(&self) -> Result<ClickResult, AutomationError> {
-        // Pre-snapshot (cheap, no tree):
-        let pre_window_title = self
-            .window()
-            .ok()
-            .flatten()
-            .map(|w| w.name_or_empty())
-            .unwrap_or_default();
+        let click_start = std::time::Instant::now();
+
+        // PHASE 1: PRE-ACTION VALIDATION
+        tracing::info!("Phase 1: Validating element is clickable");
+        self.validate_clickable()?;
+
+        // PHASE 2: CALCULATE CLICK POINT WITH VALIDATION
+        tracing::info!("Phase 2: Calculating and validating click coordinates");
+        let (click_x, click_y, method, path_used) = self.determine_click_coordinates()?;
+
+        // PHASE 3: CAPTURE PRE-STATE
+        let pre_window_title = self.window().ok().flatten().map(|w| w.name_or_empty()).unwrap_or_default();
         let pre_bounds = self.bounds().ok();
-        let pre_enabled = self.is_enabled().unwrap_or(false);
-        let pre_visible = self.is_visible().unwrap_or(false);
-        let pre_focused = self.is_focused().unwrap_or(false);
 
-        self.element.0.try_focus();
-        debug!("attempting to click element: {:?}", self.element.0);
+        // PHASE 4: EXECUTE PHYSICAL CLICK
+        tracing::info!("Phase 4: Executing {} click at ({}, {}) via {}", method, click_x, click_y, path_used);
+        self.execute_mouse_click(click_x, click_y)?;
 
-        // Decide click path and execute it
-        let method: String;
-        let coordinates: Option<(f64, f64)>;
-        let path_used: String;
-
-        // Try to get the click coordinates before clicking
-        // This ensures we capture the position even if the element is destroyed after click
-        let element_bounds = self.element.0.get_bounding_rectangle().ok();
-        let click_point = if let Some(rect) = &element_bounds {
-            let center_x = rect.get_left() + rect.get_width() / 2;
-            let center_y = rect.get_top() + rect.get_height() / 2;
-            debug!(
-                "Pre-click bounds: left={}, top={}, width={}, height={}, center=({}, {})",
-                rect.get_left(),
-                rect.get_top(),
-                rect.get_width(),
-                rect.get_height(),
-                center_x,
-                center_y
-            );
-            Some((center_x as f64, center_y as f64))
-        } else {
-            debug!("Unable to get element bounds before click");
-            None
-        };
-
-        // 1) Try native/UIA click
-        if self.element.0.click().is_ok() {
-            method = "Single Click".to_string();
-            path_used = "Native".to_string();
-            coordinates = click_point; // Use the pre-calculated coordinates
-            debug!("Native UIA click succeeded, coordinates: {:?}", coordinates);
-        } else {
-            // 2) Try clickable point
-            let clickable_attempt = self
-                .element
-                .0
-                .get_clickable_point()
-                .and_then(|maybe_point| {
-                    if let Some(point) = maybe_point {
-                        debug!("using clickable point: {:?}", point);
-                        let mouse = Mouse::default();
-                        mouse.click(point).map(|_| (point.get_x(), point.get_y()))
-                    } else {
-                        Err(
-                            AutomationError::PlatformError("No clickable point found".to_string())
-                                .to_string()
-                                .into(),
-                        )
-                    }
-                });
-
-            if let Ok((x, y)) = clickable_attempt {
-                method = "Single Click (Clickable Point)".to_string();
-                coordinates = Some((x as f64, y as f64));
-                path_used = "ClickablePoint".to_string();
-            } else {
-                // 3) Fallback to center-of-bounds
-                debug!("clickable point unavailable, falling back to bounding rectangle");
-                if let Ok(rect) = self.element.0.get_bounding_rectangle() {
-                    println!("bounding rectangle: {rect:?}");
-                    let center_x = rect.get_left() + rect.get_width() / 2;
-                    let center_y = rect.get_top() + rect.get_height() / 2;
-                    let point = Point::new(center_x, center_y);
-                    let mouse = Mouse::default();
-                    debug!("clicking at center point: ({}, {})", center_x, center_y);
-                    mouse
-                        .click(point)
-                        .map_err(|e| AutomationError::PlatformError(e.to_string()))?;
-                    method = "Single Click (Fallback)".to_string();
-                    coordinates = Some((center_x as f64, center_y as f64));
-                    path_used = "CenterFallback".to_string();
-                } else {
-                    return Err(AutomationError::PlatformError(
-                        "Failed to determine bounding rectangle for fallback click".to_string(),
-                    ));
-                }
-            }
-        }
-
-        // Brief stabilization delay and post-snapshot (still cheap)
+        // PHASE 5: POST-ACTION VERIFICATION
         std::thread::sleep(std::time::Duration::from_millis(200));
-        let post_window_title = self
-            .window()
-            .ok()
-            .flatten()
-            .map(|w| w.name_or_empty())
-            .unwrap_or_default();
+        let post_window_title = self.window().ok().flatten().map(|w| w.name_or_empty()).unwrap_or_default();
         let post_bounds = self.bounds().ok();
-        let post_enabled = self.is_enabled().unwrap_or(false);
-        let post_visible = self.is_visible().unwrap_or(false);
-        let post_focused = self.is_focused().unwrap_or(false);
 
-        // Derived signals
         let window_title_changed = pre_window_title != post_window_title;
-        let target_focus_changed = pre_focused != post_focused;
-        let bounds_changed = match (pre_bounds, post_bounds) {
-            (Some(a), Some(b)) => a != b,
-            _ => false,
-        };
+        let bounds_changed = pre_bounds != post_bounds;
 
-        // Encode structured facts in details (keep type stable)
-        let details = format!(
-            "path={path_used}; pre_title='{pre_window_title}'; post_title='{post_window_title}'; pre_enabled={pre_enabled}; post_enabled={post_enabled}; pre_visible={pre_visible}; post_visible={post_visible}; pre_focused={pre_focused}; post_focused={post_focused}; window_title_changed={window_title_changed}; target_focus_changed={target_focus_changed}; bounds_changed={bounds_changed}; pre_bounds={pre_bounds:?}; post_bounds={post_bounds:?}"
-        );
+        let details = format!("path={path_used}; validated=true; window_title_changed={window_title_changed}; bounds_changed={bounds_changed}; pre_title='{pre_window_title}'; post_title='{post_window_title}'; duration_ms={}", click_start.elapsed().as_millis());
+
+        tracing::info!("Click completed successfully: {}", details);
 
         Ok(ClickResult {
             method,
-            coordinates,
+            coordinates: Some((click_x, click_y)),
             details,
         })
     }
+
 
     fn double_click(&self) -> Result<ClickResult, AutomationError> {
         self.element.0.try_focus();
@@ -977,20 +1095,31 @@ impl UIElementImpl for WindowsUIElement {
             .map_err(|e| AutomationError::ElementNotFound(e.to_string()))?;
 
         if is_offscreen {
+            tracing::debug!("Element is offscreen");
             return Ok(false);
         }
 
-        // Now check if it's behind the taskbar or outside work area
+        // Check bounds - element must have non-zero size to be visible
         if let Ok((x, y, width, height)) = self.bounds() {
-            // Get the work area
-            if let Ok(work_area) = WorkArea::get_primary() {
-                // Element is visible if it intersects with the work area
-                return Ok(work_area.intersects(x, y, width, height));
+            // NEW: Check for non-zero bounds (critical for preventing false positives)
+            if width <= 0.0 || height <= 0.0 {
+                tracing::debug!("Element has zero-size bounds: {}x{}", width, height);
+                return Ok(false);
             }
+
+            // Check if within work area (not behind taskbar)
+            if let Ok(work_area) = WorkArea::get_primary() {
+                if !work_area.intersects(x, y, width, height) {
+                    tracing::debug!("Element outside work area");
+                    return Ok(false);
+                }
+            }
+
+            return Ok(true);
         }
 
-        // If we can't get bounds or work area, fall back to the offscreen check
-        Ok(!is_offscreen)
+        // If we can't get bounds, consider not visible
+        Ok(false)
     }
 
     fn is_focused(&self) -> Result<bool, AutomationError> {

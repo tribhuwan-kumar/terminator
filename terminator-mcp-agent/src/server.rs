@@ -1173,13 +1173,6 @@ impl DesktopWrapper {
             }
         };
 
-        // Optionally include troubleshooting recommendations when evidence suggests the click may have missed the intended target
-        let details_str = &click_result.details;
-        // Consider the outcome uncertain whenever immediate post-change signals are absent,
-        // regardless of the click path. This makes guidance available for subtle misses too.
-        let looks_uncertain = details_str.contains("window_title_changed=false")
-            && details_str.contains("bounds_changed=false");
-
         // Track element metadata in telemetry
         span.set_attribute("element.role", element.role());
         if let Some(name) = element.name() {
@@ -1208,21 +1201,6 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        if looks_uncertain {
-            if let Some(obj) = result_json.as_object_mut() {
-                obj.insert(
-                    "recommendations".to_string(),
-                    json!([
-                        "Read the evidence first: if click_result.method is CenterFallback or ClickablePoint and window_title_changed/bounds_changed are false, treat it as uncertain/likely missed target.",
-                        "Prefer action semantics: try invoke_element on the same selector, or validate_element → focus target → press_key '{Enter}'.",
-                        "Narrow the selector to the true clickable child (the text anchor), not the enclosing group; keep role:hyperlink and tighten name:, or use the element’s numeric #id.",
-                        "If the site opens in a new tab, wait for tab/title/address-bar change; otherwise treat as failed and refine selector.",
-                        "Always pair the click with a postcondition: address bar/title/tab change or a destination-unique element; if it doesn’t happen, re-run with the steps above.",
-                        "Selector tip: prefer role:hyperlink with a unique substring (often the destination domain) or the numeric #id, and add |nth:0 if needed."
-                    ]),
-                );
-            }
-        }
 
         maybe_attach_tree(
             &self.desktop,
