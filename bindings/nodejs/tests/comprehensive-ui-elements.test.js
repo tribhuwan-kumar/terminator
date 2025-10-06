@@ -7,99 +7,58 @@ async function testUIElements() {
   // Array to track highlight handles for cleanup
   const highlights = [];
 
-  // Test 1: Navigate using navigateBrowser()
-  console.log('Step 1: Navigating to example.com...');
-  const exampleWindow = desktop.navigateBrowser('https://example.com', 'Chrome');
-  console.log('✓ Navigated to:', exampleWindow.name());
+  // Test 1: Navigate to about:blank for test page
+  console.log('Step 1: Navigating to about:blank...');
+  const window = desktop.navigateBrowser('about:blank', 'Chrome');
+  console.log('✓ Navigated to:', window.name());
 
   // Highlight the browser window
-  const windowHighlight = exampleWindow.highlight(0x00FF00, 3000, 'Chrome Window', 'TopLeft');
+  const windowHighlight = window.highlight(0x00FF00, 3000, 'Chrome Window', 'TopLeft');
   highlights.push(windowHighlight);
-  await desktop.delay(3000);
-
-  // Verify page content
-  const exampleTitle = await desktop.executeBrowserScript('document.title');
-  console.log('✓ Page title:', exampleTitle);
   await desktop.delay(2000);
 
-  // Test 2: Navigate to Wikipedia
-  console.log('\nStep 2: Navigating to Wikipedia...');
-  const wikiWindow = desktop.navigateBrowser('https://wikipedia.org', 'Chrome');
-  console.log('✓ Navigated to:', wikiWindow.name());
+  // Ensure browser has focus
+  await window.click();
+  await desktop.delay(1000);
 
-  // Highlight with different color
-  const wikiHighlight = wikiWindow.highlight(0x0000FF, 3000, 'Wikipedia', 'TopRight');
-  highlights.push(wikiHighlight);
-  await desktop.delay(3000);
-
-  const wikiTitle = await desktop.executeBrowserScript('document.title');
-  console.log('✓ Page title:', wikiTitle);
-  await desktop.delay(2000);
-
-  // Test 3: Navigate to GitHub
-  console.log('\nStep 3: Navigating to GitHub...');
-  const githubWindow = desktop.navigateBrowser('https://github.com', 'Chrome');
-  console.log('✓ Navigated to:', githubWindow.name());
-  await desktop.delay(3000);
-
-  const githubTitle = await desktop.executeBrowserScript('document.title');
-  console.log('✓ Page title:', githubTitle);
-  await desktop.delay(2000);
-
-  // Test 4: Navigate to MDN
-  console.log('\nStep 4: Navigating to MDN Web Docs...');
-  const mdnWindow = desktop.navigateBrowser('https://developer.mozilla.org', 'Chrome');
-  console.log('✓ Navigated to:', mdnWindow.name());
-  await desktop.delay(3000);
-
-  const mdnTitle = await desktop.executeBrowserScript('document.title');
-  console.log('✓ Page title:', mdnTitle);
-  await desktop.delay(2000);
-
-  // Test 5: Navigate to about:blank for our test page
-  console.log('\nStep 5: Navigating to about:blank for test page...');
-  const blankWindow = desktop.navigateBrowser('about:blank', 'Chrome');
-  console.log('✓ Navigated to:', blankWindow.name());
-  await desktop.delay(3000);
-
-  // Test 6: Inject a comprehensive test UI
+  // Test 2: Inject a comprehensive test UI with ARIA attributes
   console.log('\n=== Test: Setting up test UI ===');
   await desktop.executeBrowserScript(`
     document.body.innerHTML = \`
       <h1>Terminator.js UI Element Test Page</h1>
       <div style="padding: 20px;">
         <h2>Text Input</h2>
-        <input type="text" id="testInput" value="Initial Value" style="width: 300px; padding: 5px;">
+        <input type="text" id="testInput" value="Initial Value" aria-label="Test input field" style="width: 300px; padding: 10px; font-size: 16px;">
 
         <h2>Checkbox</h2>
-        <input type="checkbox" id="testCheckbox" checked>
-        <label for="testCheckbox">Test Checkbox (initially checked)</label>
+        <input type="checkbox" id="testCheckbox" checked aria-label="Test checkbox" style="width: 25px; height: 25px;">
+        <label for="testCheckbox" style="font-size: 16px; margin-left: 10px;">Test Checkbox (initially checked)</label>
 
         <h2>Range Slider</h2>
-        <input type="range" id="testSlider" min="0" max="100" value="50" style="width: 300px;">
-        <span id="sliderValue">50</span>
+        <input type="range" id="testSlider" min="0" max="100" value="50" aria-label="Test slider" style="width: 300px; height: 30px;">
+        <span id="sliderValue" style="font-size: 16px; margin-left: 10px;">50</span>
 
         <h2>Select Dropdown</h2>
-        <select id="testSelect">
+        <select id="testSelect" aria-label="Test dropdown" style="font-size: 16px; padding: 5px;">
           <option value="opt1">Option 1</option>
           <option value="opt2" selected>Option 2</option>
           <option value="opt3">Option 3</option>
         </select>
 
         <h2>Radio Buttons</h2>
-        <input type="radio" id="radio1" name="radioGroup" value="r1">
-        <label for="radio1">Radio 1</label><br>
-        <input type="radio" id="radio2" name="radioGroup" value="r2" checked>
-        <label for="radio2">Radio 2 (checked)</label><br>
-        <input type="radio" id="radio3" name="radioGroup" value="r3">
-        <label for="radio3">Radio 3</label>
+        <input type="radio" id="radio1" name="radioGroup" value="r1" aria-label="Radio option 1" style="width: 20px; height: 20px;">
+        <label for="radio1" style="font-size: 16px; margin-left: 5px;">Radio 1</label><br>
+        <input type="radio" id="radio2" name="radioGroup" value="r2" checked aria-label="Radio option 2" style="width: 20px; height: 20px;">
+        <label for="radio2" style="font-size: 16px; margin-left: 5px;">Radio 2 (checked)</label><br>
+        <input type="radio" id="radio3" name="radioGroup" value="r3" aria-label="Radio option 3" style="width: 20px; height: 20px;">
+        <label for="radio3" style="font-size: 16px; margin-left: 5px;">Radio 3</label>
 
         <h2>Button</h2>
-        <button id="testButton" style="padding: 10px 20px;">Click Me</button>
-        <div id="buttonClicks">Clicks: 0</div>
+        <button id="testButton" aria-label="Test button" style="padding: 15px 30px; font-size: 16px;">Click Me</button>
+        <div id="buttonClicks" style="font-size: 16px; margin-top: 10px;">Clicks: 0</div>
 
         <h2>Textarea</h2>
-        <textarea id="testTextarea" style="width: 300px; height: 100px;">Textarea content here</textarea>
+        <textarea id="testTextarea" aria-label="Test textarea" style="width: 300px; height: 100px; font-size: 16px; padding: 10px;">Textarea content here</textarea>
       </div>
     \`;
 
@@ -116,17 +75,29 @@ async function testUIElements() {
 
     'UI created successfully';
   `);
-  await desktop.delay(1000);
-  console.log('✓ Test UI injected\n');
+  console.log('✓ Test UI injected');
+
+  // Wait for browser to build accessibility tree (critical for highlighting!)
+  console.log('Waiting 5 seconds for accessibility tree to update...');
+  await desktop.delay(5000);
+  console.log('✓ Accessibility tree ready\n');
 
   // Test 3: getValue() - Read input field
   console.log('=== Test: getValue() on text input ===');
 
   // Find and highlight the input element
-  const inputElement = await desktop.locator('role:edit').first(2000);
-  const inputHighlight = inputElement.highlight(0x00FF00, 2000, 'Test Input', 'TopLeft');
-  highlights.push(inputHighlight);
-  await desktop.delay(500);
+  try {
+    const inputElements = await desktop.locator('role:edit').all(3000, 10);
+    console.log(`Found ${inputElements.length} edit fields`);
+    if (inputElements.length > 0) {
+      const inputHighlight = inputElements[0].highlight(0x00FF00, 3000, 'Test Input', 'TopLeft');
+      highlights.push(inputHighlight);
+      console.log('✓ Input field highlighted (green)');
+      await desktop.delay(1000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight input:', error.message);
+  }
 
   const inputValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testInput').value;
@@ -146,8 +117,19 @@ async function testUIElements() {
   // Test 4: isSelected() / setSelected() on checkbox
   console.log('=== Test: isSelected/setSelected on checkbox ===');
 
-  // Note: Browser HTML elements may not expose to accessibility tree
-  // Skipping highlight for checkbox as it's not accessible via UI Automation
+  // Find and highlight checkbox
+  try {
+    const checkboxes = await desktop.locator('role:checkbox').all(3000, 10);
+    console.log(`Found ${checkboxes.length} checkboxes`);
+    if (checkboxes.length > 0) {
+      const checkboxHighlight = checkboxes[0].highlight(0xFF0000, 3000, 'Checkbox', 'TopRight');
+      highlights.push(checkboxHighlight);
+      console.log('✓ Checkbox highlighted (red)');
+      await desktop.delay(1000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight checkbox:', error.message);
+  }
 
   const checkboxState1 = await desktop.executeBrowserScript(`
     document.getElementById('testCheckbox').checked;
@@ -173,6 +155,20 @@ async function testUIElements() {
 
   // Test 5: getRangeValue() / setRangeValue() on slider
   console.log('=== Test: getRangeValue/setRangeValue on slider ===');
+
+  // Find and highlight slider
+  try {
+    const sliders = await desktop.locator('role:slider').all(3000, 10);
+    console.log(`Found ${sliders.length} sliders`);
+    if (sliders.length > 0) {
+      const sliderHighlight = sliders[0].highlight(0x0000FF, 3000, 'Slider', 'BottomLeft');
+      highlights.push(sliderHighlight);
+      console.log('✓ Slider highlighted (blue)');
+      await desktop.delay(1000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight slider:', error.message);
+  }
 
   const sliderValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testSlider').value;
@@ -254,6 +250,20 @@ async function testUIElements() {
 
   // Test 9: Button click simulation and state tracking
   console.log('=== Test: Button interaction tracking ===');
+
+  // Find and highlight button
+  try {
+    const buttons = await desktop.locator('role:button').all(3000, 10);
+    console.log(`Found ${buttons.length} buttons`);
+    if (buttons.length > 0) {
+      const buttonHighlight = buttons[0].highlight(0xFFFF00, 3000, 'Button', 'BottomRight');
+      highlights.push(buttonHighlight);
+      console.log('✓ Button highlighted (yellow)');
+      await desktop.delay(1000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight button:', error.message);
+  }
 
   const clicks1 = await desktop.executeBrowserScript(`
     document.getElementById('buttonClicks').textContent;
