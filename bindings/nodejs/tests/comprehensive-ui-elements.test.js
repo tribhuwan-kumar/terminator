@@ -4,14 +4,20 @@ async function testUIElements() {
   const desktop = new Desktop();
   console.log('=== Comprehensive UI Elements Test ===\n');
 
-  // Test 1: Create a test HTML page with all elements
-  console.log('Step 1: Opening Chrome with test HTML page...');
-  await desktop.runCommand('start chrome about:blank', 'open -a "Google Chrome" about:blank');
-  await desktop.delay(3000);
-  console.log('✓ Chrome opened\n');
+  // Test 1: Navigate using navigateBrowser()
+  console.log('Step 1: Navigating to example.com...');
+  const exampleWindow = desktop.navigateBrowser('https://example.com', 'Chrome');
+  console.log('✓ Navigated to:', exampleWindow.name());
+  await desktop.delay(2000);
 
-  // Test 2: Inject a comprehensive test UI
-  console.log('=== Test: Setting up test UI ===');
+  // Test 2: Navigate to about:blank for our test page
+  console.log('\nStep 2: Navigating to about:blank for test page...');
+  const blankWindow = desktop.navigateBrowser('about:blank', 'Chrome');
+  console.log('✓ Navigated to:', blankWindow.name());
+  await desktop.delay(2000);
+
+  // Test 3: Inject a comprehensive test UI
+  console.log('\n=== Test: Setting up test UI ===');
   await desktop.executeBrowserScript(`
     document.body.innerHTML = \`
       <h1>Terminator.js UI Element Test Page</h1>
