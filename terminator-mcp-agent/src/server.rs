@@ -1469,7 +1469,7 @@ Terminator injects environment variables using 'var' - ALWAYS use typeof checks:
 const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
 const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
 const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0;  // ✅ SAFE
-// NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared"
+// NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared
     )]
     async fn run_command(
         &self,

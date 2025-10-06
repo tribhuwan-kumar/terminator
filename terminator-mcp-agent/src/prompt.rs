@@ -389,66 +389,6 @@ const apps = (typeof check_apps_result !== 'undefined') ? check_apps_result : []
 const ok = (typeof validate_login_status !== 'undefined') ? validate_login_status === 'success' : false;
 ```
 
-### Browser Script Calls from run_command
-
-**⚠️ CRITICAL: Port Conflict When Calling executeBrowserScript()**
-
-If your JavaScript/TypeScript script calls `executeBrowserScript()`, you MUST use `close_bridge_before: true`:
-
-**Why:** The MCP server owns the Chrome extension bridge (port 17373). When you spawn a child process via `run_command`, it tries to create its own bridge on the same port → conflict.
-
-**Solution:** `close_bridge_before` tells MCP to:
-1. Close the global bridge before spawning child process
-2. Let child process own port 17373
-3. Recreate bridge after child completes
-
-**Example: Smart Tab Detection**
-```yaml
-- tool_name: run_command
-  id: detect_current_column
-  arguments:
-    engine: javascript
-    script_file: \"detect_column.js\"
-    close_bridge_before: true  # ⚠️ REQUIRED
-```
-
-**In detect_column.js:**
-```javascript
-const window = await desktop.locator('role:Window|name:SAP').first(3000);
-
-// This call requires close_bridge_before: true in workflow
-const result = await window.executeBrowserScript(`
-  (function() {{
-    const activeCell = document.activeElement;
-    const columnIndex = activeCell.getAttribute('data-column');
-    return JSON.stringify({{ columnIndex: parseInt(columnIndex) }});
-  }})()
-`);
-
-console.log('Column detected:', result);
-return {{ current_column: JSON.parse(result).columnIndex }};
-```
-
-**When NOT to use close_bridge_before:**
-```yaml
-# Desktop-only automation - no browser script call
-- tool_name: run_command
-  arguments:
-    engine: javascript
-    run: |
-      const window = await desktop.locator('role:Window|name:SAP').first(3000);
-      await window.click();  # ✅ No executeBrowserScript - no conflict
-      await desktop.pressKey('{{Tab}}');
-```
-
-**Error without close_bridge_before:**
-```
-WARN terminator::extension_bridge: Port in use, checking for existing terminator process...
-  addr=127.0.0.1:17373
-  e=Os {{ code: 10048, kind: AddrInUse, message: \"Only one usage...\" }}
-Transport closed
-```
-
 **Browser DOM Inspection with execute_browser_script**
 
 The `execute_browser_script` tool executes JavaScript in browser contexts (Chrome/Edge), providing full DOM access.
@@ -461,17 +401,6 @@ The `execute_browser_script` tool executes JavaScript in browser contexts (Chrom
 
 **Use desktop method when:** You want to run script in currently focused browser tab
 **Use element method when:** You need to target a specific browser window
-
-**⚠️ Cross-Process Bridge Conflict**
-
-If you call `executeBrowserScript()` from inside `run_command` JavaScript (not using `execute_browser_script` tool directly), you MUST use `close_bridge_before: true` parameter. See Section 5: \"Browser Script Calls from run_command\" for details. Without it, you'll see:
-
-```
-WARN terminator::extension_bridge: Port in use, checking for existing terminator process...
-  addr=127.0.0.1:17373
-  e=Os {{ code: 10048, kind: AddrInUse, message: \"Only one usage...\" }}
-Transport closed
-```
 
 ### When to Use Browser Scripts
 
@@ -489,38 +418,6 @@ Transport closed
 - Text input into standard form fields (use type_into_element)
 - Navigation (use navigate_browser)
 - Anything accessible via UI Automation tree
-
-**⚠️ Important: Browser Script Port Management**
-
-The Chrome extension bridge uses port 17373 for communication. Two scenarios can cause conflicts:
-
-**Scenario 1: Multiple execute_browser_script steps**
-- MCP server owns the bridge throughout workflow
-- Rapid consecutive calls may need cooldown
-- Solution: Add `delay_ms: 2000` between steps
-
-**Scenario 2: executeBrowserScript() inside run_command** (COMMON)
-- MCP server's bridge blocks port 17373
-- Child process (bun/node) can't create its own bridge
-- Solution: Use `close_bridge_before: true` parameter
-
-**Example:**
-```yaml
-- tool_name: run_command
-  id: smart_tab_detection
-  arguments:
-    engine: javascript
-    script_file: \"detect_column.js\"
-    close_bridge_before: true  # ⚠️ REQUIRED if script calls executeBrowserScript()
-```
-
-**When to use close_bridge_before:**
-- ✅ Script calls `element.executeBrowserScript()` or `desktop.executeBrowserScript()`
-- ❌ Script only uses desktop automation (clicks, types, waits)
-- ❌ Using execute_browser_script tool directly (not run_command)
-- ❌ Shell mode (`run: echo`, not `engine: javascript`)
-
-**Performance note:** Closing/recreating bridge adds ~2 seconds overhead - only use when necessary.
 
 ### Environment Variable Access in Browser Scripts
 
