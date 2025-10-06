@@ -197,6 +197,20 @@ async function testUIElements() {
   // Test 6: Radio button selection
   console.log('=== Test: isSelected on radio buttons ===');
 
+  // Find and highlight radio button
+  try {
+    const radios = await desktop.locator('role:radiobutton').all(3000, 10);
+    console.log(`Found ${radios.length} radio buttons`);
+    if (radios.length > 0) {
+      const radioHighlight = radios[0].highlight(0xFF00FF, 3000, 'Radio Button', 'BottomRight');
+      highlights.push(radioHighlight);
+      console.log('✓ Radio button highlighted (magenta)');
+      await desktop.delay(1000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight radio button:', error.message);
+  }
+
   const radio2State = await desktop.executeBrowserScript(`
     document.getElementById('radio2').checked;
   `);
@@ -216,6 +230,20 @@ async function testUIElements() {
 
   // Test 7: Select dropdown
   console.log('=== Test: getValue on select dropdown ===');
+
+  // Find and highlight dropdown
+  try {
+    const dropdowns = await desktop.locator('role:combobox').all(3000, 10);
+    console.log(`Found ${dropdowns.length} dropdowns/comboboxes`);
+    if (dropdowns.length > 0) {
+      const dropdownHighlight = dropdowns[0].highlight(0x00FFFF, 3000, 'Dropdown', 'TopLeft');
+      highlights.push(dropdownHighlight);
+      console.log('✓ Dropdown highlighted (cyan)');
+      await desktop.delay(1000);
+    }
+  } catch (error) {
+    console.log('○ Could not highlight dropdown:', error.message);
+  }
 
   const selectValue1 = await desktop.executeBrowserScript(`
     document.getElementById('testSelect').value;
@@ -292,8 +320,43 @@ async function testUIElements() {
   console.log('✓ After 2 more clicks:', clicks3);
   console.log('');
 
-  // Test 10: pressKey() - Interact with input field via keyboard
+  // Test 10: Highlight browser address bar
+  console.log('=== Test: Highlight browser address bar ===');
+
+  // Click address bar to focus it
+  await desktop.pressKey('{Ctrl}l');
+  await desktop.delay(500);
+
+  // Find and highlight address bar
+  try {
+    // Address bar should be an edit field with focus
+    const addressBar = await desktop.locator('role:edit').first(1000);
+    const addressHighlight = addressBar.highlight(0xFFA500, 3000, 'Address Bar', 'TopLeft');
+    highlights.push(addressHighlight);
+    console.log('✓ Address bar highlighted (orange)');
+
+    // Type in the address bar
+    await desktop.pressKey('github.com');
+    await desktop.delay(2000);
+
+    // Clear it
+    await desktop.pressKey('{Ctrl}a');
+    await desktop.delay(100);
+    await desktop.pressKey('{Delete}');
+    await desktop.delay(500);
+
+    console.log('✓ Typed and cleared in address bar');
+  } catch (error) {
+    console.log('○ Could not highlight address bar:', error.message);
+  }
+  console.log('');
+
+  // Test 11: pressKey() - Interact with input field via keyboard
   console.log('=== Test: pressKey() with focused input ===');
+
+  // Click back into the page
+  await window.click();
+  await desktop.delay(500);
 
   // Click on the input to ensure OS-level focus
   const inputElementForTyping = await desktop.locator('role:edit').first(2000);
