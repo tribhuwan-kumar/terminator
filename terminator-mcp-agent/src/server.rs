@@ -11,7 +11,7 @@ use crate::utils::{
     MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
     RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
     SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
@@ -1470,6 +1470,7 @@ const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
 const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
 const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0;  // ✅ SAFE
 // NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared
+"
     )]
     async fn run_command(
         &self,
@@ -4464,58 +4465,8 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
-    #[tool(description = "Zooms in on the current view (e.g., a web page).")]
-    async fn zoom_in(
-        &self,
-        Parameters(args): Parameters<ZoomArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("zoom_in", None);
-
-        // Add comprehensive telemetry attributes
-        span.set_attribute("level", args.level.to_string());
-
-        self.desktop.zoom_in(args.level).await.map_err(|e| {
-            McpError::internal_error("Failed to zoom in", Some(json!({"reason": e.to_string()})))
-        })?;
-
-        span.set_status(true, None);
-        span.end();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "action": "zoom_in",
-            "status": "success",
-            "level": args.level,
-        }))?]))
-    }
-
-    #[tool(description = "Zooms out on the current view (e.g., a web page).")]
-    async fn zoom_out(
-        &self,
-        Parameters(args): Parameters<ZoomArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("zoom_out", None);
-
-        // Add comprehensive telemetry attributes
-        span.set_attribute("level", args.level.to_string());
-
-        self.desktop.zoom_out(args.level).await.map_err(|e| {
-            McpError::internal_error("Failed to zoom out", Some(json!({"reason": e.to_string()})))
-        })?;
-
-        span.set_status(true, None);
-        span.end();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "action": "zoom_out",
-            "status": "success",
-            "level": args.level,
-        }))?]))
-    }
-
     #[tool(
-        description = "Sets the zoom level to a specific percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%). This is more precise than using zoom_in/zoom_out repeatedly."
+        description = "Sets the zoom level to a specific percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%)."
     )]
     async fn set_zoom(
         &self,
@@ -5573,20 +5524,6 @@ impl DesktopWrapper {
                     )),
                 }
             }
-            "zoom_in" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
-                Ok(args) => self.zoom_in(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for zoom_in",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "zoom_out" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
-                Ok(args) => self.zoom_out(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for zoom_out",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
             "set_zoom" => match serde_json::from_value::<SetZoomArgs>(arguments.clone()) {
                 Ok(args) => self.set_zoom(Parameters(args)).await,
                 Err(e) => Err(McpError::invalid_params(

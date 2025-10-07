@@ -510,22 +510,6 @@ impl Desktop {
         Ok(Element { inner: element })
     }
 
-    /// (async) Zoom in by a specified number of levels.
-    ///
-    /// @param {number} level - Number of zoom-in steps to perform.
-    #[napi]
-    pub async fn zoom_in(&self, level: u32) -> napi::Result<()> {
-        self.inner.zoom_in(level).await.map_err(map_error)
-    }
-
-    /// (async) Zoom out by a specified number of levels.
-    ///
-    /// @param {number} level - Number of zoom-out steps to perform.
-    #[napi]
-    pub async fn zoom_out(&self, level: u32) -> napi::Result<()> {
-        self.inner.zoom_out(level).await.map_err(map_error)
-    }
-
     /// (async) Set the zoom level to a specific percentage.
     ///
     /// @param {number} percentage - The zoom percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%).

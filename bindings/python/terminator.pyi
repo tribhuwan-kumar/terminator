@@ -291,28 +291,14 @@ class Desktop:
     async def press_key(self, key:builtins.str) -> None:
         r"""
         (async) Press a key globally.
-        
+
         Args:
             key (str): The key to press (e.g., "Enter", "Ctrl+C", "F1").
-        """
-    async def zoom_in(self, level:builtins.int) -> None:
-        r"""
-        (async) Zoom in by a specified number of levels.
-        
-        Args:
-            level (int): Number of zoom-in steps to perform.
-        """
-    async def zoom_out(self, level:builtins.int) -> None:
-        r"""
-        (async) Zoom out by a specified number of levels.
-        
-        Args:
-            level (int): Number of zoom-out steps to perform.
         """
     async def set_zoom(self, percentage:builtins.int) -> None:
         r"""
         (async) Set the zoom level to a specific percentage.
-        
+
         Args:
             percentage (int): The zoom percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%).
         """
