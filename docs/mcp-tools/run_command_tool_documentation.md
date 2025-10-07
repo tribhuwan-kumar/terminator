@@ -164,6 +164,164 @@ The new syntax automatically detects the platform and uses the appropriate comma
 4. **Use working_directory** instead of `cd` commands when possible
 5. **Handle errors** by checking the `exit_status` field
 
+## Pattern: Optional Element Detection
+
+For optional UI elements (dialogs, popups, confirmation buttons) that may or may not appear, you have two approaches:
+
+### Approach 1: validate_element (PREFERRED - Simpler)
+
+Use the `validate_element` tool which never throws errors and returns structured existence information.
+
+**Advantages:**
+- **Built-in tool** - No JavaScript required
+- **Never fails** - Returns `status: "success"` with `exists: true` OR `status: "failed"` with `exists: false`
+- **Rich metadata** - Returns element details (role, name, enabled, bounds) when found
+- **Retry logic** - Supports `alternative_selectors`, `fallback_selectors`, and configurable timeout
+- **Simple conditionals** - Use `{step_id}_status` or `{step_id}_result.exists` in workflow `if` expressions
+
+**Example:**
+```yaml
+- tool_name: validate_element
+  id: check_dialog
+  selector: "role:Button|name:Leave"
+  timeout_ms: 1000
+
+- tool_name: click_element
+  if: 'check_dialog_status == "success"'
+  selector: "role:Button|name:Leave"
+```
+
+### Approach 2: desktop.locator() with try/catch (For Window-Scoped Checks)
+
+Use `desktop.locator()` with try/catch when you need to scope the search to a specific window to avoid false positives.
+
+**Advantages:**
+- **Window scoping** - Can check element exists within a specific window only
+- **Performance** - `.first(0)` with try/catch is ~8x faster than `.all()` (0.5s vs 10.8s)
+- **Programmatic control** - Multiple checks in one script, complex conditional logic
+
+**When to use:**
+- Element must be in a specific window (e.g., Chrome dialog vs Firefox dialog)
+- Need to combine multiple element checks in one script
+- Require complex conditional logic beyond simple existence
+
+### Pattern Example - Window-Scoped (Recommended)
+
+**Step 1: Check if optional element exists in specific window**
+```javascript
+{
+  "tool_name": "run_command",
+  "arguments": {
+    "engine": "javascript",
+    "run": "try {\n  const chromeWindow = await desktop.locator('role:Window|name:Chrome').first();\n  await chromeWindow.locator('role:Button|name:Leave').first();\n  return JSON.stringify({ dialog_exists: 'true' });\n} catch (e) {\n  return JSON.stringify({ dialog_exists: 'false' });\n}"
+  }
+}
+```
+
+### Pattern Example - Desktop-Wide Search
+
+**Step 1: Check if optional element exists anywhere**
+```javascript
+{
+  "tool_name": "run_command",
+  "arguments": {
+    "engine": "javascript",
+    "run": "try {\n  await desktop.locator('role:Button|name:Leave').first();\n  return JSON.stringify({ dialog_exists: 'true' });\n} catch (e) {\n  return JSON.stringify({ dialog_exists: 'false' });\n}"
+  }
+}
+```
+
+**Step 2: In workflow YAML, use conditional execution**
+```yaml
+- tool_name: click_element
+  if: 'dialog_exists == "true"'
+  arguments:
+    selector: "role:Button|name:Leave"
+```
+
+### Important Scoping Pattern
+
+- **`desktop.locator()`** - Searches ALL windows/applications (desktop-wide)
+- **`element.locator()`** - Searches only within that element's subtree
+- **Always scope to specific window** when checking for window-specific dialogs to avoid false positives
+
+### Common Use Cases
+
+- Confirmation dialogs ("Are you sure?", "Unsaved changes", "Leave page")
+- Session/login dialogs that depend on authentication state
+- Browser restore prompts
+- Password save dialogs
+- Cookie consent banners
+- Any conditionally-appearing UI element
+
+### Complete Workflow Example
+
+```yaml
+# Step 1: Check for optional "Leave" button dialog (window-scoped)
+- tool_name: run_command
+  id: check_leave_dialog
+  arguments:
+    engine: javascript
+    run: |
+      try {
+        // Scope to specific window to avoid false positives
+        const chromeWindow = await desktop.locator('role:Window|name:Chrome').first();
+        await chromeWindow.locator('role:Button|name:Leave').first();
+
+        return JSON.stringify({
+          dialog_exists: "true"
+        });
+      } catch (e) {
+        return JSON.stringify({
+          dialog_exists: "false"
+        });
+      }
+
+# Step 2: Click button only if dialog exists
+- tool_name: click_element
+  id: click_leave
+  if: 'dialog_exists == "true"'
+  arguments:
+    selector: "role:Button|name:Leave"
+    timeout_ms: 3000
+```
+
+### Choosing Between validate_element and desktop.locator()
+
+**✅ Use validate_element (simpler, preferred for most cases):**
+```yaml
+- tool_name: validate_element
+  id: check_dialog
+  selector: "role:Button|name:Leave"
+  timeout_ms: 1000
+
+- tool_name: click_element
+  if: 'check_dialog_status == "success"'
+  selector: "role:Button|name:Leave"
+```
+**Advantages:** Built-in, no JavaScript, returns `status: "success"/"failed"` with `exists: true/false`, includes element metadata
+
+**✅ Use desktop.locator() (for window-scoped checks):**
+```yaml
+- tool_name: run_command
+  id: check_dialog_in_chrome
+  arguments:
+    engine: javascript
+    run: |
+      try {
+        const chromeWindow = await desktop.locator('role:Window|name:Chrome').first(0);
+        await chromeWindow.locator('role:Button|name:Leave').first(0);
+        return JSON.stringify({ exists: "true" });
+      } catch (e) {
+        return JSON.stringify({ exists: "false" });
+      }
+
+- tool_name: click_element
+  if: 'exists == "true"'
+  selector: "role:Button|name:Leave"
+```
+**Advantages:** Window scoping prevents false positives (e.g., finding button in wrong window), faster (0.5s), allows complex multi-check logic
+
 ## Error Handling
 
 Commands that fail will return:

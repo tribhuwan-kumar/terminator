@@ -7,6 +7,12 @@ pub use with_telemetry::*;
 #[cfg(not(feature = "telemetry"))]
 pub use without_telemetry::*;
 
+// Re-export layer types for use in init_logging
+#[cfg(feature = "telemetry")]
+pub use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+#[cfg(feature = "telemetry")]
+pub use opentelemetry_sdk::logs::LoggerProvider;
+
 // Implementation with telemetry enabled
 #[cfg(feature = "telemetry")]
 mod with_telemetry {
@@ -16,9 +22,13 @@ mod with_telemetry {
         trace::{Span, SpanKind, Status, Tracer},
         KeyValue,
     };
+    use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
     use opentelemetry_otlp::WithExportConfig;
     use opentelemetry_sdk::{
-        propagation::TraceContextPropagator, runtime, trace::TracerProvider as SdkTracerProvider,
+        logs::LoggerProvider,
+        propagation::TraceContextPropagator,
+        runtime,
+        trace::TracerProvider as SdkTracerProvider,
         Resource,
     };
     use opentelemetry_semantic_conventions::{
@@ -312,6 +322,21 @@ mod with_telemetry {
             otlp_endpoint
         );
 
+        // Create resource with service name, version, and host info for segmentation
+        let mut resource_kvs = vec![
+            KeyValue::new(SERVICE_NAME, "terminator-mcp-agent"),
+            KeyValue::new(SERVICE_VERSION, env!("CARGO_PKG_VERSION")),
+        ];
+
+        // Add host name for segmentation in ClickHouse
+        if let Ok(hostname) = hostname::get() {
+            if let Some(hostname_str) = hostname.to_str() {
+                resource_kvs.push(KeyValue::new("host.name", hostname_str.to_string()));
+            }
+        }
+
+        let resource = Resource::from_schema_url(resource_kvs, SCHEMA_URL);
+
         let exporter = opentelemetry_otlp::SpanExporter::builder()
             .with_http()
             .with_endpoint(format!("{otlp_endpoint}/v1/traces"))
@@ -321,13 +346,7 @@ mod with_telemetry {
         // Create tracer provider with OTLP exporter
         let provider = SdkTracerProvider::builder()
             .with_batch_exporter(exporter, runtime::Tokio)
-            .with_resource(Resource::from_schema_url(
-                [
-                    KeyValue::new(SERVICE_NAME, "terminator-mcp-agent"),
-                    KeyValue::new(SERVICE_VERSION, env!("CARGO_PKG_VERSION")),
-                ],
-                SCHEMA_URL,
-            ))
+            .with_resource(resource)
             .build();
 
         global::set_tracer_provider(provider);
@@ -339,6 +358,62 @@ mod with_telemetry {
     pub fn shutdown_telemetry() {
         // Shutdown with a short timeout to avoid hanging
         global::shutdown_tracer_provider();
+    }
+
+    /// Create an OTLP logs layer that can be added to the tracing subscriber
+    /// Returns None if telemetry is disabled or OTEL endpoint is not configured
+    pub fn create_otel_logs_layer() -> Option<impl tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync> {
+        // Check if telemetry is disabled
+        if std::env::var("OTEL_SDK_DISABLED").unwrap_or_default() == "true" {
+            return None;
+        }
+
+        // Check if running in CI
+        let is_ci = std::env::var("CI").unwrap_or_default() == "true"
+            || std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true";
+        if is_ci {
+            return None;
+        }
+
+        // Get OTLP endpoint
+        let otlp_endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()?;
+
+        // Create resource with service name and host info
+        let mut resource_kvs = vec![
+            KeyValue::new(SERVICE_NAME, "terminator-mcp-agent"),
+            KeyValue::new(SERVICE_VERSION, env!("CARGO_PKG_VERSION")),
+        ];
+
+        // Add host name for segmentation in ClickHouse
+        if let Ok(hostname) = hostname::get() {
+            if let Some(hostname_str) = hostname.to_str() {
+                resource_kvs.push(KeyValue::new("host.name", hostname_str.to_string()));
+            }
+        }
+
+        let resource = Resource::from_schema_url(resource_kvs, SCHEMA_URL);
+
+        // Create logs exporter
+        let log_exporter = match opentelemetry_otlp::LogExporter::builder()
+            .with_http()
+            .with_endpoint(format!("{otlp_endpoint}/v1/logs"))
+            .with_timeout(Duration::from_millis(500))
+            .build()
+        {
+            Ok(exporter) => exporter,
+            Err(e) => {
+                eprintln!("Failed to create OTLP logs exporter: {}", e);
+                return None;
+            }
+        };
+
+        // Create logger provider
+        let logger_provider = LoggerProvider::builder()
+            .with_batch_exporter(log_exporter, runtime::Tokio)
+            .with_resource(resource)
+            .build();
+
+        Some(OpenTelemetryTracingBridge::new(&logger_provider))
     }
 }
 

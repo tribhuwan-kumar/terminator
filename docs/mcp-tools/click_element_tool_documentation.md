@@ -2,7 +2,47 @@
 
 ## Overview
 
-The `click_element` tool clicks UI elements with optional visual highlighting for confirmation.
+The `click_element` tool clicks UI elements using Playwright-style actionability validation with optional visual highlighting for confirmation.
+
+## Actionability Validation
+
+Before clicking, the tool performs comprehensive pre-action checks to eliminate false positives:
+
+### Validation Checks
+
+1. **Attached**: Element must be attached to the UI tree (not detached/stale)
+2. **Visible**: Element must have non-zero bounds (width > 0, height > 0) and not be offscreen
+3. **Enabled**: Element must be enabled (not disabled/grayed out)
+4. **In Viewport**: Element must be visible within the current viewport
+5. **Stable Bounds**: Element bounds must be stable for 3 consecutive checks at 16ms intervals (max ~800ms wait)
+
+### Success Indicator
+
+Successful clicks include `validated=true` in the `click_result.details` field, confirming all validation checks passed.
+
+### Error Types
+
+The tool fails explicitly with specific errors when elements aren't clickable:
+
+| Error Type | Description |
+|------------|-------------|
+| `ElementNotVisible` | Element has zero-size bounds, is offscreen, or not in viewport |
+| `ElementNotEnabled` | Element is disabled or grayed out |
+| `ElementNotStable` | Element bounds still animating after 800ms (ongoing animations) |
+| `ElementDetached` | Element no longer attached to UI tree (stale reference) |
+| `ElementObscured` | Element is covered by another element |
+| `ScrollFailed` | Could not scroll element into view |
+
+### When to Use invoke_element Instead
+
+Consider using `invoke_element` for buttons instead of `click_element`:
+
+- **invoke_element**: Uses UI Automation's native invoke pattern, doesn't require viewport visibility or mouse positioning, more reliable for standard buttons
+- **click_element**: Requires actual mouse interaction, use for links, hover-sensitive elements, or UI that responds differently to mouse clicks vs programmatic invocation
+
+### No False Positives
+
+Unlike previous implementations, clicks now **fail fast** rather than reporting success when elements aren't truly clickable. This ensures workflows fail explicitly at the point of error rather than continuing with invalid state.
 
 ## Basic Usage
 

@@ -463,6 +463,29 @@ impl Desktop {
         self.inner.press_key(&key).await.map_err(map_error)
     }
 
+    /// (async) Execute JavaScript in the currently focused browser tab.
+    /// Automatically finds the active browser window and executes the script.
+    ///
+    /// @param {string} script - The JavaScript code to execute in browser context.
+    /// @returns {Promise<string>} The result of script execution.
+    #[napi]
+    pub async fn execute_browser_script(&self, script: String) -> napi::Result<String> {
+        self.inner
+            .execute_browser_script(&script)
+            .await
+            .map_err(map_error)
+    }
+
+    /// (async) Delay execution for a specified number of milliseconds.
+    /// Useful for waiting between actions to ensure UI stability.
+    ///
+    /// @param {number} delayMs - Delay in milliseconds.
+    /// @returns {Promise<void>}
+    #[napi]
+    pub async fn delay(&self, delay_ms: u32) -> napi::Result<()> {
+        self.inner.delay(delay_ms as u64).await.map_err(map_error)
+    }
+
     /// (async) Zoom in by a specified number of levels.
     ///
     /// @param {number} level - Number of zoom-in steps to perform.

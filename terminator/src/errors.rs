@@ -36,4 +36,22 @@ pub enum AutomationError {
         operation: String,
         is_retryable: bool,
     },
+
+    #[error("Element is detached from DOM: {0}")]
+    ElementDetached(String),
+
+    #[error("Element is not visible: {0}")]
+    ElementNotVisible(String),
+
+    #[error("Element is not enabled: {0}")]
+    ElementNotEnabled(String),
+
+    #[error("Element bounds are not stable: {0}")]
+    ElementNotStable(String),
+
+    #[error("Element is obscured by another element: {0}")]
+    ElementObscured(String),
+
+    #[error("Failed to scroll element into view: {0}")]
+    ScrollFailed(String),
 }

@@ -1,4 +1,5 @@
 use napi_derive::napi;
+use terminator::locator::WaitCondition as TerminatorWaitCondition;
 use terminator::Locator as TerminatorLocator;
 
 use crate::map_error;
@@ -28,11 +29,14 @@ impl From<TerminatorLocator> for Locator {
 impl Locator {
     /// (async) Get the first matching element.
     ///
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
     /// @returns {Promise<Element>} The first matching element.
     #[napi]
-    pub async fn first(&self) -> napi::Result<Element> {
+    pub async fn first(&self, timeout_ms: f64) -> napi::Result<Element> {
+        use std::time::Duration;
+        let timeout = Duration::from_millis(timeout_ms as u64);
         self.inner
-            .first(None)
+            .first(Some(timeout))
             .await
             .map(Element::from)
             .map_err(map_error)
@@ -40,37 +44,18 @@ impl Locator {
 
     /// (async) Get all matching elements.
     ///
-    /// @param {number} [timeoutMs] - Timeout in milliseconds.
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
     /// @param {number} [depth] - Maximum depth to search.
     /// @returns {Promise<Array<Element>>} List of matching elements.
     #[napi]
-    pub async fn all(
-        &self,
-        timeout_ms: Option<f64>,
-        depth: Option<u32>,
-    ) -> napi::Result<Vec<Element>> {
+    pub async fn all(&self, timeout_ms: f64, depth: Option<u32>) -> napi::Result<Vec<Element>> {
         use std::time::Duration;
-        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
+        let timeout = Duration::from_millis(timeout_ms as u64);
         let depth = depth.map(|d| d as usize);
         self.inner
-            .all(timeout, depth)
+            .all(Some(timeout), depth)
             .await
             .map(|els| els.into_iter().map(Element::from).collect())
-            .map_err(map_error)
-    }
-
-    /// (async) Wait for the first matching element.
-    ///
-    /// @param {number} [timeoutMs] - Timeout in milliseconds.
-    /// @returns {Promise<Element>} The first matching element.
-    #[napi]
-    pub async fn wait(&self, timeout_ms: Option<f64>) -> napi::Result<Element> {
-        use std::time::Duration;
-        let timeout = timeout_ms.map(|ms| Duration::from_millis(ms as u64));
-        self.inner
-            .wait(timeout)
-            .await
-            .map(Element::from)
             .map_err(map_error)
     }
 
@@ -114,5 +99,91 @@ impl Locator {
         };
         let loc = self.inner.clone().locator(sel_rust);
         Ok(Locator::from(loc))
+    }
+
+    /// (async) Validate element existence without throwing an error.
+    ///
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
+    /// @returns {Promise<ValidationResult>} Validation result with exists flag and optional element.
+    #[napi]
+    pub async fn validate(&self, timeout_ms: f64) -> napi::Result<ValidationResult> {
+        use std::time::Duration;
+        let timeout = Duration::from_millis(timeout_ms as u64);
+        match self.inner.validate(Some(timeout)).await {
+            Ok(Some(element)) => Ok(ValidationResult {
+                exists: true,
+                element: Some(Element::from(element)),
+                error: None,
+            }),
+            Ok(None) => Ok(ValidationResult {
+                exists: false,
+                element: None,
+                error: None,
+            }),
+            Err(e) => Ok(ValidationResult {
+                exists: false,
+                element: None,
+                error: Some(e.to_string()),
+            }),
+        }
+    }
+
+    /// (async) Wait for an element to meet a specific condition.
+    ///
+    /// @param {string} condition - Condition to wait for: 'exists', 'visible', 'enabled', 'focused'
+    /// @param {number} timeoutMs - Timeout in milliseconds (required).
+    /// @returns {Promise<Element>} The element when condition is met.
+    #[napi]
+    pub async fn wait_for(&self, condition: String, timeout_ms: f64) -> napi::Result<Element> {
+        use std::time::Duration;
+        let wait_condition = parse_condition(&condition)?;
+        let timeout = Duration::from_millis(timeout_ms as u64);
+
+        self.inner
+            .wait_for(wait_condition, Some(timeout))
+            .await
+            .map(Element::from)
+            .map_err(map_error)
+    }
+}
+
+/// Result of element validation
+#[napi(object)]
+pub struct ValidationResult {
+    /// Whether the element exists
+    pub exists: bool,
+    /// The element if found
+    pub element: Option<Element>,
+    /// Error message if validation failed (not element not found, but actual error)
+    pub error: Option<String>,
+}
+
+/// Result of waiting for a condition
+#[napi(object)]
+pub struct WaitForResult {
+    /// Whether the condition was met
+    pub condition_met: bool,
+    /// The element if condition was met
+    pub element: Option<Element>,
+    /// Time elapsed in milliseconds
+    pub elapsed_ms: f64,
+    /// Error message if wait failed
+    pub error: Option<String>,
+}
+
+/// Convert string condition to WaitCondition enum
+fn parse_condition(condition: &str) -> napi::Result<TerminatorWaitCondition> {
+    match condition.to_lowercase().as_str() {
+        "exists" => Ok(TerminatorWaitCondition::Exists),
+        "visible" => Ok(TerminatorWaitCondition::Visible),
+        "enabled" => Ok(TerminatorWaitCondition::Enabled),
+        "focused" => Ok(TerminatorWaitCondition::Focused),
+        _ => Err(napi::Error::new(
+            napi::Status::InvalidArg,
+            format!(
+                "Invalid condition '{}'. Valid: exists, visible, enabled, focused",
+                condition
+            ),
+        )),
     }
 }

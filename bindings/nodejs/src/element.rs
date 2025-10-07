@@ -467,6 +467,15 @@ impl Element {
             .map_err(map_error)
     }
 
+    /// Scrolls the element into view within its window viewport.
+    /// If the element is already visible, returns immediately.
+    ///
+    /// @returns {void}
+    #[napi]
+    pub fn scroll_into_view(&self) -> napi::Result<()> {
+        self.inner.scroll_into_view().map_err(map_error)
+    }
+
     /// Selects an option in a dropdown or combobox by its visible text.
     ///
     /// @param {string} optionName - The visible text of the option to select.
@@ -500,6 +509,49 @@ impl Element {
     #[napi]
     pub fn set_toggled(&self, state: bool) -> napi::Result<()> {
         self.inner.set_toggled(state).map_err(map_error)
+    }
+
+    /// Checks if an element is selected (e.g., list item, tree node, tab).
+    ///
+    /// @returns {boolean} True if the element is selected, false otherwise.
+    #[napi]
+    pub fn is_selected(&self) -> napi::Result<bool> {
+        self.inner.is_selected().map_err(map_error)
+    }
+
+    /// Sets the selection state of a selectable item.
+    /// Only performs an action if the element is not already in the desired state.
+    ///
+    /// @param {boolean} state - The desired selection state.
+    /// @returns {void}
+    #[napi]
+    pub fn set_selected(&self, state: bool) -> napi::Result<()> {
+        self.inner.set_selected(state).map_err(map_error)
+    }
+
+    /// Gets the current value from a range-based control like a slider or progress bar.
+    ///
+    /// @returns {number} The current value of the range control.
+    #[napi]
+    pub fn get_range_value(&self) -> napi::Result<f64> {
+        self.inner.get_range_value().map_err(map_error)
+    }
+
+    /// Sets the value of a range-based control like a slider.
+    ///
+    /// @param {number} value - The value to set.
+    /// @returns {void}
+    #[napi]
+    pub fn set_range_value(&self, value: f64) -> napi::Result<()> {
+        self.inner.set_range_value(value).map_err(map_error)
+    }
+
+    /// Gets the value attribute of an element (text inputs, combo boxes, etc.).
+    ///
+    /// @returns {string | null} The value attribute, or null if not available.
+    #[napi]
+    pub fn get_value(&self) -> napi::Result<Option<String>> {
+        self.inner.get_value().map_err(map_error)
     }
 
     /// Execute JavaScript in web browser using dev tools console.

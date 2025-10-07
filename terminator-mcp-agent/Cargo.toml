@@ -5,7 +5,7 @@ edition.workspace = true
 
 [features]
 default = ["telemetry"]
-telemetry = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-semantic-conventions"]
+telemetry = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-semantic-conventions", "dep:opentelemetry-appender-tracing"]
 
 [lib]
 name = "terminator_mcp_agent"
@@ -48,6 +48,7 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 regex = { workspace = true }
 tempfile = "3"
 sysinfo = "0.33"
+hostname = "0.4"
 
 reqwest = { version = "0.12.5", features = ["json"] }
 
@@ -56,9 +57,10 @@ serde_yaml = "0.9"
 
 # OpenTelemetry dependencies (optional, behind 'telemetry' feature)
 opentelemetry = { version = "0.27", optional = true }
-opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"], optional = true }
-opentelemetry-otlp = { version = "0.27", features = ["http-proto", "reqwest-client"], optional = true }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio", "logs"], optional = true }
+opentelemetry-otlp = { version = "0.27", features = ["http-proto", "reqwest-client", "logs"], optional = true }
 opentelemetry-semantic-conventions = { version = "0.27", optional = true }
+opentelemetry-appender-tracing = { version = "0.27", optional = true }
 
 # Dependencies for AI summarizer binary - TODO add behind feature flag
 ollama-rs = "0.3.2"

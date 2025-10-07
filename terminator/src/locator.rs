@@ -8,8 +8,22 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task;
 
+/// Conditions that can be waited for on an element
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WaitCondition {
+    /// Wait for element to exist
+    Exists,
+    /// Wait for element to be visible
+    Visible,
+    /// Wait for element to be enabled
+    Enabled,
+    /// Wait for element to be focused
+    Focused,
+}
+
 // Default timeout if none is specified on the locator itself
-const DEFAULT_LOCATOR_TIMEOUT: Duration = Duration::from_secs(30);
+// Set to 0 for one-time search (no polling) - add explicit timeout where waiting is needed
+const DEFAULT_LOCATOR_TIMEOUT: Duration = Duration::from_secs(0);
 
 /// A high-level API for finding and interacting with UI elements
 ///
@@ -104,6 +118,118 @@ impl Locator {
                 e
             }
         })
+    }
+
+    /// Validate element existence without throwing an error.
+    /// Returns Ok(Some(element)) if found, Ok(None) if not found.
+    /// Only returns Err for invalid selectors or platform errors.
+    #[instrument(level = "debug", skip(self, timeout))]
+    pub async fn validate(
+        &self,
+        timeout: Option<Duration>,
+    ) -> Result<Option<UIElement>, AutomationError> {
+        debug!("Validating element matching selector: {:?}", self.selector);
+
+        if let Selector::Invalid(reason) = &self.selector {
+            return Err(AutomationError::InvalidSelector(reason.clone()));
+        }
+
+        let effective_timeout = timeout.unwrap_or(self.timeout);
+
+        let engine = self.engine.clone();
+        let selector = self.selector.clone();
+        let root = self.root.clone();
+
+        task::spawn_blocking(move || {
+            engine.find_element(&selector, root.as_ref(), Some(effective_timeout))
+        })
+        .await
+        .map_err(|e| AutomationError::PlatformError(format!("Task join error: {e}")))?
+        .map_or_else(
+            |e| {
+                // For ElementNotFound or Timeout, return Ok(None) instead of error
+                match e {
+                    AutomationError::ElementNotFound(_) | AutomationError::Timeout(_) => Ok(None),
+                    other => Err(other),
+                }
+            },
+            |element| Ok(Some(element)),
+        )
+    }
+
+    /// Wait for an element to meet a specific condition.
+    /// Polls the element until the condition is met or timeout is reached.
+    ///
+    /// # Arguments
+    /// * `condition` - The condition to wait for (exists, visible, enabled, focused)
+    /// * `timeout` - Maximum time to wait. Uses locator's default timeout if None.
+    ///
+    /// # Returns
+    /// The element when the condition is met, or an error on timeout.
+    #[instrument(level = "debug", skip(self, timeout))]
+    pub async fn wait_for(
+        &self,
+        condition: WaitCondition,
+        timeout: Option<Duration>,
+    ) -> Result<UIElement, AutomationError> {
+        debug!(
+            "Waiting for element matching selector: {:?} with condition: {:?}",
+            self.selector, condition
+        );
+
+        if let Selector::Invalid(reason) = &self.selector {
+            return Err(AutomationError::InvalidSelector(reason.clone()));
+        }
+
+        let effective_timeout = timeout.unwrap_or(self.timeout);
+        let start_time = std::time::Instant::now();
+        let poll_interval = Duration::from_millis(100);
+
+        loop {
+            // Check if we've exceeded the timeout
+            if start_time.elapsed() > effective_timeout {
+                return Err(AutomationError::Timeout(format!(
+                    "Timed out after {:?} waiting for element {} to be {:?}",
+                    effective_timeout,
+                    self.selector_string(),
+                    condition
+                )));
+            }
+
+            // Try to find the element with a short timeout
+            match self.validate(Some(poll_interval)).await {
+                Ok(Some(element)) => {
+                    // Element exists, now check the specific condition
+                    let condition_met = match condition {
+                        WaitCondition::Exists => true,
+                        WaitCondition::Visible => element.is_visible().unwrap_or(false),
+                        WaitCondition::Enabled => element.is_enabled().unwrap_or(false),
+                        WaitCondition::Focused => element.is_focused().unwrap_or(false),
+                    };
+
+                    if condition_met {
+                        debug!(
+                            "Condition {:?} met for selector {} after {:?}",
+                            condition,
+                            self.selector_string(),
+                            start_time.elapsed()
+                        );
+                        return Ok(element);
+                    }
+                    // Condition not met yet, continue polling
+                }
+                Ok(None) => {
+                    // Element doesn't exist yet, continue polling
+                }
+                Err(e) => {
+                    // Platform error or invalid selector
+                    return Err(e);
+                }
+            }
+
+            // Wait before the next poll
+            tokio::time::sleep(poll_interval).await;
+        }
     }
 
     fn append_selector(&self, selector_to_append: Selector) -> Locator {

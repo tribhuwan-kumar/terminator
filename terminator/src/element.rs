@@ -815,6 +815,11 @@ impl UIElement {
         self.inner.get_text(max_depth)
     }
 
+    /// Get the value attribute of this element (text inputs, combo boxes, etc.)
+    pub fn get_value(&self) -> Result<Option<String>, AutomationError> {
+        Ok(self.inner.attributes().value)
+    }
+
     /// Set value of this element
     pub fn set_value(&self, value: &str) -> Result<(), AutomationError> {
         self.inner.set_value(value)

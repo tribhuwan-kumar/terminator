@@ -36,5 +36,23 @@ pub fn map_error(err: AutomationError) -> napi::Error {
             Status::GenericFailure,
             format!("UI_AUTOMATION_API_ERROR: {message}"),
         ),
+        AutomationError::ElementDetached(msg) => {
+            napi::Error::new(Status::InvalidArg, format!("ELEMENT_DETACHED: {msg}"))
+        }
+        AutomationError::ElementNotVisible(msg) => {
+            napi::Error::new(Status::InvalidArg, format!("ELEMENT_NOT_VISIBLE: {msg}"))
+        }
+        AutomationError::ElementNotEnabled(msg) => {
+            napi::Error::new(Status::InvalidArg, format!("ELEMENT_NOT_ENABLED: {msg}"))
+        }
+        AutomationError::ElementNotStable(msg) => {
+            napi::Error::new(Status::GenericFailure, format!("ELEMENT_NOT_STABLE: {msg}"))
+        }
+        AutomationError::ElementObscured(msg) => {
+            napi::Error::new(Status::InvalidArg, format!("ELEMENT_OBSCURED: {msg}"))
+        }
+        AutomationError::ScrollFailed(msg) => {
+            napi::Error::new(Status::GenericFailure, format!("SCROLL_FAILED: {msg}"))
+        }
     }
 }

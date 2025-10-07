@@ -1054,7 +1054,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Clicks a UI element. This action requires the application to be focused and may change the UI."
+        description = "Clicks a UI element using Playwright-style actionability validation. Performs comprehensive pre-action checks: element must be visible (non-zero bounds), enabled, in viewport, and have stable bounds (3 consecutive checks at 16ms intervals, max ~800ms wait). Returns success with 'validated=true' in click_result.details when all checks pass. Fails explicitly with specific errors: ElementNotVisible (zero-size bounds/offscreen/not in viewport), ElementNotEnabled (disabled/grayed out), ElementNotStable (bounds still animating after 800ms), ElementDetached (no longer in UI tree), ElementObscured (covered by another element), or ScrollFailed (could not scroll into view). For buttons, prefer invoke_element (uses UI Automation's native invoke pattern, doesn't require viewport visibility). Use click_element for links, hover-sensitive elements, or UI requiring actual mouse interaction. This action requires the application to be focused and may change the UI."
     )]
     pub async fn click_element(
         &self,
@@ -1173,13 +1173,6 @@ impl DesktopWrapper {
             }
         };
 
-        // Optionally include troubleshooting recommendations when evidence suggests the click may have missed the intended target
-        let details_str = &click_result.details;
-        // Consider the outcome uncertain whenever immediate post-change signals are absent,
-        // regardless of the click path. This makes guidance available for subtle misses too.
-        let looks_uncertain = details_str.contains("window_title_changed=false")
-            && details_str.contains("bounds_changed=false");
-
         // Track element metadata in telemetry
         span.set_attribute("element.role", element.role());
         if let Some(name) = element.name() {
@@ -1208,22 +1201,6 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        if looks_uncertain {
-            if let Some(obj) = result_json.as_object_mut() {
-                obj.insert(
-                    "recommendations".to_string(),
-                    json!([
-                        "Read the evidence first: if click_result.method is CenterFallback or ClickablePoint and window_title_changed/bounds_changed are false, treat it as uncertain/likely missed target.",
-                        "Prefer action semantics: try invoke_element on the same selector, or validate_element → focus target → press_key '{Enter}'.",
-                        "Narrow the selector to the true clickable child (the text anchor), not the enclosing group; keep role:hyperlink and tighten name:, or use the element’s numeric #id.",
-                        "If the site opens in a new tab, wait for tab/title/address-bar change; otherwise treat as failed and refine selector.",
-                        "Always pair the click with a postcondition: address bar/title/tab change or a destination-unique element; if it doesn’t happen, re-run with the steps above.",
-                        "Selector tip: prefer role:hyperlink with a unique substring (often the destination domain) or the numeric #id, and add |nth:0 if needed."
-                    ]),
-                );
-            }
-        }
-
         maybe_attach_tree(
             &self.desktop,
             args.include_tree,
@@ -1240,7 +1217,9 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Sends a key press to a UI element. Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc. This action requires the application to be focused and may change the UI."
+        description = "Sends a key press to a UI element. Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', '{Tab}', etc. This action requires the application to be focused and may change the UI.
+
+Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g., 'Tab')."
     )]
     async fn press_key(
         &self,
@@ -1355,7 +1334,9 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Sends a key press to the currently focused element (no selector required). Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', etc. This action requires the application to be focused and may change the UI."
+        description = "Sends a key press to the currently focused element (no selector required). Use curly brace format: '{Ctrl}c', '{Alt}{F4}', '{Enter}', '{PageDown}', '{Tab}', etc. This action requires the application to be focused and may change the UI.
+
+Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g., 'Tab')."
     )]
     async fn press_key_global(
         &self,
@@ -1426,7 +1407,69 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript'/'typescript'/'ts' for JS/TS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. TypeScript is supported with automatic transpilation. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps using direct syntax (e.g., 'key' in conditions or {{key}} in substitutions). NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS/TS) or 'env = {...}' (Python)."
+        description = "Executes a shell command (GitHub Actions-style) OR runs inline code via an engine. Use 'run' for shell commands. Or set 'engine' to 'node'/'bun'/'javascript'/'typescript'/'ts' for JS/TS with terminator.js, or 'python' for Python with terminator.py and provide the code in 'run' or 'script_file'. TypeScript is supported with automatic transpilation. When using engine mode, you can pass data to subsequent workflow steps by returning { set_env: { key: value } } or using console.log('::set-env name=key::value'). Access variables in later steps using direct syntax (e.g., 'key' in conditions or {{key}} in substitutions). NEW: Use 'script_file' to load scripts from files, 'env' to inject environment variables as 'var env = {...}' (JS/TS) or 'env = {...}' (Python).
+
+⚠️ CRITICAL: Pattern for Optional Element Detection
+For optional UI elements (dialogs, popups, confirmations) that may or may not appear, use desktop.locator() with try/catch to check existence. This prevents timeout errors and enables conditional execution.
+
+✅ RECOMMENDED Pattern - Window-Scoped (Most Accurate):
+// Step 1: Check if optional element exists in specific window
+try {
+  // Scope to specific window first to avoid false positives
+  const chromeWindow = await desktop.locator('role:Window|name:SAP Business One - Google Chrome').first();
+  // Then search within that window
+  await chromeWindow.locator('role:Button|name:Leave').first();
+  return JSON.stringify({
+    dialog_exists: 'true'
+  });
+} catch (e) {
+  // Element not found
+  return JSON.stringify({
+    dialog_exists: 'false'
+  });
+}
+
+✅ ALTERNATIVE Pattern - Desktop-Wide Search:
+// When element could be in any window
+try {
+  await desktop.locator('role:Button|name:Leave').first();
+  return JSON.stringify({
+    dialog_exists: 'true'
+  });
+} catch (e) {
+  return JSON.stringify({
+    dialog_exists: 'false'
+  });
+}
+
+// Step 2: In next workflow step, use 'if' condition:
+// if: 'dialog_exists == \"true\"'
+
+Performance Note: Using .first() with try/catch is ~8x faster than .all() for existence checks (1.3s vs 10.8s).
+
+Important Scoping Pattern:
+- desktop.locator() searches ALL windows/applications
+- element.locator() searches only within that element's subtree
+- Always scope to specific window when checking for window-specific dialogs
+
+This pattern:
+- Never fails the step (always returns data)
+- Avoids timeout waiting for non-existent elements
+- Enables conditional workflow execution
+- More robust than validate_element which fails when element not found
+
+Common use cases:
+- Confirmation dialogs ('Are you sure?', 'Unsaved changes', 'Leave')
+- Session/login dialogs that depend on state
+- Browser restore prompts, password save dialogs
+- Any conditionally-appearing UI element
+
+⚠️ Variable Declaration Safety:
+Terminator injects environment variables using 'var' - ALWAYS use typeof checks:
+const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
+const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
+const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0;  // ✅ SAFE
+// NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared"
     )]
     async fn run_command(
         &self,
@@ -2520,7 +2563,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Validates that an element exists and provides detailed information about it. This is a read-only operation."
+        description = "Validates that an element exists and provides detailed information about it. This is a read-only operation that NEVER throws errors. Returns status='success' with exists=true when found, or status='failed' with exists=false when not found. Use {step_id}_status or {step_id}_result.exists for conditional logic. This is the preferred tool for checking optional/conditional UI elements."
     )]
     pub async fn validate_element(
         &self,
@@ -2604,9 +2647,11 @@ impl DesktopWrapper {
                     "message": format!("The specified element could not be found after trying all selectors. Original error: {}", e),
                     "selectors_tried": selectors_tried,
                     "suggestions": [
+                        "This is normal if the element is optional/conditional. Use the 'exists: false' result in conditional logic (if expressions, jumps, or run_command scripts).",
                         "Call `get_window_tree` again to get a fresh view of the UI; it might have changed.",
                         "Verify the element's 'name' and 'role' in the new UI tree. The 'name' attribute might be empty or different from the visible text.",
-                        "If the element has no 'name', use its numeric ID selector (e.g., '#12345')."
+                        "If the element has no 'name', use its numeric ID selector (e.g., '#12345').",
+                        "Consider using alternative_selectors or fallback_selectors for elements with multiple possible states."
                     ]
                 });
 
@@ -2966,7 +3011,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Opens a URL in the specified browser (uses SDK's built-in browser automation)."
+        description = "Opens a URL in the specified browser (uses SDK's built-in browser automation). This is the RECOMMENDED method for browser navigation - more reliable than manually manipulating the address bar with keyboard/mouse actions. Handles page loading, waiting, and error recovery automatically."
     )]
     async fn navigate_browser(
         &self,
@@ -4242,7 +4287,7 @@ impl DesktopWrapper {
     }
     // Tool functions continue below - part of impl block with #[tool_router]
     #[tool(
-        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step. Access variables using direct syntax (e.g., 'key == \"value\"' in conditions or {{key}} in substitutions). Supports conditional jumps with 'jumps' array - each jump has 'if' (expression evaluated on success), 'to_id' (target step), and optional 'reason' (logged explanation). Multiple jump conditions are evaluated in order with first-match-wins. Step results are accessible as {step_id}_status and {step_id}_result in jump expressions. Supports partial execution with 'start_from_step' and 'end_at_step' parameters to run specific step ranges. By default, jumps are skipped at the 'end_at_step' boundary for predictable execution; use 'execute_jumps_at_end: true' to allow jumps at the boundary (e.g., for loops). State is automatically persisted to .workflow_state folder in workflow's directory when using file:// URLs, allowing workflows to be resumed from any step."
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step. Access variables using direct syntax (e.g., 'key == \"value\"' in conditions or {{key}} in substitutions). IMPORTANT: Locator methods (.first, .all) require mandatory timeout parameters in milliseconds - use .first(0) for immediate search (no polling/retry), .first(1000) to retry for 1 second, or .first(5000) for slow-loading UI. Default timeout changed from 30s to 0ms (no polling) for performance. Supports conditional jumps with 'jumps' array - each jump has 'if' (expression evaluated on success), 'to_id' (target step), and optional 'reason' (logged explanation). Multiple jump conditions are evaluated in order with first-match-wins. Step results are accessible as {step_id}_status and {step_id}_result in jump expressions. Supports partial execution with 'start_from_step' and 'end_at_step' parameters to run specific step ranges. By default, jumps are skipped at the 'end_at_step' boundary for predictable execution; use 'execute_jumps_at_end: true' to allow jumps at the boundary (e.g., for loops). State is automatically persisted to .workflow_state folder in workflow's directory when using file:// URLs, allowing workflows to be resumed from any step."
     )]
     pub async fn execute_sequence(
         &self,
@@ -4583,7 +4628,7 @@ impl DesktopWrapper {
     // Removed: run_javascript tool (merged into run_command with engine)
 
     #[tool(
-        description = "Execute JavaScript in a browser using the Chrome extension bridge. Provides full access to the HTML DOM for data extraction, page analysis, and manipulation. Returns serializable data (strings, numbers, objects, arrays). 
+        description = "Execute JavaScript in a browser using the Chrome extension bridge. Provides full access to the HTML DOM for data extraction, page analysis, and manipulation. Returns serializable data (strings, numbers, objects, arrays).
 
 Key uses:
 - Extract full HTML DOM: document.documentElement.outerHTML
@@ -4593,26 +4638,115 @@ Key uses:
 - Scrape data not available via accessibility APIs
 - Pass data between workflow steps using env/outputs parameters
 
+Alternative: In run_command with engine: javascript, use desktop.executeBrowserScript(script)
+to execute browser scripts directly without needing a selector. Automatically targets active browser tab.
+
 Parameters:
 - script: JavaScript code to execute (optional if script_file is provided)
 - script_file: Path to JavaScript file to load and execute (optional)
 - env: Environment variables to inject as 'var env = {...}' (optional)
 - outputs: Outputs from previous steps to inject as 'var outputs = {...}' (optional)
 
-Data injection: When env/outputs are provided, they're injected as JavaScript variables at the start of your script. Parse them if they're JSON strings:
-const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-const parsedOutputs = typeof outputs === 'string' ? JSON.parse(outputs) : outputs;
+⚠️ CRITICAL: Never Use success: true/false Pattern
+Scripts should return DATA describing what they found, NOT success/failure status.
+Using success: false causes the workflow step to fail.
 
-Returning data: Scripts can set environment variables for subsequent steps:
+❌ WRONG - Causes step failure:
+(function() {
+  const dialog = document.querySelector('.dialog');
+  if (!dialog) {
+    return JSON.stringify({ success: false, message: 'Not found' }); // ❌ Step fails!
+  }
+  return JSON.stringify({ success: true, dialog_closed: 'true' });
+})()
+
+✅ CORRECT - Always return data:
+(function() {
+  const dialog = document.querySelector('.dialog');
+  return JSON.stringify({
+    dialog_found: dialog ? 'true' : 'false',  // ✅ Just data
+    message: dialog ? 'Dialog found' : 'No dialog'
+  });
+})()
+
+Pattern: Detection Scripts vs Action Scripts
+- Detection scripts: Check UI state, always return data (never fail)
+  Example: Return { needs_login: 'true' } or { needs_login: 'false' }
+  Use workflow 'if' conditions to act on the data
+- Action scripts: Perform operations, can legitimately fail
+  Example: Click specific button, set form value
+
+Data injection: Variables are injected with 'var' - ALWAYS use typeof checks:
+const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
+const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+const config = (typeof app_config !== 'undefined') ? app_config : {};
+
+Returning data: Return data fields directly (auto-merge to env):
 return JSON.stringify({
-  set_env: { key: 'value' },
-  result: 'success'
+  status: 'completed',           // Reserved field (not auto-merged)
+  login_status: 'on_login_page', // Auto-merged as login_status
+  needs_login: 'true',           // Auto-merged as needs_login
+  form_count: 3                  // Auto-merged as form_count
 });
+
+Type Conversion: Convert objects/arrays to strings before string methods:
+const result = JSON.stringify(troubleshoot_result).toLowerCase();
+const hasError = JSON.stringify(data).includes('error');
+
+Avoiding Page Navigation: Scripts triggering navigation (clicking links, submitting forms)
+can be killed before return executes, causing NULL_RESULT. Separate navigation actions
+into dedicated workflow steps with delays.
 
 Size limits: Response must be <30KB. For large DOMs, use truncation:
 const html = document.documentElement.outerHTML;
 const max = 30000;
 return html.length > max ? html.substring(0, max) + '...' : html;
+
+⚠️ Port Conflicts: Multiple browser scripts in quick succession cause 'port already in use' errors.
+Add delay_ms: 2000 between consecutive execute_browser_script steps.
+
+Timing: Use await new Promise(resolve => setTimeout(resolve, ms)) for delays.
+The sleep() function is NOT available in browser context.
+
+Script Format Requirements:
+The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns:
+
+✅ RECOMMENDED: IIFE Pattern for Sync Scripts
+(function() {
+  const data = document.querySelector('.data');
+  return JSON.stringify({
+    data_found: data ? 'true' : 'false',
+    data_text: data ? data.textContent : ''
+  });
+})()
+
+✅ RECOMMENDED: Promise Chain as Last Expression
+const config = (typeof user_config !== 'undefined') ? user_config : {};
+navigator.clipboard.readText().then(clipboardText => {
+  console.log('Success:', clipboardText);
+  return JSON.stringify({ clipboard_text: clipboardText });
+}).catch(error => {
+  console.error('Error:', error);
+  return JSON.stringify({ error_message: error.message });
+});
+
+Key Rules:
+- Both .then() and .catch() handlers MUST return values (use JSON.stringify())
+- Promise as last expression is automatically detected and awaited
+- Do synchronous variable setup BEFORE the Promise chain
+- Avoid async IIFE - use Promise chain pattern instead
+- Never use success: true/false pattern - return descriptive data instead
+
+❌ WRONG: Missing Return Values
+navigator.clipboard.readText().then(result => {
+  console.log(result); // Missing return! Causes NULL_RESULT error
+});
+
+❌ WRONG: Async IIFE Pattern
+(async function() {
+  const result = await navigator.clipboard.readText();
+  return JSON.stringify({ result });
+})(); // Worker.js can't capture async function results via eval()
 
 Requires Chrome extension to be installed. See browser_dom_extraction.yml and demo_bidirectional_vars.yml for examples."
     )]
@@ -4847,7 +4981,14 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         // Inject individual variables from env (browser scripts are always JavaScript)
         let merged_env = if explicit_env_json != "{}" {
             // Merge accumulated and explicit env for individual vars
-            format!("Object.assign({{}}, {accumulated_env_json}, {explicit_env_json})")
+            let mut base: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&accumulated_env_json).unwrap_or_default();
+            if let Ok(explicit) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+                &explicit_env_json,
+            ) {
+                base.extend(explicit);
+            }
+            serde_json::to_string(&base).unwrap_or_else(|_| "{}".to_string())
         } else {
             accumulated_env_json.clone()
         };
@@ -4859,6 +5000,8 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&merged_env)
         {
             for (key, value) in env_obj {
+                // Inject all valid JavaScript identifiers from env
+                // The IIFE wrapper prevents conflicts with previous script executions
                 if Self::is_valid_js_identifier(&key) {
                     // Smart handling of potentially double-stringified JSON
                     let injectable_value = if let Some(str_val) = value.as_str() {
@@ -4894,7 +5037,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
                         injected_vars.insert(key.clone()); // Track this variable
-                        tracing::debug!(
+                        tracing::info!(
                             "[execute_browser_script] Injected env.{} as individual variable (type: {})",
                             key,
                             if injectable_value.is_string() { "string" }
@@ -4909,14 +5052,65 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         // Inject variables
         final_script.push_str(&format!("var variables = {variables_json};\n"));
+
+        // Parse and inject individual workflow variables
+        if let Ok(variables_obj) =
+            serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&variables_json)
+        {
+            for (key, value) in variables_obj {
+                // Inject all valid JavaScript identifiers from variables
+                if Self::is_valid_js_identifier(&key) {
+                    // Smart handling of potentially double-stringified JSON
+                    let injectable_value = if let Some(str_val) = value.as_str() {
+                        let trimmed = str_val.trim();
+                        // Check if it looks like JSON (object or array)
+                        if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                            || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                        {
+                            // Try to parse as JSON to avoid double stringification
+                            match serde_json::from_str::<serde_json::Value>(str_val) {
+                                Ok(parsed) => {
+                                    tracing::debug!(
+                                        "[execute_browser_script] Detected JSON string for variables.{}, parsing to avoid double stringification",
+                                        key
+                                    );
+                                    parsed
+                                }
+                                Err(_) => {
+                                    // Not valid JSON despite looking like it, keep as string
+                                    value.clone()
+                                }
+                            }
+                        } else {
+                            // Regular string value, keep as is
+                            value.clone()
+                        }
+                    } else {
+                        // Not a string (number, bool, object, etc.), keep as is
+                        value.clone()
+                    };
+
+                    // Now stringify for injection (single level of stringification)
+                    if let Ok(value_json) = serde_json::to_string(&injectable_value) {
+                        final_script.push_str(&format!("var {key} = {value_json};\n"));
+                        injected_vars.insert(key.clone()); // Track this variable for smart replacement
+                        tracing::info!(
+                            "[execute_browser_script] Injected variables.{} as individual variable",
+                            key
+                        );
+                    }
+                }
+            }
+        }
+
         tracing::debug!("[execute_browser_script] Injected accumulated env, explicit env, individual vars, and workflow variables");
 
         // Smart replacement of declarations with assignments for already-injected variables
         let mut modified_script = script_content.clone();
         if !injected_vars.is_empty() {
-            tracing::debug!(
-                "[execute_browser_script] Checking for variable declarations to replace. Injected vars: {:?}",
-                injected_vars
+            tracing::info!(
+                "[execute_browser_script] Checking for variable declarations to replace. Injected vars count: {}",
+                injected_vars.len()
             );
 
             for var_name in &injected_vars {
