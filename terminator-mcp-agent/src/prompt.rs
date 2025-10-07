@@ -1162,6 +1162,11 @@ findButtons(tree);
 // Get all app trees in parallel (expensive operation)
 const allTrees = await desktop.getAllApplicationsTree();
 console.log(`Found ${{allTrees.length}} application trees`);
+
+// Get subtree from specific element
+const dialog = await desktop.locator('role:Dialog|name:Settings').first(5000);
+const dialogTree = dialog.getTree(3);  // Limit to 3 levels deep
+console.log(`Dialog has ${{dialogTree.children.length}} immediate children`);
 ```
 
 *   **Error handling and retries:**

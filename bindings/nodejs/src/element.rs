@@ -566,4 +566,16 @@ impl Element {
             .await
             .map_err(map_error)
     }
+
+    /// Get the UI tree starting from this element.
+    /// Returns a tree structure containing this element and all its descendants.
+    ///
+    /// @param {number} [maxDepth=100] - Maximum depth to traverse (default: 100).
+    /// @returns {UINode} Tree structure with recursive children.
+    #[napi]
+    pub fn get_tree(&self, max_depth: Option<i32>) -> napi::Result<crate::UINode> {
+        let depth = max_depth.unwrap_or(100).max(0) as usize;
+        let serializable_tree = self.inner.to_serializable_tree(depth);
+        Ok(crate::types::serializable_to_ui_node(&serializable_tree))
+    }
 }

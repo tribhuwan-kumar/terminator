@@ -165,6 +165,9 @@ Represents a UI element in the accessibility tree.
 ### Browser Scripting
 - `executeBrowserScript(script: string): Promise<string>` - Execute JavaScript in browser
 
+### Tree Extraction
+- `getTree(maxDepth?: number): UINode` - Get UI tree starting from this element (default depth: 100)
+
 ## Locator Class
 
 For finding UI elements by selector.
@@ -427,6 +430,11 @@ printTree(tree);
 // Get all app trees (expensive)
 const allTrees = await desktop.getAllApplicationsTree();
 console.log(`Found ${allTrees.length} applications`);
+
+// Get subtree from specific element
+const dialog = await desktop.locator('role:Dialog|name:Settings').first(5000);
+const dialogTree = dialog.getTree(3);  // Limit to 3 levels deep
+console.log(`Dialog has ${dialogTree.children.length} immediate children`);
 ```
 
 ## Platform Notes

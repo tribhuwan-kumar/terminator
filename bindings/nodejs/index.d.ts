@@ -657,6 +657,14 @@ export declare class Element {
    * @returns {Promise<string>} The result of script execution.
    */
   executeBrowserScript(script: string): Promise<string>
+  /**
+   * Get the UI tree starting from this element.
+   * Returns a tree structure containing this element and all its descendants.
+   *
+   * @param {number} [maxDepth=100] - Maximum depth to traverse (default: 100).
+   * @returns {UINode} Tree structure with recursive children.
+   */
+  getTree(maxDepth?: number | undefined | null): UINode
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {
