@@ -351,18 +351,6 @@ export declare class Desktop {
    */
   navigateBrowser(url: string, browser?: string | undefined | null): Element
   /**
-   * (async) Zoom in by a specified number of levels.
-   *
-   * @param {number} level - Number of zoom-in steps to perform.
-   */
-  zoomIn(level: number): Promise<void>
-  /**
-   * (async) Zoom out by a specified number of levels.
-   *
-   * @param {number} level - Number of zoom-out steps to perform.
-   */
-  zoomOut(level: number): Promise<void>
-  /**
    * (async) Set the zoom level to a specific percentage.
    *
    * @param {number} percentage - The zoom percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%).

@@ -91,8 +91,6 @@ new Desktop(useBackgroundApps?: boolean, activateApp?: boolean, logLevel?: strin
 
 ### Global Input
 - `pressKey(key: string): Promise<void>` - Press key globally (e.g., "Enter", "Ctrl+C", "F1")
-- `zoomIn(level: number): Promise<void>` - Zoom in by levels
-- `zoomOut(level: number): Promise<void>` - Zoom out by levels
 - `setZoom(percentage: number): Promise<void>` - Set zoom percentage
 
 ## Element Class
@@ -267,6 +265,26 @@ interface CommandOutput {
 }
 ```
 
+### TreeBuildConfig
+```typescript
+interface TreeBuildConfig {
+  propertyMode: PropertyLoadingMode  // Fast | Complete | Smart
+  timeoutPerOperationMs?: number      // Timeout per operation in ms
+  yieldEveryNElements?: number        // Yield frequency for responsiveness
+  batchSize?: number                  // Batch size for processing
+  maxDepth?: number                   // Maximum tree depth (undefined = unlimited)
+}
+```
+
+### UINode
+```typescript
+interface UINode {
+  id?: string
+  attributes: UIElementAttributes
+  children: Array<UINode>  // Recursive structure
+}
+```
+
 ### UIElementAttributes
 ```typescript
 interface UIElementAttributes {
@@ -381,6 +399,34 @@ console.log('Page title:', result);
 const screenshot = await desktop.captureMonitor(await desktop.getPrimaryMonitor());
 const text = await desktop.ocrScreenshot(screenshot);
 console.log('Extracted text:', text);
+```
+
+### UI Tree Inspection
+```javascript
+// Get tree for specific window
+const app = desktop.application('Google Chrome');
+const pid = app.processId();
+
+// With performance tuning
+const tree = desktop.getWindowTree(pid, 'New Tab', {
+  propertyMode: PropertyLoadingMode.Fast,
+  timeoutPerOperationMs: 50,
+  maxDepth: 5  // Limit depth
+});
+
+// Traverse recursively
+function printTree(node, depth = 0) {
+  const indent = '  '.repeat(depth);
+  console.log(`${indent}${node.attributes.role}: ${node.attributes.name || '(no name)'}`);
+  for (const child of node.children) {
+    printTree(child, depth + 1);
+  }
+}
+printTree(tree);
+
+// Get all app trees (expensive)
+const allTrees = await desktop.getAllApplicationsTree();
+console.log(`Found ${allTrees.length} applications`);
 ```
 
 ## Platform Notes

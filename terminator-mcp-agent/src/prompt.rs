@@ -987,6 +987,35 @@ const elements = await desktop.locator('role:button').all(5000);  // Returns arr
 const appElements = desktop.applications();
 const focusedElement = desktop.focusedElement();
 
+// UI Tree Inspection
+const tree = desktop.getWindowTree(pid, title?, config?);  // Get UI tree for specific window
+const allTrees = await desktop.getAllApplicationsTree();   // Get trees for all apps in parallel
+
+// TreeBuildConfig - Optional performance tuning
+const config = {{
+    propertyMode: PropertyLoadingMode.Fast,  // Fast | Complete | Smart
+    timeoutPerOperationMs: 50,
+    yieldEveryNElements: 50,
+    batchSize: 50,
+    maxDepth: 10  // Optional depth limit
+}};
+
+// UINode structure - Recursive tree representation
+// {{
+//   id?: string,
+//   attributes: {{
+//     role: string,
+//     name?: string,
+//     label?: string,
+//     value?: string,
+//     description?: string,
+//     properties: Record<string, string>,
+//     isKeyboardFocusable?: boolean,
+//     bounds?: {{ x, y, width, height }}
+//   }},
+//   children: Array<UINode>
+// }}
+
 // Scoping to windows (prevents false positives)
 const window = await desktop.locator('role:Window|name:Chrome').first(0);
 const button = await window.locator('role:Button|name:Submit').first(0);
@@ -1104,6 +1133,35 @@ for (const productName of productsToEnable) {{
     await checkbox.setToggled(true);
     log(`✓ ${{productName}}: ENABLED`);
 }}
+```
+
+*   **Get and traverse UI tree:**
+```javascript
+// Get tree for specific app
+const chromeApp = desktop.application('Google Chrome');
+const pid = chromeApp.processId();
+
+// Fast tree build (essential properties only)
+const tree = desktop.getWindowTree(pid, null, {{
+    propertyMode: PropertyLoadingMode.Fast,
+    timeoutPerOperationMs: 50,
+    maxDepth: 5  // Limit depth for performance
+}});
+
+// Traverse tree recursively
+function findButtons(node, depth = 0) {{
+    if (node.attributes.role === 'Button') {{
+        console.log(`${{' '.repeat(depth)}}Found: ${{node.attributes.name || '(unnamed)'}}`);
+    }}
+    for (const child of node.children) {{
+        findButtons(child, depth + 1);
+    }}
+}}
+findButtons(tree);
+
+// Get all app trees in parallel (expensive operation)
+const allTrees = await desktop.getAllApplicationsTree();
+console.log(`Found ${{allTrees.length}} application trees`);
 ```
 
 *   **Error handling and retries:**
