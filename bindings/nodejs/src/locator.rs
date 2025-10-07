@@ -180,10 +180,7 @@ fn parse_condition(condition: &str) -> napi::Result<TerminatorWaitCondition> {
         "focused" => Ok(TerminatorWaitCondition::Focused),
         _ => Err(napi::Error::new(
             napi::Status::InvalidArg,
-            format!(
-                "Invalid condition '{}'. Valid: exists, visible, enabled, focused",
-                condition
-            ),
+            format!("Invalid condition '{condition}'. Valid: exists, visible, enabled, focused"),
         )),
     }
 }

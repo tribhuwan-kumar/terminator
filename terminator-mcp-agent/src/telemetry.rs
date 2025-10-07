@@ -25,11 +25,8 @@ mod with_telemetry {
     use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
     use opentelemetry_otlp::WithExportConfig;
     use opentelemetry_sdk::{
-        logs::LoggerProvider,
-        propagation::TraceContextPropagator,
-        runtime,
-        trace::TracerProvider as SdkTracerProvider,
-        Resource,
+        logs::LoggerProvider, propagation::TraceContextPropagator, runtime,
+        trace::TracerProvider as SdkTracerProvider, Resource,
     };
     use opentelemetry_semantic_conventions::{
         attribute::{SERVICE_NAME, SERVICE_VERSION},
@@ -362,7 +359,8 @@ mod with_telemetry {
 
     /// Create an OTLP logs layer that can be added to the tracing subscriber
     /// Returns None if telemetry is disabled or OTEL endpoint is not configured
-    pub fn create_otel_logs_layer() -> Option<impl tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync> {
+    pub fn create_otel_logs_layer(
+    ) -> Option<impl tracing_subscriber::Layer<tracing_subscriber::Registry> + Send + Sync> {
         // Check if telemetry is disabled
         if std::env::var("OTEL_SDK_DISABLED").unwrap_or_default() == "true" {
             return None;
@@ -402,7 +400,7 @@ mod with_telemetry {
         {
             Ok(exporter) => exporter,
             Err(e) => {
-                eprintln!("Failed to create OTLP logs exporter: {}", e);
+                eprintln!("Failed to create OTLP logs exporter: {e}");
                 return None;
             }
         };

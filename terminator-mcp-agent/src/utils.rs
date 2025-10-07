@@ -1261,7 +1261,9 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                         tracing_subscriber::fmt::layer()
                             .with_writer(std::io::stderr)
                             .with_ansi(false)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                            ),
                     )
                     .with(
                         // File layer with timestamps
@@ -1273,12 +1275,16 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_thread_names(false)
                             .with_file(true)
                             .with_line_number(true)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                            ),
                     )
                     .with(capture_layer);
                 tracing::subscriber::set_global_default(subscriber)
                     .expect("Failed to set subscriber");
-                eprintln!("✓ OTLP logs exporter enabled - logs will be sent to OpenTelemetry collector");
+                eprintln!(
+                    "✓ OTLP logs exporter enabled - logs will be sent to OpenTelemetry collector"
+                );
             }
             None => {
                 // No OTLP layer - standard logging only
@@ -1288,7 +1294,9 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                         tracing_subscriber::fmt::layer()
                             .with_writer(std::io::stderr)
                             .with_ansi(false)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                            ),
                     )
                     .with(
                         // File layer with timestamps
@@ -1300,7 +1308,9 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_thread_names(false)
                             .with_file(true)
                             .with_line_number(true)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                            ),
                     )
                     .with(capture_layer)
                     .init();
