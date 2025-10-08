@@ -1377,7 +1377,9 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                 let subscriber = tracing_subscriber::registry()
                     .with(
                         // OTEL layer with RUST_LOG filtering - CRITICAL to avoid HTTP client noise
-                        otel_layer.with_filter(EnvFilter::from_default_env().add_directive(log_level.into()))
+                        otel_layer.with_filter(
+                            EnvFilter::from_default_env().add_directive(log_level.into()),
+                        ),
                     )
                     .with(
                         // Console/stderr layer

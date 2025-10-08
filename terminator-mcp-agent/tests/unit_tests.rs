@@ -1430,6 +1430,7 @@ async fn test_workflow_editor_create_new_file() {
         find_pattern: None,
         use_regex: None,
         create_if_missing: Some(true),
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1460,6 +1461,7 @@ async fn test_workflow_editor_append_to_existing() {
         find_pattern: None,
         use_regex: None,
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1495,6 +1497,7 @@ async fn test_workflow_editor_simple_string_replace() {
         find_pattern: Some("old_tool".to_string()),
         use_regex: Some(false),
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1529,6 +1532,7 @@ async fn test_workflow_editor_regex_replace() {
         find_pattern: Some(r"step_(\d+)".to_string()),
         use_regex: Some(true),
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1561,6 +1565,7 @@ async fn test_workflow_editor_pattern_not_found() {
         find_pattern: Some("nonexistent_pattern".to_string()),
         use_regex: Some(false),
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1590,6 +1595,7 @@ async fn test_workflow_editor_invalid_regex() {
         find_pattern: Some("[invalid_regex".to_string()), // Invalid regex - missing closing bracket
         use_regex: Some(true),
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1616,6 +1622,7 @@ async fn test_workflow_editor_create_if_missing_false() {
         find_pattern: None,
         use_regex: None,
         create_if_missing: Some(false),
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1645,6 +1652,7 @@ async fn test_workflow_editor_empty_file_append() {
         find_pattern: None,
         use_regex: None,
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1674,6 +1682,7 @@ async fn test_workflow_editor_no_trailing_newline() {
         find_pattern: None,
         use_regex: None,
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1703,6 +1712,7 @@ async fn test_workflow_editor_with_trailing_newline() {
         find_pattern: None,
         use_regex: None,
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
@@ -1736,6 +1746,7 @@ async fn test_workflow_editor_multiline_replacement() {
         find_pattern: Some("section_a:\n  old_data: value\n  more_data: stuff".to_string()),
         use_regex: Some(false),
         create_if_missing: None,
+        include_monitor_screenshots: None,
     };
 
     let result = server.export_workflow_sequence(Parameters(args)).await;
