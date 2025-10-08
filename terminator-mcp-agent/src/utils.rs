@@ -1378,7 +1378,22 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                     .with(
                         // OTEL layer with RUST_LOG filtering - CRITICAL to avoid HTTP client noise
                         otel_layer.with_filter(
-                            EnvFilter::from_default_env().add_directive(log_level.into()),
+                            EnvFilter::from_default_env()
+                                .add_directive(log_level.into())
+                                // Filter out noisy health check and connection logs
+                                .add_directive(
+                                    "terminator::platforms::windows::health=warn"
+                                        .parse()
+                                        .unwrap(),
+                                )
+                                .add_directive("axum::serve=warn".parse().unwrap())
+                                .add_directive("h2::proto=warn".parse().unwrap())
+                                .add_directive("h2::codec=warn".parse().unwrap())
+                                .add_directive("h2::server=warn".parse().unwrap())
+                                .add_directive("h2::frame=warn".parse().unwrap())
+                                .add_directive("rmcp::transport=info".parse().unwrap())
+                                .add_directive("hyper::client=warn".parse().unwrap())
+                                .add_directive("hyper::proto=warn".parse().unwrap()),
                         ),
                     )
                     .with(
@@ -1387,7 +1402,22 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_writer(std::io::stderr)
                             .with_ansi(false)
                             .with_filter(
-                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=warn"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=warn".parse().unwrap())
+                                    .add_directive("h2::proto=warn".parse().unwrap())
+                                    .add_directive("h2::codec=warn".parse().unwrap())
+                                    .add_directive("h2::server=warn".parse().unwrap())
+                                    .add_directive("h2::frame=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport=info".parse().unwrap())
+                                    .add_directive("hyper::client=warn".parse().unwrap())
+                                    .add_directive("hyper::proto=warn".parse().unwrap()),
                             ),
                     )
                     .with(
@@ -1401,7 +1431,22 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_file(true)
                             .with_line_number(true)
                             .with_filter(
-                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=warn"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=warn".parse().unwrap())
+                                    .add_directive("h2::proto=warn".parse().unwrap())
+                                    .add_directive("h2::codec=warn".parse().unwrap())
+                                    .add_directive("h2::server=warn".parse().unwrap())
+                                    .add_directive("h2::frame=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport=info".parse().unwrap())
+                                    .add_directive("hyper::client=warn".parse().unwrap())
+                                    .add_directive("hyper::proto=warn".parse().unwrap()),
                             ),
                     )
                     .with(capture_layer);
@@ -1420,7 +1465,22 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_writer(std::io::stderr)
                             .with_ansi(false)
                             .with_filter(
-                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=warn"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=warn".parse().unwrap())
+                                    .add_directive("h2::proto=warn".parse().unwrap())
+                                    .add_directive("h2::codec=warn".parse().unwrap())
+                                    .add_directive("h2::server=warn".parse().unwrap())
+                                    .add_directive("h2::frame=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport=info".parse().unwrap())
+                                    .add_directive("hyper::client=warn".parse().unwrap())
+                                    .add_directive("hyper::proto=warn".parse().unwrap()),
                             ),
                     )
                     .with(
@@ -1434,7 +1494,22 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_file(true)
                             .with_line_number(true)
                             .with_filter(
-                                EnvFilter::from_default_env().add_directive(log_level.into()),
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=warn"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=warn".parse().unwrap())
+                                    .add_directive("h2::proto=warn".parse().unwrap())
+                                    .add_directive("h2::codec=warn".parse().unwrap())
+                                    .add_directive("h2::server=warn".parse().unwrap())
+                                    .add_directive("h2::frame=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport=info".parse().unwrap())
+                                    .add_directive("hyper::client=warn".parse().unwrap())
+                                    .add_directive("hyper::proto=warn".parse().unwrap()),
                             ),
                     )
                     .with(capture_layer)
