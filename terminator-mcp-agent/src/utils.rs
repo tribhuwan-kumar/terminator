@@ -1255,7 +1255,10 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
             Some(otel_layer) => {
                 use tracing_subscriber::layer::SubscriberExt;
                 let subscriber = tracing_subscriber::registry()
-                    .with(otel_layer) // OTEL layer must be added first to work with Registry type
+                    .with(
+                        // OTEL layer with RUST_LOG filtering - CRITICAL to avoid HTTP client noise
+                        otel_layer.with_filter(EnvFilter::from_default_env().add_directive(log_level.into()))
+                    )
                     .with(
                         // Console/stderr layer
                         tracing_subscriber::fmt::layer()
