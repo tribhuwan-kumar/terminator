@@ -23,12 +23,20 @@ pub struct StopHighlightingArgs {
         description = "Optional specific highlight ID to stop. If omitted, stops all active highlights."
     )]
     pub highlight_id: Option<String>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DelayArgs {
     #[schemars(description = "Number of milliseconds to delay")]
     pub delay_ms: u64,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 fn default_desktop() -> Arc<Desktop> {
@@ -118,6 +126,10 @@ pub struct GetWindowTreeArgs {
         description = "Selector to start tree from instead of window root (only used if include_tree is true)"
     )]
     pub tree_from_selector: Option<String>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -138,6 +150,10 @@ pub struct GetFocusedWindowTreeArgs {
         description = "Selector to start tree from instead of window root (only used if include_tree is true). Use 'true' to start from focused element."
     )]
     pub tree_from_selector: Option<String>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -158,6 +174,10 @@ pub struct GetApplicationsArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -191,6 +211,10 @@ pub struct LocatorArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, Clone)]
@@ -294,6 +318,10 @@ pub struct ClickElementArgs {
         description = "Optional click position as percentage (0-100) within the element. If not provided, clicks the center."
     )]
     pub click_position: Option<ClickPosition>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -331,6 +359,10 @@ pub struct TypeIntoElementArgs {
         description = "Optional highlighting configuration to visually indicate the target element before typing"
     )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -364,6 +396,10 @@ pub struct PressKeyArgs {
         description = "Optional highlighting configuration to visually indicate the target element before pressing keys"
     )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -380,6 +416,10 @@ pub struct GlobalKeyArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -408,6 +448,10 @@ pub struct RunCommandArgs {
         description = "Working directory where the command should be executed. Defaults to current directory."
     )]
     pub working_directory: Option<String>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -443,6 +487,10 @@ pub struct MouseDragArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -470,6 +518,10 @@ pub struct ValidateElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -513,6 +565,10 @@ pub struct HighlightElementArgs {
         description = "Whether to include detailed element info in the response. Defaults to false for speed."
     )]
     pub include_element_info: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -542,6 +598,10 @@ pub struct WaitForElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -558,6 +618,10 @@ pub struct NavigateBrowserArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -600,12 +664,20 @@ pub struct ExecuteBrowserScriptArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Number of times to retry this step on failure.")]
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct OpenApplicationArgs {
     #[schemars(description = "Name of the application to open")]
     pub app_name: String,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -637,6 +709,10 @@ pub struct SelectOptionArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -668,6 +744,10 @@ pub struct SetToggledArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, JsonSchema)]
@@ -687,6 +767,10 @@ pub struct MaximizeWindowArgs {
     pub include_detailed_attributes: Option<bool>,
     pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, JsonSchema)]
@@ -706,6 +790,10 @@ pub struct MinimizeWindowArgs {
     pub include_detailed_attributes: Option<bool>,
     pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -737,6 +825,10 @@ pub struct SetRangeValueArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -768,6 +860,10 @@ pub struct SetValueArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -799,6 +895,10 @@ pub struct SetSelectedArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -833,6 +933,10 @@ pub struct ScrollElementArgs {
         description = "Optional highlighting configuration to visually indicate the target element before scrolling"
     )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -856,6 +960,10 @@ pub struct ActivateElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
@@ -1069,11 +1177,19 @@ pub struct CloseElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 pub struct ZoomArgs {
     pub level: u32,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
@@ -1090,6 +1206,10 @@ pub struct SetZoomArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -1542,6 +1662,10 @@ pub struct ExportWorkflowSequenceArgs {
 
     #[schemars(description = "Create new file if it doesn't exist (default: true)")]
     pub create_if_missing: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -1556,6 +1680,10 @@ pub struct ImportWorkflowSequenceArgs {
         description = "Return raw YAML content alongside parsed structure (default: false)"
     )]
     pub return_raw: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 /// A robust helper that finds a UI element and executes a provided action on it,
@@ -1781,4 +1909,8 @@ pub struct RecordWorkflowArgs {
     pub highlight_mode: Option<HighlightConfig>,
     /// Whether to record scroll events (default: false to reduce noise)
     pub record_scroll_events: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
