@@ -120,10 +120,14 @@ fn rgba_to_png(rgba_data: &[u8], width: u32, height: u32) -> Result<Vec<u8>, Box
     Ok(png_data)
 }
 
-/// Helper to append monitor screenshots to existing content
-async fn append_monitor_screenshots(desktop: &Desktop, mut contents: Vec<Content>) -> Vec<Content> {
-    let mut screenshots = capture_monitor_screenshots(desktop).await;
-    contents.append(&mut screenshots);
+/// Helper to conditionally append monitor screenshots to existing content
+/// Only captures screenshots if include is true (defaults to false)
+async fn append_monitor_screenshots_if_enabled(desktop: &Desktop, mut contents: Vec<Content>, include: Option<bool>) -> Vec<Content> {
+    // Only capture if explicitly enabled (defaults to false)
+    if include.unwrap_or(false) {
+        let mut screenshots = capture_monitor_screenshots(desktop).await;
+        contents.append(&mut screenshots);
+    }
     contents
 }
 
@@ -449,7 +453,7 @@ impl DesktopWrapper {
         span.set_status(true, None);
         span.end();
 
-        let contents = append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await;
+        let contents = append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await;
         Ok(CallToolResult::success(contents))
     }
 
@@ -514,7 +518,7 @@ impl DesktopWrapper {
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -602,7 +606,7 @@ impl DesktopWrapper {
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     /// Helper function to ensure element is scrolled into view for reliable interaction
@@ -1112,7 +1116,7 @@ impl DesktopWrapper {
 
         span.set_status(true, None);
         span.end();
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -1275,7 +1279,7 @@ impl DesktopWrapper {
         )
         .await;
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -1392,7 +1396,7 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
 
         span.set_status(true, None);
         span.end();
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -1465,7 +1469,7 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
 
         span.set_status(true, None);
         span.end();
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -2012,7 +2016,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                return Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(response)?]).await));
+                return Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(response)?], args.include_monitor_screenshots).await));
             } else if is_ts {
                 // Determine the working directory for script execution
                 let script_working_dir = if let Some(ref script_path) = resolved_script_path {
@@ -2084,7 +2088,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                return Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(response)?]).await));
+                return Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(response)?], args.include_monitor_screenshots).await));
             } else if is_py {
                 // Determine the working directory for script execution
                 let script_working_dir = if let Some(ref script_path) = resolved_script_path {
@@ -2135,13 +2139,13 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                return Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(json!({
+                return Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(json!({
                     "action": "run_command",
                     "mode": "engine",
                     "engine": engine,
                     "status": "success",
                     "result": execution_result
-                }))?]).await));
+                }))?], args.include_monitor_screenshots).await));
             } else {
                 return Err(McpError::invalid_params(
                     "Unsupported engine. Use 'node'/'bun'/'javascript'/'typescript'/'ts' or 'python'",
@@ -2383,7 +2387,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(json!({
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(json!({
             "exit_status": output.exit_status,
             "stdout": output.stdout,
             "stderr": output.stderr,
@@ -2392,7 +2396,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 if cfg!(target_os = "windows") { "powershell" } else { "bash" }.to_string()
             }),
             "working_directory": args.working_directory
-        }))?]).await))
+        }))?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -2519,7 +2523,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -2545,13 +2549,13 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(json!({
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(json!({
             "action": "delay",
             "status": "success",
             "requested_delay_ms": args.delay_ms,
             "actual_delay_ms": actual_delay_ms,
             "timestamp": end_time.to_rfc3339()
-        }))?]).await))
+        }))?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -2622,7 +2626,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -2697,7 +2701,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+                Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
             }
             Err(e) => {
                 let selectors_tried = get_selectors_tried_all(
@@ -2723,13 +2727,13 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(json!({
+                Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(json!({
                     "action": "validate_element",
                     "status": "failed",
                     "exists": false,
                     "reason": reason_payload,
                     "timestamp": chrono::Utc::now().to_rfc3339()
-                }))?]).await))
+                }))?], args.include_monitor_screenshots).await))
             }
         }
     }
@@ -2852,7 +2856,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -2916,7 +2920,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     span.set_status(true, None);
                     span.end();
 
-                    return Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await));
+                    return Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await));
                 }
                 Err(e) => {
                     let error_msg = format!("Element not found within timeout: {e}");
@@ -3050,7 +3054,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                         span.set_status(true, None);
                         span.end();
 
-                        return Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await));
+                        return Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await));
                     } else {
                         info!(
                             "[wait_for_element] Condition '{}' NOT met for selector='{}', continuing to poll...",
@@ -3119,7 +3123,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
@@ -3172,7 +3176,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3216,14 +3220,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(json!({
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(json!({
             "action": "close_element",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]).await))
+        }))?], args.include_monitor_screenshots).await))
     }
 
     #[tool(description = "Scrolls a UI element in the specified direction by the given amount.")]
@@ -3322,7 +3326,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(description = "Selects an option in a dropdown or combobox by its visible text.")]
@@ -3401,7 +3405,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3466,7 +3470,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3545,7 +3549,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3619,7 +3623,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3693,7 +3697,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3757,7 +3761,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3821,7 +3825,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3885,7 +3889,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(description = "Captures a screenshot of a specific UI element.")]
@@ -3945,7 +3949,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![
             Content::json(json!({
                 "action": "capture_element_screenshot",
                 "status": "success",
@@ -3955,7 +3959,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 "image_format": "png",
             }))?,
             Content::image(base64_image, "image/png".to_string()),
-        ]).await))
+        ], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -4031,7 +4035,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -4206,7 +4210,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(response)?]).await))
+                Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(response)?], args.include_monitor_screenshots).await))
             }
             "stop" => {
                 let mut recorder = recorder_guard.take().ok_or_else(|| {
@@ -4310,7 +4314,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(response)?]).await))
+                Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(response)?], args.include_monitor_screenshots).await))
             }
             _ => Err(McpError::invalid_params(
                 "Invalid action. Must be 'start' or 'stop'.",
@@ -4324,7 +4328,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
     )]
     async fn stop_highlighting(
         &self,
-        Parameters(_args): Parameters<crate::utils::StopHighlightingArgs>,
+        Parameters(args): Parameters<crate::utils::StopHighlightingArgs>,
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
         let mut span = StepSpan::new("stop_highlighting", None);
@@ -4346,7 +4350,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(response)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(response)?], args.include_monitor_screenshots).await))
     }
     // Tool functions continue below - part of impl block with #[tool_router]
     #[tool(
@@ -4462,7 +4466,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(description = "Minimizes a window.")]
@@ -4524,7 +4528,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -4564,7 +4568,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -4635,7 +4639,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 
     // Removed: run_javascript tool (merged into run_command with engine)
@@ -5292,7 +5296,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots(&self.desktop, vec![Content::json(result_json)?]).await))
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(result_json)?], args.include_monitor_screenshots).await))
     }
 }
 
