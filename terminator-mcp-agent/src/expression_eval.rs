@@ -147,10 +147,19 @@ fn evaluate_contains(collection: &Value, item: &str) -> bool {
 
 // Parses simple expressions like "variable == 'value'" or "variable == true"
 fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option<bool> {
-    let (var_path, op, raw_rhs) = if let Some(pos) = expr.find("==") {
+    // Try to parse comparison operators in order of longest first to avoid partial matches
+    let (var_path, op, raw_rhs) = if let Some(pos) = expr.find(">=") {
+        (&expr[..pos], ">=", &expr[pos + 2..])
+    } else if let Some(pos) = expr.find("<=") {
+        (&expr[..pos], "<=", &expr[pos + 2..])
+    } else if let Some(pos) = expr.find("==") {
         (&expr[..pos], "==", &expr[pos + 2..])
     } else if let Some(pos) = expr.find("!=") {
         (&expr[..pos], "!=", &expr[pos + 2..])
+    } else if let Some(pos) = expr.find('>') {
+        (&expr[..pos], ">", &expr[pos + 1..])
+    } else if let Some(pos) = expr.find('<') {
+        (&expr[..pos], "<", &expr[pos + 1..])
     } else {
         return None;
     };
@@ -158,27 +167,90 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
     let var_path = var_path.trim();
     let raw_rhs = raw_rhs.trim();
 
-    let lhs = get_value(var_path, variables)?;
+    // Try to get the left-hand side value
+    let lhs = get_value(var_path, variables);
 
-    let are_equal = match raw_rhs {
-        "true" => lhs.as_bool() == Some(true),
-        "false" => lhs.as_bool() == Some(false),
-        _ if raw_rhs.starts_with('\'') && raw_rhs.ends_with('\'') => {
-            let rhs_str = raw_rhs.trim_matches('\'');
-            compare_values_smart(lhs, rhs_str)
-        }
-        _ if raw_rhs.starts_with('"') && raw_rhs.ends_with('"') => {
-            let rhs_str = raw_rhs.trim_matches('"');
-            compare_values_smart(lhs, rhs_str)
-        }
-        _ => return None, // Invalid RHS
+    // Handle undefined variables gracefully
+    if lhs.is_none() {
+        // For equality operators, undefined is never equal to anything
+        // For inequality operators, undefined is always not equal to anything
+        // For numeric comparisons, undefined is treated as less than any value
+        return Some(match op {
+            "==" => false, // undefined == anything → false
+            "!=" => true,  // undefined != anything → true
+            ">" => false,  // undefined > anything → false
+            "<" => true,   // undefined < anything → true (treat as 0 or null)
+            ">=" => false, // undefined >= anything → false
+            "<=" => true,  // undefined <= anything → true
+            _ => false,
+        });
+    }
+
+    let lhs = lhs.unwrap();
+
+    // For equality/inequality operators, use smart comparison
+    if op == "==" || op == "!=" {
+        let are_equal = match raw_rhs {
+            "true" => lhs.as_bool() == Some(true),
+            "false" => lhs.as_bool() == Some(false),
+            _ if raw_rhs.starts_with('\'') && raw_rhs.ends_with('\'') => {
+                let rhs_str = raw_rhs.trim_matches('\'');
+                compare_values_smart(lhs, rhs_str)
+            }
+            _ if raw_rhs.starts_with('"') && raw_rhs.ends_with('"') => {
+                let rhs_str = raw_rhs.trim_matches('"');
+                compare_values_smart(lhs, rhs_str)
+            }
+            _ => return None, // Invalid RHS
+        };
+
+        return match op {
+            "==" => Some(are_equal),
+            "!=" => Some(!are_equal),
+            _ => None,
+        };
+    }
+
+    // For numeric comparison operators (>, <, >=, <=)
+    // Only numeric operators reach here, equality operators already returned
+
+    // Try to extract numeric value from LHS
+    let lhs_num = match lhs {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.parse::<f64>().ok(),
+        Value::Bool(true) => Some(1.0),
+        Value::Bool(false) => Some(0.0),
+        Value::Null => Some(0.0),
+        _ => None,
     };
 
-    match op {
-        "==" => Some(are_equal),
-        "!=" => Some(!are_equal),
-        _ => None, // Should be unreachable
+    // Try to extract numeric value from RHS
+    let rhs_num = if raw_rhs == "true" {
+        Some(1.0)
+    } else if raw_rhs == "false" || raw_rhs == "null" {
+        Some(0.0)
+    } else if raw_rhs.starts_with('\'') && raw_rhs.ends_with('\'') {
+        raw_rhs.trim_matches('\'').parse::<f64>().ok()
+    } else if raw_rhs.starts_with('"') && raw_rhs.ends_with('"') {
+        raw_rhs.trim_matches('"').parse::<f64>().ok()
+    } else {
+        // Try parsing as bare number
+        raw_rhs.parse::<f64>().ok()
+    };
+
+    // Both sides must be numeric for comparison
+    if let (Some(l), Some(r)) = (lhs_num, rhs_num) {
+        return Some(match op {
+            ">" => l > r,
+            "<" => l < r,
+            ">=" => l >= r,
+            "<=" => l <= r,
+            _ => false,
+        });
     }
+
+    // If we can't parse as numbers, the comparison fails
+    None
 }
 
 // Smart comparison that handles type coercion between strings and booleans

@@ -397,6 +397,21 @@ The `execute_browser_script` tool executes JavaScript in browser contexts (Chrom
 
 **Chrome extension required:** This tool requires the Terminator Chrome extension to be installed and the browser window to be open.
 
+**🚨 CRITICAL REQUIREMENT: All browser scripts MUST use IIFE wrapper**
+
+The MCP agent injects environment variables at the top of your script, making top-level `return` statements illegal. You MUST wrap ALL browser scripts in an IIFE:
+
+```javascript
+(function() {{
+  // Your code with typeof checks for env variables
+  const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+  // ... your logic ...
+  return JSON.stringify({{ result: 'data' }});
+}})()
+```
+
+Without the IIFE wrapper, you'll get: `SyntaxError: Illegal return statement`
+
 **Two ways to execute browser scripts:**
 1. `desktop.executeBrowserScript(script)` - Automatically finds active browser window (simpler)
 2. `element.executeBrowserScript(script)` - Execute on specific browser window element
@@ -465,56 +480,82 @@ EVAL_ERROR: Uncaught SyntaxError: Identifier 'message' has already been declared
 
 Browser scripts run via `eval()` and MUST return a serializable value. The last expression is the return value.
 
-**🚨 IMPORTANT: For Promises, you MUST capture and return explicitly**
+**🚨 CRITICAL: IIFE Wrapper is MANDATORY for Scripts with Return Statements**
 
-Due to eval() context limitations, bare Promises as the last expression cause NULL_RESULT errors. Always use:
+When the MCP agent executes your browser script, it injects environment variables at the top:
 ```javascript
-const result = someAsyncFunction().then(...).catch(...);
-return result;
+var env_var1 = \"value\";
+var env_var2 = {{{{...}}}};
+// ... potentially hundreds of injected variables
+
+// Your script starts here
+return someValue;  // ❌ ILLEGAL! SyntaxError: Illegal return statement
+```
+
+This variable injection makes ANY top-level `return` statement illegal in JavaScript. You MUST wrap your entire script in an IIFE (Immediately Invoked Function Expression) to make return statements legal:
+
+```javascript
+(function() {{
+  // Your code here with typeof checks
+  return result;
+}})()
+```
+
+**Error you'll see if you violate this:**
+```
+EVAL_ERROR: Uncaught SyntaxError: Illegal return statement
+    at <anonymous>:1:15
+    at <anonymous>:1:272854
 ```
 
 **✅ CORRECT Patterns:**
 
-**Pattern 1: Self-Executing IIFE (recommended for sync operations)**
+**Pattern 1: IIFE for Synchronous Operations (REQUIRED)**
 ```javascript
 (function() {{
+  // Safe env variable access with typeof checks
+  const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
+
   const data = document.title;
   const url = window.location.href;
 
   return JSON.stringify({{
     title: data,
-    url: url
+    url: url,
+    search: searchTerm
   }});
 }})()
 ```
 
-**Pattern 2: Promise Chain with Capture and Return (for async operations)**
+**Pattern 2: IIFE with Promise Chain (REQUIRED for async operations)**
 ```javascript
-// Setup variables first (synchronously) with typeof checks
-const targetText = (typeof target_text !== 'undefined') ? target_text : '';
+(function() {{
+  // Setup variables first (synchronously) with typeof checks
+  const targetText = (typeof target_text !== 'undefined') ? target_text : '';
 
-// ✅ CRITICAL: Capture Promise in const and explicitly return it
-// This is REQUIRED for eval() context - bare Promise as last expression causes NULL_RESULT
-const result = navigator.clipboard.writeText(targetText).then(() => {{
-  console.log('Clipboard write success');
+  // ✅ CRITICAL: Capture Promise in const and explicitly return it
+  // IIFE wrapper makes the return statement legal despite variable injection
+  const result = navigator.clipboard.writeText(targetText).then(() => {{
+    console.log('Clipboard write success');
 
-  // MUST return value from .then() handler
-  return JSON.stringify({{
-    clipboard_written: true,
-    text_length: targetText.length
+    // MUST return value from .then() handler
+    return JSON.stringify({{
+      clipboard_written: true,
+      text_length: targetText.length
+    }});
+
+  }}).catch(error => {{
+    console.error('Clipboard error:', error);
+
+    // MUST return value from .catch() handler
+    return JSON.stringify({{
+      clipboard_written: false,
+      error: error.message
+    }});
   }});
 
-}}).catch(error => {{
-  console.error('Clipboard error:', error);
-
-  // MUST return value from .catch() handler
-  return JSON.stringify({{
-    clipboard_written: false,
-    error: error.message
-  }});
-}});
-
-return result;
+  return result;
+}})()
 ```
 
 **❌ WRONG Patterns:**
@@ -569,6 +610,22 @@ navigator.clipboard.readText().then(clipboardText => {{
 
 // Error: NULL_RESULT - Script executed but result wasn't captured
 // This pattern works in some JS contexts but NOT in browser eval() injection
+```
+
+**Wrong 5: Top-level return without IIFE wrapper**
+```javascript
+// ❌ DO NOT USE - Variable injection makes top-level return illegal
+const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+const count = entries.length;
+
+// This return is illegal when variables are injected at top level
+return JSON.stringify({{
+  count: count,
+  entries: entries
+}});
+
+// Error: EVAL_ERROR: Uncaught SyntaxError: Illegal return statement
+// Fix: Wrap entire script in (function() {{ ... }})()
 ```
 
 ### Script Return Values vs Step Execution Status
@@ -708,33 +765,35 @@ const hasError = JSON.stringify(data).includes('error');
 **Pattern: Read Clipboard**
 
 ```javascript
-// ⚠️ Use typeof checks for env variables
-const fallbackText = (typeof default_text !== 'undefined') ? default_text : '';
+(function() {{
+  // ⚠️ Use typeof checks for env variables
+  const fallbackText = (typeof default_text !== 'undefined') ? default_text : '';
 
-// ✅ CRITICAL: Capture Promise and explicitly return it
-// DO NOT use Promise as bare last expression - eval() context requires explicit return
-const result = navigator.clipboard.readText().then(clipboardText => {{
-  console.log('Read from clipboard:', clipboardText.substring(0, 100));
+  // ✅ CRITICAL: Capture Promise and explicitly return it
+  // IIFE wrapper required - variable injection makes top-level return illegal
+  const result = navigator.clipboard.readText().then(clipboardText => {{
+    console.log('Read from clipboard:', clipboardText.substring(0, 100));
 
-  // ⚠️ MUST return in .then() handler
-  return JSON.stringify({{
-    clipboard_content: clipboardText,
-    length: clipboardText.length,
-    has_content: clipboardText.length > 0
+    // ⚠️ MUST return in .then() handler
+    return JSON.stringify({{
+      clipboard_content: clipboardText,
+      length: clipboardText.length,
+      has_content: clipboardText.length > 0
+    }});
+
+  }}).catch(error => {{
+    console.error('Clipboard read failed:', error);
+
+    // ⚠️ MUST return in .catch() handler
+    return JSON.stringify({{
+      clipboard_content: fallbackText,
+      length: 0,
+      error: error.message
+    }});
   }});
 
-}}).catch(error => {{
-  console.error('Clipboard read failed:', error);
-
-  // ⚠️ MUST return in .catch() handler
-  return JSON.stringify({{
-    clipboard_content: fallbackText,
-    length: 0,
-    error: error.message
-  }});
-}});
-
-return result;
+  return result;
+}})()
 ```
 
 ---
@@ -1069,8 +1128,8 @@ element.activateWindow();
 element.close();
 
 // Browser DOM access (requires Chrome extension)
-const pageTitle = await desktop.executeBrowserScript('return document.title;');
-const links = await desktop.executeBrowserScript('return document.querySelectorAll(\"a\").length;');
+const pageTitle = await desktop.executeBrowserScript('(function() { return document.title; })()');
+const links = await desktop.executeBrowserScript('(function() { return document.querySelectorAll(\"a\").length; })()');
 
 // Browser control
 await desktop.setZoom(50);    // Set zoom to 50%
@@ -1119,11 +1178,11 @@ return {{ action: 'button_not_found' }};
 *   **Browser script execution (desktop vs element):**
 ```javascript
 // ✅ Simple: Use desktop method for active browser tab
-const pageTitle = await desktop.executeBrowserScript('return document.title;');
+const pageTitle = await desktop.executeBrowserScript('(function() { return document.title; })()');
 
 // ✅ Specific: Find browser window first, then execute
 const chromeWindow = await desktop.locator('role:Window|name:Chrome').first(5000);
-const result = await chromeWindow.executeBrowserScript('return document.querySelector(\".data\").textContent;');
+const result = await chromeWindow.executeBrowserScript('(function() { return document.querySelector(\".data\").textContent; })()');
 ```
 
 *   **Find and configure elements dynamically:**
@@ -1279,8 +1338,59 @@ Supports multiple conditions with first-match-wins evaluation:
 - `{{step_id}}_status`: Step execution status (\"success\" or \"error\")
 - `{{step_id}}_result`: Step result data
 - Environment variables are accessed directly (e.g., `data_validation_failed`)
-- Supports operators: `==`, `!=`, `&&`, `||`, `!`
-- Functions: `contains()`, `startsWith()`, `endsWith()`
+
+**Supported Operators:**
+- Equality: `==`, `!=`
+- Numeric comparison: `>`, `<`, `>=`, `<=`
+- Logical: `&&`, `||`, `!`
+- Functions: `contains()`, `startsWith()`, `endsWith()`, `always()`
+
+**Type Handling:**
+- Strings: Parse directly or convert to numbers for numeric comparisons
+- Booleans: `true` → 1.0, `false` → 0.0 in numeric contexts
+- Numbers: Support both integer and float comparisons
+- Null: Treated as 0.0 in numeric comparisons
+- Type coercion: Automatic string-to-number conversion for numeric operators
+
+**Undefined Variable Behavior:**
+When a variable doesn't exist (not yet set):
+- `undefined == 'value'` → `false` (undefined never equals anything)
+- `undefined != 'value'` → `true` (undefined always not-equal)
+- `undefined > value` → `false` (undefined treated as less than any value)
+- `undefined < value` → `true` (undefined treated as less than any value)
+- `undefined >= value` → `false`
+- `undefined <= value` → `true`
+
+**Expression Examples:**
+```yaml
+# Step status checks
+if: \"check_login_status == 'success'\"
+if: \"copy_table_status != 'success'\"
+
+# Numeric comparisons
+if: \"balance_difference > 0.01\"
+if: \"retry_count < 3\"
+if: \"progress_percent >= 100\"
+
+# Type coercion (string to number)
+if: \"item_count > 0\"  # Works even if item_count is \"5\" string
+
+# Undefined variable handling (no errors)
+if: \"optional_step_status != 'success'\"  # Safe even if step didn't run
+
+# Boolean fields
+if: \"user_logged_in\"  # Direct boolean evaluation
+if: \"!troubleshooting\"  # Negation
+
+# Complex conditions
+if: \"check_login_status == 'success' && balance_difference < 0.01\"
+if: \"retry_count > 3 || force_retry\"
+
+# Array/String functions
+if: \"contains(product_types, 'FEX')\"
+if: \"startsWith(file_name, 'data_')\"
+if: \"endsWith(file_name, '.json')\"
+```
 
 **Common Jump Patterns:**
 - **Skip**: Jump forward over unnecessary steps
