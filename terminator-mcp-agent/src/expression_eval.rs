@@ -168,7 +168,12 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
     let raw_rhs = raw_rhs.trim();
 
     // Try to get the left-hand side value
-    let lhs = get_value(var_path, variables);
+    // Check if LHS is a coalesce() function call
+    let lhs = if var_path.contains("coalesce(") {
+        evaluate_coalesce_to_value(var_path, variables)
+    } else {
+        get_value(var_path, variables).cloned()
+    };
 
     // Handle undefined variables gracefully
     if lhs.is_none() {
@@ -186,7 +191,7 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
         });
     }
 
-    let lhs = lhs.unwrap();
+    let lhs = &lhs.unwrap();
 
     // For equality/inequality operators, use smart comparison
     if op == "==" || op == "!=" {
@@ -201,7 +206,10 @@ fn parse_and_evaluate_binary_expression(expr: &str, variables: &Value) -> Option
                 let rhs_str = raw_rhs.trim_matches('"');
                 compare_values_smart(lhs, rhs_str)
             }
-            _ => return None, // Invalid RHS
+            _ => {
+                // Try as bare number or literal
+                compare_values_smart(lhs, raw_rhs)
+            }
         };
 
         return match op {
@@ -261,5 +269,187 @@ fn compare_values_smart(lhs: &Value, rhs_str: &str) -> bool {
         Value::Bool(false) => rhs_str == "false" || rhs_str == "0",
         Value::Number(n) => rhs_str.parse::<f64>().ok() == Some(n.as_f64().unwrap_or(0.0)),
         _ => false,
+    }
+}
+
+/// Helper to check if a value is truthy
+fn is_truthy(val: &Value) -> bool {
+    match val {
+        Value::Bool(b) => *b,
+        Value::String(s) => !s.is_empty() && s != "false" && s != "0",
+        Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
+        Value::Null => false,
+        Value::Array(arr) => !arr.is_empty(),
+        Value::Object(obj) => !obj.is_empty(),
+    }
+}
+
+/// Helper to parse a literal string as a Value
+fn parse_literal_value(literal: &str) -> Value {
+    // Try parsing as number
+    if let Ok(n) = literal.parse::<i64>() {
+        return Value::Number(n.into());
+    }
+    if let Ok(n) = literal.parse::<f64>() {
+        if let Some(num) = serde_json::Number::from_f64(n) {
+            return Value::Number(num);
+        }
+    }
+
+    // Parse as boolean
+    match literal {
+        "true" => Value::Bool(true),
+        "false" => Value::Bool(false),
+        "null" => Value::Null,
+        _ => Value::String(literal.to_string()),
+    }
+}
+
+/// Evaluates coalesce() and returns the actual Value
+/// Returns the first truthy value from variables, or the last argument as default
+fn evaluate_coalesce_to_value(expr: &str, variables: &Value) -> Option<Value> {
+    // Extract function call: "coalesce(x, y, z, default)"
+    let func_start = expr.find("coalesce(")?;
+    let args_start = func_start + "coalesce(".len();
+    let args_end = expr[args_start..].find(')')?;
+    let args_str = &expr[args_start..args_start + args_end];
+
+    let args: Vec<&str> = args_str.split(',').map(|s| s.trim()).collect();
+
+    if args.len() < 2 {
+        return None;
+    }
+
+    // coalesce(a, b, c, default) semantics:
+    // - Check ALL arguments (including last) as potential variables
+    // - Return the first one that exists AND is truthy
+    // - If none are truthy, return the last argument (as variable or literal)
+
+    for arg in &args {
+        if let Some(val) = get_value(arg, variables) {
+            // Variable exists - check if it's truthy
+            if is_truthy(val) {
+                return Some(val.clone());
+            }
+            // Variable exists but is falsy - continue to next argument
+        }
+        // Variable doesn't exist - continue to next argument
+    }
+
+    // No truthy variables found, use last argument as default
+    let default_arg = args.last()?.trim_matches(|c| c == '\'' || c == '"');
+
+    // Try as variable first (might be a falsy variable that we'll return anyway)
+    if let Some(val) = get_value(default_arg, variables) {
+        return Some(val.clone());
+    }
+
+    // Not a variable, parse as literal
+    Some(parse_literal_value(default_arg))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_coalesce_basic() {
+        let vars = json!({"x": 5});
+        assert!(evaluate("coalesce(x, 0) > 0", &vars));
+
+        let vars = json!({});
+        assert!(!evaluate("coalesce(x, 0) > 0", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_with_undefined() {
+        let vars = json!({});
+        assert!(!evaluate("coalesce(missing, 0) > 5", &vars));
+        assert!(evaluate("coalesce(missing, 10) > 5", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_string_default() {
+        let vars = json!({"status": null});
+        assert!(evaluate("coalesce(status, 'pending') == 'pending'", &vars));
+
+        let vars = json!({});
+        assert!(evaluate("coalesce(status, 'pending') == 'pending'", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_multiple_args() {
+        let vars = json!({"a": null, "b": 0, "c": 5});
+        // coalesce(a, b, c, 10) should return c (first truthy)
+        assert!(evaluate("coalesce(a, b, c, 10) == 5", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_all_falsy() {
+        let vars = json!({"a": null, "b": 0, "c": false});
+        // All falsy, should use default (100)
+        assert!(evaluate("coalesce(a, b, c, 100) == 100", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_first_truthy() {
+        let vars = json!({"a": null, "b": 42, "c": 5});
+        // Should return b (first truthy)
+        assert!(evaluate("coalesce(a, b, c, 10) == 42", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_with_numeric_comparison() {
+        let vars = json!({"fields_checked": 3});
+        assert!(evaluate("coalesce(fields_checked, 0) > 0", &vars));
+
+        let vars = json!({});
+        assert!(!evaluate("coalesce(fields_checked, 0) > 0", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_with_string_comparison() {
+        let vars = json!({"status": "success"});
+        assert!(evaluate("coalesce(status, 'pending') == 'success'", &vars));
+
+        let vars = json!({});
+        assert!(evaluate("coalesce(status, 'pending') == 'pending'", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_inequality() {
+        let vars = json!({"retry_count": 5});
+        assert!(!evaluate("coalesce(retry_count, 0) < 3", &vars));
+
+        let vars = json!({});
+        assert!(evaluate("coalesce(retry_count, 0) < 3", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_with_logical_operators() {
+        let vars = json!({"x": 5, "y": null});
+        assert!(evaluate("coalesce(x, 0) > 0 && coalesce(y, 10) > 5", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_empty_string_is_falsy() {
+        let vars = json!({"status": ""});
+        // Empty string is falsy, should use default
+        assert!(evaluate("coalesce(status, 'default') == 'default'", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_zero_is_falsy() {
+        let vars = json!({"count": 0});
+        // Zero is falsy, should use default
+        assert!(evaluate("coalesce(count, 10) == 10", &vars));
+    }
+
+    #[test]
+    fn test_coalesce_false_is_falsy() {
+        let vars = json!({"flag": false});
+        // False is falsy, should use default
+        assert!(evaluate("coalesce(flag, true) == true", &vars));
     }
 }

@@ -1343,7 +1343,7 @@ Supports multiple conditions with first-match-wins evaluation:
 - Equality: `==`, `!=`
 - Numeric comparison: `>`, `<`, `>=`, `<=`
 - Logical: `&&`, `||`, `!`
-- Functions: `contains()`, `startsWith()`, `endsWith()`, `always()`
+- Functions: `contains()`, `startsWith()`, `endsWith()`, `always()`, `coalesce()`
 
 **Type Handling:**
 - Strings: Parse directly or convert to numbers for numeric comparisons
@@ -1390,6 +1390,14 @@ if: \"retry_count > 3 || force_retry\"
 if: \"contains(product_types, 'FEX')\"
 if: \"startsWith(file_name, 'data_')\"
 if: \"endsWith(file_name, '.json')\"
+
+# Coalesce function - use first truthy value
+if: \"coalesce(fields_checked, 0) > 0\"
+if: \"coalesce(status, 'pending') == 'success'\"
+if: \"coalesce(retry_count, 0) < 3\"
+
+# Multiple fallbacks
+if: \"coalesce(primary_value, secondary_value, 0) > 0\"
 ```
 
 **Common Jump Patterns:**
