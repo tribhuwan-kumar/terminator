@@ -1128,8 +1128,8 @@ element.activateWindow();
 element.close();
 
 // Browser DOM access (requires Chrome extension)
-const pageTitle = await desktop.executeBrowserScript('(function() { return document.title; })()');
-const links = await desktop.executeBrowserScript('(function() { return document.querySelectorAll(\"a\").length; })()');
+const pageTitle = await desktop.executeBrowserScript('(function() {{ return document.title; }})()');
+const links = await desktop.executeBrowserScript('(function() {{ return document.querySelectorAll(\"a\").length; }})()');
 
 // Browser control
 await desktop.setZoom(50);    // Set zoom to 50%
@@ -1178,11 +1178,11 @@ return {{ action: 'button_not_found' }};
 *   **Browser script execution (desktop vs element):**
 ```javascript
 // ✅ Simple: Use desktop method for active browser tab
-const pageTitle = await desktop.executeBrowserScript('(function() { return document.title; })()');
+const pageTitle = await desktop.executeBrowserScript('(function() {{ return document.title; }})()');
 
 // ✅ Specific: Find browser window first, then execute
 const chromeWindow = await desktop.locator('role:Window|name:Chrome').first(5000);
-const result = await chromeWindow.executeBrowserScript('(function() { return document.querySelector(\".data\").textContent; })()');
+const result = await chromeWindow.executeBrowserScript('(function() {{ return document.querySelector(\".data\").textContent; }})()');
 ```
 
 *   **Find and configure elements dynamically:**
