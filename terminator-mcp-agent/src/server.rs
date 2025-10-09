@@ -5023,32 +5023,47 @@ Timing: Use await new Promise(resolve => setTimeout(resolve, ms)) for delays.
 The sleep() function is NOT available in browser context.
 
 Script Format Requirements:
-The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns:
+🚨 CRITICAL: ALL browser scripts MUST use IIFE wrapper when using return statements.
+The MCP agent injects environment variables at the top of your script, making top-level
+return statements illegal in JavaScript. The Chrome extension bridge automatically detects
+and awaits Promises.
 
-✅ RECOMMENDED: IIFE Pattern for Sync Scripts
+✅ RECOMMENDED: IIFE Pattern for Synchronous Scripts
 (function() {
+  // Safe env variable access with typeof checks
+  const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
+
   const data = document.querySelector('.data');
   return JSON.stringify({
     data_found: data ? 'true' : 'false',
-    data_text: data ? data.textContent : ''
+    data_text: data ? data.textContent : '',
+    search_term: searchTerm
   });
 })()
 
-✅ RECOMMENDED: Promise Chain as Last Expression
-const config = (typeof user_config !== 'undefined') ? user_config : {};
-navigator.clipboard.readText().then(clipboardText => {
-  console.log('Success:', clipboardText);
-  return JSON.stringify({ clipboard_text: clipboardText });
-}).catch(error => {
-  console.error('Error:', error);
-  return JSON.stringify({ error_message: error.message });
-});
+✅ RECOMMENDED: IIFE with Promise Chain for Async Operations
+(function() {
+  // Setup variables first (synchronously) with typeof checks
+  const config = (typeof user_config !== 'undefined') ? user_config : {};
+
+  // Capture Promise in const and explicitly return it
+  const result = navigator.clipboard.readText().then(clipboardText => {
+    console.log('Success:', clipboardText);
+    return JSON.stringify({ clipboard_text: clipboardText });
+  }).catch(error => {
+    console.error('Error:', error);
+    return JSON.stringify({ error_message: error.message });
+  });
+
+  return result;
+})()
 
 Key Rules:
+- IIFE wrapper is MANDATORY to avoid 'Illegal return statement' errors
 - Both .then() and .catch() handlers MUST return values (use JSON.stringify())
-- Promise as last expression is automatically detected and awaited
+- Always use typeof checks for ALL env variable access
 - Do synchronous variable setup BEFORE the Promise chain
-- Avoid async IIFE - use Promise chain pattern instead
+- Avoid async IIFE - use Promise chain pattern inside regular IIFE instead
 - Never use success: true/false pattern - return descriptive data instead
 
 ❌ WRONG: Missing Return Values
