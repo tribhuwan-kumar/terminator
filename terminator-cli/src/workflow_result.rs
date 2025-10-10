@@ -8,6 +8,7 @@ use serde_json::Value;
 pub enum WorkflowState {
     Success,
     Failure,
+    Exception,
     Skipped,
 }
 
@@ -56,9 +57,15 @@ impl WorkflowResult {
                 .and_then(|s| s.as_bool())
                 .unwrap_or(false);
 
+            // Check if workflow encountered an exception
+            let exception = parsed
+                .get("exception")
+                .and_then(|e| e.as_bool())
+                .unwrap_or(false);
+
             // If there's an output parser result, use its success indication
-            let success = if skipped {
-                false // skipped workflows are not considered successful
+            let success = if skipped || exception {
+                false // skipped and exception workflows are not considered successful
             } else {
                 parsed
                     .get("success")
@@ -78,9 +85,11 @@ impl WorkflowResult {
                     })
             };
 
-            // Determine state
+            // Determine state - exception takes precedence over success/failure
             let state = if skipped {
                 WorkflowState::Skipped
+            } else if exception {
+                WorkflowState::Exception
             } else if success {
                 WorkflowState::Success
             } else {
@@ -94,6 +103,7 @@ impl WorkflowResult {
                     match state {
                         WorkflowState::Success => "Workflow completed successfully",
                         WorkflowState::Failure => "Workflow failed to achieve its goal",
+                        WorkflowState::Exception => "Workflow encountered a system exception",
                         WorkflowState::Skipped => "Workflow skipped - conditions not met",
                     }
                 })
@@ -162,13 +172,16 @@ impl WorkflowResult {
         println!();
         println!("{}", "═".repeat(60));
 
-        // Display success/failure/skipped with color
+        // Display success/failure/exception/skipped with color
         match self.state {
             WorkflowState::Success => {
                 println!("{} {}", "✅ SUCCESS:".green().bold(), self.message);
             }
             WorkflowState::Failure => {
                 println!("{} {}", "❌ FAILURE:".red().bold(), self.message);
+            }
+            WorkflowState::Exception => {
+                println!("{} {}", "🚨 EXCEPTION:".bright_red().bold(), self.message);
             }
             WorkflowState::Skipped => {
                 println!("{} {}", "⏭️  SKIPPED:".yellow().bold(), self.message);

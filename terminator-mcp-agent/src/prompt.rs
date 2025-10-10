@@ -26,9 +26,13 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
    - [Avoiding Page Navigation Issues](#page-navigation)
    - [Browser Script Format Requirements](#browser-script-format)
 7. [Core Desktop APIs](#desktop-apis)
-8. [Workflow State Persistence & Partial Execution](#workflow-state)
-9. [Common Pitfalls & Solutions](#common-pitfalls)
-10. [Troubleshooting & Debugging](#troubleshooting)
+8. [Workflow Output Parsers](#output-parsers)
+   - [Standard Output Structure](#standard-output-structure)
+   - [Simplified Output Format](#simplified-output-format)
+   - [Custom Fields Support](#custom-fields)
+9. [Workflow State Persistence & Partial Execution](#workflow-state)
+10. [Common Pitfalls & Solutions](#common-pitfalls)
+11. [Troubleshooting & Debugging](#troubleshooting)
 
 **Golden Rules for Robust Automation**
 
@@ -1249,6 +1253,258 @@ try {{
 *   Cache element references when performing multiple operations
 *   Use specific selectors (role:Type|name:Name) over generic ones
 *   Return structured data objects from scripts for output parsing
+
+---
+
+## Section 8: Workflow Output Parsers
+
+Output parsers process the results of all workflow steps and return a structured final result. They run after all steps complete and have access to all accumulated environment variables.
+
+### 8.1 Standard Output Structure
+
+The output parser should return a JavaScript object with these **standard fields**:
+
+**Core Status Fields:**
+- `success` (boolean) - Overall workflow success/failure
+- `exception` (boolean) - Indicates exceptional conditions (system errors, critical issues)
+- `skipped` (boolean) - Workflow was intentionally skipped
+- `message` (string) - Human-readable summary of the result
+
+**Data Fields:**
+- `data` (any) - Main result data from the workflow
+- `error` (string) - Error details if applicable
+- `validation` (any) - Validation results or metadata
+
+**State Precedence (highest to lowest):**
+1. `skipped: true` - Workflow was skipped (overrides all other states)
+2. `exception: true` - Exceptional condition occurred (takes precedence over success/failure)
+3. `success: true` - Normal success
+4. `success: false` - Normal failure
+
+**Example - Normal Success:**
+```javascript
+return {{
+  success: true,
+  message: 'Processed 150 records successfully',
+  data: {{
+    records_processed: 150,
+    total_amount: 45230.50
+  }}
+}};
+```
+
+**Example - Normal Failure:**
+```javascript
+return {{
+  success: false,
+  message: 'Validation failed: Missing required fields',
+  error: 'Required fields: account_code, amount',
+  data: null
+}};
+```
+
+**Example - Exception (Critical System Error):**
+```javascript
+return {{
+  success: false,
+  exception: true,  // Indicates exceptional condition
+  message: 'Database connection timeout after 3 retries',
+  error: 'ECONNREFUSED: Connection refused at 10.0.0.1:5432',
+  data: {{
+    retry_count: 3,
+    last_error_time: new Date().toISOString()
+  }}
+}};
+```
+
+**Example - Skipped Workflow:**
+```javascript
+return {{
+  success: true,
+  skipped: true,  // Takes precedence over success/failure
+  message: 'Workflow skipped: File already processed',
+  data: {{
+    file_path: target_file,
+    processed_date: '2025-10-09'
+  }}
+}};
+```
+
+### 8.2 Simplified Output Format
+
+Workflows support a simplified format using the `output` field (instead of `output_parser`):
+
+**In workflow YAML:**
+```yaml
+# Method 1: Using output_parser (full format)
+output_parser:
+  javascript_code: |
+    const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+    return {{
+      success: itemsProcessed > 0,
+      message: `Processed ${{itemsProcessed}} items`,
+      data: {{ count: itemsProcessed }}
+    }};
+
+# Method 2: Using output (simplified - just the JavaScript code)
+output: |
+  const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+  return {{
+    success: itemsProcessed > 0,
+    message: `Processed ${{itemsProcessed}} items`,
+    data: {{ count: itemsProcessed }}
+  }};
+```
+
+**Both formats are equivalent.** The simplified `output` format is preferred for readability.
+
+**Environment Variable Access:**
+Output parsers have access to all accumulated environment variables from workflow steps:
+
+```javascript
+// ⚠️ ALWAYS use typeof checks for env variables
+const processedCount = (typeof items_processed !== 'undefined') ? items_processed : 0;
+const validationResult = (typeof validate_data_result !== 'undefined') ? validate_data_result : {{}};
+const stepStatus = (typeof copy_table_status !== 'undefined') ? copy_table_status : 'unknown';
+
+// Step results are available as {{step_id}}_result and {{step_id}}_status
+const loginSuccess = (typeof check_login_status !== 'undefined') ? check_login_status === 'success' : false;
+```
+
+### 8.3 Custom Fields Support
+
+In addition to standard fields, you can include **any custom fields** in the output parser return value. These custom fields are preserved in the `parsed_output` but not extracted by the CLI's WorkflowResult structure.
+
+**Example with Custom Fields:**
+```yaml
+output: |
+  const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+  const cacheHits = (typeof cache_hits !== 'undefined') ? cache_hits : 0;
+  const cacheMisses = (typeof cache_misses !== 'undefined') ? cache_misses : 0;
+
+  return {{
+    // Standard fields (extracted by CLI)
+    success: true,
+    message: 'Data processing completed',
+    data: {{
+      total_items: itemsProcessed,
+      cache_efficiency: ((cacheHits / (cacheHits + cacheMisses)) * 100).toFixed(2) + '%'
+    }},
+
+    // Custom fields (preserved in parsed_output, visible with --verbose or in full response)
+    meta_type: 'data_processing',
+    performance_metrics: {{
+      cache_hit_rate: cacheHits,
+      cache_miss_rate: cacheMisses,
+      total_operations: cacheHits + cacheMisses
+    }},
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    environment: 'production'
+  }};
+```
+
+**Custom Field Visibility:**
+- Standard fields (`success`, `exception`, `skipped`, `message`, `data`, `error`, `validation`) are displayed by the CLI
+- Custom fields are included in the complete `parsed_output` shown in CLI output
+- Custom fields are useful for logging, metrics, debugging, and external integrations
+
+**Best Practices:**
+- Use descriptive names for custom fields (avoid generic names like `count`, `total`, `result`)
+- Document custom fields if they're used by external tools or integrations
+- Keep custom fields JSON-serializable (no functions, circular references)
+- Use custom fields for metadata that doesn't fit standard structure
+
+### 8.4 Complete Output Parser Example
+
+```yaml
+steps:
+  - tool_name: run_command
+    id: process_data
+    arguments:
+      engine: javascript
+      run: |
+        const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+        console.log(`Processing ${{entries.length}} journal entries`);
+
+        return {{
+          items_processed: entries.length,
+          total_debit: entries.reduce((sum, e) => sum + (e.debit || 0), 0),
+          total_credit: entries.reduce((sum, e) => sum + (e.credit || 0), 0)
+        }};
+
+  - tool_name: run_command
+    id: validate_totals
+    arguments:
+      engine: javascript
+      run: |
+        const debit = (typeof total_debit !== 'undefined') ? total_debit : 0;
+        const credit = (typeof total_credit !== 'undefined') ? total_credit : 0;
+        const balanced = Math.abs(debit - credit) < 0.01;
+
+        return {{
+          is_balanced: balanced,
+          difference: Math.abs(debit - credit)
+        }};
+
+output: |
+  // Access step results with typeof checks
+  const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+  const debit = (typeof total_debit !== 'undefined') ? total_debit : 0;
+  const credit = (typeof total_credit !== 'undefined') ? total_credit : 0;
+  const balanced = (typeof is_balanced !== 'undefined') ? is_balanced : false;
+  const difference = (typeof difference !== 'undefined') ? difference : 0;
+
+  // Determine workflow state
+  if (itemsProcessed === 0) {{
+    return {{
+      success: true,
+      skipped: true,
+      message: 'No journal entries to process',
+      data: null
+    }};
+  }}
+
+  if (!balanced) {{
+    return {{
+      success: false,
+      message: `Journal entries not balanced: difference of ${{difference.toFixed(2)}}`,
+      error: `Debit total (${{debit}}) does not match credit total (${{credit}})`,
+      data: {{
+        items_processed: itemsProcessed,
+        total_debit: debit,
+        total_credit: credit,
+        difference: difference
+      }}
+    }};
+  }}
+
+  // Success case
+  return {{
+    success: true,
+    message: `Successfully processed ${{itemsProcessed}} balanced journal entries`,
+    data: {{
+      items_processed: itemsProcessed,
+      total_debit: debit,
+      total_credit: credit,
+      is_balanced: true
+    }},
+    // Custom fields
+    processing_timestamp: new Date().toISOString(),
+    workflow_version: '2.1.0'
+  }};
+```
+
+**Key Output Parser Principles:**
+1. **Always use typeof checks** for all environment variable access
+2. **Return standard fields** (`success`, `message`, `data`) for CLI display
+3. **Use `exception: true`** for system errors, critical failures, timeouts (not business logic failures)
+4. **Use `skipped: true`** when workflow should not execute (file already processed, conditions not met)
+5. **Add custom fields** for metadata, metrics, or integration needs
+6. **Return descriptive messages** - focus on why rather than what
+7. **Include relevant data** in the `data` field for downstream processing
+
+---
 
 **Workflow State Persistence & Partial Execution**
 
