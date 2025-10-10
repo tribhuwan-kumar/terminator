@@ -900,7 +900,7 @@ pub async fn execute_javascript_with_nodejs(
     use tokio::process::Command;
 
     info!("[Node.js] Starting JavaScript execution with terminator.js bindings");
-    info!("[Node.js] Script to execute ({} bytes)", script.len());
+    debug!("[Node.js] Script to execute ({} bytes)", script.len());
     debug!(
         preview = %script.chars().take(200).collect::<String>(),
         "[Node.js] Script preview"
@@ -1043,7 +1043,7 @@ console.log('[Node.js Wrapper] Current working directory:', process.cwd());
             )
         })?;
 
-    info!("[Node.js] Script written successfully");
+    debug!("[Node.js] Script written successfully");
 
     // Find the runtime executable for spawning
     let runtime_exe = find_executable(runtime).ok_or_else(|| {
@@ -1127,7 +1127,7 @@ console.log('[Node.js Wrapper] Current working directory:', process.cwd());
         )
     })?;
 
-    info!("[Node.js] Process spawned successfully, reading output...");
+    debug!("[Node.js] Process spawned successfully, reading output...");
 
     let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
     let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
@@ -1408,7 +1408,7 @@ pub async fn execute_typescript_with_nodejs(
     use tokio::process::Command;
 
     info!("[TypeScript] Starting TypeScript execution with terminator.js bindings");
-    info!("[TypeScript] Script to execute ({} bytes)", script.len());
+    debug!("[TypeScript] Script to execute ({} bytes)", script.len());
     debug!(
         preview = %script.chars().take(200).collect::<String>(),
         "[TypeScript] Script preview"
@@ -1766,7 +1766,7 @@ pub async fn execute_python_with_bindings(
     use tokio::process::Command;
 
     info!("[Python] Starting Python execution with terminator.py bindings");
-    info!("[Python] Script to execute ({} bytes)", script.len());
+    debug!("[Python] Script to execute ({} bytes)", script.len());
 
     // Discover python interpreter
     let mut python_exe = find_executable("python").unwrap_or_else(|| "python".to_string());
@@ -1876,7 +1876,7 @@ asyncio.run(__runner__())
             )
         })?;
 
-    info!("[Python] Script written successfully");
+    debug!("[Python] Script written successfully");
 
     // Skip PYTHONPATH injection since we're using system-installed terminator
     // This avoids potential path issues
@@ -1916,7 +1916,7 @@ asyncio.run(__runner__())
             )
         })?;
 
-    info!(
+    debug!(
         "[Python] Process spawned successfully, PID: {:?}",
         child.id()
     );

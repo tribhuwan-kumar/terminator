@@ -5366,14 +5366,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
                         injected_vars.insert(key.clone()); // Track this variable
-                        tracing::info!(
-                            "[execute_browser_script] Injected env.{} as individual variable (type: {})",
-                            key,
-                            if injectable_value.is_string() { "string" }
-                            else if injectable_value.is_object() { "object" }
-                            else if injectable_value.is_array() { "array" }
-                            else { "other" }
-                        );
                     }
                 }
             }
@@ -5423,10 +5415,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
                         injected_vars.insert(key.clone()); // Track this variable for smart replacement
-                        tracing::info!(
-                            "[execute_browser_script] Injected variables.{} as individual variable",
-                            key
-                        );
                     }
                 }
             }
