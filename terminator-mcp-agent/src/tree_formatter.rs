@@ -31,7 +31,7 @@ fn ui_node_to_serializable(node: &UINode) -> SerializableUIElement {
     }
 }
 
-/// Format a UI tree as compact YAML with [ROLE] name #id format
+/// Format a UI tree as compact YAML with - [ROLE] name #id format
 ///
 /// Output format:
 /// - [ROLE] name #id (additional context)
@@ -57,8 +57,9 @@ fn format_node(node: &SerializableUIElement, indent: usize, output: &mut String)
         String::new()
     };
 
-    // Just indent, no dash
+    // Add indent and dash prefix
     output.push_str(&indent_str);
+    output.push_str("- ");
 
     // Format: [ROLE] name #id
     output.push_str(&format!("[{}]", node.role));
