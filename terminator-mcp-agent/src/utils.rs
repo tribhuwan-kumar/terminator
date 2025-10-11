@@ -1388,20 +1388,24 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                         otel_layer.with_filter(
                             EnvFilter::from_default_env()
                                 .add_directive(log_level.into())
-                                // Filter out noisy health check and connection logs
+                                // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
                                 .add_directive(
-                                    "terminator::platforms::windows::health=warn"
+                                    "terminator::platforms::windows::health=error"
                                         .parse()
                                         .unwrap(),
                                 )
-                                .add_directive("axum::serve=warn".parse().unwrap())
-                                .add_directive("h2::proto=warn".parse().unwrap())
-                                .add_directive("h2::codec=warn".parse().unwrap())
-                                .add_directive("h2::server=warn".parse().unwrap())
-                                .add_directive("h2::frame=warn".parse().unwrap())
-                                .add_directive("rmcp::transport=info".parse().unwrap())
-                                .add_directive("hyper::client=warn".parse().unwrap())
-                                .add_directive("hyper::proto=warn".parse().unwrap()),
+                                .add_directive("axum::serve=error".parse().unwrap())
+                                .add_directive("h2::proto=error".parse().unwrap())
+                                .add_directive("h2::codec=error".parse().unwrap())
+                                .add_directive("h2::server=error".parse().unwrap())
+                                .add_directive("h2::frame=error".parse().unwrap())
+                                .add_directive("rmcp::transport=warn".parse().unwrap())
+                                .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                .add_directive("rmcp::service=error".parse().unwrap())
+                                .add_directive("hyper::client=error".parse().unwrap())
+                                .add_directive("hyper::proto=error".parse().unwrap())
+                                // Also filter scripting engine DEBUG logs from telemetry
+                                .add_directive("terminator_mcp_agent::scripting_engine=info".parse().unwrap()),
                         ),
                     )
                     .with(
