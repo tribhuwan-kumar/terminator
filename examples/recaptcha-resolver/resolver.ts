@@ -52,10 +52,13 @@ async function runResolverAutomation(): Promise<string> {
         apiKey: process.env.GEMINI_API_KEY || "" 
       });
 
+      /*
+       * Since in the `executeBrowserScript` call there a `IFRAMESELCTOR` defined
+          it'll run inside the iframe document context
+      */
       const res_from_browser = recaptcha_webview?.executeBrowserScript(`
-        const iframe = document.querySelector('iframe[title^="recaptcha challenge"]');
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-        const table = iframeDoc.querySelector("#rc-imageselect-target > table")
+        const IFRAMESELCTOR = "querySelector('iframe[title^="recaptcha challenge"]')"
+        const table = document.querySelector("#rc-imageselect-target > table")
         return table ? table.outerHTML : null;
       `);
 
@@ -105,14 +108,12 @@ async function runResolverAutomation(): Promise<string> {
       console.log("parsed ids to click:", idsToClick);
 
       const clickResult = await recaptcha_webview?.executeBrowserScript(`
+        const IFRAMESELCTOR = "querySelector('iframe[title^="recaptcha challenge"]')"
         let errors = [];
         let clickedCount = 0;
-        const iframe = document.querySelector('iframe[title^="recaptcha challenge"]');
-        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
         const ids = ${JSON.stringify(idsToClick)};
-
         ids.forEach(id => {
-          const element = iframeDoc.getElementById(id);
+          const element = document.getElementById(id);
           if (element) {
             element.click();
             clickedCount++;
@@ -121,7 +122,7 @@ async function runResolverAutomation(): Promise<string> {
           }
         });
         setTimeout(() => {
-          const verifyBtn = iframeDoc.querySelector('button[id^="recaptcha-verify-button"]');
+          const verifyBtn = document.querySelector('button[id^="recaptcha-verify-button"]');
           verifyBtn.click();
         }, 3000);
 
