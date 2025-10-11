@@ -98,6 +98,7 @@ try {
 - `captureScreen()` - Take a screenshot
 - `runCommand(windowsCmd, unixCmd)` - Run a system command
 - `executeBrowserScript(script)` - Execute JavaScript in focused browser tab
+- `navigateBrowser(url, browser?)` - Navigate to URL in specified browser
 - `delay(delayMs)` - Delay execution for specified milliseconds
 
 ### Element

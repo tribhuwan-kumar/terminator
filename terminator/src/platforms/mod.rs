@@ -181,8 +181,6 @@ pub trait AccessibilityEngine: Send + Sync {
     async fn get_current_application(&self) -> Result<UIElement, AutomationError>;
 
     fn press_key(&self, key: &str) -> Result<(), AutomationError>;
-    fn zoom_in(&self, level: u32) -> Result<(), AutomationError>;
-    fn zoom_out(&self, level: u32) -> Result<(), AutomationError>;
     /// Sets the zoom level to a specific percentage (e.g., 100 for 100%, 150 for 150%)
     fn set_zoom(&self, percentage: u32) -> Result<(), AutomationError>;
 

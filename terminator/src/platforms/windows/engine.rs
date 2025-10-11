@@ -3402,20 +3402,6 @@ impl AccessibilityEngine for WindowsEngine {
             .map_err(|e| AutomationError::PlatformError(format!("Failed to press key: {e:?}")))
     }
 
-    fn zoom_in(&self, level: u32) -> Result<(), AutomationError> {
-        for _ in 0..level {
-            self.press_key("{Ctrl}=")?;
-        }
-        Ok(())
-    }
-
-    fn zoom_out(&self, level: u32) -> Result<(), AutomationError> {
-        for _ in 0..level {
-            self.press_key("{Ctrl}-")?;
-        }
-        Ok(())
-    }
-
     fn set_zoom(&self, percentage: u32) -> Result<(), AutomationError> {
         // Fallback approach using keyboard shortcuts. This works for most browsers and many applications.
         // NOTE: This method is imprecise because browser zoom levels are not always linear (e.g., 90%, 100%, 110%, 125%).
@@ -3427,7 +3413,10 @@ impl AccessibilityEngine for WindowsEngine {
         const MAX_ZOOM_OUT_STEPS: u32 = 50; // A high number of steps to ensure we reach the minimum zoom.
 
         // Zoom out completely to reach a known state (minimum zoom).
-        self.zoom_out(MAX_ZOOM_OUT_STEPS)?;
+        // Inlined zoom_out logic
+        for _ in 0..MAX_ZOOM_OUT_STEPS {
+            self.press_key("{Ctrl}-")?;
+        }
 
         // A small delay to allow the UI to process the zoom changes.
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -3441,8 +3430,11 @@ impl AccessibilityEngine for WindowsEngine {
         // We add half of ZOOM_STEP for rounding.
         let steps_to_zoom_in = (percentage.saturating_sub(MIN_ZOOM) + ZOOM_STEP / 2) / ZOOM_STEP;
 
+        // Inlined zoom_in logic
         if steps_to_zoom_in > 0 {
-            self.zoom_in(steps_to_zoom_in)?;
+            for _ in 0..steps_to_zoom_in {
+                self.press_key("{Ctrl}=")?;
+            }
         }
 
         Ok(())

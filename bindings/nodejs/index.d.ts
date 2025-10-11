@@ -341,17 +341,15 @@ export declare class Desktop {
    */
   delay(delayMs: number): Promise<void>
   /**
-   * (async) Zoom in by a specified number of levels.
+   * Navigate to a URL in a browser.
+   * This is the recommended method for browser navigation - more reliable than
+   * manually manipulating the address bar with keyboard/mouse actions.
    *
-   * @param {number} level - Number of zoom-in steps to perform.
+   * @param {string} url - URL to navigate to
+   * @param {string | null} browser - Optional browser name ('Chrome', 'Firefox', 'Edge', 'Brave', 'Opera', 'Vivaldi', or 'Default')
+   * @returns {Promise<Element>} The browser window element
    */
-  zoomIn(level: number): Promise<void>
-  /**
-   * (async) Zoom out by a specified number of levels.
-   *
-   * @param {number} level - Number of zoom-out steps to perform.
-   */
-  zoomOut(level: number): Promise<void>
+  navigateBrowser(url: string, browser?: string | undefined | null): Element
   /**
    * (async) Set the zoom level to a specific percentage.
    *
@@ -659,6 +657,14 @@ export declare class Element {
    * @returns {Promise<string>} The result of script execution.
    */
   executeBrowserScript(script: string): Promise<string>
+  /**
+   * Get the UI tree starting from this element.
+   * Returns a tree structure containing this element and all its descendants.
+   *
+   * @param {number} [maxDepth=100] - Maximum depth to traverse (default: 100).
+   * @returns {UINode} Tree structure with recursive children.
+   */
+  getTree(maxDepth?: number | undefined | null): UINode
 }
 /** Locator for finding UI elements by selector. */
 export declare class Locator {

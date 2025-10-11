@@ -1430,9 +1430,17 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     // Display result in user-friendly format
     workflow_result.display();
 
-    // If verbose mode, also show raw JSON
+    // Always show parsed_output if it exists
+    if let Some(parsed_output) = result_json.get("parsed_output") {
+        println!("{}", "─".repeat(60));
+        println!("📋 Complete Output Parser Result:");
+        println!("{}", serde_json::to_string_pretty(parsed_output)?);
+    }
+
+    // If verbose mode, also show FULL raw MCP response
     if args.verbose {
-        println!("📝 Raw MCP Response:");
+        println!("{}", "─".repeat(60));
+        println!("📝 Full Raw MCP Response:");
         println!("{}", serde_json::to_string_pretty(&result_json)?);
     }
 
@@ -1712,7 +1720,7 @@ async fn run_workflow_once(
     // Parse the workflow result
     let workflow_result = WorkflowResult::from_mcp_response(&result_json)?;
 
-    // For cron jobs, log success/failure/skipped
+    // For cron jobs, log success/failure/exception/skipped
     use workflow_result::WorkflowState;
     match workflow_result.state {
         WorkflowState::Success => {
@@ -1727,6 +1735,12 @@ async fn run_workflow_once(
                 if let Some(reason) = data.get("reason").and_then(|r| r.as_str()) {
                     println!("   📝 Reason: {reason}");
                 }
+            }
+        }
+        WorkflowState::Exception => {
+            println!("   🚨 {}", workflow_result.message);
+            if let Some(error) = &workflow_result.error {
+                println!("   ⚠️  {error}");
             }
         }
         WorkflowState::Failure => {

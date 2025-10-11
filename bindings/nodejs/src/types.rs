@@ -296,3 +296,34 @@ impl From<TreeBuildConfig> for terminator::platforms::TreeBuildConfig {
         }
     }
 }
+
+/// Convert SerializableUIElement to UINode
+pub(crate) fn serializable_to_ui_node(elem: &terminator::SerializableUIElement) -> UINode {
+    let attrs = UIElementAttributes {
+        role: elem.role.clone(),
+        name: elem.name.clone(),
+        label: elem.label.clone(),
+        value: elem.value.clone(),
+        description: elem.description.clone(),
+        properties: HashMap::new(), // SerializableUIElement doesn't have properties field
+        is_keyboard_focusable: elem.is_keyboard_focusable,
+        bounds: elem.bounds.map(|(x, y, w, h)| Bounds {
+            x,
+            y,
+            width: w,
+            height: h,
+        }),
+    };
+
+    let children = elem
+        .children
+        .as_ref()
+        .map(|children| children.iter().map(serializable_to_ui_node).collect())
+        .unwrap_or_default();
+
+    UINode {
+        id: elem.id.clone(),
+        attributes: attrs,
+        children,
+    }
+}

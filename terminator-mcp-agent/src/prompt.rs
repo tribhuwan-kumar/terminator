@@ -26,9 +26,13 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
    - [Avoiding Page Navigation Issues](#page-navigation)
    - [Browser Script Format Requirements](#browser-script-format)
 7. [Core Desktop APIs](#desktop-apis)
-8. [Workflow State Persistence & Partial Execution](#workflow-state)
-9. [Common Pitfalls & Solutions](#common-pitfalls)
-10. [Troubleshooting & Debugging](#troubleshooting)
+8. [Workflow Output Parsers](#output-parsers)
+   - [Standard Output Structure](#standard-output-structure)
+   - [Simplified Output Format](#simplified-output-format)
+   - [Custom Fields Support](#custom-fields)
+9. [Workflow State Persistence & Partial Execution](#workflow-state)
+10. [Common Pitfalls & Solutions](#common-pitfalls)
+11. [Troubleshooting & Debugging](#troubleshooting)
 
 **Golden Rules for Robust Automation**
 
@@ -116,7 +120,7 @@ You are an AI assistant designed to control a computer desktop. Your primary goa
 
 Pay close attention to the tool descriptions for hints on their behavior.
 
-*   Most action tools default `include_tree` to `false` to keep responses fast. When you need the UI tree included in a tool result, pass `include_tree: true` explicitly. For tree extraction tools, you can optimize with `tree_max_depth: 2` to limit depth or `tree_from_selector: \"role:Button\"` to get subtrees.
+*   Most action tools default `include_tree` to `false` to keep responses fast. When you need the UI tree included in a tool result, pass `include_tree: true` explicitly. For tree extraction tools, you can optimize with `tree_max_depth: 2` to limit depth or `tree_from_selector: \"role:Button\"` to get subtrees. UI trees are returned in compact YAML format by default: `[ROLE] name #id (context)` with proper indentation.
 
 *   **Read-only tools** are safe to use for inspection and will not change the UI state (e.g., `validate_element`, `get_window_tree`).
 *   Tools that **may change the UI** require more care. After using one, consider calling `get_window_tree` again to get the latest UI state.
@@ -213,6 +217,8 @@ Your most reliable strategy is to inspect the application's UI structure *before
     - Use `tree_max_depth: 2` to limit tree depth when you only need shallow inspection
     - Use `tree_from_selector: \"role:Dialog\"` to get subtree starting from a specific element
     - Use `tree_from_selector: \"true\"` with `get_focused_window_tree` to start from the focused element
+    - Use `tree_output_format: \"compact_yaml\"` (default) for readable format: `[ROLE] name #id (context)` with indentation
+    - Use `tree_output_format: \"verbose_json\"` for full JSON with all fields (backward compatibility)
 
 3.  **Construct Smart Selector Strategies:** 
     *   **Primary Strategy:** Use `role:Type|name:Name` when available, otherwise use the numeric ID (`\"#12345\"`). You can also use |nativeid which corresponds to the AutomationId property on Windows.
@@ -395,6 +401,21 @@ The `execute_browser_script` tool executes JavaScript in browser contexts (Chrom
 
 **Chrome extension required:** This tool requires the Terminator Chrome extension to be installed and the browser window to be open.
 
+**🚨 CRITICAL REQUIREMENT: All browser scripts MUST use IIFE wrapper**
+
+The MCP agent injects environment variables at the top of your script, making top-level `return` statements illegal. You MUST wrap ALL browser scripts in an IIFE:
+
+```javascript
+(function() {{
+  // Your code with typeof checks for env variables
+  const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+  // ... your logic ...
+  return JSON.stringify({{ result: 'data' }});
+}})()
+```
+
+Without the IIFE wrapper, you'll get: `SyntaxError: Illegal return statement`
+
 **Two ways to execute browser scripts:**
 1. `desktop.executeBrowserScript(script)` - Automatically finds active browser window (simpler)
 2. `element.executeBrowserScript(script)` - Execute on specific browser window element
@@ -418,25 +439,6 @@ The `execute_browser_script` tool executes JavaScript in browser contexts (Chrom
 - Text input into standard form fields (use type_into_element)
 - Navigation (use navigate_browser)
 - Anything accessible via UI Automation tree
-
-**⚠️ Important: Browser Script Timing**
-
-Multiple browser scripts in quick succession can cause Chrome extension bridge port conflicts. If you encounter port errors (e.g., \"port 17373 already in use\"), add `delay_ms: 2000` between browser script steps to allow the extension bridge to release resources.
-
-**Example:**
-```yaml
-- tool_name: execute_browser_script  # First browser script
-  id: write_clipboard
-  arguments:
-    script: \"...\"
-
-- tool_name: run_command             # Second browser script call
-  id: detect_column
-  arguments:
-    engine: javascript
-    script_file: \"detect.js\"
-  delay_ms: 2000  # Wait for extension bridge to release port
-```
 
 ### Environment Variable Access in Browser Scripts
 
@@ -482,56 +484,82 @@ EVAL_ERROR: Uncaught SyntaxError: Identifier 'message' has already been declared
 
 Browser scripts run via `eval()` and MUST return a serializable value. The last expression is the return value.
 
-**🚨 IMPORTANT: For Promises, you MUST capture and return explicitly**
+**🚨 CRITICAL: IIFE Wrapper is MANDATORY for Scripts with Return Statements**
 
-Due to eval() context limitations, bare Promises as the last expression cause NULL_RESULT errors. Always use:
+When the MCP agent executes your browser script, it injects environment variables at the top:
 ```javascript
-const result = someAsyncFunction().then(...).catch(...);
-return result;
+var env_var1 = \"value\";
+var env_var2 = {{{{...}}}};
+// ... potentially hundreds of injected variables
+
+// Your script starts here
+return someValue;  // ❌ ILLEGAL! SyntaxError: Illegal return statement
+```
+
+This variable injection makes ANY top-level `return` statement illegal in JavaScript. You MUST wrap your entire script in an IIFE (Immediately Invoked Function Expression) to make return statements legal:
+
+```javascript
+(function() {{
+  // Your code here with typeof checks
+  return result;
+}})()
+```
+
+**Error you'll see if you violate this:**
+```
+EVAL_ERROR: Uncaught SyntaxError: Illegal return statement
+    at <anonymous>:1:15
+    at <anonymous>:1:272854
 ```
 
 **✅ CORRECT Patterns:**
 
-**Pattern 1: Self-Executing IIFE (recommended for sync operations)**
+**Pattern 1: IIFE for Synchronous Operations (REQUIRED)**
 ```javascript
 (function() {{
+  // Safe env variable access with typeof checks
+  const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
+
   const data = document.title;
   const url = window.location.href;
 
   return JSON.stringify({{
     title: data,
-    url: url
+    url: url,
+    search: searchTerm
   }});
 }})()
 ```
 
-**Pattern 2: Promise Chain with Capture and Return (for async operations)**
+**Pattern 2: IIFE with Promise Chain (REQUIRED for async operations)**
 ```javascript
-// Setup variables first (synchronously) with typeof checks
-const targetText = (typeof target_text !== 'undefined') ? target_text : '';
+(function() {{
+  // Setup variables first (synchronously) with typeof checks
+  const targetText = (typeof target_text !== 'undefined') ? target_text : '';
 
-// ✅ CRITICAL: Capture Promise in const and explicitly return it
-// This is REQUIRED for eval() context - bare Promise as last expression causes NULL_RESULT
-const result = navigator.clipboard.writeText(targetText).then(() => {{
-  console.log('Clipboard write success');
+  // ✅ CRITICAL: Capture Promise in const and explicitly return it
+  // IIFE wrapper makes the return statement legal despite variable injection
+  const result = navigator.clipboard.writeText(targetText).then(() => {{
+    console.log('Clipboard write success');
 
-  // MUST return value from .then() handler
-  return JSON.stringify({{
-    clipboard_written: true,
-    text_length: targetText.length
+    // MUST return value from .then() handler
+    return JSON.stringify({{
+      clipboard_written: true,
+      text_length: targetText.length
+    }});
+
+  }}).catch(error => {{
+    console.error('Clipboard error:', error);
+
+    // MUST return value from .catch() handler
+    return JSON.stringify({{
+      clipboard_written: false,
+      error: error.message
+    }});
   }});
 
-}}).catch(error => {{
-  console.error('Clipboard error:', error);
-
-  // MUST return value from .catch() handler
-  return JSON.stringify({{
-    clipboard_written: false,
-    error: error.message
-  }});
-}});
-
-return result;
+  return result;
+}})()
 ```
 
 **❌ WRONG Patterns:**
@@ -586,6 +614,22 @@ navigator.clipboard.readText().then(clipboardText => {{
 
 // Error: NULL_RESULT - Script executed but result wasn't captured
 // This pattern works in some JS contexts but NOT in browser eval() injection
+```
+
+**Wrong 5: Top-level return without IIFE wrapper**
+```javascript
+// ❌ DO NOT USE - Variable injection makes top-level return illegal
+const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+const count = entries.length;
+
+// This return is illegal when variables are injected at top level
+return JSON.stringify({{
+  count: count,
+  entries: entries
+}});
+
+// Error: EVAL_ERROR: Uncaught SyntaxError: Illegal return statement
+// Fix: Wrap entire script in (function() {{ ... }})()
 ```
 
 ### Script Return Values vs Step Execution Status
@@ -725,33 +769,35 @@ const hasError = JSON.stringify(data).includes('error');
 **Pattern: Read Clipboard**
 
 ```javascript
-// ⚠️ Use typeof checks for env variables
-const fallbackText = (typeof default_text !== 'undefined') ? default_text : '';
+(function() {{
+  // ⚠️ Use typeof checks for env variables
+  const fallbackText = (typeof default_text !== 'undefined') ? default_text : '';
 
-// ✅ CRITICAL: Capture Promise and explicitly return it
-// DO NOT use Promise as bare last expression - eval() context requires explicit return
-const result = navigator.clipboard.readText().then(clipboardText => {{
-  console.log('Read from clipboard:', clipboardText.substring(0, 100));
+  // ✅ CRITICAL: Capture Promise and explicitly return it
+  // IIFE wrapper required - variable injection makes top-level return illegal
+  const result = navigator.clipboard.readText().then(clipboardText => {{
+    console.log('Read from clipboard:', clipboardText.substring(0, 100));
 
-  // ⚠️ MUST return in .then() handler
-  return JSON.stringify({{
-    clipboard_content: clipboardText,
-    length: clipboardText.length,
-    has_content: clipboardText.length > 0
+    // ⚠️ MUST return in .then() handler
+    return JSON.stringify({{
+      clipboard_content: clipboardText,
+      length: clipboardText.length,
+      has_content: clipboardText.length > 0
+    }});
+
+  }}).catch(error => {{
+    console.error('Clipboard read failed:', error);
+
+    // ⚠️ MUST return in .catch() handler
+    return JSON.stringify({{
+      clipboard_content: fallbackText,
+      length: 0,
+      error: error.message
+    }});
   }});
 
-}}).catch(error => {{
-  console.error('Clipboard read failed:', error);
-
-  // ⚠️ MUST return in .catch() handler
-  return JSON.stringify({{
-    clipboard_content: fallbackText,
-    length: 0,
-    error: error.message
-  }});
-}});
-
-return result;
+  return result;
+}})()
 ```
 
 ---
@@ -1006,6 +1052,35 @@ const elements = await desktop.locator('role:button').all(5000);  // Returns arr
 const appElements = desktop.applications();
 const focusedElement = desktop.focusedElement();
 
+// UI Tree Inspection
+const tree = desktop.getWindowTree(pid, title?, config?);  // Get UI tree for specific window
+const allTrees = await desktop.getAllApplicationsTree();   // Get trees for all apps in parallel
+
+// TreeBuildConfig - Optional performance tuning
+const config = {{
+    propertyMode: PropertyLoadingMode.Fast,  // Fast | Complete | Smart
+    timeoutPerOperationMs: 50,
+    yieldEveryNElements: 50,
+    batchSize: 50,
+    maxDepth: 10  // Optional depth limit
+}};
+
+// UINode structure - Recursive tree representation
+// {{
+//   id?: string,
+//   attributes: {{
+//     role: string,
+//     name?: string,
+//     label?: string,
+//     value?: string,
+//     description?: string,
+//     properties: Record<string, string>,
+//     isKeyboardFocusable?: boolean,
+//     bounds?: {{ x, y, width, height }}
+//   }},
+//   children: Array<UINode>
+// }}
+
 // Scoping to windows (prevents false positives)
 const window = await desktop.locator('role:Window|name:Chrome').first(0);
 const button = await window.locator('role:Button|name:Submit').first(0);
@@ -1057,8 +1132,14 @@ element.activateWindow();
 element.close();
 
 // Browser DOM access (requires Chrome extension)
-const pageTitle = await desktop.executeBrowserScript('return document.title;');
-const links = await desktop.executeBrowserScript('return document.querySelectorAll(\"a\").length;');
+const pageTitle = await desktop.executeBrowserScript('(function() {{ return document.title; }})()');
+const links = await desktop.executeBrowserScript('(function() {{ return document.querySelectorAll(\"a\").length; }})()');
+
+// Browser control
+await desktop.setZoom(50);    // Set zoom to 50%
+await desktop.setZoom(100);   // Reset to 100%
+await desktop.setZoom(150);   // Zoom to 150%
+const window = await desktop.navigateBrowser('https://example.com', 'Chrome');  // Returns window element
 
 // Screenshots and monitoring
 const screenshot = await desktop.captureScreen();
@@ -1101,11 +1182,11 @@ return {{ action: 'button_not_found' }};
 *   **Browser script execution (desktop vs element):**
 ```javascript
 // ✅ Simple: Use desktop method for active browser tab
-const pageTitle = await desktop.executeBrowserScript('return document.title;');
+const pageTitle = await desktop.executeBrowserScript('(function() {{ return document.title; }})()');
 
 // ✅ Specific: Find browser window first, then execute
 const chromeWindow = await desktop.locator('role:Window|name:Chrome').first(5000);
-const result = await chromeWindow.executeBrowserScript('return document.querySelector(\".data\").textContent;');
+const result = await chromeWindow.executeBrowserScript('(function() {{ return document.querySelector(\".data\").textContent; }})()');
 ```
 
 *   **Find and configure elements dynamically:**
@@ -1117,6 +1198,40 @@ for (const productName of productsToEnable) {{
     await checkbox.setToggled(true);
     log(`✓ ${{productName}}: ENABLED`);
 }}
+```
+
+*   **Get and traverse UI tree:**
+```javascript
+// Get tree for specific app
+const chromeApp = desktop.application('Google Chrome');
+const pid = chromeApp.processId();
+
+// Fast tree build (essential properties only)
+const tree = desktop.getWindowTree(pid, null, {{
+    propertyMode: PropertyLoadingMode.Fast,
+    timeoutPerOperationMs: 50,
+    maxDepth: 5  // Limit depth for performance
+}});
+
+// Traverse tree recursively
+function findButtons(node, depth = 0) {{
+    if (node.attributes.role === 'Button') {{
+        console.log(`${{' '.repeat(depth)}}Found: ${{node.attributes.name || '(unnamed)'}}`);
+    }}
+    for (const child of node.children) {{
+        findButtons(child, depth + 1);
+    }}
+}}
+findButtons(tree);
+
+// Get all app trees in parallel (expensive operation)
+const allTrees = await desktop.getAllApplicationsTree();
+console.log(`Found ${{allTrees.length}} application trees`);
+
+// Get subtree from specific element
+const dialog = await desktop.locator('role:Dialog|name:Settings').first(5000);
+const dialogTree = dialog.getTree(3);  // Limit to 3 levels deep
+console.log(`Dialog has ${{dialogTree.children.length}} immediate children`);
 ```
 
 *   **Error handling and retries:**
@@ -1138,6 +1253,258 @@ try {{
 *   Cache element references when performing multiple operations
 *   Use specific selectors (role:Type|name:Name) over generic ones
 *   Return structured data objects from scripts for output parsing
+
+---
+
+## Section 8: Workflow Output Parsers
+
+Output parsers process the results of all workflow steps and return a structured final result. They run after all steps complete and have access to all accumulated environment variables.
+
+### 8.1 Standard Output Structure
+
+The output parser should return a JavaScript object with these **standard fields**:
+
+**Core Status Fields:**
+- `success` (boolean) - Overall workflow success/failure
+- `exception` (boolean) - Indicates exceptional conditions (system errors, critical issues)
+- `skipped` (boolean) - Workflow was intentionally skipped
+- `message` (string) - Human-readable summary of the result
+
+**Data Fields:**
+- `data` (any) - Main result data from the workflow
+- `error` (string) - Error details if applicable
+- `validation` (any) - Validation results or metadata
+
+**State Precedence (highest to lowest):**
+1. `skipped: true` - Workflow was skipped (overrides all other states)
+2. `exception: true` - Exceptional condition occurred (takes precedence over success/failure)
+3. `success: true` - Normal success
+4. `success: false` - Normal failure
+
+**Example - Normal Success:**
+```javascript
+return {{
+  success: true,
+  message: 'Processed 150 records successfully',
+  data: {{
+    records_processed: 150,
+    total_amount: 45230.50
+  }}
+}};
+```
+
+**Example - Normal Failure:**
+```javascript
+return {{
+  success: false,
+  message: 'Validation failed: Missing required fields',
+  error: 'Required fields: account_code, amount',
+  data: null
+}};
+```
+
+**Example - Exception (Critical System Error):**
+```javascript
+return {{
+  success: false,
+  exception: true,  // Indicates exceptional condition
+  message: 'Database connection timeout after 3 retries',
+  error: 'ECONNREFUSED: Connection refused at 10.0.0.1:5432',
+  data: {{
+    retry_count: 3,
+    last_error_time: new Date().toISOString()
+  }}
+}};
+```
+
+**Example - Skipped Workflow:**
+```javascript
+return {{
+  success: true,
+  skipped: true,  // Takes precedence over success/failure
+  message: 'Workflow skipped: File already processed',
+  data: {{
+    file_path: target_file,
+    processed_date: '2025-10-09'
+  }}
+}};
+```
+
+### 8.2 Simplified Output Format
+
+Workflows support a simplified format using the `output` field (instead of `output_parser`):
+
+**In workflow YAML:**
+```yaml
+# Method 1: Using output_parser (full format)
+output_parser:
+  javascript_code: |
+    const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+    return {{
+      success: itemsProcessed > 0,
+      message: `Processed ${{itemsProcessed}} items`,
+      data: {{ count: itemsProcessed }}
+    }};
+
+# Method 2: Using output (simplified - just the JavaScript code)
+output: |
+  const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+  return {{
+    success: itemsProcessed > 0,
+    message: `Processed ${{itemsProcessed}} items`,
+    data: {{ count: itemsProcessed }}
+  }};
+```
+
+**Both formats are equivalent.** The simplified `output` format is preferred for readability.
+
+**Environment Variable Access:**
+Output parsers have access to all accumulated environment variables from workflow steps:
+
+```javascript
+// ⚠️ ALWAYS use typeof checks for env variables
+const processedCount = (typeof items_processed !== 'undefined') ? items_processed : 0;
+const validationResult = (typeof validate_data_result !== 'undefined') ? validate_data_result : {{}};
+const stepStatus = (typeof copy_table_status !== 'undefined') ? copy_table_status : 'unknown';
+
+// Step results are available as {{step_id}}_result and {{step_id}}_status
+const loginSuccess = (typeof check_login_status !== 'undefined') ? check_login_status === 'success' : false;
+```
+
+### 8.3 Custom Fields Support
+
+In addition to standard fields, you can include **any custom fields** in the output parser return value. These custom fields are preserved in the `parsed_output` but not extracted by the CLI's WorkflowResult structure.
+
+**Example with Custom Fields:**
+```yaml
+output: |
+  const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+  const cacheHits = (typeof cache_hits !== 'undefined') ? cache_hits : 0;
+  const cacheMisses = (typeof cache_misses !== 'undefined') ? cache_misses : 0;
+
+  return {{
+    // Standard fields (extracted by CLI)
+    success: true,
+    message: 'Data processing completed',
+    data: {{
+      total_items: itemsProcessed,
+      cache_efficiency: ((cacheHits / (cacheHits + cacheMisses)) * 100).toFixed(2) + '%'
+    }},
+
+    // Custom fields (preserved in parsed_output, visible with --verbose or in full response)
+    meta_type: 'data_processing',
+    performance_metrics: {{
+      cache_hit_rate: cacheHits,
+      cache_miss_rate: cacheMisses,
+      total_operations: cacheHits + cacheMisses
+    }},
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+    environment: 'production'
+  }};
+```
+
+**Custom Field Visibility:**
+- Standard fields (`success`, `exception`, `skipped`, `message`, `data`, `error`, `validation`) are displayed by the CLI
+- Custom fields are included in the complete `parsed_output` shown in CLI output
+- Custom fields are useful for logging, metrics, debugging, and external integrations
+
+**Best Practices:**
+- Use descriptive names for custom fields (avoid generic names like `count`, `total`, `result`)
+- Document custom fields if they're used by external tools or integrations
+- Keep custom fields JSON-serializable (no functions, circular references)
+- Use custom fields for metadata that doesn't fit standard structure
+
+### 8.4 Complete Output Parser Example
+
+```yaml
+steps:
+  - tool_name: run_command
+    id: process_data
+    arguments:
+      engine: javascript
+      run: |
+        const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+        console.log(`Processing ${{entries.length}} journal entries`);
+
+        return {{
+          items_processed: entries.length,
+          total_debit: entries.reduce((sum, e) => sum + (e.debit || 0), 0),
+          total_credit: entries.reduce((sum, e) => sum + (e.credit || 0), 0)
+        }};
+
+  - tool_name: run_command
+    id: validate_totals
+    arguments:
+      engine: javascript
+      run: |
+        const debit = (typeof total_debit !== 'undefined') ? total_debit : 0;
+        const credit = (typeof total_credit !== 'undefined') ? total_credit : 0;
+        const balanced = Math.abs(debit - credit) < 0.01;
+
+        return {{
+          is_balanced: balanced,
+          difference: Math.abs(debit - credit)
+        }};
+
+output: |
+  // Access step results with typeof checks
+  const itemsProcessed = (typeof items_processed !== 'undefined') ? items_processed : 0;
+  const debit = (typeof total_debit !== 'undefined') ? total_debit : 0;
+  const credit = (typeof total_credit !== 'undefined') ? total_credit : 0;
+  const balanced = (typeof is_balanced !== 'undefined') ? is_balanced : false;
+  const difference = (typeof difference !== 'undefined') ? difference : 0;
+
+  // Determine workflow state
+  if (itemsProcessed === 0) {{
+    return {{
+      success: true,
+      skipped: true,
+      message: 'No journal entries to process',
+      data: null
+    }};
+  }}
+
+  if (!balanced) {{
+    return {{
+      success: false,
+      message: `Journal entries not balanced: difference of ${{difference.toFixed(2)}}`,
+      error: `Debit total (${{debit}}) does not match credit total (${{credit}})`,
+      data: {{
+        items_processed: itemsProcessed,
+        total_debit: debit,
+        total_credit: credit,
+        difference: difference
+      }}
+    }};
+  }}
+
+  // Success case
+  return {{
+    success: true,
+    message: `Successfully processed ${{itemsProcessed}} balanced journal entries`,
+    data: {{
+      items_processed: itemsProcessed,
+      total_debit: debit,
+      total_credit: credit,
+      is_balanced: true
+    }},
+    // Custom fields
+    processing_timestamp: new Date().toISOString(),
+    workflow_version: '2.1.0'
+  }};
+```
+
+**Key Output Parser Principles:**
+1. **Always use typeof checks** for all environment variable access
+2. **Return standard fields** (`success`, `message`, `data`) for CLI display
+3. **Use `exception: true`** for system errors, critical failures, timeouts (not business logic failures)
+4. **Use `skipped: true`** when workflow should not execute (file already processed, conditions not met)
+5. **Add custom fields** for metadata, metrics, or integration needs
+6. **Return descriptive messages** - focus on why rather than what
+7. **Include relevant data** in the `data` field for downstream processing
+
+---
 
 **Workflow State Persistence & Partial Execution**
 
@@ -1227,8 +1594,67 @@ Supports multiple conditions with first-match-wins evaluation:
 - `{{step_id}}_status`: Step execution status (\"success\" or \"error\")
 - `{{step_id}}_result`: Step result data
 - Environment variables are accessed directly (e.g., `data_validation_failed`)
-- Supports operators: `==`, `!=`, `&&`, `||`, `!`
-- Functions: `contains()`, `startsWith()`, `endsWith()`
+
+**Supported Operators:**
+- Equality: `==`, `!=`
+- Numeric comparison: `>`, `<`, `>=`, `<=`
+- Logical: `&&`, `||`, `!`
+- Functions: `contains()`, `startsWith()`, `endsWith()`, `always()`, `coalesce()`
+
+**Type Handling:**
+- Strings: Parse directly or convert to numbers for numeric comparisons
+- Booleans: `true` → 1.0, `false` → 0.0 in numeric contexts
+- Numbers: Support both integer and float comparisons
+- Null: Treated as 0.0 in numeric comparisons
+- Type coercion: Automatic string-to-number conversion for numeric operators
+
+**Undefined Variable Behavior:**
+When a variable doesn't exist (not yet set):
+- `undefined == 'value'` → `false` (undefined never equals anything)
+- `undefined != 'value'` → `true` (undefined always not-equal)
+- `undefined > value` → `false` (undefined treated as less than any value)
+- `undefined < value` → `true` (undefined treated as less than any value)
+- `undefined >= value` → `false`
+- `undefined <= value` → `true`
+
+**Expression Examples:**
+```yaml
+# Step status checks
+if: \"check_login_status == 'success'\"
+if: \"copy_table_status != 'success'\"
+
+# Numeric comparisons
+if: \"balance_difference > 0.01\"
+if: \"retry_count < 3\"
+if: \"progress_percent >= 100\"
+
+# Type coercion (string to number)
+if: \"item_count > 0\"  # Works even if item_count is \"5\" string
+
+# Undefined variable handling (no errors)
+if: \"optional_step_status != 'success'\"  # Safe even if step didn't run
+
+# Boolean fields
+if: \"user_logged_in\"  # Direct boolean evaluation
+if: \"!troubleshooting\"  # Negation
+
+# Complex conditions
+if: \"check_login_status == 'success' && balance_difference < 0.01\"
+if: \"retry_count > 3 || force_retry\"
+
+# Array/String functions
+if: \"contains(product_types, 'FEX')\"
+if: \"startsWith(file_name, 'data_')\"
+if: \"endsWith(file_name, '.json')\"
+
+# Coalesce function - use first truthy value
+if: \"coalesce(fields_checked, 0) > 0\"
+if: \"coalesce(status, 'pending') == 'success'\"
+if: \"coalesce(retry_count, 0) < 3\"
+
+# Multiple fallbacks
+if: \"coalesce(primary_value, secondary_value, 0) > 0\"
+```
 
 **Common Jump Patterns:**
 - **Skip**: Jump forward over unnecessary steps

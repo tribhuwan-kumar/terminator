@@ -486,20 +486,28 @@ impl Desktop {
         self.inner.delay(delay_ms as u64).await.map_err(map_error)
     }
 
-    /// (async) Zoom in by a specified number of levels.
+    /// Navigate to a URL in a browser.
+    /// This is the recommended method for browser navigation - more reliable than
+    /// manually manipulating the address bar with keyboard/mouse actions.
     ///
-    /// @param {number} level - Number of zoom-in steps to perform.
+    /// @param {string} url - URL to navigate to
+    /// @param {string | null} browser - Optional browser name ('Chrome', 'Firefox', 'Edge', 'Brave', 'Opera', 'Vivaldi', or 'Default')
+    /// @returns {Promise<Element>} The browser window element
     #[napi]
-    pub async fn zoom_in(&self, level: u32) -> napi::Result<()> {
-        self.inner.zoom_in(level).await.map_err(map_error)
-    }
+    pub fn navigate_browser(&self, url: String, browser: Option<String>) -> napi::Result<Element> {
+        let browser_enum = browser.map(|b| match b.as_str() {
+            "Chrome" => terminator::Browser::Chrome,
+            "Firefox" => terminator::Browser::Firefox,
+            "Edge" => terminator::Browser::Edge,
+            "Brave" => terminator::Browser::Brave,
+            "Opera" => terminator::Browser::Opera,
+            "Vivaldi" => terminator::Browser::Vivaldi,
+            "Default" => terminator::Browser::Default,
+            custom => terminator::Browser::Custom(custom.to_string()),
+        });
 
-    /// (async) Zoom out by a specified number of levels.
-    ///
-    /// @param {number} level - Number of zoom-out steps to perform.
-    #[napi]
-    pub async fn zoom_out(&self, level: u32) -> napi::Result<()> {
-        self.inner.zoom_out(level).await.map_err(map_error)
+        let element = self.inner.open_url(&url, browser_enum).map_err(map_error)?;
+        Ok(Element { inner: element })
     }
 
     /// (async) Set the zoom level to a specific percentage.

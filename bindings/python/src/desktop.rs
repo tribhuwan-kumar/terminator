@@ -614,38 +614,6 @@ impl Desktop {
         })
     }
 
-    #[pyo3(name = "zoom_in", text_signature = "($self, level)")]
-    /// (async) Zoom in by a specified number of levels.
-    ///
-    /// Args:
-    ///     level (int): Number of zoom-in steps to perform.
-    pub fn zoom_in<'py>(&self, py: Python<'py>, level: u32) -> PyResult<Bound<'py, PyAny>> {
-        let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
-            desktop
-                .zoom_in(level)
-                .await
-                .map_err(automation_error_to_pyerr)?;
-            Ok(())
-        })
-    }
-
-    #[pyo3(name = "zoom_out", text_signature = "($self, level)")]
-    /// (async) Zoom out by a specified number of levels.
-    ///
-    /// Args:
-    ///     level (int): Number of zoom-out steps to perform.
-    pub fn zoom_out<'py>(&self, py: Python<'py>, level: u32) -> PyResult<Bound<'py, PyAny>> {
-        let desktop = self.inner.clone();
-        pyo3_tokio::future_into_py_with_locals(py, TaskLocals::with_running_loop(py)?, async move {
-            desktop
-                .zoom_out(level)
-                .await
-                .map_err(automation_error_to_pyerr)?;
-            Ok(())
-        })
-    }
-
     #[pyo3(name = "set_zoom", text_signature = "($self, percentage)")]
     /// (async) Set the zoom level to a specific percentage.
     ///

@@ -11,7 +11,7 @@ use crate::utils::{
     MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
     RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
     SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs, ZoomArgs,
+    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
@@ -64,6 +64,77 @@ pub fn extract_content_json(content: &Content) -> Result<serde_json::Value, serd
             Ok(json!({"type": "resource_link", "resource": resource_link}))
         }
     }
+}
+
+/// Capture screenshots of all monitors and return them as MCP Content objects
+async fn capture_monitor_screenshots(desktop: &Desktop) -> Vec<Content> {
+    let mut contents = Vec::new();
+
+    match desktop.capture_all_monitors().await {
+        Ok(screenshots) => {
+            for (monitor, screenshot) in screenshots {
+                // Convert RGBA bytes to PNG
+                match rgba_to_png(&screenshot.image_data, screenshot.width, screenshot.height) {
+                    Ok(png_data) => {
+                        // Base64 encode the PNG
+                        let base64_data = general_purpose::STANDARD.encode(&png_data);
+
+                        // Use the Content::image helper method
+                        contents.push(Content::image(base64_data, "image/png".to_string()));
+
+                        info!(
+                            "Captured monitor '{}' screenshot: {}x{} ({}KB)",
+                            monitor.name,
+                            screenshot.width,
+                            screenshot.height,
+                            png_data.len() / 1024
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to convert monitor '{}' screenshot to PNG: {}",
+                            monitor.name, e
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to capture monitor screenshots: {}", e);
+        }
+    }
+
+    contents
+}
+
+/// Convert RGBA image data to PNG format
+fn rgba_to_png(
+    rgba_data: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut png_data = Vec::new();
+    let mut cursor = Cursor::new(&mut png_data);
+
+    let encoder = PngEncoder::new(&mut cursor);
+    encoder.write_image(rgba_data, width, height, ExtendedColorType::Rgba8)?;
+
+    Ok(png_data)
+}
+
+/// Helper to conditionally append monitor screenshots to existing content
+/// Only captures screenshots if include is true (defaults to false)
+async fn append_monitor_screenshots_if_enabled(
+    desktop: &Desktop,
+    mut contents: Vec<Content>,
+    include: Option<bool>,
+) -> Vec<Content> {
+    // Only capture if explicitly enabled (defaults to false)
+    if include.unwrap_or(false) {
+        let mut screenshots = capture_monitor_screenshots(desktop).await;
+        contents.append(&mut screenshots);
+    }
+    contents
 }
 
 #[tool_router]
@@ -343,7 +414,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. Supports tree optimization with tree_max_depth: N to limit depth or tree_from_selector: \"role:Type\" to get subtrees. This is a read-only operation."
+        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" to get subtrees, and tree_output_format: \"compact_yaml\" (default, readable) or \"verbose_json\" (full data). This is a read-only operation."
     )]
     pub async fn get_window_tree(
         &self,
@@ -368,7 +439,7 @@ impl DesktopWrapper {
             "title": args.title,
             "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions."
+            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
 
         // Force include_tree to default to true for this tool
@@ -379,6 +450,7 @@ impl DesktopWrapper {
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            args.tree_output_format,
             Some(args.pid),
             &mut result_json,
             None, // No found element for window tree
@@ -388,11 +460,17 @@ impl DesktopWrapper {
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        let contents = append_monitor_screenshots_if_enabled(
+            &self.desktop,
+            vec![Content::json(result_json)?],
+            args.include_monitor_screenshots,
+        )
+        .await;
+        Ok(CallToolResult::success(contents))
     }
 
     #[tool(
-        description = "Get the complete UI tree for the currently focused window. This is a convenient tool that automatically detects which window has focus and returns its UI tree. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" for subtrees, or tree_from_selector: \"true\" to start from the focused element. This is a read-only operation."
+        description = "Get the complete UI tree for the currently focused window. This is a convenient tool that automatically detects which window has focus and returns its UI tree. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" for subtrees, tree_from_selector: \"true\" to start from the focused element, and tree_output_format: \"compact_yaml\" (default, readable) or \"verbose_json\" (full data). This is a read-only operation."
     )]
     pub async fn get_focused_window_tree(
         &self,
@@ -433,7 +511,7 @@ impl DesktopWrapper {
             },
             "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions."
+            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
 
         // Use maybe_attach_tree to handle tree extraction with from_selector support
@@ -443,6 +521,7 @@ impl DesktopWrapper {
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            args.tree_output_format,
             Some(pid),
             &mut result_json,
             Some(&focused_element), // Pass the focused element for from_selector="true" support
@@ -452,7 +531,14 @@ impl DesktopWrapper {
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -540,7 +626,14 @@ impl DesktopWrapper {
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     /// Helper function to ensure element is scrolled into view for reliable interaction
@@ -1042,6 +1135,7 @@ impl DesktopWrapper {
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
@@ -1050,7 +1144,14 @@ impl DesktopWrapper {
 
         span.set_status(true, None);
         span.end();
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -1207,13 +1308,21 @@ impl DesktopWrapper {
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
         )
         .await;
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -1322,6 +1431,7 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -1330,7 +1440,14 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
 
         span.set_status(true, None);
         span.end();
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -1395,6 +1512,7 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -1403,7 +1521,14 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
 
         span.set_status(true, None);
         span.end();
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -1469,7 +1594,8 @@ Terminator injects environment variables using 'var' - ALWAYS use typeof checks:
 const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
 const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
 const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0;  // ✅ SAFE
-// NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared"
+// NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared
+"
     )]
     async fn run_command(
         &self,
@@ -1949,7 +2075,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                return Ok(CallToolResult::success(vec![Content::json(response)?]));
+                return Ok(CallToolResult::success(
+                    append_monitor_screenshots_if_enabled(
+                        &self.desktop,
+                        vec![Content::json(response)?],
+                        args.include_monitor_screenshots,
+                    )
+                    .await,
+                ));
             } else if is_ts {
                 // Determine the working directory for script execution
                 let script_working_dir = if let Some(ref script_path) = resolved_script_path {
@@ -2021,7 +2154,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                return Ok(CallToolResult::success(vec![Content::json(response)?]));
+                return Ok(CallToolResult::success(
+                    append_monitor_screenshots_if_enabled(
+                        &self.desktop,
+                        vec![Content::json(response)?],
+                        args.include_monitor_screenshots,
+                    )
+                    .await,
+                ));
             } else if is_py {
                 // Determine the working directory for script execution
                 let script_working_dir = if let Some(ref script_path) = resolved_script_path {
@@ -2072,13 +2212,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                return Ok(CallToolResult::success(vec![Content::json(json!({
-                    "action": "run_command",
-                    "mode": "engine",
-                    "engine": engine,
-                    "status": "success",
-                    "result": execution_result
-                }))?]));
+                return Ok(CallToolResult::success(
+                    append_monitor_screenshots_if_enabled(
+                        &self.desktop,
+                        vec![Content::json(json!({
+                            "action": "run_command",
+                            "mode": "engine",
+                            "engine": engine,
+                            "status": "success",
+                            "result": execution_result
+                        }))?],
+                        args.include_monitor_screenshots,
+                    )
+                    .await,
+                ));
             } else {
                 return Err(McpError::invalid_params(
                     "Unsupported engine. Use 'node'/'bun'/'javascript'/'typescript'/'ts' or 'python'",
@@ -2320,16 +2467,23 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "exit_status": output.exit_status,
-            "stdout": output.stdout,
-            "stderr": output.stderr,
-            "command": run_str,
-            "shell": args.shell.unwrap_or_else(|| {
-                if cfg!(target_os = "windows") { "powershell" } else { "bash" }.to_string()
-            }),
-            "working_directory": args.working_directory
-        }))?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(json!({
+                    "exit_status": output.exit_status,
+                    "stdout": output.stdout,
+                    "stderr": output.stderr,
+                    "command": run_str,
+                    "shell": args.shell.unwrap_or_else(|| {
+                        if cfg!(target_os = "windows") { "powershell" } else { "bash" }.to_string()
+                    }),
+                    "working_directory": args.working_directory
+                }))?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -2447,6 +2601,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
@@ -2456,7 +2611,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -2482,13 +2644,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "action": "delay",
-            "status": "success",
-            "requested_delay_ms": args.delay_ms,
-            "actual_delay_ms": actual_delay_ms,
-            "timestamp": end_time.to_rfc3339()
-        }))?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(json!({
+                    "action": "delay",
+                    "status": "success",
+                    "requested_delay_ms": args.delay_ms,
+                    "actual_delay_ms": actual_delay_ms,
+                    "timestamp": end_time.to_rfc3339()
+                }))?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -2550,6 +2719,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -2559,7 +2729,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -2625,6 +2802,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     args.tree_max_depth,
                     args.tree_from_selector.as_deref(),
                     args.include_detailed_attributes,
+                    None,
                     element.process_id().ok(),
                     &mut result_json,
                     Some(&element),
@@ -2634,7 +2812,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+                Ok(CallToolResult::success(
+                    append_monitor_screenshots_if_enabled(
+                        &self.desktop,
+                        vec![Content::json(result_json)?],
+                        args.include_monitor_screenshots,
+                    )
+                    .await,
+                ))
             }
             Err(e) => {
                 let selectors_tried = get_selectors_tried_all(
@@ -2660,13 +2845,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(vec![Content::json(json!({
-                    "action": "validate_element",
-                    "status": "failed",
-                    "exists": false,
-                    "reason": reason_payload,
-                    "timestamp": chrono::Utc::now().to_rfc3339()
-                }))?]))
+                Ok(CallToolResult::success(
+                    append_monitor_screenshots_if_enabled(
+                        &self.desktop,
+                        vec![Content::json(json!({
+                            "action": "validate_element",
+                            "status": "failed",
+                            "exists": false,
+                            "reason": reason_payload,
+                            "timestamp": chrono::Utc::now().to_rfc3339()
+                        }))?],
+                        args.include_monitor_screenshots,
+                    )
+                    .await,
+                ))
             }
         }
     }
@@ -2780,6 +2972,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -2789,7 +2982,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -2844,6 +3044,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                         args.tree_max_depth,
                         args.tree_from_selector.as_deref(),
                         None, // include_detailed_attributes - use default
+                        None, // tree_output_format - use default
                         element.process_id().ok(),
                         &mut result_json,
                         Some(&element),
@@ -2853,7 +3054,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     span.set_status(true, None);
                     span.end();
 
-                    return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
+                    return Ok(CallToolResult::success(
+                        append_monitor_screenshots_if_enabled(
+                            &self.desktop,
+                            vec![Content::json(result_json)?],
+                            args.include_monitor_screenshots,
+                        )
+                        .await,
+                    ));
                 }
                 Err(e) => {
                     let error_msg = format!("Element not found within timeout: {e}");
@@ -2978,6 +3186,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             args.tree_max_depth,
                             args.tree_from_selector.as_deref(),
                             None, // include_detailed_attributes - use default
+                            None, // tree_output_format - use default
                             element.process_id().ok(),
                             &mut result_json,
                             Some(&element),
@@ -2987,7 +3196,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                         span.set_status(true, None);
                         span.end();
 
-                        return Ok(CallToolResult::success(vec![Content::json(result_json)?]));
+                        return Ok(CallToolResult::success(
+                            append_monitor_screenshots_if_enabled(
+                                &self.desktop,
+                                vec![Content::json(result_json)?],
+                                args.include_monitor_screenshots,
+                            )
+                            .await,
+                        ));
                     } else {
                         info!(
                             "[wait_for_element] Condition '{}' NOT met for selector='{}', continuing to poll...",
@@ -3047,6 +3263,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             ui_element.process_id().ok(),
             &mut result_json,
             Some(&ui_element),
@@ -3056,7 +3273,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(description = "Opens an application by name (uses SDK's built-in app launcher).")]
@@ -3109,7 +3333,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3153,14 +3384,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(json!({
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![Content::json(json!({
             "action": "close_element",
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
             "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?]))
+        }))?], args.include_monitor_screenshots).await))
     }
 
     #[tool(description = "Scrolls a UI element in the specified direction by the given amount.")]
@@ -3250,6 +3481,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -3259,7 +3491,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(description = "Selects an option in a dropdown or combobox by its visible text.")]
@@ -3329,6 +3568,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -3338,7 +3578,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3394,6 +3641,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -3403,7 +3651,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3473,6 +3728,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
@@ -3482,7 +3738,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3547,6 +3810,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
@@ -3556,7 +3820,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3621,6 +3892,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
@@ -3630,7 +3902,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3685,6 +3964,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -3694,7 +3974,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3749,6 +4036,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -3758,7 +4046,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -3813,6 +4108,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -3822,7 +4118,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(description = "Captures a screenshot of a specific UI element.")]
@@ -3882,7 +4185,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![
+        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![
             Content::json(json!({
                 "action": "capture_element_screenshot",
                 "status": "success",
@@ -3892,7 +4195,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 "image_format": "png",
             }))?,
             Content::image(base64_image, "image/png".to_string()),
-        ]))
+        ], args.include_monitor_screenshots).await))
     }
 
     #[tool(
@@ -3959,6 +4262,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -3968,7 +4272,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -4143,7 +4454,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(vec![Content::json(response)?]))
+                Ok(CallToolResult::success(
+                    append_monitor_screenshots_if_enabled(
+                        &self.desktop,
+                        vec![Content::json(response)?],
+                        args.include_monitor_screenshots,
+                    )
+                    .await,
+                ))
             }
             "stop" => {
                 let mut recorder = recorder_guard.take().ok_or_else(|| {
@@ -4247,7 +4565,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 span.set_status(true, None);
                 span.end();
 
-                Ok(CallToolResult::success(vec![Content::json(response)?]))
+                Ok(CallToolResult::success(
+                    append_monitor_screenshots_if_enabled(
+                        &self.desktop,
+                        vec![Content::json(response)?],
+                        args.include_monitor_screenshots,
+                    )
+                    .await,
+                ))
             }
             _ => Err(McpError::invalid_params(
                 "Invalid action. Must be 'start' or 'stop'.",
@@ -4261,7 +4586,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
     )]
     async fn stop_highlighting(
         &self,
-        Parameters(_args): Parameters<crate::utils::StopHighlightingArgs>,
+        Parameters(args): Parameters<crate::utils::StopHighlightingArgs>,
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
         let mut span = StepSpan::new("stop_highlighting", None);
@@ -4283,11 +4608,18 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(response)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(response)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
     // Tool functions continue below - part of impl block with #[tool_router]
     #[tool(
-        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step. Access variables using direct syntax (e.g., 'key == \"value\"' in conditions or {{key}} in substitutions). IMPORTANT: Locator methods (.first, .all) require mandatory timeout parameters in milliseconds - use .first(0) for immediate search (no polling/retry), .first(1000) to retry for 1 second, or .first(5000) for slow-loading UI. Default timeout changed from 30s to 0ms (no polling) for performance. Supports conditional jumps with 'jumps' array - each jump has 'if' (expression evaluated on success), 'to_id' (target step), and optional 'reason' (logged explanation). Multiple jump conditions are evaluated in order with first-match-wins. Step results are accessible as {step_id}_status and {step_id}_result in jump expressions. Supports partial execution with 'start_from_step' and 'end_at_step' parameters to run specific step ranges. By default, jumps are skipped at the 'end_at_step' boundary for predictable execution; use 'execute_jumps_at_end: true' to allow jumps at the boundary (e.g., for loops). State is automatically persisted to .workflow_state folder in workflow's directory when using file:// URLs, allowing workflows to be resumed from any step."
+        description = "Executes multiple tools in sequence. Useful for automating complex workflows that require multiple steps. Each tool in the sequence can have its own error handling and delay configuration. Tool names can be provided either in short form (e.g., 'click_element') or full form (e.g., 'mcp_terminator-mcp-agent_click_element'). When using run_command with engine mode, data can be passed between steps using set_env - return { set_env: { key: value } } from one step. Access variables using direct syntax (e.g., 'key == \"value\"' in conditions or {{key}} in substitutions). IMPORTANT: Locator methods (.first, .all) require mandatory timeout parameters in milliseconds - use .first(0) for immediate search (no polling/retry), .first(1000) to retry for 1 second, or .first(5000) for slow-loading UI. Default timeout changed from 30s to 0ms (no polling) for performance. Supports conditional jumps with 'jumps' array - each jump has 'if' (expression evaluated on success), 'to_id' (target step), and optional 'reason' (logged explanation). Multiple jump conditions are evaluated in order with first-match-wins. Step results are accessible as {step_id}_status and {step_id}_result in jump expressions. Expressions support equality (==, !=), numeric comparison (>, <, >=, <=), logical operators (&&, ||, !), and functions (contains, startsWith, endsWith, always). Undefined variables are handled gracefully (undefined != 'value' returns true). Type coercion automatically converts strings to numbers for numeric comparisons. Supports partial execution with 'start_from_step' and 'end_at_step' parameters to run specific step ranges. By default, jumps are skipped at the 'end_at_step' boundary for predictable execution; use 'execute_jumps_at_end: true' to allow jumps at the boundary (e.g., for loops). State is automatically persisted to .workflow_state folder in workflow's directory when using file:// URLs, allowing workflows to be resumed from any step."
     )]
     pub async fn execute_sequence(
         &self,
@@ -4390,6 +4722,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -4399,7 +4732,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(description = "Minimizes a window.")]
@@ -4452,6 +4792,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             element.process_id().ok(),
             &mut result_json,
             Some(&element),
@@ -4461,61 +4802,18 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
-    }
-
-    #[tool(description = "Zooms in on the current view (e.g., a web page).")]
-    async fn zoom_in(
-        &self,
-        Parameters(args): Parameters<ZoomArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("zoom_in", None);
-
-        // Add comprehensive telemetry attributes
-        span.set_attribute("level", args.level.to_string());
-
-        self.desktop.zoom_in(args.level).await.map_err(|e| {
-            McpError::internal_error("Failed to zoom in", Some(json!({"reason": e.to_string()})))
-        })?;
-
-        span.set_status(true, None);
-        span.end();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "action": "zoom_in",
-            "status": "success",
-            "level": args.level,
-        }))?]))
-    }
-
-    #[tool(description = "Zooms out on the current view (e.g., a web page).")]
-    async fn zoom_out(
-        &self,
-        Parameters(args): Parameters<ZoomArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("zoom_out", None);
-
-        // Add comprehensive telemetry attributes
-        span.set_attribute("level", args.level.to_string());
-
-        self.desktop.zoom_out(args.level).await.map_err(|e| {
-            McpError::internal_error("Failed to zoom out", Some(json!({"reason": e.to_string()})))
-        })?;
-
-        span.set_status(true, None);
-        span.end();
-
-        Ok(CallToolResult::success(vec![Content::json(json!({
-            "action": "zoom_out",
-            "status": "success",
-            "level": args.level,
-        }))?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
-        description = "Sets the zoom level to a specific percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%). This is more precise than using zoom_in/zoom_out repeatedly."
+        description = "Sets the zoom level to a specific percentage (e.g., 100 for 100%, 150 for 150%, 50 for 50%)."
     )]
     async fn set_zoom(
         &self,
@@ -4542,6 +4840,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             None, // No specific element for zoom operation
             &mut result_json,
             None, // No element available for zoom
@@ -4551,7 +4850,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -4613,6 +4919,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
             Some(&element),
@@ -4622,7 +4929,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 
     // Removed: run_javascript tool (merged into run_command with engine)
@@ -4709,32 +5023,47 @@ Timing: Use await new Promise(resolve => setTimeout(resolve, ms)) for delays.
 The sleep() function is NOT available in browser context.
 
 Script Format Requirements:
-The Chrome extension bridge automatically detects and awaits Promises. Follow these patterns:
+🚨 CRITICAL: ALL browser scripts MUST use IIFE wrapper when using return statements.
+The MCP agent injects environment variables at the top of your script, making top-level
+return statements illegal in JavaScript. The Chrome extension bridge automatically detects
+and awaits Promises.
 
-✅ RECOMMENDED: IIFE Pattern for Sync Scripts
+✅ RECOMMENDED: IIFE Pattern for Synchronous Scripts
 (function() {
+  // Safe env variable access with typeof checks
+  const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
+
   const data = document.querySelector('.data');
   return JSON.stringify({
     data_found: data ? 'true' : 'false',
-    data_text: data ? data.textContent : ''
+    data_text: data ? data.textContent : '',
+    search_term: searchTerm
   });
 })()
 
-✅ RECOMMENDED: Promise Chain as Last Expression
-const config = (typeof user_config !== 'undefined') ? user_config : {};
-navigator.clipboard.readText().then(clipboardText => {
-  console.log('Success:', clipboardText);
-  return JSON.stringify({ clipboard_text: clipboardText });
-}).catch(error => {
-  console.error('Error:', error);
-  return JSON.stringify({ error_message: error.message });
-});
+✅ RECOMMENDED: IIFE with Promise Chain for Async Operations
+(function() {
+  // Setup variables first (synchronously) with typeof checks
+  const config = (typeof user_config !== 'undefined') ? user_config : {};
+
+  // Capture Promise in const and explicitly return it
+  const result = navigator.clipboard.readText().then(clipboardText => {
+    console.log('Success:', clipboardText);
+    return JSON.stringify({ clipboard_text: clipboardText });
+  }).catch(error => {
+    console.error('Error:', error);
+    return JSON.stringify({ error_message: error.message });
+  });
+
+  return result;
+})()
 
 Key Rules:
+- IIFE wrapper is MANDATORY to avoid 'Illegal return statement' errors
 - Both .then() and .catch() handlers MUST return values (use JSON.stringify())
-- Promise as last expression is automatically detected and awaited
+- Always use typeof checks for ALL env variable access
 - Do synchronous variable setup BEFORE the Promise chain
-- Avoid async IIFE - use Promise chain pattern instead
+- Avoid async IIFE - use Promise chain pattern inside regular IIFE instead
 - Never use success: true/false pattern - return descriptive data instead
 
 ❌ WRONG: Missing Return Values
@@ -5037,14 +5366,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
                         injected_vars.insert(key.clone()); // Track this variable
-                        tracing::info!(
-                            "[execute_browser_script] Injected env.{} as individual variable (type: {})",
-                            key,
-                            if injectable_value.is_string() { "string" }
-                            else if injectable_value.is_object() { "object" }
-                            else if injectable_value.is_array() { "array" }
-                            else { "other" }
-                        );
                     }
                 }
             }
@@ -5094,10 +5415,6 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                     if let Ok(value_json) = serde_json::to_string(&injectable_value) {
                         final_script.push_str(&format!("var {key} = {value_json};\n"));
                         injected_vars.insert(key.clone()); // Track this variable for smart replacement
-                        tracing::info!(
-                            "[execute_browser_script] Injected variables.{} as individual variable",
-                            key
-                        );
                     }
                 }
             }
@@ -5270,6 +5587,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             args.tree_max_depth,
             args.tree_from_selector.as_deref(),
             args.include_detailed_attributes,
+            None,
             None, // Don't filter by process since this could apply to any browser
             &mut result_json,
             None, // No specific element
@@ -5279,7 +5597,14 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![Content::json(result_json)?],
+                args.include_monitor_screenshots,
+            )
+            .await,
+        ))
     }
 }
 
@@ -5573,20 +5898,6 @@ impl DesktopWrapper {
                     )),
                 }
             }
-            "zoom_in" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
-                Ok(args) => self.zoom_in(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for zoom_in",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
-            "zoom_out" => match serde_json::from_value::<ZoomArgs>(arguments.clone()) {
-                Ok(args) => self.zoom_out(Parameters(args)).await,
-                Err(e) => Err(McpError::invalid_params(
-                    "Invalid arguments for zoom_out",
-                    Some(json!({"error": e.to_string()})),
-                )),
-            },
             "set_zoom" => match serde_json::from_value::<SetZoomArgs>(arguments.clone()) {
                 Ok(args) => self.set_zoom(Parameters(args)).await,
                 Err(e) => Err(McpError::invalid_params(

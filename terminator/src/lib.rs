@@ -747,14 +747,6 @@ impl Desktop {
         Ok(())
     }
 
-    pub async fn zoom_in(&self, level: u32) -> Result<(), AutomationError> {
-        self.engine.zoom_in(level)
-    }
-
-    pub async fn zoom_out(&self, level: u32) -> Result<(), AutomationError> {
-        self.engine.zoom_out(level)
-    }
-
     /// Sets the zoom level to a specific percentage
     ///
     /// # Arguments

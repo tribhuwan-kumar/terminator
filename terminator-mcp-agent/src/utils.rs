@@ -1,6 +1,6 @@
 use crate::cancellation::RequestManager;
 use crate::log_capture::{LogCapture, LogCaptureLayer};
-use crate::mcp_types::{FontStyle, TextPosition};
+use crate::mcp_types::{FontStyle, TextPosition, TreeOutputFormat};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -23,12 +23,20 @@ pub struct StopHighlightingArgs {
         description = "Optional specific highlight ID to stop. If omitted, stops all active highlights."
     )]
     pub highlight_id: Option<String>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DelayArgs {
     #[schemars(description = "Number of milliseconds to delay")]
     pub delay_ms: u64,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 fn default_desktop() -> Arc<Desktop> {
@@ -118,6 +126,14 @@ pub struct GetWindowTreeArgs {
         description = "Selector to start tree from instead of window root (only used if include_tree is true)"
     )]
     pub tree_from_selector: Option<String>,
+    #[schemars(
+        description = "Output format for UI tree. Options: 'verbose_json' (full JSON with all fields), 'compact_yaml' (minimal YAML: [ROLE] name #id). Defaults to 'compact_yaml'."
+    )]
+    pub tree_output_format: Option<TreeOutputFormat>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -138,6 +154,14 @@ pub struct GetFocusedWindowTreeArgs {
         description = "Selector to start tree from instead of window root (only used if include_tree is true). Use 'true' to start from focused element."
     )]
     pub tree_from_selector: Option<String>,
+    #[schemars(
+        description = "Output format for UI tree. Options: 'verbose_json' (full JSON with all fields), 'compact_yaml' (minimal YAML: [ROLE] name #id). Defaults to 'compact_yaml'."
+    )]
+    pub tree_output_format: Option<TreeOutputFormat>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -158,6 +182,10 @@ pub struct GetApplicationsArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -191,6 +219,10 @@ pub struct LocatorArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, JsonSchema, Clone)]
@@ -294,6 +326,10 @@ pub struct ClickElementArgs {
         description = "Optional click position as percentage (0-100) within the element. If not provided, clicks the center."
     )]
     pub click_position: Option<ClickPosition>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -331,6 +367,10 @@ pub struct TypeIntoElementArgs {
         description = "Optional highlighting configuration to visually indicate the target element before typing"
     )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -364,6 +404,10 @@ pub struct PressKeyArgs {
         description = "Optional highlighting configuration to visually indicate the target element before pressing keys"
     )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -380,6 +424,10 @@ pub struct GlobalKeyArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -408,6 +456,10 @@ pub struct RunCommandArgs {
         description = "Working directory where the command should be executed. Defaults to current directory."
     )]
     pub working_directory: Option<String>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -443,6 +495,10 @@ pub struct MouseDragArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -470,6 +526,10 @@ pub struct ValidateElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -513,6 +573,10 @@ pub struct HighlightElementArgs {
         description = "Whether to include detailed element info in the response. Defaults to false for speed."
     )]
     pub include_element_info: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -542,6 +606,10 @@ pub struct WaitForElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -558,6 +626,10 @@ pub struct NavigateBrowserArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -600,12 +672,20 @@ pub struct ExecuteBrowserScriptArgs {
     pub timeout_ms: Option<u64>,
     #[schemars(description = "Number of times to retry this step on failure.")]
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct OpenApplicationArgs {
     #[schemars(description = "Name of the application to open")]
     pub app_name: String,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -637,6 +717,10 @@ pub struct SelectOptionArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -668,6 +752,10 @@ pub struct SetToggledArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, JsonSchema)]
@@ -687,6 +775,10 @@ pub struct MaximizeWindowArgs {
     pub include_detailed_attributes: Option<bool>,
     pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, serde::Deserialize, JsonSchema)]
@@ -706,6 +798,10 @@ pub struct MinimizeWindowArgs {
     pub include_detailed_attributes: Option<bool>,
     pub timeout_ms: Option<u64>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -737,6 +833,10 @@ pub struct SetRangeValueArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -768,6 +868,10 @@ pub struct SetValueArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -799,6 +903,10 @@ pub struct SetSelectedArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -833,6 +941,10 @@ pub struct ScrollElementArgs {
         description = "Optional highlighting configuration to visually indicate the target element before scrolling"
     )]
     pub highlight_before_action: Option<ActionHighlightConfig>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -856,6 +968,10 @@ pub struct ActivateElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
@@ -1069,11 +1185,19 @@ pub struct CloseElementArgs {
     )]
     pub include_detailed_attributes: Option<bool>,
     pub retries: Option<u32>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
 pub struct ZoomArgs {
     pub level: u32,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
@@ -1090,6 +1214,10 @@ pub struct SetZoomArgs {
         description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
     )]
     pub include_detailed_attributes: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -1255,13 +1383,56 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
             Some(otel_layer) => {
                 use tracing_subscriber::layer::SubscriberExt;
                 let subscriber = tracing_subscriber::registry()
-                    .with(otel_layer) // OTEL layer must be added first to work with Registry type
+                    .with(
+                        // OTEL layer with RUST_LOG filtering - CRITICAL to avoid HTTP client noise
+                        otel_layer.with_filter(
+                            EnvFilter::from_default_env()
+                                .add_directive(log_level.into())
+                                // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
+                                .add_directive(
+                                    "terminator::platforms::windows::health=error"
+                                        .parse()
+                                        .unwrap(),
+                                )
+                                .add_directive("axum::serve=error".parse().unwrap())
+                                .add_directive("h2::proto=error".parse().unwrap())
+                                .add_directive("h2::codec=error".parse().unwrap())
+                                .add_directive("h2::server=error".parse().unwrap())
+                                .add_directive("h2::frame=error".parse().unwrap())
+                                .add_directive("rmcp::transport=warn".parse().unwrap())
+                                .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                .add_directive("rmcp::service=error".parse().unwrap())
+                                .add_directive("hyper::client=error".parse().unwrap())
+                                .add_directive("hyper::proto=error".parse().unwrap())
+                                // Also filter scripting engine DEBUG logs from telemetry
+                                .add_directive("terminator_mcp_agent::scripting_engine=info".parse().unwrap()),
+                        ),
+                    )
                     .with(
                         // Console/stderr layer
                         tracing_subscriber::fmt::layer()
                             .with_writer(std::io::stderr)
                             .with_ansi(false)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=error".parse().unwrap())
+                                    .add_directive("h2::proto=error".parse().unwrap())
+                                    .add_directive("h2::codec=error".parse().unwrap())
+                                    .add_directive("h2::server=error".parse().unwrap())
+                                    .add_directive("h2::frame=error".parse().unwrap())
+                                    .add_directive("rmcp::transport=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive("rmcp::service=error".parse().unwrap())
+                                    .add_directive("hyper::client=error".parse().unwrap())
+                                    .add_directive("hyper::proto=error".parse().unwrap()),
+                            ),
                     )
                     .with(
                         // File layer with timestamps
@@ -1273,12 +1444,33 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_thread_names(false)
                             .with_file(true)
                             .with_line_number(true)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=error".parse().unwrap())
+                                    .add_directive("h2::proto=error".parse().unwrap())
+                                    .add_directive("h2::codec=error".parse().unwrap())
+                                    .add_directive("h2::server=error".parse().unwrap())
+                                    .add_directive("h2::frame=error".parse().unwrap())
+                                    .add_directive("rmcp::transport=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive("rmcp::service=error".parse().unwrap())
+                                    .add_directive("hyper::client=error".parse().unwrap())
+                                    .add_directive("hyper::proto=error".parse().unwrap()),
+                            ),
                     )
                     .with(capture_layer);
                 tracing::subscriber::set_global_default(subscriber)
                     .expect("Failed to set subscriber");
-                eprintln!("✓ OTLP logs exporter enabled - logs will be sent to OpenTelemetry collector");
+                eprintln!(
+                    "✓ OTLP logs exporter enabled - logs will be sent to OpenTelemetry collector"
+                );
             }
             None => {
                 // No OTLP layer - standard logging only
@@ -1288,7 +1480,26 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                         tracing_subscriber::fmt::layer()
                             .with_writer(std::io::stderr)
                             .with_ansi(false)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=error".parse().unwrap())
+                                    .add_directive("h2::proto=error".parse().unwrap())
+                                    .add_directive("h2::codec=error".parse().unwrap())
+                                    .add_directive("h2::server=error".parse().unwrap())
+                                    .add_directive("h2::frame=error".parse().unwrap())
+                                    .add_directive("rmcp::transport=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive("rmcp::service=error".parse().unwrap())
+                                    .add_directive("hyper::client=error".parse().unwrap())
+                                    .add_directive("hyper::proto=error".parse().unwrap()),
+                            ),
                     )
                     .with(
                         // File layer with timestamps
@@ -1300,7 +1511,26 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             .with_thread_names(false)
                             .with_file(true)
                             .with_line_number(true)
-                            .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
+                            .with_filter(
+                                EnvFilter::from_default_env()
+                                    .add_directive(log_level.into())
+                                    // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
+                                    .add_directive(
+                                        "terminator::platforms::windows::health=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
+                                    .add_directive("axum::serve=error".parse().unwrap())
+                                    .add_directive("h2::proto=error".parse().unwrap())
+                                    .add_directive("h2::codec=error".parse().unwrap())
+                                    .add_directive("h2::server=error".parse().unwrap())
+                                    .add_directive("h2::frame=error".parse().unwrap())
+                                    .add_directive("rmcp::transport=warn".parse().unwrap())
+                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive("rmcp::service=error".parse().unwrap())
+                                    .add_directive("hyper::client=error".parse().unwrap())
+                                    .add_directive("hyper::proto=error".parse().unwrap()),
+                            ),
                     )
                     .with(capture_layer)
                     .init();
@@ -1529,6 +1759,10 @@ pub struct ExportWorkflowSequenceArgs {
 
     #[schemars(description = "Create new file if it doesn't exist (default: true)")]
     pub create_if_missing: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -1543,6 +1777,10 @@ pub struct ImportWorkflowSequenceArgs {
         description = "Return raw YAML content alongside parsed structure (default: false)"
     )]
     pub return_raw: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
 
 /// A robust helper that finds a UI element and executes a provided action on it,
@@ -1768,4 +2006,8 @@ pub struct RecordWorkflowArgs {
     pub highlight_mode: Option<HighlightConfig>,
     /// Whether to record scroll events (default: false to reduce noise)
     pub record_scroll_events: Option<bool>,
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
 }
