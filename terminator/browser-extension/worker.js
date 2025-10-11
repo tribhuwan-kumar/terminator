@@ -467,7 +467,7 @@ async function evalInTab(tabId, code, awaitPromise, evalId) {
 
   /* 
     * executes only for iframes by bypassing the CORS issue
-    * so this implementatiton is something like this to bypass the CORS issue
+    * so this implementatiton is something
     * first we'll get every single frames from the tab
     * then parse an special const name `IFRAMESELCTOR` from raw js code to
       get the selector of iframe from main document
