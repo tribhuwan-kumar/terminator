@@ -464,6 +464,129 @@ function wrapCodeIfNeeded(code) {
 }
 
 async function evalInTab(tabId, code, awaitPromise, evalId) {
+
+  /* 
+    * executes only for iframes by bypassing the CORS issue
+    * so this implementatiton is something like this to bypass the CORS issue
+    * first we'll get every single frames from the tab
+    * then parse an special const name `IFRAMESELCTOR` from raw js code to
+      get the selector of iframe from main document
+    * after that we'll get the `frameId` of the iframe to execute
+      raw js code inside the iframe's document to avoid CORS issue
+    * rewrite the raw js code so it removes the unneccesary `IFRAMESELCTOR` from eval code 
+    * run user code safely by creating a Function rather than eval (still executes arbitrary code)
+  */
+  if (code.includes("IFRAMESELCTOR")) {
+    const frames = await chrome.webNavigation.getAllFrames({ tabId });
+    log("Frames seen by extension:", frames);
+
+    const regex = /const\s+IFRAMESELCTOR\s*=\s*['"`]?\s*(querySelector|getElementById)\s*\(\s*(['"`])(.*?)\2\s*\)\s*;?\s*['"`]?/s;
+    const match = code.match(regex);
+    const iframeInfo = {
+      method: match[1],
+      selector: match[3]
+    };
+    if (!match) {
+      throw new Error(`No selector named 'IFRAMESELCTOR' have been defined please define
+       this variable to execute code inside in iframe's document context`);
+    };
+
+    if (iframeInfo) {
+      const iframeSelector = iframeInfo.selector;
+      if (iframeSelector) {
+        log(`Executing in given iframe of selector: ${iframeSelector}, selector type: ${iframeInfo.method}`);
+        if (!attachedTabs.has(tabId)) {
+          await debuggerAttach(tabId);
+          attachedTabs.add(tabId);
+          await chrome.storage.session.set({ attached: [...attachedTabs] });
+          log(`Debugger attached to tab '${tabId}' for iframe evaluation`);
+        }
+
+        let frameId;
+        try {
+          await sendCommand(tabId, "Page.enable", {});
+          await sendCommand(tabId, "DOM.enable", {});
+          const { root } = await sendCommand(tabId, "DOM.getDocument", { depth: -1 });
+          const { nodeId } = await sendCommand(tabId, "DOM.querySelector", {
+            nodeId: root.nodeId,
+            selector: iframeSelector,
+          });
+
+          if (!nodeId) {
+            throw new Error(`Iframe with selector "${iframeSelector}" not found.`);
+          }
+          const { node } = await sendCommand(tabId, "DOM.describeNode", { nodeId });
+          if (!node) {
+            throw new Error(`Could not retrieve node info for the specified iframe, selector ${iframeInfo.selector}`);
+          }
+
+          /* now here we've to get the actual correct `frameId` from by matching 
+             the `src` attributes of iframe to the all the existing iframe on that opened tab 
+          */
+          const iframeSrc = node.attributes?.[node.attributes.indexOf("src") + 1];
+          log("iframeSrc", iframeSrc)
+          const match = frames.find(f => {
+            try {
+              const u1 = new URL(f.url);
+              const u2 = new URL(iframeSrc);
+              const host1 = u1.hostname.replace(/^www\./, "").toLowerCase();
+              const host2 = u2.hostname.replace(/^www\./, "").toLowerCase();
+              if (host1 !== host2) return false;
+              const p1 = u1.pathname.split("/").filter(Boolean);
+              const p2 = u2.pathname.split("/").filter(Boolean);
+              for (let i = 0; i < Math.min(3, p1.length, p2.length); i++) {
+                if (p1[i] !== p2[i]) return false;
+              }
+              return true;
+            } catch {
+              return false;
+            }
+          });
+          frameId = match.frameId;
+          log(`matched frameId: ${match.frameId}`)
+
+        } catch (err) {
+          log("Error finding frame:", err);
+          try { await debuggerDetach(tabId); } catch (_) {}
+          attachedTabs.delete(tabId);
+          throw err;
+        }
+
+        const lines = code.split("\n").filter(line => !line.includes("IFRAMESELCTOR"));
+        const rewritten = lines.join("\n")
+        log(`Rewritten code for iframe: ${rewritten}`);
+
+        /* execute the rewritten code inside the found frame */
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId: tabId, frameIds: [frameId] },
+            world: "MAIN",
+            func: (userScript, shouldAwait) => {
+              return (async () => {
+                const fn = new Function(userScript);
+                const result = fn();
+                if (shouldAwait && result instanceof Promise) {
+                  return await result;
+                }
+                return result;
+              })();
+            },
+            args: [rewritten, !!awaitPromise],
+          });
+
+          if (!results || results.length === 0) {
+            throw new Error("Script execution in frame produced no result.");
+          }
+          return results[0].result;
+        } catch (err) {
+          log(`Error executing script in frame ${frameId}:`, err);
+          throw err;
+        }
+      }
+    }
+  }
+  
+
   const perfStart = performance.now();
   const timings = {};
 
