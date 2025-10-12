@@ -16,9 +16,17 @@ async function runResolverAutomation(): Promise<string> {
     const browser_webview = chrome_app.locator("classname:BrowserRootView >> nativeid:RootWebArea");
     await browser_webview.wait(5000)
 
-    const solve_captcha_btn = await browser_webview.locator("nativeid:recaptcha-anchor").first();
-
-    if (solve_captcha_btn.isVisible()) {
+    let recaptchaAnchorExists = false;
+    try {
+      const anchor = await browser_webview.locator("nativeid:recaptcha-anchor").first();
+      if (anchor) {
+        recaptchaAnchorExists = true;
+      }
+    } catch {
+      recaptchaAnchorExists = false;
+    }
+    if (recaptchaAnchorExists) {
+      const solve_captcha_btn = await browser_webview.locator("nativeid:recaptcha-anchor").first();
       solve_captcha_btn.click();
 
       let recaptcha_webview_sel_clone: Locator;
@@ -148,11 +156,23 @@ async function runResolverAutomation(): Promise<string> {
         return JSON.stringify(result);
       }
     } else {
-      const result = {
-        status: 'failed',
-        message: 'Captcha checkbox button is not visible.',
-      };
-      return JSON.stringify(result);
+      try {
+        const cloudflareCheckbox = await browser_webview.locator("role:checkbox|name:Verify you are human").first();
+        if (cloudflareCheckbox) {
+          const clickResult = cloudflareCheckbox.click();
+          if (clickResult) {
+            return JSON.stringify({
+              status: "success",
+              message: `successfully resolved Cloudflare human verification`,
+            });
+          } 
+        }
+      } catch {
+        return JSON.stringify({
+          status: "failed",
+          message: `failed to resolve Cloudflare human verification, click failed`,
+        });
+      }
     }
   } catch(e) {
     const result = {
