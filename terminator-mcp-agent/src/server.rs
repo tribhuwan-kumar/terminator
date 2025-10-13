@@ -428,7 +428,10 @@ impl DesktopWrapper {
         }
         span.set_attribute(
             "include_detailed_attributes",
-            args.tree.include_detailed_attributes.unwrap_or(true).to_string(),
+            args.tree
+                .include_detailed_attributes
+                .unwrap_or(true)
+                .to_string(),
         );
 
         // Build the base result JSON first
@@ -560,7 +563,9 @@ impl DesktopWrapper {
 
         let include_tree = Self::should_include_tree(&args.tree.include_tree);
         let tree_config = if include_tree {
-            Some(Self::create_tree_config(args.tree.include_detailed_attributes))
+            Some(Self::create_tree_config(
+                args.tree.include_detailed_attributes,
+            ))
         } else {
             None
         };
@@ -1165,7 +1170,10 @@ impl DesktopWrapper {
         let mut span = StepSpan::new("click_element", None);
         span.set_attribute("selector", args.selector.selector.clone());
 
-        tracing::info!("[click_element] Called with selector: '{}'", args.selector.selector);
+        tracing::info!(
+            "[click_element] Called with selector: '{}'",
+            args.selector.selector
+        );
 
         // Record retry configuration
         if let Some(retries) = args.action.retries {
@@ -3012,7 +3020,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             args.selector.selector, args.condition, args.action.timeout_ms, args.tree.include_tree
         );
 
-        let locator = self.desktop.locator(Selector::from(args.selector.selector.as_str()));
+        let locator = self
+            .desktop
+            .locator(Selector::from(args.selector.selector.as_str()));
         let timeout = get_timeout(args.action.timeout_ms);
         let condition_lower = args.condition.to_lowercase();
 
@@ -4586,7 +4596,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
     )]
     async fn stop_highlighting(
         &self,
-        Parameters(args): Parameters<crate::utils::StopHighlightingArgs>,
+        Parameters(_args): Parameters<crate::utils::StopHighlightingArgs>,
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
         let mut span = StepSpan::new("stop_highlighting", None);
