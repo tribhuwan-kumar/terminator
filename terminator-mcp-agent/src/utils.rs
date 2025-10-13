@@ -13,6 +13,117 @@ use tokio::sync::Mutex;
 use tracing::{warn, Level};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
+// ===== Composition Base Types for Reducing Duplication =====
+
+/// Common fields for operations that include monitor screenshots
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct MonitorScreenshotOptions {
+    #[schemars(
+        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
+    )]
+    pub include_monitor_screenshots: Option<bool>,
+}
+
+/// Common fields for UI tree inclusion in responses
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct TreeOptions {
+    #[schemars(description = "Whether to include the UI tree in the response. Defaults to false.")]
+    pub include_tree: Option<bool>,
+
+    #[schemars(
+        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
+    )]
+    pub tree_max_depth: Option<usize>,
+
+    #[schemars(
+        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
+    )]
+    pub tree_from_selector: Option<String>,
+
+    #[schemars(
+        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
+    )]
+    pub include_detailed_attributes: Option<bool>,
+
+    #[schemars(
+        description = "Output format for UI tree. Options: 'verbose_json' (full JSON with all fields), 'compact_yaml' (minimal YAML: [ROLE] name #id). Defaults to 'compact_yaml'."
+    )]
+    pub tree_output_format: Option<TreeOutputFormat>,
+}
+
+/// Common fields for element selection with alternatives and fallbacks
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct SelectorOptions {
+    #[schemars(
+        description = "A string selector to locate the element. Can be chained with ` >> `."
+    )]
+    pub selector: String,
+
+    #[schemars(
+        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
+    )]
+    pub alternative_selectors: Option<String>,
+
+    #[schemars(
+        description = "Optional fallback selectors to try sequentially if the primary selector fails. These selectors are **only** attempted after the primary selector (and any parallel alternatives) time out. List can be comma-separated."
+    )]
+    pub fallback_selectors: Option<String>,
+}
+
+/// Common fields for action timing and retries
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ActionOptions {
+    #[schemars(description = "Optional timeout in milliseconds for the action")]
+    pub timeout_ms: Option<u64>,
+
+    #[schemars(description = "Number of times to retry this step on failure.")]
+    pub retries: Option<u32>,
+}
+
+/// Common fields for visual highlighting before actions
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct HighlightOptions {
+    #[schemars(
+        description = "Optional highlighting configuration to visually indicate the target element before the action"
+    )]
+    pub highlight_before_action: Option<ActionHighlightConfig>,
+}
+
+/// Arguments for tools that select elements
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ElementArgs {
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
+}
+
+/// Arguments for tools that perform actions on elements with highlighting
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct ActionElementArgs {
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub highlight: HighlightOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
+}
+
 // Validation helpers for better type safety
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct EmptyArgs {}
@@ -23,20 +134,18 @@ pub struct StopHighlightingArgs {
         description = "Optional specific highlight ID to stop. If omitted, stops all active highlights."
     )]
     pub highlight_id: Option<String>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct DelayArgs {
     #[schemars(description = "Number of milliseconds to delay")]
     pub delay_ms: u64,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 fn default_desktop() -> Arc<Desktop> {
@@ -112,117 +221,41 @@ pub struct GetWindowTreeArgs {
     pub pid: u32,
     #[schemars(description = "Optional window title filter")]
     pub title: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    #[schemars(description = "Whether to include the UI tree in the response. Defaults to false.")]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Output format for UI tree. Options: 'verbose_json' (full JSON with all fields), 'compact_yaml' (minimal YAML: [ROLE] name #id). Defaults to 'compact_yaml'."
-    )]
-    pub tree_output_format: Option<TreeOutputFormat>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetFocusedWindowTreeArgs {
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.). Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    #[schemars(
-        description = "Whether to include the UI tree in the response. Defaults to true for this tool."
-    )]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true). Use 'true' to start from focused element."
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Output format for UI tree. Options: 'verbose_json' (full JSON with all fields), 'compact_yaml' (minimal YAML: [ROLE] name #id). Defaults to 'compact_yaml'."
-    )]
-    pub tree_output_format: Option<TreeOutputFormat>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetApplicationsArgs {
-    #[schemars(
-        description = "Whether to include the full UI tree for each application. Defaults to false."
-    )]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct LocatorArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds for the action")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response.")]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, JsonSchema, Clone)]
@@ -293,121 +326,67 @@ impl<'de> Deserialize<'de> for ClickPosition {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ClickElementArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds for the action")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Optional highlighting configuration to visually indicate the target element before clicking"
-    )]
-    pub highlight_before_action: Option<ActionHighlightConfig>,
-    #[schemars(
-        description = "Optional click position as percentage (0-100) within the element. If not provided, clicks the center."
-    )]
     pub click_position: Option<ClickPosition>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub highlight: HighlightOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct TypeIntoElementArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
     #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
-    #[schemars(description = "Optional timeout in milliseconds for the action (default: 3000ms)")]
-    pub timeout_ms: Option<u64>,
     #[schemars(description = "Whether to verify the action succeeded (default: true)")]
     pub verify_action: Option<bool>,
     #[schemars(description = "Whether to clear the element before typing (default: true)")]
     pub clear_before_typing: Option<bool>,
-    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Optional highlighting configuration to visually indicate the target element before typing"
-    )]
-    pub highlight_before_action: Option<ActionHighlightConfig>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub highlight: HighlightOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct PressKeyArgs {
     #[schemars(description = "The key or key combination to press (e.g., 'Enter', 'Ctrl+A')")]
     pub key: String,
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds for the action")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Optional highlighting configuration to visually indicate the target element before pressing keys"
-    )]
-    pub highlight_before_action: Option<ActionHighlightConfig>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub highlight: HighlightOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -416,18 +395,10 @@ pub struct GlobalKeyArgs {
         description = "The key or key combination to press (e.g., '{PageDown}', '{Ctrl}{V}')"
     )]
     pub key: String,
-    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -462,12 +433,8 @@ pub struct RunCommandArgs {
     pub include_monitor_screenshots: Option<bool>,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct MouseDragArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
     #[schemars(description = "Start X coordinate")]
     pub start_x: f64,
     #[schemars(description = "Start Y coordinate")]
@@ -476,140 +443,74 @@ pub struct MouseDragArgs {
     pub end_x: f64,
     #[schemars(description = "End Y coordinate")]
     pub end_y: f64,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ValidateElementArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct HighlightElementArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
     #[schemars(description = "BGR color code (optional, default red)")]
     pub color: Option<u32>,
     #[schemars(description = "Duration in milliseconds (optional, default 1000ms)")]
     pub duration_ms: Option<u64>,
-    #[schemars(
-        description = "Optional text to display as overlay. Text will be truncated to 10 characters."
-    )]
     pub text: Option<String>,
     #[schemars(description = "Position of text overlay relative to the highlighted element")]
     pub text_position: Option<TextPosition>,
     #[schemars(description = "Font styling options for text overlay")]
     pub font_style: Option<FontStyle>,
-    #[schemars(description = "Optional timeout in milliseconds")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include detailed element info in the response. Defaults to false for speed."
-    )]
     pub include_element_info: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct WaitForElementArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
     #[schemars(description = "Condition to wait for: 'visible', 'enabled', 'focused', 'exists'")]
     pub condition: String,
-    #[schemars(description = "Optional timeout in milliseconds")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -618,360 +519,192 @@ pub struct NavigateBrowserArgs {
     pub url: String,
     #[schemars(description = "Optional browser name")]
     pub browser: Option<String>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ExecuteBrowserScriptArgs {
-    #[schemars(
-        description = "A string selector to locate the browser element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "The JavaScript code to execute in the browser console. Either this or script_file must be provided."
-    )]
     pub script: Option<String>,
-    #[schemars(
-        description = "Optional path to JavaScript file to load instead of inline script. Either this or script must be provided."
-    )]
     pub script_file: Option<String>,
-    #[schemars(
-        description = "Optional environment variables to inject into browser script. Variables are automatically available as proper JavaScript types - JSON strings are parsed into objects/arrays."
-    )]
     pub env: Option<serde_json::Value>,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(
-        description = "Whether to include full UI tree in the response. Defaults to false."
-    )]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    #[schemars(description = "Optional timeout in milliseconds for the action")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Number of times to retry this step on failure.")]
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct OpenApplicationArgs {
     #[schemars(description = "Name of the application to open")]
     pub app_name: String,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct SelectOptionArgs {
-    #[schemars(description = "A string selector to locate the dropdown/combobox element.")]
-    pub selector: String,
     #[schemars(description = "The visible text of the option to select.")]
     pub option_name: String,
-    #[schemars(description = "Optional alternative selectors.")]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds.")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response.")]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct SetToggledArgs {
-    #[schemars(description = "A string selector to locate the toggleable element.")]
-    pub selector: String,
     #[schemars(description = "The desired state: true for on, false for off.")]
     pub state: bool,
-    #[schemars(description = "Optional alternative selectors.")]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds.")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response.")]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, serde::Deserialize, JsonSchema)]
+#[derive(Debug, serde::Deserialize, JsonSchema, Default)]
 pub struct MaximizeWindowArgs {
-    pub selector: String,
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub timeout_ms: Option<u64>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, serde::Deserialize, JsonSchema)]
+#[derive(Debug, serde::Deserialize, JsonSchema, Default)]
 pub struct MinimizeWindowArgs {
-    pub selector: String,
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub timeout_ms: Option<u64>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct SetRangeValueArgs {
-    #[schemars(description = "A string selector to locate the range-based element.")]
-    pub selector: String,
     #[schemars(description = "The numerical value to set.")]
     pub value: f64,
-    #[schemars(description = "Optional alternative selectors.")]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds.")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response.")]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct SetValueArgs {
-    #[schemars(description = "A string selector to locate the element whose value will be set.")]
-    pub selector: String,
     #[schemars(description = "The text value to set.")]
     pub value: String,
-    #[schemars(description = "Optional alternative selectors.")]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds.")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response.")]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct SetSelectedArgs {
-    #[schemars(description = "A string selector to locate the selectable element.")]
-    pub selector: String,
     #[schemars(description = "The desired state: true for selected, false for deselected.")]
     pub state: bool,
-    #[schemars(description = "Optional alternative selectors.")]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds.")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response.")]
-    pub include_tree: Option<bool>,
-    #[schemars(
-        description = "Maximum depth to traverse when building tree (only used if include_tree is true)"
-    )]
-    pub tree_max_depth: Option<usize>,
-    #[schemars(
-        description = "Selector to start tree from instead of window root (only used if include_tree is true)"
-    )]
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema, Default)]
 #[schemars(description = "Arguments for scrolling an element")]
 pub struct ScrollElementArgs {
-    pub selector: String,
-    #[schemars(
-        description = "Optional alternative selectors to try in parallel. The first selector that finds an element will be used."
-    )]
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
     #[serde(default)]
     #[schemars(description = "Direction to scroll: 'up', 'down', 'left', 'right'")]
     pub direction: String,
     #[serde(default = "default_scroll_amount")]
     #[schemars(description = "Amount to scroll (number of lines or pages, default: 3)")]
     pub amount: f64,
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Optional highlighting configuration to visually indicate the target element before scrolling"
-    )]
-    pub highlight_before_action: Option<ActionHighlightConfig>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub highlight: HighlightOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ActivateElementArgs {
-    #[schemars(
-        description = "A string selector to locate the element. Can be chained with ` >> `."
-    )]
-    pub selector: String,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    #[schemars(description = "Optional timeout in milliseconds for the action")]
-    pub timeout_ms: Option<u64>,
-    #[schemars(description = "Whether to include full UI tree in the response. Defaults to true.")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Clone)]
@@ -1167,28 +900,20 @@ pub enum SequenceItem {
     Group { tool_group: ToolGroup },
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseElementArgs {
-    pub selector: String,
-    pub alternative_selectors: Option<String>,
-    #[schemars(
-        description = "Optional fallback selectors to try sequentially if the primary selector fails.  These selectors are **only** attempted after the primary selector (and any parallel alternatives) time-out.  List can be comma-separated."
-    )]
-    pub fallback_selectors: Option<String>,
-    pub timeout_ms: Option<u64>,
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    pub retries: Option<u32>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub selector: SelectorOptions,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Deserialize, JsonSchema, Debug, Clone)]
@@ -1206,18 +931,10 @@ pub struct SetZoomArgs {
         description = "The zoom percentage to set (e.g., 100 for 100%, 150 for 150%, 50 for 50%)"
     )]
     pub percentage: u32,
-    #[schemars(description = "Whether to include full UI tree in the response (verbose mode)")]
-    pub include_tree: Option<bool>,
-    pub tree_max_depth: Option<usize>,
-    pub tree_from_selector: Option<String>,
-    #[schemars(
-        description = "Whether to include detailed element attributes (enabled, focused, selected, etc.) when include_tree is true. Defaults to true for comprehensive LLM context."
-    )]
-    pub include_detailed_attributes: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
 }
 
 #[derive(Debug)]

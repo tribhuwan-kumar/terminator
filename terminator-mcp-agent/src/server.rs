@@ -428,7 +428,7 @@ impl DesktopWrapper {
         }
         span.set_attribute(
             "include_detailed_attributes",
-            args.include_detailed_attributes.unwrap_or(true).to_string(),
+            args.tree.include_detailed_attributes.unwrap_or(true).to_string(),
         );
 
         // Build the base result JSON first
@@ -437,7 +437,7 @@ impl DesktopWrapper {
             "status": "success",
             "pid": args.pid,
             "title": args.title,
-            "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
+            "detailed_attributes": args.tree.include_detailed_attributes.unwrap_or(true),
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
@@ -446,11 +446,11 @@ impl DesktopWrapper {
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
             &self.desktop,
-            args.include_tree.or(Some(false)), // Default to false for get_window_tree
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
-            args.tree_output_format,
+            args.tree.include_tree.or(Some(false)), // Default to false for get_window_tree
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
+            args.tree.tree_output_format,
             Some(args.pid),
             &mut result_json,
             None, // No found element for window tree
@@ -463,7 +463,7 @@ impl DesktopWrapper {
         let contents = append_monitor_screenshots_if_enabled(
             &self.desktop,
             vec![Content::json(result_json)?],
-            args.include_monitor_screenshots,
+            args.monitor.include_monitor_screenshots,
         )
         .await;
         Ok(CallToolResult::success(contents))
@@ -509,7 +509,7 @@ impl DesktopWrapper {
                 "window_title": window_title,
                 "application_name": app_name,
             },
-            "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
+            "detailed_attributes": args.tree.include_detailed_attributes.unwrap_or(true),
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
@@ -517,11 +517,11 @@ impl DesktopWrapper {
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
             &self.desktop,
-            args.include_tree.or(Some(true)), // Default to true for get_focused_window_tree
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
-            args.tree_output_format,
+            args.tree.include_tree.or(Some(true)), // Default to true for get_focused_window_tree
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
+            args.tree.tree_output_format,
             Some(pid),
             &mut result_json,
             Some(&focused_element), // Pass the focused element for from_selector="true" support
@@ -535,7 +535,7 @@ impl DesktopWrapper {
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                args.monitor.include_monitor_screenshots,
             )
             .await,
         ))
@@ -558,9 +558,9 @@ impl DesktopWrapper {
             )
         })?;
 
-        let include_tree = Self::should_include_tree(&args.include_tree);
+        let include_tree = Self::should_include_tree(&args.tree.include_tree);
         let tree_config = if include_tree {
-            Some(Self::create_tree_config(args.include_detailed_attributes))
+            Some(Self::create_tree_config(args.tree.include_detailed_attributes))
         } else {
             None
         };
@@ -618,7 +618,7 @@ impl DesktopWrapper {
             "action": "get_applications",
             "status": "success",
             "include_tree": include_tree,
-            "detailed_attributes": args.include_detailed_attributes.unwrap_or(true),
+            "detailed_attributes": args.tree.include_detailed_attributes.unwrap_or(true),
             "applications": applications,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
@@ -630,7 +630,7 @@ impl DesktopWrapper {
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                args.monitor.include_monitor_screenshots,
             )
             .await,
         ))
@@ -956,7 +956,7 @@ impl DesktopWrapper {
         let mut span = StepSpan::new("type_into_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         span.set_attribute("text.length", args.text_to_type.len().to_string());
         span.set_attribute(
             "clear_before_typing",
@@ -966,23 +966,23 @@ impl DesktopWrapper {
             "verify_action",
             args.verify_action.unwrap_or(true).to_string(),
         );
-        if let Some(timeout) = args.timeout_ms {
+        if let Some(timeout) = args.action.timeout_ms {
             span.set_attribute("timeout_ms", timeout.to_string());
         }
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
 
         tracing::info!(
             "[type_into_element] Called with selector: '{}'",
-            args.selector
+            args.selector.selector
         );
 
         let text_to_type = args.text_to_type.clone();
         let should_clear = args.clear_before_typing.unwrap_or(true);
 
         let action = {
-            let highlight_config = args.highlight_before_action.clone();
+            let highlight_config = args.highlight.highlight_before_action.clone();
             move |element: UIElement| {
                 let text_to_type = text_to_type.clone();
                 let highlight_config = highlight_config.clone();
@@ -1012,11 +1012,11 @@ impl DesktopWrapper {
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
@@ -1040,9 +1040,9 @@ impl DesktopWrapper {
                 Err(e) => {
                     // Note: Cannot use span here as it would be moved if we call span.end()
                     Err(build_element_not_found_error(
-                        &args.selector,
-                        args.alternative_selectors.as_deref(),
-                        args.fallback_selectors.as_deref(),
+                        &args.selector.selector,
+                        args.selector.alternative_selectors.as_deref(),
+                        args.selector.fallback_selectors.as_deref(),
                         e,
                     ))
                 }
@@ -1060,7 +1060,7 @@ impl DesktopWrapper {
             },
             "element": build_element_info(&element),
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
@@ -1131,10 +1131,10 @@ impl DesktopWrapper {
         // Always attach tree for better context, or if an override is provided
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1148,7 +1148,7 @@ impl DesktopWrapper {
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                args.monitor.include_monitor_screenshots,
             )
             .await,
         ))
@@ -1163,12 +1163,12 @@ impl DesktopWrapper {
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
         let mut span = StepSpan::new("click_element", None);
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
 
-        tracing::info!("[click_element] Called with selector: '{}'", args.selector);
+        tracing::info!("[click_element] Called with selector: '{}'", args.selector.selector);
 
         // Record retry configuration
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
 
@@ -1183,7 +1183,7 @@ impl DesktopWrapper {
         }
 
         let action = {
-            let highlight_config = args.highlight_before_action.clone();
+            let highlight_config = args.highlight.highlight_before_action.clone();
             let click_position = args.click_position.clone();
             move |element: UIElement| {
                 let highlight_config = highlight_config.clone();
@@ -1243,11 +1243,11 @@ impl DesktopWrapper {
 
         let result = crate::utils::find_and_execute_with_retry_with_fallback(
             &self.desktop,
-            &args.selector,
-            args.alternative_selectors.as_deref(),
-            args.fallback_selectors.as_deref(),
-            args.timeout_ms,
-            args.retries,
+            &args.selector.selector,
+            args.selector.alternative_selectors.as_deref(),
+            args.selector.fallback_selectors.as_deref(),
+            args.action.timeout_ms,
+            args.action.retries,
             action,
         )
         .await;
@@ -1266,9 +1266,9 @@ impl DesktopWrapper {
                 span.set_status(false, Some(&e.to_string()));
                 span.end();
                 return Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 ));
             }
@@ -1304,10 +1304,10 @@ impl DesktopWrapper {
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -1319,7 +1319,7 @@ impl DesktopWrapper {
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                args.monitor.include_monitor_screenshots,
             )
             .await,
         ))
@@ -1337,24 +1337,24 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
         let mut span = StepSpan::new("press_key", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         span.set_attribute("key", args.key.clone());
-        if let Some(timeout) = args.timeout_ms {
+        if let Some(timeout) = args.action.timeout_ms {
             span.set_attribute("timeout_ms", timeout.to_string());
         }
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
 
         tracing::info!(
             "[press_key] Called with selector: '{}', key: '{}'",
-            args.selector,
+            args.selector.selector,
             args.key
         );
 
         let key_to_press = args.key.clone();
         let action = {
-            let highlight_config = args.highlight_before_action.clone();
+            let highlight_config = args.highlight.highlight_before_action.clone();
             move |element: UIElement| {
                 let key_to_press = key_to_press.clone();
                 let highlight_config = highlight_config.clone();
@@ -1376,11 +1376,11 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
+                &args.selector.selector,
                 None, // PressKey doesn't have alternative selectors yet
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
@@ -1401,9 +1401,9 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
                 Err(e) => {
                     // Note: Cannot use span here as it would be moved if we call span.end()
                     Err(build_element_not_found_error(
-                        &args.selector,
+                        &args.selector.selector,
                         None,
-                        args.fallback_selectors.as_deref(),
+                        args.selector.fallback_selectors.as_deref(),
                         e,
                     ))
                 }
@@ -1422,15 +1422,15 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
             },
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -1444,7 +1444,7 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                args.monitor.include_monitor_screenshots,
             )
             .await,
         ))
@@ -1508,10 +1508,10 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -1525,7 +1525,7 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                args.monitor.include_monitor_screenshots,
             )
             .await,
         ))
@@ -2079,7 +2079,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     append_monitor_screenshots_if_enabled(
                         &self.desktop,
                         vec![Content::json(response)?],
-                        args.include_monitor_screenshots,
+                        None,
                     )
                     .await,
                 ));
@@ -2158,7 +2158,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     append_monitor_screenshots_if_enabled(
                         &self.desktop,
                         vec![Content::json(response)?],
-                        args.include_monitor_screenshots,
+                        None,
                     )
                     .await,
                 ));
@@ -2222,7 +2222,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             "status": "success",
                             "result": execution_result
                         }))?],
-                        args.include_monitor_screenshots,
+                        None,
                     )
                     .await,
                 ));
@@ -2480,7 +2480,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     }),
                     "working_directory": args.working_directory
                 }))?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -2497,27 +2497,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("activate_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
+                &args.selector.selector,
                 None, // ActivateElement doesn't have alternative selectors
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.activate_window() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
+                    &args.selector.selector,
                     None,
-                    args.fallback_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -2588,7 +2588,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": final_status,
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "verification": verification,
             "recommendation": recommendation
@@ -2597,10 +2597,10 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         // Always attach UI tree for activated elements to help with next actions
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -2615,7 +2615,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -2654,7 +2654,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     "actual_delay_ms": actual_delay_ms,
                     "timestamp": end_time.to_rfc3339()
                 }))?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -2671,9 +2671,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("mouse_drag", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         // Mouse drag uses x,y coordinates, not selectors
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let action = |element: UIElement| async move {
@@ -2683,20 +2683,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -2708,17 +2708,17 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "start": (args.start_x, args.start_y),
             "end": (args.end_x, args.end_y),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -2733,7 +2733,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -2750,11 +2750,11 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("validate_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(timeout) = args.timeout_ms {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(timeout) = args.action.timeout_ms {
             span.set_attribute("timeout_ms", timeout.to_string());
         }
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
 
@@ -2764,11 +2764,11 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let operation_start = std::time::Instant::now();
         match find_and_execute_with_retry_with_fallback(
             &self.desktop,
-            &args.selector,
-            args.alternative_selectors.as_deref(),
-            args.fallback_selectors.as_deref(),
-            args.timeout_ms,
-            args.retries,
+            &args.selector.selector,
+            args.selector.alternative_selectors.as_deref(),
+            args.selector.fallback_selectors.as_deref(),
+            args.action.timeout_ms,
+            args.action.retries,
             action,
         )
         .await
@@ -2793,15 +2793,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     "status": "success",
                     "element": element_info,
                     "selector_used": successful_selector,
-                    "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+                    "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 });
                 maybe_attach_tree(
                     &self.desktop,
-                    args.include_tree,
-                    args.tree_max_depth,
-                    args.tree_from_selector.as_deref(),
-                    args.include_detailed_attributes,
+                    args.tree.include_tree,
+                    args.tree.tree_max_depth,
+                    args.tree.tree_from_selector.as_deref(),
+                    args.tree.include_detailed_attributes,
                     None,
                     element.process_id().ok(),
                     &mut result_json,
@@ -2816,16 +2816,16 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     append_monitor_screenshots_if_enabled(
                         &self.desktop,
                         vec![Content::json(result_json)?],
-                        args.include_monitor_screenshots,
+                        None,
                     )
                     .await,
                 ))
             }
             Err(e) => {
                 let selectors_tried = get_selectors_tried_all(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                 );
                 let reason_payload = json!({
                     "error_type": "ElementNotFound",
@@ -2855,7 +2855,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             "reason": reason_payload,
                             "timestamp": chrono::Utc::now().to_rfc3339()
                         }))?],
-                        args.include_monitor_screenshots,
+                        None,
                     )
                     .await,
                 ))
@@ -2872,11 +2872,11 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("highlight_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         if let Some(ref color) = args.color {
             span.set_attribute("color", format!("#{color:08X}"));
         }
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let duration = args.duration_ms.map(std::time::Duration::from_millis);
@@ -2914,25 +2914,25 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         };
 
         // Use a shorter default timeout for highlight to avoid long waits
-        let effective_timeout_ms = args.timeout_ms.or(Some(1000));
+        let effective_timeout_ms = args.action.timeout_ms.or(Some(1000));
 
         let ((handle, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
                 effective_timeout_ms,
-                args.retries,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -2955,7 +2955,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "action": "highlight_element",
             "status": "success",
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "color": args.color.unwrap_or(0x0000FF),
             "duration_ms": args.duration_ms.unwrap_or(1000),
             "visibility": { "requested_ms": args.duration_ms.unwrap_or(1000) },
@@ -2968,10 +2968,10 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         }
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -2986,7 +2986,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3003,46 +3003,46 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("wait_for_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         info!(
             "[wait_for_element] Called with selector: '{}', condition: '{}', timeout_ms: {:?}, include_tree: {:?}",
-            args.selector, args.condition, args.timeout_ms, args.include_tree
+            args.selector.selector, args.condition, args.action.timeout_ms, args.tree.include_tree
         );
 
-        let locator = self.desktop.locator(Selector::from(args.selector.as_str()));
-        let timeout = get_timeout(args.timeout_ms);
+        let locator = self.desktop.locator(Selector::from(args.selector.selector.as_str()));
+        let timeout = get_timeout(args.action.timeout_ms);
         let condition_lower = args.condition.to_lowercase();
 
         // For the "exists" condition, we can use the standard wait
         if condition_lower == "exists" {
             info!(
                 "[wait_for_element] Waiting for element to exist: selector='{}', timeout={:?}",
-                args.selector, timeout
+                args.selector.selector, timeout
             );
             match locator.wait(timeout).await {
                 Ok(element) => {
                     info!(
                         "[wait_for_element] Element found for selector='{}' within timeout.",
-                        args.selector
+                        args.selector.selector
                     );
                     let mut result_json = json!({
                         "action": "wait_for_element",
                         "status": "success",
                         "condition": args.condition,
                         "condition_met": true,
-                        "selector": args.selector,
-                        "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                        "selector": args.selector.selector,
+                        "timeout_ms": args.action.timeout_ms.unwrap_or(5000),
                         "timestamp": chrono::Utc::now().to_rfc3339()
                     });
 
                     maybe_attach_tree(
                         &self.desktop,
-                        args.include_tree,
-                        args.tree_max_depth,
-                        args.tree_from_selector.as_deref(),
+                        args.tree.include_tree,
+                        args.tree.tree_max_depth,
+                        args.tree.tree_from_selector.as_deref(),
                         None, // include_detailed_attributes - use default
                         None, // tree_output_format - use default
                         element.process_id().ok(),
@@ -3058,7 +3058,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                         append_monitor_screenshots_if_enabled(
                             &self.desktop,
                             vec![Content::json(result_json)?],
-                            args.include_monitor_screenshots,
+                            None,
                         )
                         .await,
                     ));
@@ -3067,14 +3067,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     let error_msg = format!("Element not found within timeout: {e}");
                     info!(
                         "[wait_for_element] Element NOT found for selector='{}' within timeout. Error: {}",
-                        args.selector, e
+                        args.selector.selector, e
                     );
                     return Err(McpError::internal_error(
                         error_msg,
                         Some(json!({
-                            "selector": args.selector,
+                            "selector": args.selector.selector,
                             "condition": args.condition,
-                            "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                            "timeout_ms": args.action.timeout_ms.unwrap_or(5000),
                             "error": e.to_string()
                         })),
                     ));
@@ -3087,7 +3087,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let timeout_duration = timeout.unwrap_or(std::time::Duration::from_millis(5000));
         info!(
             "[wait_for_element] Polling for condition '{}' on selector='{}' with timeout {:?}",
-            args.condition, args.selector, timeout_duration
+            args.condition, args.selector.selector, timeout_duration
         );
 
         loop {
@@ -3100,14 +3100,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 );
                 info!(
                     "[wait_for_element] Timeout exceeded for selector='{}', condition='{}', waited {}ms",
-                    args.selector, args.condition, start_time.elapsed().as_millis()
+                    args.selector.selector, args.condition, start_time.elapsed().as_millis()
                 );
                 return Err(McpError::internal_error(
                     timeout_msg,
                     Some(json!({
-                        "selector": args.selector,
+                        "selector": args.selector.selector,
                         "condition": args.condition,
-                        "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                        "timeout_ms": args.action.timeout_ms.unwrap_or(5000),
                         "elapsed_ms": start_time.elapsed().as_millis()
                     })),
                 ));
@@ -3121,7 +3121,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 Ok(element) => {
                     info!(
                         "[wait_for_element] Element found for selector='{}', checking condition '{}'",
-                        args.selector, args.condition
+                        args.selector.selector, args.condition
                     );
                     // Element exists, now check the specific condition
                     let condition_met = match condition_lower.as_str() {
@@ -3129,7 +3129,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             let v = element.is_visible().unwrap_or(false);
                             info!(
                                 "[wait_for_element] is_visible() for selector='{}': {}",
-                                args.selector, v
+                                args.selector.selector, v
                             );
                             v
                         }
@@ -3137,7 +3137,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             let v = element.is_enabled().unwrap_or(false);
                             info!(
                                 "[wait_for_element] is_enabled() for selector='{}': {}",
-                                args.selector, v
+                                args.selector.selector, v
                             );
                             v
                         }
@@ -3145,7 +3145,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             let v = element.is_focused().unwrap_or(false);
                             info!(
                                 "[wait_for_element] is_focused() for selector='{}': {}",
-                                args.selector, v
+                                args.selector.selector, v
                             );
                             v
                         }
@@ -3165,7 +3165,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                         info!(
                             "[wait_for_element] Condition '{}' met for selector='{}' after {}ms",
                             args.condition,
-                            args.selector,
+                            args.selector.selector,
                             start_time.elapsed().as_millis()
                         );
                         // Condition is met, return success
@@ -3174,17 +3174,17 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             "status": "success",
                             "condition": args.condition,
                             "condition_met": true,
-                            "selector": args.selector,
-                            "timeout_ms": args.timeout_ms.unwrap_or(5000),
+                            "selector": args.selector.selector,
+                            "timeout_ms": args.action.timeout_ms.unwrap_or(5000),
                             "elapsed_ms": start_time.elapsed().as_millis(),
                             "timestamp": chrono::Utc::now().to_rfc3339()
                         });
 
                         maybe_attach_tree(
                             &self.desktop,
-                            args.include_tree,
-                            args.tree_max_depth,
-                            args.tree_from_selector.as_deref(),
+                            args.tree.include_tree,
+                            args.tree.tree_max_depth,
+                            args.tree.tree_from_selector.as_deref(),
                             None, // include_detailed_attributes - use default
                             None, // tree_output_format - use default
                             element.process_id().ok(),
@@ -3200,14 +3200,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                             append_monitor_screenshots_if_enabled(
                                 &self.desktop,
                                 vec![Content::json(result_json)?],
-                                args.include_monitor_screenshots,
+                                None,
                             )
                             .await,
                         ));
                     } else {
                         info!(
                             "[wait_for_element] Condition '{}' NOT met for selector='{}', continuing to poll...",
-                            args.condition, args.selector
+                            args.condition, args.selector.selector
                         );
                     }
                     // Condition not met yet, continue polling
@@ -3215,7 +3215,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 Err(_) => {
                     info!(
                         "[wait_for_element] Element not found for selector='{}', will retry...",
-                        args.selector
+                        args.selector.selector
                     );
                     // Element doesn't exist yet, continue polling
                 }
@@ -3259,10 +3259,10 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             ui_element.process_id().ok(),
             &mut result_json,
@@ -3277,7 +3277,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3337,7 +3337,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3354,27 +3354,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("close_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.close() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3389,9 +3389,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))?], args.include_monitor_screenshots).await))
+        }))?], None).await))
     }
 
     #[tool(description = "Scrolls a UI element in the specified direction by the given amount.")]
@@ -3403,15 +3403,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("scroll_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         span.set_attribute("direction", format!("{:?}", args.direction));
         span.set_attribute("amount", args.amount.to_string());
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         tracing::info!(
             "[scroll_element] Called with selector: '{}', direction: '{}', amount: {}",
-            args.selector,
+            args.selector.selector,
             args.direction,
             args.amount
         );
@@ -3419,7 +3419,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let direction = args.direction.clone();
         let amount = args.amount;
         let action = {
-            let highlight_config = args.highlight_before_action.clone();
+            let highlight_config = args.highlight.highlight_before_action.clone();
             move |element: UIElement| {
                 let direction = direction.clone();
                 let highlight_config = highlight_config.clone();
@@ -3440,20 +3440,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3470,17 +3470,17 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             },
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "direction": args.direction,
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -3495,7 +3495,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3511,7 +3511,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
 
         // Add comprehensive telemetry attributes
         span.set_attribute("option_name", args.option_name.clone());
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let option_name = args.option_name.clone();
@@ -3529,20 +3529,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3559,15 +3559,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             },
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "option_selected": args.option_name,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -3582,7 +3582,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3599,27 +3599,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("list_options", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((options, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.list_options() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3631,16 +3631,16 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "options": options,
             "count": options.len(),
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -3655,7 +3655,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3672,9 +3672,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("set_toggled", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         span.set_attribute("state", args.state.to_string());
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let state = args.state;
@@ -3689,20 +3689,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
+                &args.selector.selector,
                 None, // SetToggled doesn't have alternative selectors
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
+                    &args.selector.selector,
                     None,
-                    args.fallback_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3719,15 +3719,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             },
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "state_set_to": args.state,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -3742,7 +3742,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3759,9 +3759,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("set_range_value", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         span.set_attribute("value", args.value.to_string());
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let value = args.value;
@@ -3776,20 +3776,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
+                &args.selector.selector,
                 None, // SetRangeValue doesn't have alternative selectors
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
+                    &args.selector.selector,
                     None,
-                    args.fallback_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3801,15 +3801,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "value_set_to": args.value,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -3824,7 +3824,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3841,9 +3841,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("set_selected", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         span.set_attribute("state", args.state.to_string());
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let state = args.state;
@@ -3853,20 +3853,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
+                &args.selector.selector,
                 None, // SetSelected doesn't have alternative selectors
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
+                    &args.selector.selector,
                     None,
-                    args.fallback_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3883,15 +3883,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             },
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, None, args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "state_set_to": args.state,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -3906,7 +3906,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3923,27 +3923,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("is_toggled", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((is_toggled, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.is_toggled() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -3955,15 +3955,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "is_toggled": is_toggled,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -3978,7 +3978,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -3995,27 +3995,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("get_range_value", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((value, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.get_range_value() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -4027,15 +4027,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "value": value,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -4050,7 +4050,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -4067,27 +4067,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("is_selected", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((is_selected, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.is_selected() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -4099,15 +4099,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "is_selected": is_selected,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -4122,7 +4122,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -4137,27 +4137,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("capture_element_screenshot", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((screenshot_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.capture() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -4191,11 +4191,11 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 "status": "success",
                 "element": element_info,
                 "selector_used": successful_selector,
-                "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+                "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
                 "image_format": "png",
             }))?,
             Content::image(base64_image, "image/png".to_string()),
-        ], args.include_monitor_screenshots).await))
+        ], None).await))
     }
 
     #[tool(
@@ -4209,18 +4209,18 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("invoke_element", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move {
                     // Ensure element is visible before interaction
                     if let Err(e) = Self::ensure_element_in_view(&element) {
@@ -4233,9 +4233,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -4252,16 +4252,16 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             },
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -4276,7 +4276,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -4458,7 +4458,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     append_monitor_screenshots_if_enabled(
                         &self.desktop,
                         vec![Content::json(response)?],
-                        args.include_monitor_screenshots,
+                        None,
                     )
                     .await,
                 ))
@@ -4569,7 +4569,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     append_monitor_screenshots_if_enabled(
                         &self.desktop,
                         vec![Content::json(response)?],
-                        args.include_monitor_screenshots,
+                        None,
                     )
                     .await,
                 ))
@@ -4612,7 +4612,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(response)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -4681,27 +4681,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("maximize_window", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.maximize_window() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -4713,15 +4713,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -4736,7 +4736,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -4751,27 +4751,27 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("minimize_window", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
-        if let Some(retries) = args.retries {
+        span.set_attribute("selector", args.selector.selector.clone());
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |element| async move { element.minimize_window() },
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -4783,15 +4783,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             element.process_id().ok(),
             &mut result_json,
@@ -4806,7 +4806,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -4836,10 +4836,10 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             None, // No specific element for zoom operation
             &mut result_json,
@@ -4854,7 +4854,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -4871,9 +4871,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let mut span = StepSpan::new("set_value", None);
 
         // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.clone());
+        span.set_attribute("selector", args.selector.selector.clone());
         span.set_attribute("value", args.value.to_string());
-        if let Some(retries) = args.retries {
+        if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
         let value_to_set = args.value.clone();
@@ -4885,20 +4885,20 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         let ((_result, element), successful_selector) =
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 action,
             )
             .await
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector,
-                    args.alternative_selectors.as_deref(),
-                    args.fallback_selectors.as_deref(),
+                    &args.selector.selector,
+                    args.selector.alternative_selectors.as_deref(),
+                    args.selector.fallback_selectors.as_deref(),
                     e,
                 )),
             }?;
@@ -4910,15 +4910,15 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             "status": "success",
             "element": element_info,
             "selector_used": successful_selector,
-            "selectors_tried": get_selectors_tried_all(&args.selector, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref()),
+            "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "value_set_to": args.value,
         });
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             Some(element.process_id().unwrap_or(0)),
             &mut result_json,
@@ -4933,7 +4933,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
@@ -5480,9 +5480,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         let script_preview: String = final_script.chars().take(200).collect();
         tracing::info!(
             "[execute_browser_script] start selector='{}' timeout_ms={:?} retries={:?} script_bytes={}",
-            args.selector,
-            args.timeout_ms,
-            args.retries,
+            args.selector.selector,
+            args.action.timeout_ms,
+            args.action.retries,
             script_len
         );
         tracing::debug!(
@@ -5494,11 +5494,11 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         let ((script_result, element), successful_selector) =
             match crate::utils::find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector,
-                args.alternative_selectors.as_deref(),
-                args.fallback_selectors.as_deref(),
-                args.timeout_ms,
-                args.retries,
+                &args.selector.selector,
+                args.selector.alternative_selectors.as_deref(),
+                args.selector.fallback_selectors.as_deref(),
+                args.action.timeout_ms,
+                args.action.retries,
                 |el| {
                     let script = script_clone.clone();
                     async move { el.execute_browser_script(&script).await }
@@ -5510,9 +5510,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                 Err(e) => {
                     tracing::error!(
                         "[execute_browser_script] failed selector='{}' alt='{:?}' fallback='{:?}' error={}",
-                        args.selector,
-                        args.alternative_selectors,
-                        args.fallback_selectors,
+                        args.selector.selector,
+                        args.selector.alternative_selectors,
+                        args.selector.fallback_selectors,
                         e
                     );
 
@@ -5527,11 +5527,11 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
                                 Some(json!({
                                     "error_type": "script_execution_failure",
                                     "message": msg.clone(),
-                                    "selector": args.selector,
+                                    "selector": args.selector.selector,
                                     "selectors_tried": get_selectors_tried_all(
-                                        &args.selector,
-                                        args.alternative_selectors.as_deref(),
-                                        args.fallback_selectors.as_deref(),
+                                        &args.selector.selector,
+                                        args.selector.alternative_selectors.as_deref(),
+                                        args.selector.fallback_selectors.as_deref(),
                                     ),
                                     "suggestion": "Check the browser console for JavaScript errors. The script may have timed out or encountered an error."
                                 })),
@@ -5541,9 +5541,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
                     // For other errors, treat as element not found
                     Err(build_element_not_found_error(
-                        &args.selector,
-                        args.alternative_selectors.as_deref(),
-                        args.fallback_selectors.as_deref(),
+                        &args.selector.selector,
+                        args.selector.alternative_selectors.as_deref(),
+                        args.selector.fallback_selectors.as_deref(),
                         e,
                     ))
                 }
@@ -5559,9 +5559,9 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         );
 
         let selectors_tried = get_selectors_tried_all(
-            &args.selector,
-            args.alternative_selectors.as_deref(),
-            args.fallback_selectors.as_deref(),
+            &args.selector.selector,
+            args.selector.alternative_selectors.as_deref(),
+            args.selector.fallback_selectors.as_deref(),
         );
 
         let mut result_json = json!({
@@ -5583,10 +5583,10 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
         // Always attach tree for better context
         maybe_attach_tree(
             &self.desktop,
-            args.include_tree,
-            args.tree_max_depth,
-            args.tree_from_selector.as_deref(),
-            args.include_detailed_attributes,
+            args.tree.include_tree,
+            args.tree.tree_max_depth,
+            args.tree.tree_from_selector.as_deref(),
+            args.tree.include_detailed_attributes,
             None,
             None, // Don't filter by process since this could apply to any browser
             &mut result_json,
@@ -5601,7 +5601,7 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             append_monitor_screenshots_if_enabled(
                 &self.desktop,
                 vec![Content::json(result_json)?],
-                args.include_monitor_screenshots,
+                None,
             )
             .await,
         ))
