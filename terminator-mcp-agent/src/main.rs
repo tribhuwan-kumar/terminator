@@ -56,6 +56,11 @@ struct Args {
     /// Enable CORS for HTTP and SSE transports
     #[arg(long)]
     cors: bool,
+
+    /// Authentication token for HTTP/SSE transports (can also use MCP_AUTH_TOKEN env var)
+    /// When set, clients must provide matching Bearer token in Authorization header
+    #[arg(long, env = "MCP_AUTH_TOKEN")]
+    auth_token: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -281,6 +286,12 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
+            if args.auth_token.is_some() {
+                tracing::warn!("⚠️  SSE transport does not support authentication yet");
+                tracing::warn!("⚠️  Use HTTP transport for Bearer token authentication");
+                tracing::warn!("   Command: terminator-mcp-agent -t http --auth-token YOUR_TOKEN --port {}", args.port);
+            }
+
             let desktop = server::DesktopWrapper::new_with_log_capture(log_capture.clone())?;
             let ct = SseServer::serve(addr)
                 .await?
@@ -320,6 +331,7 @@ async fn main() -> Result<()> {
                 last_activity: Arc<Mutex<String>>, // ISO-8601
                 max_concurrent: usize,
                 request_manager: RequestManager,
+                auth_token: Option<String>,
             }
 
             let max_concurrent = std::env::var("MCP_MAX_CONCURRENT")
@@ -332,7 +344,15 @@ async fn main() -> Result<()> {
                 last_activity: Arc::new(Mutex::new(chrono::Utc::now().to_rfc3339())),
                 max_concurrent,
                 request_manager: RequestManager::new(),
+                auth_token: args.auth_token.clone(),
             };
+
+            // Log authentication status
+            if app_state.auth_token.is_some() {
+                tracing::info!("🔒 Authentication enabled - Bearer token required");
+            } else {
+                tracing::warn!("⚠️  Authentication disabled - server is publicly accessible");
+            }
 
             async fn status_handler(State(state): State<AppState>) -> impl IntoResponse {
                 let active = state.active_requests.load(Ordering::SeqCst);
@@ -354,6 +374,44 @@ async fn main() -> Result<()> {
                     "lastActivity": last_activity,
                 });
                 (code, Json(body))
+            }
+
+            // Authentication middleware - validates Bearer token if auth is enabled
+            async fn auth_middleware(
+                State(state): State<AppState>,
+                req: Request<Body>,
+                next: Next,
+            ) -> impl IntoResponse {
+                // Skip auth if no token is configured
+                if state.auth_token.is_none() {
+                    return next.run(req).await;
+                }
+
+                // Extract Authorization header
+                let auth_header = req
+                    .headers()
+                    .get(axum::http::header::AUTHORIZATION)
+                    .and_then(|v| v.to_str().ok());
+
+                // Validate token
+                if let Some(auth_value) = auth_header {
+                    if let Some(token) = auth_value.strip_prefix("Bearer ") {
+                        if state.auth_token.as_deref() == Some(token) {
+                            // Token valid, proceed
+                            return next.run(req).await;
+                        }
+                    }
+                }
+
+                // Authentication failed
+                debug!("Authentication failed - invalid or missing Bearer token");
+                let body = serde_json::json!({
+                    "error": {
+                        "code": -32001,
+                        "message": "Unauthorized - invalid or missing Bearer token"
+                    }
+                });
+                (StatusCode::UNAUTHORIZED, Json(body)).into_response()
             }
 
             async fn mcp_gate(
@@ -446,10 +504,11 @@ async fn main() -> Result<()> {
                 next.run(req).await
             }
 
-            // Build a sub-router for /mcp that uses the service with concurrency gate middleware
-            let mcp_router = Router::new().fallback_service(service).layer(
-                axum::middleware::from_fn_with_state(app_state.clone(), mcp_gate),
-            );
+            // Build a sub-router for /mcp that uses the service with auth and concurrency gate middleware
+            let mcp_router = Router::new()
+                .fallback_service(service)
+                .layer(axum::middleware::from_fn_with_state(app_state.clone(), mcp_gate))
+                .layer(axum::middleware::from_fn_with_state(app_state.clone(), auth_middleware));
 
             let mut router: Router = Router::new()
                 .route("/", get(root_handler))

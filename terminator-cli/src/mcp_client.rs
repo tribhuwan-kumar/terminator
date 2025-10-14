@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub enum Transport {
-    Http(String),
+    Http { url: String, auth_token: Option<String> },
     Stdio(Vec<String>),
 }
 
@@ -43,6 +43,16 @@ fn create_command(executable: &str, args: &[String]) -> Command {
     }
 
     cmd
+}
+
+/// Create HTTP transport with optional authentication
+/// Note: RMCP 0.6.3 has auth_header in config but it's not exported in public API
+/// For now, authentication must be handled at the server level or via custom HTTP client
+fn create_http_transport(url: &str, _auth_token: Option<&String>) -> StreamableHttpClientTransport<reqwest::Client> {
+    // TODO: Once RMCP exposes auth configuration in public API, add Bearer token here
+    // For now, the MCP server will need to allow requests without auth or we need to
+    // implement custom HTTP client with auth headers
+    StreamableHttpClientTransport::from_uri(url)
 }
 
 /// Find executable with cross-platform path resolution
@@ -87,9 +97,9 @@ pub async fn interactive_chat(transport: Transport) -> Result<()> {
     println!("=============================");
 
     match transport {
-        Transport::Http(url) => {
+        Transport::Http { url, auth_token } => {
             println!("Connecting to: {url}");
-            let transport = StreamableHttpClientTransport::from_uri(url.as_str());
+            let transport = create_http_transport(&url, auth_token.as_ref());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
                 capabilities: ClientCapabilities::default(),
@@ -428,9 +438,9 @@ pub async fn execute_command(
     init_logging();
 
     match transport {
-        Transport::Http(url) => {
+        Transport::Http { url, auth_token } => {
             info!("Connecting to server: {}", url);
-            let transport = StreamableHttpClientTransport::from_uri(url.as_str());
+            let transport = create_http_transport(&url, auth_token.as_ref());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
                 capabilities: ClientCapabilities::default(),
@@ -707,9 +717,9 @@ pub async fn natural_language_chat(transport: Transport) -> Result<()> {
 
     // Connect to MCP Server
     let service = match transport {
-        Transport::Http(url) => {
+        Transport::Http { url, auth_token } => {
             println!("Connecting to MCP server: {url}");
-            let transport = StreamableHttpClientTransport::from_uri(url.as_str());
+            let transport = create_http_transport(&url, auth_token.as_ref());
             let client_info = ClientInfo {
                 protocol_version: Default::default(),
                 capabilities: ClientCapabilities::default(),
@@ -1018,9 +1028,9 @@ pub async fn execute_command_with_progress_and_retry(
     // Special handling for execute_sequence to capture full result
     if tool == "execute_sequence" {
         match transport {
-            Transport::Http(url) => {
+            Transport::Http { url, auth_token } => {
                 debug!("Connecting to server: {}", url);
-                let transport = StreamableHttpClientTransport::from_uri(url.as_str());
+                let transport = create_http_transport(&url, auth_token.as_ref());
                 let client_info = ClientInfo {
                     protocol_version: Default::default(),
                     capabilities: ClientCapabilities::default(),

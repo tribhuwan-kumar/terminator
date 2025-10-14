@@ -930,7 +930,12 @@ fn validate_workflow_output(args: McpValidateArgs) -> Result<()> {
 
 fn parse_transport(url: Option<String>, command: Option<String>) -> mcp_client::Transport {
     if let Some(url) = url {
-        mcp_client::Transport::Http(url)
+        // Check for MCP_AUTH_TOKEN environment variable
+        let auth_token = std::env::var("MCP_AUTH_TOKEN").ok();
+        if auth_token.is_some() {
+            println!("🔒 Using authentication token from MCP_AUTH_TOKEN environment variable");
+        }
+        mcp_client::Transport::Http { url, auth_token }
     } else if let Some(command) = command {
         let parts = parse_command(&command);
         mcp_client::Transport::Stdio(parts)
@@ -1324,7 +1329,7 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     info!("Executing workflow with {steps_count} steps via MCP");
 
     // Check if we're using a remote HTTP transport
-    let is_remote_http = matches!(transport, mcp_client::Transport::Http(_));
+    let is_remote_http = matches!(transport, mcp_client::Transport::Http { .. });
 
     // For local files with stdio transport, use file:// URL to avoid verbose logging
     // For remote HTTP transport, send the workflow content directly
@@ -1626,7 +1631,7 @@ async fn run_workflow_once(
     }
 
     // Check if we're using a remote HTTP transport
-    let is_remote_http = matches!(transport, mcp_client::Transport::Http(_));
+    let is_remote_http = matches!(transport, mcp_client::Transport::Http { .. });
 
     // For cron jobs, use simple execution to avoid connection spam
     // For local files with stdio transport, use file:// URL to avoid verbose logging
