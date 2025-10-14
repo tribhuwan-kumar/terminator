@@ -1329,7 +1329,7 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     info!("Executing workflow with {steps_count} steps via MCP");
 
     // Check if we're using a remote HTTP transport
-    let is_remote_http = matches!(transport, mcp_client::Transport::Http(_));
+    let is_remote_http = matches!(transport, mcp_client::Transport::Http { .. });
 
     // For local files with stdio transport, use file:// URL to avoid verbose logging
     // For remote HTTP transport, send the workflow content directly
@@ -1631,7 +1631,7 @@ async fn run_workflow_once(
     }
 
     // Check if we're using a remote HTTP transport
-    let is_remote_http = matches!(transport, mcp_client::Transport::Http(_));
+    let is_remote_http = matches!(transport, mcp_client::Transport::Http { .. });
 
     // For cron jobs, use simple execution to avoid connection spam
     // For local files with stdio transport, use file:// URL to avoid verbose logging
