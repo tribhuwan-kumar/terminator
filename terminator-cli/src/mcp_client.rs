@@ -46,13 +46,18 @@ fn create_command(executable: &str, args: &[String]) -> Command {
 }
 
 /// Create HTTP transport with optional authentication
-/// Note: RMCP 0.6.3 has auth_header in config but it's not exported in public API
-/// For now, authentication must be handled at the server level or via custom HTTP client
-fn create_http_transport(url: &str, _auth_token: Option<&String>) -> StreamableHttpClientTransport<reqwest::Client> {
-    // TODO: Once RMCP exposes auth configuration in public API, add Bearer token here
-    // For now, the MCP server will need to allow requests without auth or we need to
-    // implement custom HTTP client with auth headers
-    StreamableHttpClientTransport::from_uri(url)
+fn create_http_transport(url: &str, auth_token: Option<&String>) -> StreamableHttpClientTransport<reqwest::Client> {
+    use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+
+    if let Some(token) = auth_token {
+        // Create config with authentication
+        let config = StreamableHttpClientTransportConfig::with_uri(url)
+            .auth_header(token);
+        StreamableHttpClientTransport::with_client(reqwest::Client::new(), config)
+    } else {
+        // No authentication
+        StreamableHttpClientTransport::from_uri(url)
+    }
 }
 
 /// Find executable with cross-platform path resolution

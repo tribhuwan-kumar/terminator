@@ -135,6 +135,40 @@ This means no `--auth-token` or `MCP_AUTH_TOKEN` was provided to the server. The
 ## Implementation Details
 
 - **Server**: Uses Axum middleware for Bearer token validation
-- **Client**: Uses RMCP's `auth_header()` method to add Authorization header
+- **Client**: Uses RMCP's `StreamableHttpClientTransportConfig::auth_header()` method to add Authorization header
 - **Token Format**: `Authorization: Bearer <token>`
 - **Standards Compliance**: Follows OAuth 2.1 and RFC 8707 (Resource Servers)
+
+### Code Example
+
+**Client-side (terminator-cli):**
+```rust
+use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
+
+// With authentication
+let config = StreamableHttpClientTransportConfig::with_uri("http://localhost:3000/mcp")
+    .auth_header("your-token-here");
+let transport = StreamableHttpClientTransport::with_client(reqwest::Client::new(), config);
+
+// Without authentication
+let transport = StreamableHttpClientTransport::from_uri("http://localhost:3000/mcp");
+```
+
+**Server-side (terminator-mcp-agent):**
+```rust
+// Authentication middleware validates Bearer token
+async fn auth_middleware(
+    State(state): State<AppState>,
+    req: Request<Body>,
+    next: Next,
+) -> impl IntoResponse {
+    if let Some(auth_header) = req.headers().get(AUTHORIZATION) {
+        if let Some(token) = auth_header.to_str().ok().and_then(|v| v.strip_prefix("Bearer ")) {
+            if state.auth_token.as_deref() == Some(token) {
+                return next.run(req).await;
+            }
+        }
+    }
+    // Return 401 Unauthorized
+}
+```
