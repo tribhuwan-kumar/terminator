@@ -783,6 +783,103 @@ impl DesktopWrapper {
         }
 
         // ---------------------------
+        // PRE-FLIGHT CHECK: Chrome Extension Health
+        // ---------------------------
+        // Check if workflow contains any execute_browser_script steps
+        // If yes, verify Chrome extension is connected before starting execution
+        let has_browser_script_steps = steps.iter().any(|step| {
+            step.tool_name.as_ref().map(|t| t == "execute_browser_script").unwrap_or(false)
+        }) || args.troubleshooting.as_ref().map(|t| {
+            t.iter().any(|step| {
+                step.tool_name.as_ref().map(|t| t == "execute_browser_script").unwrap_or(false)
+            })
+        }).unwrap_or(false);
+
+        if has_browser_script_steps {
+            info!("Workflow contains execute_browser_script steps - checking Chrome extension health");
+
+            // Initialize the extension bridge (starts WebSocket server on port 17373)
+            let bridge = terminator::extension_bridge::ExtensionBridge::global().await;
+
+            // Trigger browser activity to wake up the extension
+            // Navigate to a blank page in CHROME to trigger the extension's content script
+            info!("Triggering Chrome browser activity to wake up extension...");
+            match terminator::Desktop::new_default() {
+                Ok(desktop) => {
+                    match desktop.open_url("about:blank", Some(terminator::Browser::Chrome)) {
+                        Ok(_) => {
+                            info!("Chrome navigation triggered successfully");
+                            // Give the extension a moment to detect the page load and connect
+                            tokio::time::sleep(Duration::from_millis(1000)).await;
+                        }
+                        Err(e) => {
+                            warn!("Failed to navigate Chrome: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to create Desktop instance: {:?}", e);
+                }
+            }
+
+            // Now test extension connection with a minimal eval (ping)
+            // This uses the same 10-second retry logic as execute_browser_script
+            info!("Testing Chrome extension connection with ping script...");
+            let ping_result = bridge
+                .eval_in_active_tab("true", Duration::from_secs(10))
+                .await;
+
+            let is_connected = ping_result.is_ok() && ping_result.as_ref().unwrap().is_some();
+
+            // Get updated health status after connection attempt
+            let bridge_health = terminator::extension_bridge::ExtensionBridge::health_status().await;
+            let status = bridge_health
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let clients = bridge_health
+                .get("clients")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            if !is_connected {
+                warn!(
+                    "Chrome extension not connected before workflow execution: status={}, clients={}",
+                    status,
+                    clients
+                );
+
+                // End workflow span
+                workflow_span.set_status(false, "Chrome extension not available");
+                workflow_span.end();
+
+                return Err(McpError::invalid_params(
+                    "Chrome extension bridge is not connected",
+                    Some(json!({
+                        "error_type": "extension_unavailable",
+                        "extension_status": status,
+                        "extension_clients": clients,
+                        "workflow_file": args.url.as_ref(),
+                        "browser_script_steps_count": sequence_items.iter().filter(|item| {
+                            matches!(item, SequenceItem::Tool { tool_call } if tool_call.tool_name == "execute_browser_script")
+                        }).count(),
+                        "troubleshooting": [
+                            "Verify Chrome extension is installed and enabled at chrome://extensions",
+                            "Extension ID: Check terminator browser-extension folder",
+                            "Ensure Chrome browser is running",
+                            "Check if WebSocket port 17373 is accessible",
+                            "Try restarting Chrome browser",
+                            "Review extension bridge health: http://127.0.0.1:3000/health (HTTP transport)"
+                        ],
+                        "health_details": bridge_health
+                    })),
+                ));
+            }
+
+            info!("✅ Chrome extension healthy: {} client(s) connected", clients);
+        }
+
+        // ---------------------------
         // Fallback-enabled execution loop (while-based)
         // ---------------------------
 
