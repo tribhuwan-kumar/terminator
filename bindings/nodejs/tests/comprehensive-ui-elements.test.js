@@ -1,4 +1,4 @@
-const { Desktop } = require('C:/Users/screenpipe-windows/terminator_4/bindings/nodejs');
+const { Desktop } = require('C:/Users/screenpipe-windows/terminator/bindings/nodejs');
 
 async function testUIElements() {
   const desktop = new Desktop();
