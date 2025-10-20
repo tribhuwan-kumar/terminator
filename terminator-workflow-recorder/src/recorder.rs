@@ -542,7 +542,12 @@ impl WorkflowRecorder {
         #[cfg(target_os = "windows")]
         {
             if let Some(windows_recorder) = self.windows_recorder.take() {
+                // Stop the recorder (sets is_stopping flag and waits 100ms)
                 windows_recorder.stop()?;
+
+                // Additional delay to ensure all event processing is fully stopped
+                // before we proceed with workflow processing
+                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
             }
         }
 

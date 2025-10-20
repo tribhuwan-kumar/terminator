@@ -44,6 +44,7 @@ struct ButtonPressContext<'a> {
     event_tx: &'a broadcast::Sender<WorkflowEvent>,
     performance_last_event_time: &'a Arc<Mutex<Instant>>,
     performance_events_counter: &'a Arc<Mutex<(u32, Instant)>>,
+    is_stopping: &'a Arc<AtomicBool>,
     double_click_tracker: &'a Arc<Mutex<structs::DoubleClickTracker>>,
     browser_recorder: &'a Arc<Mutex<Option<BrowserContextRecorder>>>,
     tokio_runtime: &'a Arc<Mutex<Option<Runtime>>>,
@@ -62,6 +63,9 @@ pub struct WindowsRecorder {
 
     /// Signal to stop the listener thread
     stop_indicator: Arc<AtomicBool>,
+
+    /// Signal that we're in the stopping phase (prevents new events from being added)
+    is_stopping: Arc<AtomicBool>,
 
     /// Modifier key states
     modifier_states: Arc<Mutex<ModifierStates>>,
@@ -237,6 +241,7 @@ impl WindowsRecorder {
             config,
             last_mouse_pos,
             stop_indicator,
+            is_stopping: Arc::new(AtomicBool::new(false)),
             modifier_states,
             last_clipboard_hash,
             last_mouse_move_time,
@@ -906,6 +911,7 @@ impl WindowsRecorder {
         let event_tx = self.event_tx.clone();
         let last_mouse_pos = Arc::clone(&self.last_mouse_pos);
         let stop_indicator_clone = Arc::clone(&self.stop_indicator);
+        let is_stopping_clone = Arc::clone(&self.is_stopping);
         let modifier_states = Arc::clone(&self.modifier_states);
         let last_mouse_move_time = Arc::clone(&self.last_mouse_move_time);
         let hotkey_patterns = Arc::clone(&self.hotkey_patterns);
@@ -925,6 +931,7 @@ impl WindowsRecorder {
         let uia_processor_text_input = Arc::clone(&self.current_text_input);
         let uia_processor_last_event_time = Arc::clone(&self.last_event_time);
         let uia_processor_events_counter = Arc::clone(&self.events_this_second);
+        let uia_processor_is_stopping = Arc::clone(&self.is_stopping);
         let capture_ui_elements = self.config.capture_ui_elements;
         let uia_processor_double_click_tracker = Arc::clone(&self.double_click_tracker);
         let uia_processor_browser_recorder = Arc::clone(&self.browser_recorder);
@@ -948,6 +955,7 @@ impl WindowsRecorder {
                             event_tx: &uia_processor_event_tx,
                             performance_last_event_time: &uia_processor_last_event_time,
                             performance_events_counter: &uia_processor_events_counter,
+                            is_stopping: &uia_processor_is_stopping,
                             double_click_tracker: &uia_processor_double_click_tracker,
                             browser_recorder: &uia_processor_browser_recorder,
                             tokio_runtime: &uia_processor_tokio_runtime,
@@ -962,6 +970,7 @@ impl WindowsRecorder {
                             &uia_processor_event_tx,
                             &uia_processor_last_event_time,
                             &uia_processor_events_counter,
+                            &uia_processor_is_stopping,
                         );
                     }
                     UIAInputRequest::KeyPressForCompletion { key_code } => {
@@ -1087,6 +1096,7 @@ impl WindowsRecorder {
                             &config,
                             &performance_last_event_time,
                             &performance_events_counter,
+                            &is_stopping_clone,
                             WorkflowEvent::Keyboard(keyboard_event),
                         );
                     }
@@ -1128,6 +1138,7 @@ impl WindowsRecorder {
                             &config,
                             &performance_last_event_time,
                             &performance_events_counter,
+                            &is_stopping_clone,
                             WorkflowEvent::Keyboard(keyboard_event),
                         );
                     }
@@ -1164,6 +1175,7 @@ impl WindowsRecorder {
                                     &config,
                                     &performance_last_event_time,
                                     &performance_events_counter,
+                                    &is_stopping_clone,
                                     WorkflowEvent::Mouse(mouse_event),
                                 );
                             }
@@ -1202,6 +1214,7 @@ impl WindowsRecorder {
                                     &config,
                                     &performance_last_event_time,
                                     &performance_events_counter,
+                                    &is_stopping_clone,
                                     WorkflowEvent::Mouse(mouse_event),
                                 );
                             }
@@ -1244,6 +1257,7 @@ impl WindowsRecorder {
                                 &config,
                                 &performance_last_event_time,
                                 &performance_events_counter,
+                                &is_stopping_clone,
                                 WorkflowEvent::Mouse(mouse_event),
                             );
                         }
@@ -1277,6 +1291,7 @@ impl WindowsRecorder {
                                 &config,
                                 &performance_last_event_time,
                                 &performance_events_counter,
+                                &is_stopping_clone,
                                 WorkflowEvent::Mouse(mouse_event),
                             );
                         }
@@ -1779,6 +1794,11 @@ impl WindowsRecorder {
     /// Stop recording
     pub fn stop(&self) -> Result<()> {
         debug!("Stopping comprehensive Windows recorder...");
+
+        // CRITICAL: Set is_stopping flag FIRST to prevent new events from being added
+        self.is_stopping.store(true, Ordering::SeqCst);
+
+        // Then set stop_indicator to signal event listeners to exit
         self.stop_indicator.store(true, Ordering::SeqCst);
 
         // Signal the UI Automation thread to stop by posting a quit message
@@ -1799,7 +1819,12 @@ impl WindowsRecorder {
             }
         }
 
-        info!("Windows recorder stop signal sent");
+        // NOTE: We don't sleep here anymore because:
+        // 1. This is a sync function called from async context - blocking sleep causes deadlocks
+        // 2. The async delay is handled by caller (WorkflowRecorder::stop and server.rs)
+        // 3. The is_stopping flag prevents new events immediately
+
+        info!("Windows recorder stopped - event collection terminated");
         Ok(())
     }
 
@@ -1888,8 +1913,14 @@ impl WindowsRecorder {
         config: &WorkflowRecorderConfig,
         last_event_time: &Arc<Mutex<Instant>>,
         events_this_second: &Arc<Mutex<(u32, Instant)>>,
+        is_stopping: &Arc<AtomicBool>,
         event: WorkflowEvent,
     ) {
+        // CRITICAL: Check if recorder is stopping - if so, reject all events immediately
+        if is_stopping.load(Ordering::SeqCst) {
+            return;
+        }
+
         // Apply rate limiting first
         if let Some(max_events) = config.effective_max_events_per_second() {
             let mut counter = events_this_second.lock().unwrap();
@@ -2395,6 +2426,7 @@ impl WindowsRecorder {
                 ctx.config,
                 ctx.performance_last_event_time,
                 ctx.performance_events_counter,
+                ctx.is_stopping,
                 WorkflowEvent::Mouse(double_click_event),
             );
         }
@@ -2841,6 +2873,7 @@ impl WindowsRecorder {
             ctx.config,
             ctx.performance_last_event_time,
             ctx.performance_events_counter,
+            ctx.is_stopping,
             WorkflowEvent::Mouse(mouse_event),
         );
     }
@@ -2853,6 +2886,7 @@ impl WindowsRecorder {
         event_tx: &broadcast::Sender<WorkflowEvent>,
         performance_last_event_time: &Arc<Mutex<Instant>>,
         performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
+        is_stopping: &Arc<AtomicBool>,
     ) {
         let ui_element = if config.capture_ui_elements {
             Self::get_element_from_point_with_timeout(config, *position, 100)
@@ -2876,6 +2910,7 @@ impl WindowsRecorder {
             config,
             performance_last_event_time,
             performance_events_counter,
+            is_stopping,
             WorkflowEvent::Mouse(mouse_event),
         );
     }
