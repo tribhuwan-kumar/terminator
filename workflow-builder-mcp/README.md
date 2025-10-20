@@ -84,7 +84,7 @@ Install with a single command:
 claude mcp add workflow-builder "npx -y @mediar-ai/workflow-builder-mcp@latest" -s user
 ```
 
-### Claude Desktop / Other MCP Clients (Stdio)
+### Claude Desktop / Other MCP Clients
 
 ```bash
 npx -y @mediar-ai/workflow-builder-mcp
