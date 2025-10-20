@@ -76,7 +76,15 @@ Validate a workflow file's YAML syntax and Terminator schema requirements.
 
 ## Installation
 
-### For Claude Desktop / Claude Code (Stdio)
+### Claude Code
+
+Install with a single command:
+
+```bash
+claude mcp add workflow-builder "npx -y @mediar-ai/workflow-builder-mcp@latest" -s user
+```
+
+### Claude Desktop / Other MCP Clients (Stdio)
 
 ```bash
 npx -y @mediar-ai/workflow-builder-mcp
@@ -89,7 +97,7 @@ Or add to your MCP settings:
   "mcpServers": {
     "workflow-builder": {
       "command": "npx",
-      "args": ["-y", "@mediar-ai/workflow-builder-mcp"]
+      "args": ["-y", "@mediar-ai/workflow-builder-mcp@latest"]
     }
   }
 }
