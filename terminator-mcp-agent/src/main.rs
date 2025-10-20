@@ -314,13 +314,36 @@ async fn main() -> Result<()> {
             let addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
             tracing::info!("Starting streamable HTTP server on http://{}", addr);
 
+            // Create a single DesktopWrapper instance to share across all requests
+            // This ensures recorder state persists between start/stop recording calls
+            let desktop_wrapper = Arc::new(tokio::sync::RwLock::new(None));
+            let desktop_wrapper_for_service = desktop_wrapper.clone();
+
             // Lazy-initialize DesktopWrapper on first /mcp use so that /health can succeed on CI
             let service = StreamableHttpService::new(
                 {
                     let log_capture = log_capture.clone();
                     move || {
-                        server::DesktopWrapper::new_with_log_capture(log_capture.clone())
-                            .map_err(|e| std::io::Error::other(e.to_string()))
+                        // Use async block to handle RwLock
+                        let desktop_wrapper = desktop_wrapper_for_service.clone();
+                        let log_capture = log_capture.clone();
+
+                        // Block on async to get or create the singleton DesktopWrapper
+                        futures::executor::block_on(async move {
+                            let mut wrapper_guard = desktop_wrapper.write().await;
+                            if wrapper_guard.is_none() {
+                                tracing::info!("Creating singleton DesktopWrapper for HTTP mode");
+                                match server::DesktopWrapper::new_with_log_capture(log_capture) {
+                                    Ok(wrapper) => {
+                                        *wrapper_guard = Some(wrapper.clone());
+                                        Ok(wrapper)
+                                    }
+                                    Err(e) => Err(std::io::Error::other(e.to_string()))
+                                }
+                            } else {
+                                Ok(wrapper_guard.as_ref().unwrap().clone())
+                            }
+                        })
                     }
                 },
                 LocalSessionManager::default().into(),
