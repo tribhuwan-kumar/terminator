@@ -563,10 +563,34 @@ async function main() {
     }
   });
 
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  // Check if running in HTTP mode
+  const useHttp = process.env.MCP_TRANSPORT === "http" || process.argv.includes("--http");
+  const port = parseInt(process.env.MCP_PORT || process.env.PORT || "3000");
 
-  console.error("Workflow Builder MCP server running");
+  if (useHttp) {
+    // HTTP/SSE transport
+    const { SSEServerTransport } = await import("@modelcontextprotocol/sdk/server/sse.js");
+    const express = (await import("express")).default;
+
+    const app = express();
+    app.use(express.json());
+
+    app.post("/sse", async (req, res) => {
+      const transport = new SSEServerTransport("/message", res);
+      await server.connect(transport);
+      await transport.handlePostMessage(req, res);
+    });
+
+    app.listen(port, () => {
+      console.error(`Workflow Builder MCP server running on http://localhost:${port}`);
+    });
+  } else {
+    // Stdio transport (default)
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+
+    console.error("Workflow Builder MCP server running (stdio)");
+  }
 }
 
 main().catch((error) => {

@@ -76,7 +76,7 @@ Validate a workflow file's YAML syntax and Terminator schema requirements.
 
 ## Installation
 
-### For Claude Desktop / Claude Code
+### For Claude Desktop / Claude Code (Stdio)
 
 ```bash
 npx -y @mediar-ai/workflow-builder-mcp
@@ -95,13 +95,42 @@ Or add to your MCP settings:
 }
 ```
 
+### For HTTP/SSE Transport
+
+```bash
+# Start HTTP server on port 3000 (default)
+npx -y @mediar-ai/workflow-builder-mcp --http
+
+# Or specify custom port
+PORT=8080 npx -y @mediar-ai/workflow-builder-mcp --http
+```
+
+Configure in your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "workflow-builder": {
+      "url": "http://localhost:3000/sse"
+    }
+  }
+}
+```
+
 ### For Development
 
 ```bash
 cd workflow-builder-mcp
 npm install
 npm run build
+
+# Stdio mode (default)
 npm start
+
+# HTTP mode
+npm run start:http
+# or
+node dist/index.js --http
 ```
 
 ## Workflow File Requirements
