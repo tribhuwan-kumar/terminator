@@ -95,7 +95,9 @@ Or add to your MCP settings:
 }
 ```
 
-### For HTTP/SSE Transport
+### For HTTP Streamable Transport
+
+Uses the MCP StreamableHTTP transport (SSE-based streaming over HTTP).
 
 ```bash
 # Start HTTP server on port 3000 (default)
@@ -105,13 +107,19 @@ npx -y @mediar-ai/workflow-builder-mcp --http
 PORT=8080 npx -y @mediar-ai/workflow-builder-mcp --http
 ```
 
+The server handles:
+- **POST** `/mcp` - Send JSON-RPC messages
+- **GET** `/mcp` - Establish SSE stream for responses
+- **DELETE** `/mcp` - Close session
+
 Configure in your MCP client:
 
 ```json
 {
   "mcpServers": {
     "workflow-builder": {
-      "url": "http://localhost:3000/sse"
+      "url": "http://localhost:3000/mcp",
+      "transport": "streamable-http"
     }
   }
 }

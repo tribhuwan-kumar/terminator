@@ -568,21 +568,28 @@ async function main() {
   const port = parseInt(process.env.MCP_PORT || process.env.PORT || "3000");
 
   if (useHttp) {
-    // HTTP/SSE transport
-    const { SSEServerTransport } = await import("@modelcontextprotocol/sdk/server/sse.js");
+    // Streamable HTTP transport
+    const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
     const express = (await import("express")).default;
+    const { randomUUID } = await import("node:crypto");
 
     const app = express();
     app.use(express.json());
 
-    app.post("/sse", async (req, res) => {
-      const transport = new SSEServerTransport("/message", res);
-      await server.connect(transport);
-      await transport.handlePostMessage(req, res);
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+    await server.connect(transport);
+
+    // Handle all HTTP methods (GET for SSE, POST for JSON-RPC, DELETE for session close)
+    app.all("/mcp", async (req, res) => {
+      // Cast Express request to IncomingMessage for MCP transport
+      // Express req extends IncomingMessage so this is safe
+      await transport.handleRequest(req as any, res as any, req.body);
     });
 
     app.listen(port, () => {
-      console.error(`Workflow Builder MCP server running on http://localhost:${port}`);
+      console.error(`Workflow Builder MCP server running on http://localhost:${port}/mcp`);
     });
   } else {
     // Stdio transport (default)
