@@ -1719,8 +1719,16 @@ pub struct RecordWorkflowArgs {
     pub file_path: Option<String>,
     /// Sets the recording to a low-energy mode to reduce system load, which can help prevent lag on less powerful machines.
     pub low_energy_mode: Option<bool>,
-    /// Visual highlighting configuration for recorded UI interactions
+    /// Visual highlighting configuration for recorded UI interactions (nested object - use flattened params for MCP compatibility)
     pub highlight_mode: Option<HighlightConfig>,
+    /// Enable visual highlighting of UI elements during recording (simple parameter alternative to highlight_mode)
+    pub enable_highlighting: Option<bool>,
+    /// Border color for highlights in BGR format (default: 0x0000FF - red). Example: 0xFF0000 for blue, 0x00FF00 for green
+    pub highlight_color: Option<u32>,
+    /// Duration in milliseconds for each highlight (default: 500ms)
+    pub highlight_duration_ms: Option<u64>,
+    /// Show event type labels (CLICK, TYPE, etc.) on highlighted elements (default: true)
+    pub highlight_show_labels: Option<bool>,
     /// Whether to record scroll events (default: false to reduce noise)
     pub record_scroll_events: Option<bool>,
     #[schemars(

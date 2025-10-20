@@ -7,11 +7,12 @@ use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
     DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs,
     GetApplicationsArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs,
-    HighlightElementArgs, ImportWorkflowSequenceArgs, LocatorArgs, MaximizeWindowArgs,
-    MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
-    RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs,
-    SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs,
-    TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    HighlightConfig, HighlightElementArgs, ImportWorkflowSequenceArgs, LocatorArgs,
+    MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
+    OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs,
+    SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
+    SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs,
+    WaitForElementArgs,
 };
 use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
@@ -4333,8 +4334,26 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
 
                 let mut recorder = WorkflowRecorder::new(workflow_name.clone(), config);
 
+                // Build highlight config from either nested object or flattened parameters
+                let highlight_config = if let Some(ref nested_config) = args.highlight_mode {
+                    // Use nested config if provided (for backwards compatibility)
+                    Some(nested_config.clone())
+                } else if args.enable_highlighting.unwrap_or(false) {
+                    // Build config from flattened parameters
+                    Some(HighlightConfig {
+                        enabled: true,
+                        color: args.highlight_color,
+                        duration_ms: args.highlight_duration_ms,
+                        show_labels: args.highlight_show_labels.unwrap_or(true),
+                        label_position: None,
+                        label_style: None,
+                    })
+                } else {
+                    None
+                };
+
                 // Start highlighting task if enabled
-                if let Some(ref highlight_config) = args.highlight_mode {
+                if let Some(ref highlight_config) = highlight_config {
                     if highlight_config.enabled {
                         let mut event_stream = recorder.event_stream();
                         let highlight_cfg = highlight_config.clone();
@@ -4474,19 +4493,35 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 ))
             }
             "stop" => {
-                let mut recorder = recorder_guard.take().ok_or_else(|| {
-                    McpError::invalid_params(
-                        "No recording is currently in progress. Please start a recording first.",
-                        None,
-                    )
-                })?;
+                // Make stop idempotent - if no recording is in progress, return success instead of error
+                let Some(mut recorder) = recorder_guard.take() else {
+                    info!("Stop recording called but no recording in progress - treating as success (idempotent)");
 
+                    span.set_status(true, None);
+                    span.end();
+
+                    return Ok(CallToolResult::success(vec![Content::json(
+                        json!({
+                            "status": "success",
+                            "message": "No recording was in progress",
+                            "file_path": null,
+                            "mcp_workflow": null
+                        })
+                    )?]));
+                };
+
+                // CRITICAL: Stop the recorder immediately to prevent new events
+                // This sets is_stopping flag and waits for event listeners to exit
                 recorder.stop().await.map_err(|e| {
                     McpError::internal_error(
                         "Failed to stop recorder",
                         Some(json!({ "error": e.to_string() })),
                     )
                 })?;
+
+                // Additional delay to ensure all events are fully processed
+                // before we start the slow file/conversion operations
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
                 let workflow_name = {
                     let workflow = recorder.workflow.lock().unwrap();
