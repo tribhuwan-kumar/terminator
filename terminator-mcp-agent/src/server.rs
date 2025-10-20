@@ -5,9 +5,9 @@ use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
-    DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, ExportWorkflowSequenceArgs,
+    DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs,
     GetApplicationsArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs,
-    HighlightConfig, HighlightElementArgs, ImportWorkflowSequenceArgs, LocatorArgs,
+    HighlightConfig, HighlightElementArgs, LocatorArgs,
     MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
     OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs,
     SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
@@ -4675,46 +4675,6 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             .await;
     }
 
-    #[tool(
-        description = "Edits workflow files using simple text find/replace operations. Works like sed - finds text patterns and replaces them, or appends content if no pattern specified."
-    )]
-    pub async fn export_workflow_sequence(
-        &self,
-        Parameters(args): Parameters<ExportWorkflowSequenceArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("export_workflow_sequence", None);
-
-        let result = self.export_workflow_sequence_impl(args).await;
-
-        span.set_status(
-            result.is_ok(),
-            result.as_ref().err().map(|e| e.to_string()).as_deref(),
-        );
-        span.end();
-
-        result
-    }
-
-    #[tool(description = "Load a YAML workflow file or scan folder for YAML workflow files")]
-    pub async fn import_workflow_sequence(
-        &self,
-        Parameters(args): Parameters<ImportWorkflowSequenceArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("import_workflow_sequence", None);
-
-        let result = self.import_workflow_sequence_impl(args).await;
-
-        span.set_status(
-            result.is_ok(),
-            result.as_ref().err().map(|e| e.to_string()).as_deref(),
-        );
-        span.end();
-
-        result
-    }
-
     #[tool(description = "Maximizes a window.")]
     async fn maximize_window(
         &self,
@@ -5956,24 +5916,6 @@ impl DesktopWrapper {
                 )),
             },
             // run_javascript is deprecated and merged into run_command with engine
-            "export_workflow_sequence" => {
-                match serde_json::from_value::<ExportWorkflowSequenceArgs>(arguments.clone()) {
-                    Ok(args) => self.export_workflow_sequence(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for export_workflow_sequence",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "import_workflow_sequence" => {
-                match serde_json::from_value::<ImportWorkflowSequenceArgs>(arguments.clone()) {
-                    Ok(args) => self.import_workflow_sequence(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for import_workflow_sequence",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
             "execute_sequence" => {
                 // For execute_sequence, we need peer and request_context
                 // Since we don't have them here, this is a special case that should be handled differently

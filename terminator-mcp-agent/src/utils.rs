@@ -1458,48 +1458,6 @@ pub async fn find_element_with_fallbacks(
     Err(terminator::AutomationError::ElementNotFound(combined_error))
 }
 
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ExportWorkflowSequenceArgs {
-    #[schemars(description = "Absolute path to the workflow file to create or edit")]
-    pub file_path: String,
-
-    #[schemars(description = "Text content to add to the workflow file")]
-    pub content: String,
-
-    #[schemars(
-        description = "Text pattern to find and replace (optional - if not provided, content will be appended)"
-    )]
-    pub find_pattern: Option<String>,
-
-    #[schemars(description = "Whether to use regex for pattern matching (default: false)")]
-    pub use_regex: Option<bool>,
-
-    #[schemars(description = "Create new file if it doesn't exist (default: true)")]
-    pub create_if_missing: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct ImportWorkflowSequenceArgs {
-    #[schemars(description = "Path to specific YAML workflow file to load")]
-    pub file_path: Option<String>,
-
-    #[schemars(description = "Path to folder to scan for YAML workflow files")]
-    pub folder_path: Option<String>,
-
-    #[schemars(
-        description = "Return raw YAML content alongside parsed structure (default: false)"
-    )]
-    pub return_raw: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
-}
-
 /// A robust helper that finds a UI element and executes a provided action on it,
 /// with built-in retry logic for both finding the element and performing the action.
 ///
