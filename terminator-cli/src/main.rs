@@ -484,6 +484,9 @@ fn sync_all_versions() {
     // Sync MCP agent
     sync_mcp_agent(&workspace_version);
 
+    // Sync Workflow Builder MCP
+    sync_workflow_builder_mcp(&workspace_version);
+
     // Sync Browser Extension
     sync_browser_extension(&workspace_version);
 
@@ -630,6 +633,46 @@ fn sync_mcp_agent(version: &str) {
     println!("✅ MCP agent synced");
 }
 
+fn sync_workflow_builder_mcp(version: &str) {
+    println!("📦 Syncing Workflow Builder MCP...");
+
+    let workflow_builder_dir = Path::new("workflow-builder-mcp");
+    if !workflow_builder_dir.exists() {
+        println!("⚠️  Workflow Builder MCP directory not found, skipping");
+        return;
+    }
+
+    // Update main package.json
+    if let Err(e) = update_package_json("workflow-builder-mcp/package.json", version) {
+        eprintln!("⚠️  Warning: Failed to update Workflow Builder MCP package.json: {e}");
+        return;
+    }
+
+    // Update package-lock.json
+    let original_dir = match env::current_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("❌ Could not get current directory: {e}");
+            return;
+        }
+    };
+
+    if env::set_current_dir(workflow_builder_dir).is_ok() {
+        if run_command("npm", &["install", "--package-lock-only", "--silent"]).is_ok() {
+            println!("✅ Workflow Builder MCP package-lock.json updated");
+        } else {
+            println!("ℹ️  Note: package-lock.json update skipped (run 'npm install' in workflow-builder-mcp if needed)");
+        }
+        // Always change back to the original directory
+        if let Err(e) = env::set_current_dir(&original_dir) {
+            eprintln!("❌ Failed to restore original directory: {e}");
+            std::process::exit(1);
+        }
+    }
+
+    println!("✅ Workflow Builder MCP synced");
+}
+
 fn sync_browser_extension(version: &str) {
     println!("📦 Syncing browser extension to version {version}...");
 
@@ -714,14 +757,16 @@ fn show_status() {
     // Show package versions
     let nodejs_version = get_package_version("bindings/nodejs/package.json");
     let mcp_version = get_package_version("terminator-mcp-agent/package.json");
+    let workflow_builder_version = get_package_version("workflow-builder-mcp/package.json");
     let browser_extension_version =
         get_package_version("terminator/browser-extension/manifest.json");
 
     println!();
     println!("Package versions:");
-    println!("  Node.js bindings: {nodejs_version}");
-    println!("  MCP agent:        {mcp_version}");
-    println!("  Browser extension:{browser_extension_version}");
+    println!("  Node.js bindings:  {nodejs_version}");
+    println!("  MCP agent:         {mcp_version}");
+    println!("  Workflow Builder:  {workflow_builder_version}");
+    println!("  Browser extension: {browser_extension_version}");
 
     // Git status
     println!();
