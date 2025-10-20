@@ -10,7 +10,6 @@ pub mod prompt;
 pub mod scripting_engine;
 pub mod server;
 pub mod server_sequence;
-pub mod server_workflow_files;
 pub mod telemetry;
 pub mod tree_formatter;
 pub mod utils;
