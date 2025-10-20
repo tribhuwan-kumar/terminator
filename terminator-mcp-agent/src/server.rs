@@ -4294,7 +4294,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
     }
 
     #[tool(
-        description = "Records a user's UI interactions into a reusable workflow file. Use action: 'start' to begin recording and 'stop' to end and save the workflow. This allows a human to demonstrate a task for the AI to learn."
+        description = "Records a user's UI interactions into a reusable workflow file with optional visual highlighting. Use action: 'start' to begin recording (with enable_highlighting for real-time visual feedback) and 'stop' to end, save, and get MCP-ready sequences. Captures clicks, typing, selections, window switches, and more."
     )]
     pub async fn record_workflow(
         &self,
@@ -4470,13 +4470,11 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 });
 
                 // Add highlighting status to response
-                if let Some(ref highlight_config) = args.highlight_mode {
-                    if highlight_config.enabled {
+                if let Some(ref hc) = highlight_config {
+                    if hc.enabled {
                         response["highlighting_enabled"] = json!(true);
-                        response["highlight_color"] =
-                            json!(highlight_config.color.unwrap_or(0x0000FF));
-                        response["highlight_duration_ms"] =
-                            json!(highlight_config.duration_ms.unwrap_or(500));
+                        response["highlight_color"] = json!(hc.color.unwrap_or(0x0000FF));
+                        response["highlight_duration_ms"] = json!(hc.duration_ms.unwrap_or(500));
                     }
                 }
 
