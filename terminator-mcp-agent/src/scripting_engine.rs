@@ -1,7 +1,7 @@
 use rmcp::ErrorData as McpError;
 use serde_json::json;
 use std::path::PathBuf;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// Find executable with cross-platform path resolution
 pub fn find_executable(name: &str) -> Option<String> {
@@ -939,11 +939,11 @@ pub async fn execute_javascript_with_nodejs(
         "node"
     };
 
-    info!("[Node.js] Using runtime: {}", runtime);
+    trace!("[Node.js] Using runtime: {}", runtime);
 
     // Ensure terminator.js is installed and get the script directory
     let script_dir = ensure_terminator_js_installed(runtime).await?;
-    info!("[Node.js] Script directory: {}", script_dir.display());
+    trace!("[Node.js] Script directory: {}", script_dir.display());
 
     // Log which terminator.js version is in use
     log_terminator_js_version(&script_dir, "Node.js").await;
@@ -1057,7 +1057,7 @@ console.log('[Node.js Wrapper] Current working directory:', process.cwd());
         )
     })?;
 
-    info!("[Node.js] Spawning {} at: {}", runtime, runtime_exe);
+    trace!("[Node.js] Spawning {} at: {}", runtime, runtime_exe);
 
     // Check if executable is a batch file on Windows
     let is_batch_file =
@@ -1204,17 +1204,22 @@ console.log('[Node.js Wrapper] Current working directory:', process.cwd());
                             // Parse final result
                             let result_json = line.replace("__RESULT__", "").replace("__END__", "");
                             info!("[Node.js] Received result, parsing JSON ({} bytes)...", result_json.len());
-                            info!("[Node.js] Result JSON: {}", result_json);
+                            debug!("[Node.js] Result JSON: {}", result_json);
 
-                            match serde_json::from_str(&result_json) {
+                            match serde_json::from_str::<serde_json::Value>(&result_json) {
                                 Ok(parsed_result) => {
-                                    info!("[Node.js] Successfully parsed result");
+                                    // Log a concise summary instead of full JSON
+                                    if let Some(files) = parsed_result.get("files").and_then(|f| f.as_array()) {
+                                        info!("[Node.js] Successfully parsed result with {} workflow files", files.len());
+                                    } else {
+                                        info!("[Node.js] Successfully parsed result");
+                                    }
                                     result = Some(parsed_result);
                                     break;
                                 }
                                 Err(e) => {
                                     error!("[Node.js] Failed to parse result JSON: {}", e);
-                                    info!("[Node.js] Invalid JSON was: {}", result_json);
+                                    debug!("[Node.js] Invalid JSON was: {}", result_json);
                                 }
                             }
                         } else if line.starts_with("__ERROR__") && line.ends_with("__END__") {
@@ -1297,7 +1302,7 @@ console.log('[Node.js Wrapper] Current working directory:', process.cwd());
     }
 
     // Don't clean up script directory - keep it persistent for reuse
-    info!(
+    trace!(
         "[Node.js] Keeping persistent script directory for reuse: {}",
         script_dir.display()
     );
