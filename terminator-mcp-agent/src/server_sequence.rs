@@ -788,15 +788,27 @@ impl DesktopWrapper {
         // Check if workflow contains any execute_browser_script steps
         // If yes, verify Chrome extension is connected before starting execution
         let has_browser_script_steps = steps.iter().any(|step| {
-            step.tool_name.as_ref().map(|t| t == "execute_browser_script").unwrap_or(false)
-        }) || args.troubleshooting.as_ref().map(|t| {
-            t.iter().any(|step| {
-                step.tool_name.as_ref().map(|t| t == "execute_browser_script").unwrap_or(false)
+            step.tool_name
+                .as_ref()
+                .map(|t| t == "execute_browser_script")
+                .unwrap_or(false)
+        }) || args
+            .troubleshooting
+            .as_ref()
+            .map(|t| {
+                t.iter().any(|step| {
+                    step.tool_name
+                        .as_ref()
+                        .map(|t| t == "execute_browser_script")
+                        .unwrap_or(false)
+                })
             })
-        }).unwrap_or(false);
+            .unwrap_or(false);
 
         if has_browser_script_steps {
-            info!("Workflow contains execute_browser_script steps - checking Chrome extension health");
+            info!(
+                "Workflow contains execute_browser_script steps - checking Chrome extension health"
+            );
 
             // Initialize the extension bridge (starts WebSocket server on port 17373)
             let bridge = terminator::extension_bridge::ExtensionBridge::global().await;
@@ -832,7 +844,8 @@ impl DesktopWrapper {
             let is_connected = ping_result.is_ok() && ping_result.as_ref().unwrap().is_some();
 
             // Get updated health status after connection attempt
-            let bridge_health = terminator::extension_bridge::ExtensionBridge::health_status().await;
+            let bridge_health =
+                terminator::extension_bridge::ExtensionBridge::health_status().await;
             let status = bridge_health
                 .get("status")
                 .and_then(|v| v.as_str())
@@ -876,7 +889,10 @@ impl DesktopWrapper {
                 ));
             }
 
-            info!("✅ Chrome extension healthy: {} client(s) connected", clients);
+            info!(
+                "✅ Chrome extension healthy: {} client(s) connected",
+                clients
+            );
         }
 
         // ---------------------------

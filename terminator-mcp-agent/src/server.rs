@@ -5,13 +5,12 @@ use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
-    DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs,
-    GetApplicationsArgs, GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs,
-    HighlightConfig, HighlightElementArgs, LocatorArgs,
-    MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
-    OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs, ScrollElementArgs,
-    SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
-    SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs,
+    DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, GetApplicationsArgs,
+    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs, HighlightConfig,
+    HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
+    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
+    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
+    SetValueArgs, SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs,
     WaitForElementArgs,
 };
 use futures::StreamExt;
@@ -4498,14 +4497,12 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     span.set_status(true, None);
                     span.end();
 
-                    return Ok(CallToolResult::success(vec![Content::json(
-                        json!({
-                            "status": "success",
-                            "message": "No recording was in progress",
-                            "file_path": null,
-                            "mcp_workflow": null
-                        })
-                    )?]));
+                    return Ok(CallToolResult::success(vec![Content::json(json!({
+                        "status": "success",
+                        "message": "No recording was in progress",
+                        "file_path": null,
+                        "mcp_workflow": null
+                    }))?]));
                 };
 
                 // CRITICAL: Stop the recorder immediately to prevent new events

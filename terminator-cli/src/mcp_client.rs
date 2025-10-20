@@ -17,7 +17,10 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub enum Transport {
-    Http { url: String, auth_token: Option<String> },
+    Http {
+        url: String,
+        auth_token: Option<String>,
+    },
     Stdio(Vec<String>),
 }
 
@@ -46,13 +49,15 @@ fn create_command(executable: &str, args: &[String]) -> Command {
 }
 
 /// Create HTTP transport with optional authentication
-fn create_http_transport(url: &str, auth_token: Option<&String>) -> StreamableHttpClientTransport<reqwest::Client> {
+fn create_http_transport(
+    url: &str,
+    auth_token: Option<&String>,
+) -> StreamableHttpClientTransport<reqwest::Client> {
     use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 
     if let Some(token) = auth_token {
         // Create config with authentication
-        let config = StreamableHttpClientTransportConfig::with_uri(url)
-            .auth_header(token);
+        let config = StreamableHttpClientTransportConfig::with_uri(url).auth_header(token);
         StreamableHttpClientTransport::with_client(reqwest::Client::new(), config)
     } else {
         // No authentication

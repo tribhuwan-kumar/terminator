@@ -1,11 +1,6 @@
-use rmcp::handler::server::wrapper::Parameters;
 use serde_json::json;
-use std::fs;
-use tempfile::TempDir;
 use terminator_mcp_agent::scripting_engine::find_executable;
-use terminator_mcp_agent::utils::{
-    DesktopWrapper, ExecuteSequenceArgs, SequenceStep, ToolCall,
-};
+use terminator_mcp_agent::utils::{ExecuteSequenceArgs, SequenceStep, ToolCall};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[test]
@@ -1413,4 +1408,3 @@ try {
         }
     }
 }
-

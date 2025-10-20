@@ -289,7 +289,10 @@ async fn main() -> Result<()> {
             if args.auth_token.is_some() {
                 tracing::warn!("⚠️  SSE transport does not support authentication yet");
                 tracing::warn!("⚠️  Use HTTP transport for Bearer token authentication");
-                tracing::warn!("   Command: terminator-mcp-agent -t http --auth-token YOUR_TOKEN --port {}", args.port);
+                tracing::warn!(
+                    "   Command: terminator-mcp-agent -t http --auth-token YOUR_TOKEN --port {}",
+                    args.port
+                );
             }
 
             let desktop = server::DesktopWrapper::new_with_log_capture(log_capture.clone())?;
@@ -507,8 +510,14 @@ async fn main() -> Result<()> {
             // Build a sub-router for /mcp that uses the service with auth and concurrency gate middleware
             let mcp_router = Router::new()
                 .fallback_service(service)
-                .layer(axum::middleware::from_fn_with_state(app_state.clone(), mcp_gate))
-                .layer(axum::middleware::from_fn_with_state(app_state.clone(), auth_middleware));
+                .layer(axum::middleware::from_fn_with_state(
+                    app_state.clone(),
+                    mcp_gate,
+                ))
+                .layer(axum::middleware::from_fn_with_state(
+                    app_state.clone(),
+                    auth_middleware,
+                ));
 
             let mut router: Router = Router::new()
                 .route("/", get(root_handler))

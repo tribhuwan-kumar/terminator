@@ -1117,12 +1117,20 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                                 .add_directive("h2::server=error".parse().unwrap())
                                 .add_directive("h2::frame=error".parse().unwrap())
                                 .add_directive("rmcp::transport=warn".parse().unwrap())
-                                .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                .add_directive(
+                                    "rmcp::transport::streamable_http_server=error"
+                                        .parse()
+                                        .unwrap(),
+                                )
                                 .add_directive("rmcp::service=error".parse().unwrap())
                                 .add_directive("hyper::client=error".parse().unwrap())
                                 .add_directive("hyper::proto=error".parse().unwrap())
                                 // Also filter scripting engine DEBUG logs from telemetry
-                                .add_directive("terminator_mcp_agent::scripting_engine=info".parse().unwrap()),
+                                .add_directive(
+                                    "terminator_mcp_agent::scripting_engine=info"
+                                        .parse()
+                                        .unwrap(),
+                                ),
                         ),
                     )
                     .with(
@@ -1145,7 +1153,11 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                                     .add_directive("h2::server=error".parse().unwrap())
                                     .add_directive("h2::frame=error".parse().unwrap())
                                     .add_directive("rmcp::transport=warn".parse().unwrap())
-                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive(
+                                        "rmcp::transport::streamable_http_server=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
                                     .add_directive("rmcp::service=error".parse().unwrap())
                                     .add_directive("hyper::client=error".parse().unwrap())
                                     .add_directive("hyper::proto=error".parse().unwrap()),
@@ -1176,7 +1188,11 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                                     .add_directive("h2::server=error".parse().unwrap())
                                     .add_directive("h2::frame=error".parse().unwrap())
                                     .add_directive("rmcp::transport=warn".parse().unwrap())
-                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive(
+                                        "rmcp::transport::streamable_http_server=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
                                     .add_directive("rmcp::service=error".parse().unwrap())
                                     .add_directive("hyper::client=error".parse().unwrap())
                                     .add_directive("hyper::proto=error".parse().unwrap()),
@@ -1212,7 +1228,11 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                                     .add_directive("h2::server=error".parse().unwrap())
                                     .add_directive("h2::frame=error".parse().unwrap())
                                     .add_directive("rmcp::transport=warn".parse().unwrap())
-                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive(
+                                        "rmcp::transport::streamable_http_server=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
                                     .add_directive("rmcp::service=error".parse().unwrap())
                                     .add_directive("hyper::client=error".parse().unwrap())
                                     .add_directive("hyper::proto=error".parse().unwrap()),
@@ -1243,7 +1263,11 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                                     .add_directive("h2::server=error".parse().unwrap())
                                     .add_directive("h2::frame=error".parse().unwrap())
                                     .add_directive("rmcp::transport=warn".parse().unwrap())
-                                    .add_directive("rmcp::transport::streamable_http_server=error".parse().unwrap())
+                                    .add_directive(
+                                        "rmcp::transport::streamable_http_server=error"
+                                            .parse()
+                                            .unwrap(),
+                                    )
                                     .add_directive("rmcp::service=error".parse().unwrap())
                                     .add_directive("hyper::client=error".parse().unwrap())
                                     .add_directive("hyper::proto=error".parse().unwrap()),
