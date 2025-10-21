@@ -116,7 +116,6 @@ async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &st
 
 /// Ensure terminator.js is installed in a persistent directory and return the script directory
 async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
-
     // Use a persistent directory instead of a new temp directory each time
     let script_dir = std::env::temp_dir().join("terminator_mcp_persistent");
 
@@ -221,9 +220,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         true // Skip platform check for unsupported platforms
     };
 
-    if should_install {
-    } else if should_check_update {
-    } else if !platform_package_exists {
+    if !platform_package_exists {
         // Remove existing node_modules to force clean reinstall
         let node_modules_dir = script_dir.join("node_modules");
         if node_modules_dir.exists() {
@@ -238,7 +235,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                 );
             }
         }
-    } else if !should_check_update {
+    } else if !should_install && !should_check_update {
         info!(
             "[{}] terminator.js and platform package found, using existing installation...",
             runtime
@@ -675,7 +672,6 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                 let stderr = String::from_utf8_lossy(&output.stderr);
 
                 if output.status.success() {
-
                     // Check for version mismatches and fix them
                     if !platform_package_name.is_empty() {
                         let main_pkg_json = script_dir

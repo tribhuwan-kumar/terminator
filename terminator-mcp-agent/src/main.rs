@@ -338,7 +338,7 @@ async fn main() -> Result<()> {
                                         *wrapper_guard = Some(wrapper.clone());
                                         Ok(wrapper)
                                     }
-                                    Err(e) => Err(std::io::Error::other(e.to_string()))
+                                    Err(e) => Err(std::io::Error::other(e.to_string())),
                                 }
                             } else {
                                 Ok(wrapper_guard.as_ref().unwrap().clone())

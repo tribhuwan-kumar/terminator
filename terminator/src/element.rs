@@ -1186,9 +1186,7 @@ impl UIElement {
 
             // Additional check for elements at origin with minimal size (likely invalid)
             if x == 0.0 && y == 0.0 && width <= 1.0 && height <= 1.0 {
-                warn!(
-                    "scroll_into_view:skipping_placeholder_element at origin with 1x1 size"
-                );
+                warn!("scroll_into_view:skipping_placeholder_element at origin with 1x1 size");
                 return Ok(());
             }
         }
