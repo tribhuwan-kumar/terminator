@@ -1127,6 +1127,7 @@ impl UIElement {
         // Configuration tuned for reliability without over-scrolling
         const MAX_STEPS: usize = 24; // up to ~24 directional adjustments
         const STEP_AMOUNT: f64 = 0.5; // Reduced from 1.0 to avoid over-scrolling - uses smaller increments
+        const MIN_ELEMENT_SIZE: f64 = 5.0; // Minimum width/height for a valid UI element
 
         // Helper: check whether element intersects window bounds (best-effort viewport proxy)
         fn intersects(a: (f64, f64, f64, f64), b: (f64, f64, f64, f64)) -> bool {
@@ -1169,6 +1170,27 @@ impl UIElement {
         // Fast path
         if init_visible {
             return Ok(());
+        }
+
+        // Validate element bounds - skip scrolling for invalid/tiny elements
+        if let Some((x, y, width, height)) = init_bounds {
+            // Check for invalid bounds (e.g., 1x1 pixel elements at 0,0)
+            if width <= MIN_ELEMENT_SIZE && height <= MIN_ELEMENT_SIZE {
+                warn!(
+                    "scroll_into_view:skipping_invalid_element bounds=({}, {}, {}, {}) - element too small to scroll",
+                    x, y, width, height
+                );
+                // Return Ok instead of error - element exists but can't be scrolled
+                return Ok(());
+            }
+
+            // Additional check for elements at origin with minimal size (likely invalid)
+            if x == 0.0 && y == 0.0 && width <= 1.0 && height <= 1.0 {
+                warn!(
+                    "scroll_into_view:skipping_placeholder_element at origin with 1x1 size"
+                );
+                return Ok(());
+            }
         }
 
         // Iteratively adjust
