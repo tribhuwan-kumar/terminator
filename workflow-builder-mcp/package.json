@@ -12,6 +12,7 @@
   },
   "description": "MCP server for building and managing Terminator workflow YAML files",
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
@@ -53,5 +54,5 @@
     "test:watch": "vitest"
   },
   "type": "module",
-  "version": "0.17.11"
+  "version": "0.17.12"
 }

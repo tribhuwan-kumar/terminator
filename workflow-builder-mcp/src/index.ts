@@ -575,6 +575,15 @@ async function main() {
 
     const app = express();
     app.use(express.json());
+    // Enable CORS for Tauri app
+    const cors = (await import("cors")).default;
+    app.use(cors({
+      origin: true,
+      credentials: true,
+      methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    }));
+
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
