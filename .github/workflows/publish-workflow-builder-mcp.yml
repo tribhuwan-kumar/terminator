@@ -27,6 +27,11 @@ jobs:
           cd workflow-builder-mcp
           npm install
 
+      - name: Build
+        run: |
+          cd workflow-builder-mcp
+          npm run build
+
       - name: Run tests
         run: |
           cd workflow-builder-mcp
