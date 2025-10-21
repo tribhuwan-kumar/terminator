@@ -4554,53 +4554,11 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     )
                 })?;
 
-                // Convert the recorded workflow to MCP sequences
-                let mcp_workflow = match crate::workflow_converter::load_and_convert_workflow(
-                    file_path.to_str().unwrap_or_default(),
-                )
-                .await
-                {
-                    Ok(mcp_workflow) => {
-                        info!("Successfully converted workflow to MCP sequences");
-
-                        // Return null if no steps were converted
-                        if mcp_workflow.steps.is_empty() {
-                            info!("No convertible events found in workflow");
-                            None
-                        } else {
-                            // Build mcp_workflow object with conversion_notes at the root level
-                            let mut workflow_obj = json!({
-                                "tool_name": "execute_sequence",
-                                "arguments": {
-                                    "items": mcp_workflow.steps
-                                }
-                            });
-
-                            // Add conversion_notes at the root level if they exist
-                            if let Some(metadata) = &mcp_workflow.metadata {
-                                if !metadata.conversion_notes.is_empty() {
-                                    workflow_obj["conversion_notes"] =
-                                        json!(metadata.conversion_notes);
-                                }
-                            }
-
-                            Some(workflow_obj)
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to convert workflow to MCP: {}", e);
-                        None
-                    }
-                };
-
                 // Build response matching client expectations
-                let mut response = json!({
+                let response = json!({
                     "status": "success",
                     "file_path": file_path.to_string_lossy()
                 });
-
-                // Add MCP workflow if conversion was successful, otherwise null
-                response["mcp_workflow"] = mcp_workflow.unwrap_or(serde_json::Value::Null);
 
                 span.set_status(true, None);
                 span.end();
