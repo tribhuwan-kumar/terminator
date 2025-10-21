@@ -11,6 +11,10 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import YAML from "yaml";
 import { z } from "zod";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 // ============================================================================
 // Zod Schemas for Tool Arguments
@@ -142,6 +146,38 @@ async function searchInFiles(
   }
 
   return results;
+}
+
+// ============================================================================
+// PID Watcher for Auto-Destruct (Windows only)
+// ============================================================================
+
+async function isProcessAlive(pid: number): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync(
+      `tasklist /FI "PID eq ${pid}" /NH /FO CSV`
+    );
+    return stdout.includes(pid.toString());
+  } catch (error) {
+    console.error(`Failed to check PID ${pid}:`, error);
+    return false;
+  }
+}
+
+async function watchPid(pid: number): Promise<void> {
+  console.error(`[Auto-Destruct] Watching PID ${pid} for termination...`);
+
+  const checkInterval = setInterval(async () => {
+    const alive = await isProcessAlive(pid);
+    if (!alive) {
+      console.error(`[Auto-Destruct] Process ${pid} terminated. Shutting down MCP server...`);
+      clearInterval(checkInterval);
+      process.exit(0);
+    }
+  }, 1000);
+
+  // Cleanup interval on process exit
+  process.on('exit', () => clearInterval(checkInterval));
 }
 
 function validateYAML(content: string): { valid: boolean; error?: string; parsed?: any } {
@@ -563,9 +599,23 @@ async function main() {
     }
   });
 
-  // Check if running in HTTP mode
+  // Parse CLI arguments
   const useHttp = process.env.MCP_TRANSPORT === "http" || process.argv.includes("--http");
   const port = parseInt(process.env.MCP_PORT || process.env.PORT || "3000");
+
+  // Check for --watch-pid flag (Windows only auto-destruct feature)
+  const watchPidIndex = process.argv.indexOf("--watch-pid");
+  if (watchPidIndex !== -1 && watchPidIndex + 1 < process.argv.length) {
+    const pid = parseInt(process.argv[watchPidIndex + 1]);
+    if (!isNaN(pid)) {
+      // Start watching the PID in the background
+      watchPid(pid).catch((error) => {
+        console.error(`[Auto-Destruct] Error watching PID: ${error}`);
+      });
+    } else {
+      console.error(`[Auto-Destruct] Invalid PID provided: ${process.argv[watchPidIndex + 1]}`);
+    }
+  }
 
   if (useHttp) {
     // Streamable HTTP transport

@@ -61,6 +61,11 @@ struct Args {
     /// When set, clients must provide matching Bearer token in Authorization header
     #[arg(long, env = "MCP_AUTH_TOKEN")]
     auth_token: Option<String>,
+
+    /// PID to watch for auto-destruct (Windows only)
+    /// When set, the MCP server will automatically shut down if the specified process terminates
+    #[arg(long)]
+    watch_pid: Option<u32>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -71,6 +76,51 @@ enum TransportMode {
     Sse,
     /// Streamable HTTP transport for HTTP-based clients
     Http,
+}
+
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::{CloseHandle, HANDLE, STILL_ACTIVE};
+#[cfg(target_os = "windows")]
+use windows::Win32::System::Threading::{
+    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION,
+};
+
+#[cfg(target_os = "windows")]
+fn is_process_alive(pid: u32) -> bool {
+    unsafe {
+        let process: HANDLE = match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
+            Ok(handle) => handle,
+            Err(e) => {
+                debug!("Failed to open process with PID ({}): {:?}", pid, e);
+                return false;
+            }
+        };
+        if process.is_invalid() {
+            return false;
+        }
+        let mut exit_code: u32 = 0;
+        let result = GetExitCodeProcess(process, &mut exit_code);
+        let _ = CloseHandle(process);
+        if result.is_err() {
+            debug!("Failed to get exit code for process with PID ({})", pid);
+            return false;
+        }
+        exit_code == STILL_ACTIVE.0 as u32
+    }
+}
+
+#[cfg(target_os = "windows")]
+async fn watch_pid(pid: u32) {
+    info!("[Auto-Destruct] Starting to watch PID {} for termination", pid);
+
+    loop {
+        if !is_process_alive(pid) {
+            info!("[Auto-Destruct] Process {} terminated. Shutting down MCP server...", pid);
+            std::process::exit(0);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
 }
 
 fn kill_previous_mcp_instances() {
@@ -228,6 +278,14 @@ async fn main() -> Result<()> {
     // Check for Visual C++ Redistributables on Windows (one-time at startup)
     if cfg!(windows) {
         terminator_mcp_agent::vcredist_check::check_vcredist_installed();
+    }
+
+    // Start PID watcher if requested (Windows only auto-destruct feature)
+    #[cfg(target_os = "windows")]
+    if let Some(pid) = args.watch_pid {
+        tokio::spawn(async move {
+            watch_pid(pid).await;
+        });
     }
 
     tracing::info!("Initializing Terminator MCP server...");
