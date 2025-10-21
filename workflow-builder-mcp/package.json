@@ -1,39 +1,7 @@
 {
-  "name": "@mediar-ai/workflow-builder-mcp",
-  "version": "0.2.2",
-  "description": "MCP server for building and managing Terminator workflow YAML files",
-  "main": "dist/index.js",
-  "type": "module",
+  "author": "Mediar AI",
   "bin": {
     "workflow-builder-mcp": "./dist/index.js"
-  },
-  "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "start:http": "node dist/index.js --http",
-    "dev": "tsx src/index.ts",
-    "dev:http": "tsx src/index.ts --http",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "prepublishOnly": "npm run build"
-  },
-  "keywords": [
-    "mcp",
-    "terminator",
-    "workflow",
-    "rpa",
-    "automation",
-    "yaml",
-    "ai",
-    "claude",
-    "llm"
-  ],
-  "author": "Mediar AI",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/mediar-ai/terminator.git",
-    "directory": "workflow-builder-mcp"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
@@ -42,6 +10,7 @@
     "yaml": "^2.6.1",
     "zod": "^3.24.0"
   },
+  "description": "MCP server for building and managing Terminator workflow YAML files",
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.0.0",
@@ -53,5 +22,36 @@
     "dist",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "keywords": [
+    "mcp",
+    "terminator",
+    "workflow",
+    "rpa",
+    "automation",
+    "yaml",
+    "ai",
+    "claude",
+    "llm"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "name": "@mediar-ai/workflow-builder-mcp",
+  "repository": {
+    "directory": "workflow-builder-mcp",
+    "type": "git",
+    "url": "git+https://github.com/mediar-ai/terminator.git"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/index.ts --http",
+    "prepublishOnly": "npm run build",
+    "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "type": "module",
+  "version": "0.17.10"
 }
