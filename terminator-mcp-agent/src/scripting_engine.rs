@@ -116,7 +116,6 @@ async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &st
 
 /// Ensure terminator.js is installed in a persistent directory and return the script directory
 async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::PathBuf, McpError> {
-    info!("[{}] Checking if terminator.js is installed...", runtime);
 
     // Use a persistent directory instead of a new temp directory each time
     let script_dir = std::env::temp_dir().join("terminator_mcp_persistent");
@@ -223,20 +222,8 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     };
 
     if should_install {
-        info!(
-            "[{}] terminator.js not found, installing latest version...",
-            runtime
-        );
     } else if should_check_update {
-        info!(
-            "[{}] terminator.js is older than 1 day, checking for updates...",
-            runtime
-        );
     } else if !platform_package_exists {
-        info!(
-            "[{}] terminator.js found but platform package {} missing, reinstalling...",
-            runtime, platform_package_name
-        );
         // Remove existing node_modules to force clean reinstall
         let node_modules_dir = script_dir.join("node_modules");
         if node_modules_dir.exists() {
@@ -682,35 +669,12 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
             }
         };
 
-        info!("[{}] Package manager command execution initiated", runtime);
-
         match install_result {
             Ok(output) => {
-                info!(
-                    "[{}] Package manager command completed with exit status: {:?}",
-                    runtime, output.status
-                );
-
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let stderr = String::from_utf8_lossy(&output.stderr);
 
-                if !stdout.is_empty() {
-                    info!("[{}] Package manager stdout:\n{}", runtime, stdout);
-                }
-                if !stderr.is_empty() {
-                    info!("[{}] Package manager stderr:\n{}", runtime, stderr);
-                }
-
                 if output.status.success() {
-                    let action = if should_install {
-                        "installed"
-                    } else {
-                        "updated"
-                    };
-                    info!(
-                        "[{}] terminator.js {} successfully to latest version in persistent directory",
-                        runtime, action
-                    );
 
                     // Check for version mismatches and fix them
                     if !platform_package_name.is_empty() {
@@ -989,26 +953,17 @@ global.desktop = new Desktop();
 global.log = console.log;
 global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-console.log('[Node.js Wrapper] Starting user script execution...');
-console.log('[Node.js Wrapper] Current working directory:', process.cwd());
-
 // Execute user script
 (async () => {{
     try {{
-        console.log('[Node.js Wrapper] Executing user script...');
         const result = await (async () => {{
             {script}
         }})();
 
-        console.log('[Node.js Wrapper] User script completed, result:', typeof result);
-
         // Send result back, handling undefined properly
         const resultToSend = result === undefined ? null : result;
         process.stdout.write('__RESULT__' + JSON.stringify(resultToSend) + '__END__\n');
-        console.log('[Node.js Wrapper] Result sent back to parent process');
     }} catch (error) {{
-        console.error('[Node.js Wrapper] User script error:', error && error.message);
-        console.error('[Node.js Wrapper] Stack trace:', error && error.stack);
         // Emit machine-readable marker on stdout as well for parent capture
         console.log('__ERROR__' + JSON.stringify({{ message: String((error && error.message) || error), stack: String((error && error.stack) || '') }}) + '__END__');
         process.stdout.write('__ERROR__' + JSON.stringify({{
@@ -1181,8 +1136,7 @@ console.log('[Node.js Wrapper] Current working directory:', process.cwd());
                         // Capture non-marker lines as logs (excluding wrapper debug output)
                         if !line.starts_with("__RESULT__")
                             && !line.starts_with("__ERROR__")
-                            && !line.starts_with("::set-env ")
-                            && !line.starts_with("[Node.js Wrapper]") {
+                            && !line.starts_with("::set-env ") {
                             captured_logs.push(line.clone());
                         }
                         // Parse GitHub Actions style env updates: ::set-env name=KEY::VALUE

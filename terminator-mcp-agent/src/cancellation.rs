@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 /// Context for a single MCP request that can be cancelled
 #[derive(Clone, Debug)]
@@ -31,7 +31,6 @@ impl RequestContext {
 
     /// Cancel this request
     pub fn cancel(&self) {
-        info!("Cancelling request {}", self.request_id);
         self.cancellation_token.cancel();
     }
 
@@ -90,11 +89,6 @@ impl RequestManager {
 
         let mut requests = self.active_requests.write().await;
         requests.insert(request_id.clone(), context.clone());
-        debug!(
-            "Registered request {} (total active: {})",
-            request_id,
-            requests.len()
-        );
         context
     }
 
@@ -102,11 +96,6 @@ impl RequestManager {
     pub async fn unregister(&self, request_id: &str) {
         let mut requests = self.active_requests.write().await;
         if let Some(context) = requests.remove(request_id) {
-            debug!(
-                "Unregistered request {} (total active: {})",
-                request_id,
-                requests.len()
-            );
             // Cancel if not already cancelled
             if !context.is_cancelled() {
                 context.cancel();
@@ -119,7 +108,6 @@ impl RequestManager {
         let requests = self.active_requests.read().await;
         if let Some(context) = requests.get(request_id) {
             context.cancel();
-            info!("Cancelled request {}", request_id);
             true
         } else {
             false

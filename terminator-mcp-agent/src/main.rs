@@ -481,11 +481,6 @@ async fn main() -> Result<()> {
                                 .and_then(|s| s.parse::<u64>().ok())
                         });
 
-                    debug!(
-                        "Processing request {} with timeout {:?}ms",
-                        request_id, timeout_ms
-                    );
-
                     // Register the request with cancellation support
                     let context = state
                         .request_manager
