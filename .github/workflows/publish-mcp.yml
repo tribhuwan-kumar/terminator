@@ -245,8 +245,12 @@ jobs:
       - name: Create GitHub Release & Upload MCP Agent Assets
         uses: softprops/action-gh-release@v2
         with:
-          name: MCP Agent Release ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          append_body: true
           body: |
+
+            ---
+
             ## Terminator MCP Agent Binaries
 
             This release contains the Terminator MCP Agent standalone binaries for various platforms.
