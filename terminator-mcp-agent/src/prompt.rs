@@ -510,6 +510,59 @@ const apps = (typeof check_apps_result !== 'undefined') ? check_apps_result : []
 const ok = (typeof validate_login_status !== 'undefined') ? validate_login_status === 'success' : false;
 ```
 
+### Capturing Execution Logs with include_logs
+
+The `run_command` tool supports an optional `include_logs` parameter to capture stdout/stderr output:
+
+**Parameter behavior:**
+- `include_logs: false` (default) - Logs excluded for cleaner responses
+- `include_logs: true` - stdout and stderr included in response
+- On errors: Logs always included regardless of setting
+
+**Response structure with include_logs:**
+```json
+{{
+  \"action\": \"run_command\",
+  \"mode\": \"engine\",
+  \"engine\": \"javascript\",
+  \"status\": \"success\",
+  \"result\": {{ /* your return value */ }},
+  \"logs\": [\"Log line 1\", \"Log line 2\"],      // stdout (when include_logs: true)
+  \"stderr\": [\"Error line 1\", \"Error line 2\"]  // stderr (when include_logs: true)
+}}
+```
+
+**Example with logs enabled:**
+```yaml
+- tool_name: run_command
+  id: debug_processing
+  arguments:
+    engine: javascript
+    include_logs: true  # Enable log capture
+    run: |
+      const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+
+      console.log(`Starting processing of ${{entries.length}} entries`);
+      console.log(`Memory usage: ${{process.memoryUsage().heapUsed / 1024 / 1024}} MB`);
+
+      const processed = entries.map(e => {{
+        console.log(`Processing entry: ${{e.id}}`);
+        return {{ ...e, processed: true }};
+      }});
+
+      console.error(`Warning: ${{processed.length}} entries processed`);
+
+      return {{
+        processed_count: processed.length
+      }};
+```
+
+**Use cases for include_logs:**
+- Debugging complex scripts
+- Monitoring script execution progress
+- Capturing warnings and diagnostic information
+- Verifying variable values during development
+
 **Browser DOM Inspection with execute_browser_script**
 
 The `execute_browser_script` tool executes JavaScript in browser contexts (Chrome/Edge), providing full DOM access.
@@ -592,6 +645,78 @@ EVAL_ERROR: Uncaught SyntaxError: Identifier 'message' has already been declared
     at <anonymous>:1:15
     at <anonymous>:1:500836
 ```
+
+### Capturing Browser Console Output with include_logs
+
+The `execute_browser_script` tool supports automatic console capture when `include_logs: true` is set:
+
+**Parameter behavior:**
+- `include_logs: false` (default) - Console output not captured
+- `include_logs: true` - Automatically captures console.log, console.warn, console.error, console.info
+
+**How it works:**
+When `include_logs: true`, the agent automatically injects a console override wrapper that:
+1. Intercepts all console methods (log, warn, error, info)
+2. Stores each call with its type and arguments
+3. Returns both your script result AND the captured logs
+
+**Response structure with include_logs:**
+```json
+{{
+  \"action\": \"execute_browser_script\",
+  \"status\": \"success\",
+  \"result\": {{ /* your return value */ }},
+  \"logs\": [
+    [\"log\", \"Message text\", \"arg2\"],
+    [\"warn\", \"Warning message\"],
+    [\"error\", \"Error message\"],
+    [\"info\", \"Info message\"]
+  ]
+}}
+```
+
+**Example with console capture:**
+```yaml
+- tool_name: execute_browser_script
+  id: scrape_with_logging
+  arguments:
+    selector: \"role:Window|name:Chrome\"
+    include_logs: true  # Enable console capture
+    script: |
+      (function() {{
+        console.log('Starting data extraction');
+
+        const rows = document.querySelectorAll('table tr');
+        console.log(`Found ${{rows.length}} rows`);
+
+        const data = Array.from(rows).map((row, i) => {{
+          console.log(`Processing row ${{i + 1}}`);
+          const cells = row.querySelectorAll('td');
+          return Array.from(cells).map(cell => cell.textContent);
+        }});
+
+        console.warn(`Extracted ${{data.length}} rows`);
+        console.error('Note: Some rows may have missing data');
+
+        return JSON.stringify({{
+          row_count: data.length,
+          data: data
+        }});
+      }})()
+```
+
+**Important notes:**
+- Console capture is automatic - no manual override needed
+- Original console methods still work (output visible in DevTools)
+- Objects are automatically stringified in logs
+- Console capture does not affect script return value
+- Your script return value and logs are returned separately
+
+**Use cases for browser console capture:**
+- Debugging browser scripts during development
+- Monitoring data extraction progress
+- Capturing validation warnings from page scripts
+- Tracking which DOM elements were processed
 
 ### Browser Script Return Patterns
 
