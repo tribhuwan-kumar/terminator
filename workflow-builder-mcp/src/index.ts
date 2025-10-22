@@ -631,7 +631,7 @@ async function main() {
       origin: true,
       credentials: true,
       methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Request-Timeout-Ms', 'Cache-Control', 'Connection', 'Accept'],
     }));
 
 
