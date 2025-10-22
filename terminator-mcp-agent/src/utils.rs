@@ -431,6 +431,10 @@ pub struct RunCommandArgs {
         description = "Whether to include screenshots of all monitors in the response. Defaults to false."
     )]
     pub include_monitor_screenshots: Option<bool>,
+    #[schemars(
+        description = "Include execution logs (stdout/stderr) in response. Defaults to false. On errors, logs are always included regardless of this setting."
+    )]
+    pub include_logs: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
@@ -530,6 +534,10 @@ pub struct ExecuteBrowserScriptArgs {
     pub script: Option<String>,
     pub script_file: Option<String>,
     pub env: Option<serde_json::Value>,
+    #[schemars(
+        description = "Include browser console output (console.log, console.error, console.warn) in response. Defaults to false. Note: Browser console capturing is not yet implemented - use browser DevTools to see console output."
+    )]
+    pub include_logs: Option<bool>,
     #[serde(flatten)]
     pub selector: SelectorOptions,
 

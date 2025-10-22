@@ -2023,8 +2023,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 )
                 .await?;
 
-                // Extract logs and actual result
+                // Extract logs, stderr, and actual result
                 let logs = execution_result.get("logs").cloned();
+                let stderr = execution_result.get("stderr").cloned();
                 let actual_result = execution_result
                     .get("result")
                     .cloned()
@@ -2067,7 +2068,8 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     }
                 }
 
-                // Build response with logs
+                // Build response
+                let include_logs = args.include_logs.unwrap_or(false);
                 let mut response = json!({
                     "action": "run_command",
                     "mode": "engine",
@@ -2076,8 +2078,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     "result": actual_result
                 });
 
-                if let Some(logs) = logs {
-                    response["logs"] = logs;
+                // Conditionally include logs and stderr based on include_logs parameter
+                if include_logs {
+                    if let Some(logs) = logs {
+                        response["logs"] = logs;
+                    }
+                    if let Some(stderr) = stderr {
+                        response["stderr"] = stderr;
+                    }
                 }
 
                 span.set_status(true, None);
@@ -2113,8 +2121,9 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 )
                 .await?;
 
-                // Extract logs and actual result (same as JS)
+                // Extract logs, stderr, and actual result (same as JS)
                 let logs = execution_result.get("logs").cloned();
+                let stderr = execution_result.get("stderr").cloned();
                 let actual_result = execution_result
                     .get("result")
                     .cloned()
@@ -2146,7 +2155,8 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     }
                 }
 
-                // Build response with logs
+                // Build response
+                let include_logs = args.include_logs.unwrap_or(false);
                 let mut response = json!({
                     "action": "run_command",
                     "mode": "engine",
@@ -2155,8 +2165,14 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                     "result": actual_result
                 });
 
-                if let Some(logs) = logs {
-                    response["logs"] = logs;
+                // Conditionally include logs and stderr based on include_logs parameter
+                if include_logs {
+                    if let Some(logs) = logs {
+                        response["logs"] = logs;
+                    }
+                    if let Some(stderr) = stderr {
+                        response["stderr"] = stderr;
+                    }
                 }
 
                 span.set_status(true, None);
@@ -2191,8 +2207,16 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 )
                 .await?;
 
+                // Extract logs, stderr, and actual result (same structure as JS/TS now)
+                let logs = execution_result.get("logs").cloned();
+                let stderr = execution_result.get("stderr").cloned();
+                let actual_result = execution_result
+                    .get("result")
+                    .cloned()
+                    .unwrap_or(execution_result.clone());
+
                 // Check if the Python result indicates a failure (same as JavaScript)
-                if let Some(obj) = execution_result.as_object() {
+                if let Some(obj) = actual_result.as_object() {
                     if let Some(status) = obj.get("status") {
                         if let Some(status_str) = status.as_str() {
                             if status_str == "failed" || status_str == "error" {
@@ -2207,15 +2231,32 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                                 // Return an error to trigger fallback_id in workflows
                                 return Err(McpError::internal_error(
                                     format!("Python execution failed: {message}"),
-                                    Some(execution_result),
+                                    Some(actual_result),
                                 ));
                             }
                         }
                     }
                 }
 
-                // For now, Python doesn't capture logs yet, but we can add it later
-                // Just pass through the result as before
+                // Build response
+                let include_logs = args.include_logs.unwrap_or(false);
+                let mut response = json!({
+                    "action": "run_command",
+                    "mode": "engine",
+                    "engine": engine,
+                    "status": "success",
+                    "result": actual_result
+                });
+
+                // Conditionally include logs and stderr based on include_logs parameter
+                if include_logs {
+                    if let Some(logs) = logs {
+                        response["logs"] = logs;
+                    }
+                    if let Some(stderr) = stderr {
+                        response["stderr"] = stderr;
+                    }
+                }
 
                 span.set_status(true, None);
                 span.end();
@@ -2223,13 +2264,7 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
                 return Ok(CallToolResult::success(
                     append_monitor_screenshots_if_enabled(
                         &self.desktop,
-                        vec![Content::json(json!({
-                            "action": "run_command",
-                            "mode": "engine",
-                            "engine": engine,
-                            "status": "success",
-                            "result": execution_result
-                        }))?],
+                        vec![Content::json(response)?],
                         None,
                     )
                     .await,
@@ -5537,6 +5572,12 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             "duration_ms": elapsed_ms,
             "script_bytes": script_len,
         });
+
+        // Note: Browser console capturing is not yet implemented
+        // include_logs parameter is present for future implementation
+        if args.include_logs.unwrap_or(false) {
+            result_json["note"] = json!("Browser console output capturing not yet implemented. Use browser DevTools to see console.log output.");
+        }
 
         // Always attach tree for better context
         maybe_attach_tree(

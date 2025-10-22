@@ -1327,14 +1327,16 @@ global.sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
                 }
             }
 
-            // Return result with captured logs
+            // Return result with captured logs and stderr
             info!(
-                "[Node.js] Returning {} captured log lines",
-                captured_logs.len()
+                "[Node.js] Returning {} captured log lines and {} stderr lines",
+                captured_logs.len(),
+                stderr_output.len()
             );
             Ok(json!({
                 "result": r,
-                "logs": captured_logs
+                "logs": captured_logs,
+                "stderr": stderr_output
             }))
         }
         None => {
@@ -1678,7 +1680,8 @@ console.log('[TypeScript] Current working directory:', process.cwd());
 
             Ok(json!({
                 "result": r,
-                "logs": captured_logs
+                "logs": captured_logs,
+                "stderr": stderr_output
             }))
         }
         None => {
@@ -1892,8 +1895,29 @@ asyncio.run(__runner__())
             if let Some(result_start) = stdout_str.find("__RESULT__") {
                 if let Some(result_end) = stdout_str.find("__END__") {
                     let result_json = &stdout_str[result_start + 10..result_end];
-                    match serde_json::from_str(result_json) {
-                        Ok(val) => return Ok(val),
+                    match serde_json::from_str::<serde_json::Value>(result_json) {
+                        Ok(val) => {
+                            // Extract logs from stdout (lines before __RESULT__)
+                            let logs_str = &stdout_str[..result_start];
+                            let captured_logs: Vec<String> = logs_str
+                                .lines()
+                                .filter(|line| !line.is_empty() && !line.starts_with("__"))
+                                .map(|s| s.to_string())
+                                .collect();
+
+                            // Extract stderr lines
+                            let stderr_lines: Vec<String> = stderr_str
+                                .lines()
+                                .filter(|line| !line.is_empty())
+                                .map(|s| s.to_string())
+                                .collect();
+
+                            return Ok(json!({
+                                "result": val,
+                                "logs": captured_logs,
+                                "stderr": stderr_lines
+                            }));
+                        },
                         Err(e) => {
                             return Err(McpError::internal_error(
                                 "Failed to parse Python result",
