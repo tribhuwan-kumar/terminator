@@ -826,7 +826,11 @@ impl DesktopWrapper {
 
                             // Close the about:blank tab using Ctrl+W (not the entire Chrome browser)
                             match desktop.press_key("{Ctrl}w").await {
-                                Ok(_) => info!("Closed about:blank tab with Ctrl+W"),
+                                Ok(_) => {
+                                    info!("Closed about:blank tab with Ctrl+W");
+                                    // Wait for tab close to complete
+                                    tokio::time::sleep(Duration::from_millis(500)).await;
+                                }
                                 Err(e) => warn!("Failed to close about:blank tab: {:?}", e),
                             }
                         }
