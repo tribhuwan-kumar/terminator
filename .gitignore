@@ -28,6 +28,7 @@ terminator-workflow-recorder/*.txt
 
 # Development scripts (user-specific paths)
 scripts/copy-mcp-binary.ps1
+build-and-deploy.ps1
 
 # Local logs
 /logs/
