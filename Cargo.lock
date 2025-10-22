@@ -5096,7 +5096,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-recorder-server"
-version = "0.17.11"
+version = "0.17.14"
 dependencies = [
  "anyhow",
  "axum 0.8.4",
