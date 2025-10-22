@@ -1917,7 +1917,7 @@ asyncio.run(__runner__())
                                 "logs": captured_logs,
                                 "stderr": stderr_lines
                             }));
-                        },
+                        }
                         Err(e) => {
                             return Err(McpError::internal_error(
                                 "Failed to parse Python result",

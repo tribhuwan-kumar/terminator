@@ -5472,7 +5472,8 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         if include_logs {
             // Inject console capture wrapper
-            final_script.push_str(r#"
+            final_script.push_str(
+                r#"
 // Console capture wrapper (auto-injected when include_logs=true)
 var __terminator_logs__ = [];
 var __terminator_console__ = {
@@ -5512,7 +5513,8 @@ console.info = function(...args) {
   __terminator_console__.info.apply(console, args);
 };
 
-"#);
+"#,
+            );
 
             // Wrap user script to capture result + logs
             // The user script becomes the last expression which eval() will return

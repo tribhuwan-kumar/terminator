@@ -27,7 +27,8 @@ pub(crate) struct TreeBuildingContext {
 
 impl TreeBuildingContext {
     pub(crate) fn should_yield(&self) -> bool {
-        self.elements_processed.is_multiple_of(self.config.yield_every_n_elements)
+        self.elements_processed
+            .is_multiple_of(self.config.yield_every_n_elements)
             && self.elements_processed > 0
     }
 
