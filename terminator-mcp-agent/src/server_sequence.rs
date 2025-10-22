@@ -822,17 +822,7 @@ impl DesktopWrapper {
                         Ok(_chrome_window) => {
                             info!("Chrome navigation triggered successfully");
                             // Give the extension a moment to detect the page load and connect
-                            tokio::time::sleep(Duration::from_millis(1000)).await;
-
-                            // Close the about:blank tab using Ctrl+W (not the entire Chrome browser)
-                            match desktop.press_key("{Ctrl}w").await {
-                                Ok(_) => {
-                                    info!("Closed about:blank tab with Ctrl+W");
-                                    // Wait for tab close to complete
-                                    tokio::time::sleep(Duration::from_millis(500)).await;
-                                }
-                                Err(e) => warn!("Failed to close about:blank tab: {:?}", e),
-                            }
+                            tokio::time::sleep(Duration::from_millis(300)).await;
                         }
                         Err(e) => {
                             warn!("Failed to navigate Chrome: {:?}", e);
@@ -846,6 +836,7 @@ impl DesktopWrapper {
 
             // Now test extension connection with a minimal eval (ping)
             // This uses the same 10-second retry logic as execute_browser_script
+            // The ping executes in the about:blank tab we just opened
             info!("Testing Chrome extension connection with ping script...");
             let ping_result = bridge
                 .eval_in_active_tab("true", Duration::from_secs(10))
@@ -903,6 +894,21 @@ impl DesktopWrapper {
                 "✅ Chrome extension healthy: {} client(s) connected",
                 clients
             );
+
+            // Close the about:blank tab now that we've confirmed the extension works
+            match terminator::Desktop::new_default() {
+                Ok(desktop) => {
+                    match desktop.press_key("{Ctrl}w").await {
+                        Ok(_) => {
+                            info!("Closed about:blank tab with Ctrl+W");
+                            // Wait for tab close to complete before starting workflow
+                            tokio::time::sleep(Duration::from_millis(300)).await;
+                        }
+                        Err(e) => warn!("Failed to close about:blank tab: {:?}", e),
+                    }
+                }
+                Err(e) => warn!("Failed to create Desktop instance for tab cleanup: {:?}", e),
+            }
         }
 
         // ---------------------------
