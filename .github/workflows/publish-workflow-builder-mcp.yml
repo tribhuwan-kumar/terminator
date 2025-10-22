@@ -64,5 +64,54 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-# GitHub releases are created by publish-mcp.yml to avoid conflicts
-# workflow-builder-mcp is distributed via npm only
+  github-release:
+    name: Create GitHub Release
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Workflow Builder MCP v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Workflow Builder MCP v${{ steps.get_version.outputs.VERSION }}
+
+            MCP server for building and managing [Terminator](https://github.com/mediar-ai/terminator) workflow YAML files.
+
+            ### Installation
+
+            **Claude Code:**
+            ```bash
+            claude mcp add workflow-builder "npx -y @mediar-ai/workflow-builder-mcp@latest" -s user
+            ```
+
+            **NPM:**
+            ```bash
+            npx -y @mediar-ai/workflow-builder-mcp@${{ steps.get_version.outputs.VERSION }}
+            ```
+
+            **HTTP Mode:**
+            ```bash
+            npx -y @mediar-ai/workflow-builder-mcp@${{ steps.get_version.outputs.VERSION }} --http
+            ```
+
+            ###Tools
+            - `read_workflow` - Read workflow files with line numbers
+            - `list_workflows` - List all workflows in a directory
+            - `search_workflows` - Search across workflows
+            - `edit_workflow` - Edit workflows with exact string replacement
+            - `create_workflow` - Create new workflow files
+            - `validate_workflow` - Validate YAML syntax and schema
+
+            ### Documentation
+            See the [README](https://github.com/mediar-ai/terminator/blob/main/workflow-builder-mcp/README.md) for full documentation.
+          draft: false
+          prerelease: false
