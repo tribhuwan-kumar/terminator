@@ -5467,8 +5467,68 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
 
         let cleaned_script = modified_script;
 
-        // Append the cleaned script
-        final_script.push_str(&cleaned_script);
+        // Check if console log capture is enabled
+        let include_logs = args.include_logs.unwrap_or(false);
+
+        if include_logs {
+            // Inject console capture wrapper
+            final_script.push_str(r#"
+// Console capture wrapper (auto-injected when include_logs=true)
+var __terminator_logs__ = [];
+var __terminator_console__ = {
+  log: console.log,
+  warn: console.warn,
+  error: console.error,
+  info: console.info,
+  debug: console.debug
+};
+
+console.log = function(...args) {
+  __terminator_logs__.push(['log', ...args.map(a => {
+    try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
+    catch(e) { return String(a); }
+  })]);
+  __terminator_console__.log.apply(console, args);
+};
+console.error = function(...args) {
+  __terminator_logs__.push(['error', ...args.map(a => {
+    try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
+    catch(e) { return String(a); }
+  })]);
+  __terminator_console__.error.apply(console, args);
+};
+console.warn = function(...args) {
+  __terminator_logs__.push(['warn', ...args.map(a => {
+    try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
+    catch(e) { return String(a); }
+  })]);
+  __terminator_console__.warn.apply(console, args);
+};
+console.info = function(...args) {
+  __terminator_logs__.push(['info', ...args.map(a => {
+    try { return typeof a === 'object' ? JSON.stringify(a) : String(a); }
+    catch(e) { return String(a); }
+  })]);
+  __terminator_console__.info.apply(console, args);
+};
+
+"#);
+
+            // Wrap user script to capture result + logs
+            // The user script becomes the last expression which eval() will return
+            final_script.push_str("(function() {\n");
+            final_script.push_str("  var __user_result__ = (");
+            final_script.push_str(&cleaned_script);
+            final_script.push_str(");\n");
+            final_script.push_str("  return JSON.stringify({\n");
+            final_script.push_str("    result: __user_result__,\n");
+            final_script.push_str("    logs: __terminator_logs__\n");
+            final_script.push_str("  });\n");
+            final_script.push_str("})()");
+        } else {
+            // Append the cleaned script without wrapper
+            final_script.push_str(&cleaned_script);
+        }
         let script_len = final_script.len();
         let script_preview: String = final_script.chars().take(200).collect();
         tracing::info!(
@@ -5557,6 +5617,33 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             args.selector.fallback_selectors.as_deref(),
         );
 
+        // Parse script_result to extract result and logs if console capture was enabled
+        let (actual_result, captured_logs) = if include_logs {
+            // Try to parse the wrapped result
+            match serde_json::from_str::<serde_json::Value>(&script_result) {
+                Ok(parsed) => {
+                    let result = parsed.get("result").cloned().unwrap_or_else(|| {
+                        // If no result field, use the whole parsed value
+                        parsed.clone()
+                    });
+                    let logs = parsed.get("logs").cloned();
+                    (result, logs)
+                }
+                Err(e) => {
+                    // Failed to parse - script might have returned non-JSON
+                    // Fall back to treating the whole result as the actual result
+                    tracing::warn!(
+                        "[execute_browser_script] Failed to parse wrapped result, falling back to raw result. Error: {}",
+                        e
+                    );
+                    (json!(script_result), None)
+                }
+            }
+        } else {
+            // No wrapping, use script_result as-is
+            (json!(script_result), None)
+        };
+
         let mut result_json = json!({
             "action": "execute_browser_script",
             "status": "success",
@@ -5567,16 +5654,15 @@ Requires Chrome extension to be installed. See browser_dom_extraction.yml and de
             "script": "[script content omitted to reduce verbosity]",
             "script_file": args.script_file,
             "env_provided": args.env.is_some(),
-            "result": script_result,
+            "result": actual_result,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "duration_ms": elapsed_ms,
             "script_bytes": script_len,
         });
 
-        // Note: Browser console capturing is not yet implemented
-        // include_logs parameter is present for future implementation
-        if args.include_logs.unwrap_or(false) {
-            result_json["note"] = json!("Browser console output capturing not yet implemented. Use browser DevTools to see console.log output.");
+        // Include logs if they were captured
+        if let Some(logs) = captured_logs {
+            result_json["logs"] = logs;
         }
 
         // Always attach tree for better context

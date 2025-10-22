@@ -9,7 +9,8 @@
       "Bash(cargo build:*)",
       "Bash(cargo test:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Read(//c/Users/screenpipe-windows/workflows/imperial_treasure_1/**)"
     ],
     "deny": [],
     "ask": []
