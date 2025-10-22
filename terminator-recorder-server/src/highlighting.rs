@@ -1,9 +1,9 @@
+use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 use terminator::HighlightHandle;
 use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder};
-use futures::StreamExt;
+use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::types::HighlightingConfig;
@@ -38,18 +38,15 @@ impl EventHighlighter {
             info!("🎨 Highlighting task started");
 
             while let Some(event) = event_stream.next().await {
-                Self::highlight_event(
-                    &event,
-                    &config,
-                    &active_highlights
-                ).await;
+                Self::highlight_event(&event, &config, &active_highlights).await;
             }
 
             info!("🎨 Highlighting task ended");
         });
 
         self.task_handle = Some(task);
-        info!("🎨 Highlighting enabled with config: color={:X?}, duration={}ms, show_labels={}",
+        info!(
+            "🎨 Highlighting enabled with config: color={:X?}, duration={}ms, show_labels={}",
             self.config.color,
             self.config.duration_ms.unwrap_or(2000),
             self.config.show_labels
@@ -87,14 +84,12 @@ impl EventHighlighter {
 
         // Convert config types to platform types
         #[cfg(target_os = "windows")]
-        let text_position = config.label_position.as_ref()
-            .map(|pos| pos.into());
+        let text_position = config.label_position.as_ref().map(|pos| pos.into());
         #[cfg(not(target_os = "windows"))]
         let text_position: Option<()> = None;
 
         #[cfg(target_os = "windows")]
-        let font_style = config.label_style.as_ref()
-            .map(|style| style.into());
+        let font_style = config.label_style.as_ref().map(|style| style.into());
         #[cfg(not(target_os = "windows"))]
         let font_style: Option<()> = None;
 

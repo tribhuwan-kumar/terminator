@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use tokio::sync::{Mutex, broadcast};
-use terminator::Desktop;
-use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig, WorkflowEvent};
 use futures::StreamExt;
+use std::sync::Arc;
+use terminator::Desktop;
+use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
+use tokio::sync::{broadcast, Mutex};
 use tracing::info;
 
-use crate::types::StartRecordingRequest;
 use crate::highlighting::EventHighlighter;
+use crate::types::StartRecordingRequest;
 
 pub struct RecorderSession {
     pub session_id: String,
@@ -30,8 +30,8 @@ impl RecorderManager {
             .map_err(|e| format!("Failed to initialize Desktop: {}", e))?;
 
         #[cfg(target_os = "macos")]
-        let desktop = Desktop::new(true, true)
-            .map_err(|e| format!("Failed to initialize Desktop: {}", e))?;
+        let desktop =
+            Desktop::new(true, true).map_err(|e| format!("Failed to initialize Desktop: {}", e))?;
 
         info!("✅ Desktop initialized successfully");
 
@@ -72,16 +72,18 @@ impl RecorderManager {
             }
         };
 
-        info!("🔧 Recorder config: performance_mode={:?}", config.performance_mode);
-
-        // Create recorder
-        let mut recorder = WorkflowRecorder::new(
-            request.workflow_name.clone(),
-            config,
+        info!(
+            "🔧 Recorder config: performance_mode={:?}",
+            config.performance_mode
         );
 
+        // Create recorder
+        let mut recorder = WorkflowRecorder::new(request.workflow_name.clone(), config);
+
         // Start recorder
-        recorder.start().await
+        recorder
+            .start()
+            .await
             .map_err(|e| format!("Failed to start recorder: {}", e))?;
 
         info!("✅ Recorder started successfully");
@@ -91,7 +93,8 @@ impl RecorderManager {
 
         // Setup highlighting if enabled
         let mut highlighter = None;
-        let highlighting_enabled = request.highlighting
+        let highlighting_enabled = request
+            .highlighting
             .as_ref()
             .map(|h| h.enabled)
             .unwrap_or(false);
@@ -138,7 +141,10 @@ impl RecorderManager {
         }
 
         // Stop recorder
-        session.recorder.stop().await
+        session
+            .recorder
+            .stop()
+            .await
             .map_err(|e| format!("Failed to stop recorder: {}", e))?;
 
         info!("✅ Recorder stopped");
@@ -146,7 +152,9 @@ impl RecorderManager {
         // Get events as JSON (for API response)
         let events: Vec<serde_json::Value> = {
             let workflow = session.recorder.workflow.lock().unwrap();
-            workflow.events.iter()
+            workflow
+                .events
+                .iter()
                 .map(|e| serde_json::to_value(&e.event).unwrap_or(serde_json::Value::Null))
                 .collect()
         };
@@ -159,7 +167,9 @@ impl RecorderManager {
 
     pub async fn get_session_info(&self) -> Option<(String, String)> {
         let session_lock = self.current_session.lock().await;
-        session_lock.as_ref().map(|s| (s.session_id.clone(), s.workflow_name.clone()))
+        session_lock
+            .as_ref()
+            .map(|s| (s.session_id.clone(), s.workflow_name.clone()))
     }
 
     pub async fn get_event_broadcaster(&self) -> Option<broadcast::Sender<WorkflowEvent>> {

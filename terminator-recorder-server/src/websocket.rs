@@ -24,7 +24,10 @@ pub async fn websocket_handler(
     Query(params): Query<WsQuery>,
     State(manager): State<Arc<RecorderManager>>,
 ) -> Response {
-    info!("🔌 WebSocket connection request for session: {}", params.session);
+    info!(
+        "🔌 WebSocket connection request for session: {}",
+        params.session
+    );
 
     ws.on_upgrade(move |socket| handle_socket(socket, params.session, manager))
 }
@@ -42,7 +45,11 @@ async fn handle_socket(socket: WebSocket, session_id: String, manager: Arc<Recor
             let error_msg = WebSocketMessage::Error {
                 message: format!("Failed to subscribe: {}", e),
             };
-            let _ = sender.send(Message::Text(serde_json::to_string(&error_msg).unwrap().into())).await;
+            let _ = sender
+                .send(Message::Text(
+                    serde_json::to_string(&error_msg).unwrap().into(),
+                ))
+                .await;
             return;
         }
     };

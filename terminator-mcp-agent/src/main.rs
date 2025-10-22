@@ -111,11 +111,17 @@ fn is_process_alive(pid: u32) -> bool {
 
 #[cfg(target_os = "windows")]
 async fn watch_pid(pid: u32) {
-    info!("[Auto-Destruct] Starting to watch PID {} for termination", pid);
+    info!(
+        "[Auto-Destruct] Starting to watch PID {} for termination",
+        pid
+    );
 
     loop {
         if !is_process_alive(pid) {
-            info!("[Auto-Destruct] Process {} terminated. Shutting down MCP server...", pid);
+            info!(
+                "[Auto-Destruct] Process {} terminated. Shutting down MCP server...",
+                pid
+            );
             std::process::exit(0);
         }
 

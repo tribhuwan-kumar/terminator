@@ -56,9 +56,13 @@ pub async fn start_recording(
     State(manager): State<Arc<RecorderManager>>,
     Json(request): Json<StartRecordingRequest>,
 ) -> Result<Json<StartRecordingResponse>, ApiError> {
-    info!("📥 POST /api/recording/start - workflow: {}", request.workflow_name);
+    info!(
+        "📥 POST /api/recording/start - workflow: {}",
+        request.workflow_name
+    );
 
-    let highlighting_enabled = request.highlighting
+    let highlighting_enabled = request
+        .highlighting
         .as_ref()
         .map(|h| h.enabled)
         .unwrap_or(false);
@@ -66,7 +70,10 @@ pub async fn start_recording(
     let (session_id, highlighting_started) = manager.start_recording(request).await?;
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8082".to_string());
-    let websocket_url = format!("ws://127.0.0.1:{}/api/recording/events?session={}", port, session_id);
+    let websocket_url = format!(
+        "ws://127.0.0.1:{}/api/recording/events?session={}",
+        port, session_id
+    );
 
     let response = StartRecordingResponse {
         status: "started".to_string(),
@@ -82,7 +89,10 @@ pub async fn start_recording(
         },
     };
 
-    info!("✅ Recording started: session={}, highlighting={}", session_id, highlighting_enabled);
+    info!(
+        "✅ Recording started: session={}, highlighting={}",
+        session_id, highlighting_enabled
+    );
 
     Ok(Json(response))
 }
@@ -95,7 +105,10 @@ pub async fn stop_recording(
     State(manager): State<Arc<RecorderManager>>,
     Json(request): Json<StopRecordingRequest>,
 ) -> Result<Json<StopRecordingResponse>, ApiError> {
-    info!("📥 POST /api/recording/stop - session: {}", request.session_id);
+    info!(
+        "📥 POST /api/recording/stop - session: {}",
+        request.session_id
+    );
 
     let (session_id, events) = manager.stop_recording().await?;
 

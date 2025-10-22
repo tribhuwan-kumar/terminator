@@ -64,7 +64,9 @@ pub struct RecorderConfigOptions {
 }
 
 impl RecorderConfigOptions {
-    pub fn to_workflow_recorder_config(&self) -> terminator_workflow_recorder::WorkflowRecorderConfig {
+    pub fn to_workflow_recorder_config(
+        &self,
+    ) -> terminator_workflow_recorder::WorkflowRecorderConfig {
         let performance_mode = match self.performance_mode.as_deref() {
             Some("LowEnergy") => terminator_workflow_recorder::PerformanceMode::LowEnergy,
             Some("Balanced") => terminator_workflow_recorder::PerformanceMode::Balanced,
@@ -96,7 +98,7 @@ pub struct HighlightingConfig {
     pub enabled: bool,
 
     #[serde(default = "default_highlight_color")]
-    pub color: Option<u32>,  // BGR format
+    pub color: Option<u32>, // BGR format
 
     #[serde(default = "default_highlight_duration")]
     pub duration_ms: Option<u64>,
@@ -209,7 +211,5 @@ pub enum WebSocketMessage {
     },
 
     #[serde(rename = "error")]
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }

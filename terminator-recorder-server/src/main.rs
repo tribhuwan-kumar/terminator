@@ -40,18 +40,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_target(false)
         .init();
 
-    info!("🚀 Starting terminator-recorder-server v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "🚀 Starting terminator-recorder-server v{}",
+        env!("CARGO_PKG_VERSION")
+    );
     info!("🔧 Port: {}", args.port);
-    info!("🔧 CORS: {}", if args.cors { "enabled" } else { "disabled" });
+    info!(
+        "🔧 CORS: {}",
+        if args.cors { "enabled" } else { "disabled" }
+    );
 
     // Store port in environment for WebSocket URL generation
     std::env::set_var("PORT", args.port.to_string());
 
     // Initialize recorder manager
-    let manager = Arc::new(
-        RecorderManager::new()
-            .expect("Failed to initialize RecorderManager")
-    );
+    let manager = Arc::new(RecorderManager::new().expect("Failed to initialize RecorderManager"));
 
     info!("✅ RecorderManager initialized");
 
@@ -59,15 +62,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut app = Router::new()
         // Health check
         .route("/api/health", get(api::health))
-
         // Recording endpoints
         .route("/api/recording/start", post(api::start_recording))
         .route("/api/recording/stop", post(api::stop_recording))
         .route("/api/recording/status", get(api::get_status))
-
         // WebSocket for event streaming
         .route("/api/recording/events", get(websocket::websocket_handler))
-
         // Shared state
         .with_state(manager);
 
