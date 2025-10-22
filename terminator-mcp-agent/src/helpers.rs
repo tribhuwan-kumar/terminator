@@ -559,7 +559,7 @@ pub fn should_capture_tree(tool_name: &str, index: usize, total_steps: usize) ->
     // 4. Before the final action
 
     matches!(tool_name, "navigate_browser" | "open_application")
-        || index % 5 == 0
+        || index.is_multiple_of(5)
         || index == total_steps - 1
 }
 

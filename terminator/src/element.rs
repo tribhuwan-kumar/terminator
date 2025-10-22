@@ -1266,7 +1266,7 @@ impl UIElement {
                 } else {
                     // Without window bounds, attempt a sensible default sequence
                     // Try down first (common case), then up; we alternate if no progress.
-                    vertical_dir = Some(if steps_taken % 2 == 0 { "down" } else { "up" });
+                    vertical_dir = Some(if steps_taken.is_multiple_of(2) { "down" } else { "up" });
                 }
             }
 
