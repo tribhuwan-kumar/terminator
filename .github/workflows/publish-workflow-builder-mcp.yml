@@ -64,9 +64,75 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+  build-binaries:
+    name: Build Binaries
+    needs: test
+    strategy:
+      matrix:
+        settings:
+          - os: ubuntu-latest
+            target: linux-x64
+            bin_name: workflow-builder-mcp
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: darwin-x64
+            bin_name: workflow-builder-mcp
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: darwin-arm64
+            bin_name: workflow-builder-mcp
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: win32-x64
+            bin_name: workflow-builder-mcp.exe
+            archive_ext: zip
+
+    runs-on: ${{ matrix.settings.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: |
+          cd workflow-builder-mcp
+          bun install
+
+      - name: Build standalone binary
+        run: |
+          cd workflow-builder-mcp
+          mkdir -p dist
+          bun build src/index.ts --compile --outfile dist/${{ matrix.settings.bin_name }}
+
+      - name: Create release archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd workflow-builder-mcp/dist
+          tar -czf workflow-builder-mcp-${{ matrix.settings.target }}.tar.gz ${{ matrix.settings.bin_name }}
+          mkdir -p ../../release-${{ matrix.settings.target }}
+          mv workflow-builder-mcp-${{ matrix.settings.target }}.tar.gz ../../release-${{ matrix.settings.target }}/
+
+      - name: Create release archive (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd workflow-builder-mcp/dist
+          Compress-Archive -Path ${{ matrix.settings.bin_name }} -DestinationPath workflow-builder-mcp-${{ matrix.settings.target }}.zip
+          mkdir -p ../../release-${{ matrix.settings.target }}
+          mv workflow-builder-mcp-${{ matrix.settings.target }}.zip ../../release-${{ matrix.settings.target }}/
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-builder-mcp-${{ matrix.settings.target }}
+          path: release-${{ matrix.settings.target }}/*
+
   github-release:
-    name: Create GitHub Release
-    needs: publish-npm
+    name: Upload to Shared GitHub Release
+    needs: [publish-npm, build-binaries]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -77,11 +143,23 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Display downloaded artifacts
+        run: ls -R release-artifacts
+
+      - name: Upload to Shared GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Workflow Builder MCP v${{ steps.get_version.outputs.VERSION }}
+          name: ${{ github.ref_name }}
+          append_body: true
           body: |
+
+            ---
+
             ## Workflow Builder MCP v${{ steps.get_version.outputs.VERSION }}
 
             MCP server for building and managing [Terminator](https://github.com/mediar-ai/terminator) workflow YAML files.
@@ -103,7 +181,13 @@ jobs:
             npx -y @mediar-ai/workflow-builder-mcp@${{ steps.get_version.outputs.VERSION }} --http
             ```
 
-            ###Tools
+            **Download Binaries:**
+            - Linux x64: `workflow-builder-mcp-linux-x64.tar.gz`
+            - macOS x64: `workflow-builder-mcp-darwin-x64.tar.gz`
+            - macOS ARM64: `workflow-builder-mcp-darwin-arm64.tar.gz`
+            - Windows x64: `workflow-builder-mcp-win32-x64.zip`
+
+            ### Tools
             - `read_workflow` - Read workflow files with line numbers
             - `list_workflows` - List all workflows in a directory
             - `search_workflows` - Search across workflows
@@ -115,3 +199,5 @@ jobs:
             See the [README](https://github.com/mediar-ai/terminator/blob/main/workflow-builder-mcp/README.md) for full documentation.
           draft: false
           prerelease: false
+          files: |
+            release-artifacts/**/*
