@@ -535,7 +535,7 @@ pub struct ExecuteBrowserScriptArgs {
     pub script_file: Option<String>,
     pub env: Option<serde_json::Value>,
     #[schemars(
-        description = "Include browser console output (console.log, console.error, console.warn) in response. Defaults to false. Note: Browser console capturing is not yet implemented - use browser DevTools to see console output."
+        description = "Include browser console output (console.log, console.error, console.warn, console.info) in response. Defaults to false. When enabled, automatically intercepts console methods and returns captured logs alongside the script result. Original console methods still output to DevTools."
     )]
     pub include_logs: Option<bool>,
     #[serde(flatten)]
