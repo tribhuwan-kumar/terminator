@@ -499,8 +499,19 @@ impl WorkflowRecorder {
     pub fn event_stream(&self) -> impl Stream<Item = WorkflowEvent> {
         let mut rx = self.event_tx.subscribe();
         Box::pin(async_stream::stream! {
-            while let Ok(event) = rx.recv().await {
-                yield event;
+            loop {
+                match rx.recv().await {
+                    Ok(event) => yield event,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        // Log but continue - don't terminate stream on lag
+                        tracing::warn!("Event stream lagged, skipped {} events", skipped);
+                        continue;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        // Channel closed, end stream
+                        break;
+                    }
+                }
             }
         })
     }
