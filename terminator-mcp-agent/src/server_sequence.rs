@@ -819,14 +819,14 @@ impl DesktopWrapper {
             match terminator::Desktop::new_default() {
                 Ok(desktop) => {
                     match desktop.open_url("about:blank", Some(terminator::Browser::Chrome)) {
-                        Ok(tab) => {
+                        Ok(_chrome_window) => {
                             info!("Chrome navigation triggered successfully");
                             // Give the extension a moment to detect the page load and connect
                             tokio::time::sleep(Duration::from_millis(1000)).await;
 
-                            // Close the about:blank tab (not the entire Chrome browser)
-                            match tab.close() {
-                                Ok(_) => info!("Closed about:blank tab"),
+                            // Close the about:blank tab using Ctrl+W (not the entire Chrome browser)
+                            match desktop.press_key("^w").await {
+                                Ok(_) => info!("Closed about:blank tab with Ctrl+W"),
                                 Err(e) => warn!("Failed to close about:blank tab: {:?}", e),
                             }
                         }
