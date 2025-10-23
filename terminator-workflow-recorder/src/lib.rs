@@ -18,7 +18,7 @@ pub use events::{
     InteractionContext, KeyboardEvent, McpToolStep, MouseButton, MouseEvent, MouseEventType,
     Position, RecordedEvent, RecordedWorkflow, Rect, SelectionMethod, SelectorCandidate, TabAction,
     TabNavigationMethod, TextInputCompletedEvent, TextInputMethod, TextSelectionEvent,
-    UIElementInfo, WorkflowEvent,
+    UIElementInfo, WorkflowEvent, build_parent_hierarchy,
 };
 pub use recorder::*;
 

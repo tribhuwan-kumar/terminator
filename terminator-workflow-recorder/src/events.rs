@@ -546,6 +546,55 @@ pub struct UIElementInfo {
     pub suggested_selectors: Vec<String>,
 }
 
+impl UIElementInfo {
+    /// Create UIElementInfo from a UIElement
+    pub fn from_element(element: &UIElement) -> Self {
+        let role = element.role();
+        let name = element.name();
+        let bounds = element
+            .bounds()
+            .map(|(x, y, w, h)| [x, y, w, h])
+            .unwrap_or([0.0, 0.0, 0.0, 0.0]);
+
+        // Generate basic selector for this parent element
+        let selector = match &name {
+            Some(n) if !n.is_empty() => format!("role:{}|name:{}", role, n),
+            _ => format!("role:{}", role),
+        };
+
+        Self {
+            role,
+            name,
+            bounds,
+            suggested_selectors: vec![selector],
+        }
+    }
+}
+
+/// Build parent hierarchy for a UI element by walking up the tree
+/// Returns a Vec of UIElementInfo from root (window) down to immediate parent (reversed order)
+pub fn build_parent_hierarchy(element: &UIElement) -> Vec<UIElementInfo> {
+    let mut hierarchy = Vec::new();
+    let mut current = element.parent().ok().flatten();
+
+    // Walk up the parent chain, collecting up to 10 parents to avoid infinite loops
+    let max_depth = 10;
+    while let Some(parent) = current {
+        hierarchy.push(UIElementInfo::from_element(&parent));
+
+        if hierarchy.len() >= max_depth {
+            break;
+        }
+
+        // Move to next parent
+        current = parent.parent().ok().flatten();
+    }
+
+    // Reverse so root is first, immediate parent is last
+    hierarchy.reverse();
+    hierarchy
+}
+
 /// Enhanced UI element capture with MCP context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancedUIElement {
