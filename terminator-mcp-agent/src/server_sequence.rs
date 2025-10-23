@@ -2,7 +2,9 @@ use crate::helpers::substitute_variables;
 use crate::output_parser;
 use crate::server::extract_content_json;
 use crate::telemetry::{StepSpan, WorkflowSpan};
-use crate::utils::{DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup, VariableDefinition};
+use crate::utils::{
+    DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup, VariableDefinition,
+};
 use rmcp::model::{CallToolResult, Content};
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::ErrorData as McpError;
@@ -112,11 +114,7 @@ fn validate_variable_value(
             // Validate against value_schema if defined (for flat key-value objects)
             if let Some(value_schema) = &def.value_schema {
                 for (key, val) in obj {
-                    validate_variable_value(
-                        &format!("{variable_name}.{key}"),
-                        val,
-                        value_schema,
-                    )?;
+                    validate_variable_value(&format!("{variable_name}.{key}"), val, value_schema)?;
                 }
             }
         }

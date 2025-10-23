@@ -12,7 +12,6 @@ use clap::Parser;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, Level};
-use tracing_subscriber;
 
 use recorder_manager::RecorderManager;
 

@@ -135,7 +135,7 @@ async fn handle_socket(socket: WebSocket, session_id: String, manager: Arc<Recor
             msg_result = receiver.next() => {
                 match msg_result {
                     Some(Ok(Message::Text(text))) => {
-                        if text.to_string() == "ping" {
+                        if text == "ping" {
                             let _ = sender.send(Message::Text("pong".into())).await;
                         }
                     }

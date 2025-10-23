@@ -157,20 +157,6 @@ pub struct ValidationResult {
     /// Error message if validation failed (not element not found, but actual error)
     pub error: Option<String>,
 }
-
-/// Result of waiting for a condition
-#[napi(object)]
-pub struct WaitForResult {
-    /// Whether the condition was met
-    pub condition_met: bool,
-    /// The element if condition was met
-    pub element: Option<Element>,
-    /// Time elapsed in milliseconds
-    pub elapsed_ms: f64,
-    /// Error message if wait failed
-    pub error: Option<String>,
-}
-
 /// Convert string condition to WaitCondition enum
 fn parse_condition(condition: &str) -> napi::Result<TerminatorWaitCondition> {
     match condition.to_lowercase().as_str() {

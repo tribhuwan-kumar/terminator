@@ -1,6 +1,5 @@
 use futures::StreamExt;
 use std::sync::Arc;
-use terminator::Desktop;
 use terminator_workflow_recorder::{WorkflowEvent, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::sync::{broadcast, Mutex};
 use tracing::info;
@@ -17,7 +16,6 @@ pub struct RecorderSession {
 }
 
 pub struct RecorderManager {
-    desktop: Arc<Desktop>,
     current_session: Arc<Mutex<Option<RecorderSession>>>,
 }
 
@@ -25,18 +23,7 @@ impl RecorderManager {
     pub fn new() -> Result<Self, String> {
         info!("🔧 Initializing RecorderManager");
 
-        #[cfg(target_os = "windows")]
-        let desktop = Desktop::new(false, false)
-            .map_err(|e| format!("Failed to initialize Desktop: {}", e))?;
-
-        #[cfg(target_os = "macos")]
-        let desktop =
-            Desktop::new(true, true).map_err(|e| format!("Failed to initialize Desktop: {}", e))?;
-
-        info!("✅ Desktop initialized successfully");
-
         Ok(Self {
-            desktop: Arc::new(desktop),
             current_session: Arc::new(Mutex::new(None)),
         })
     }
@@ -170,11 +157,6 @@ impl RecorderManager {
         session_lock
             .as_ref()
             .map(|s| (s.session_id.clone(), s.workflow_name.clone()))
-    }
-
-    pub async fn get_event_broadcaster(&self) -> Option<broadcast::Sender<WorkflowEvent>> {
-        let session_lock = self.current_session.lock().await;
-        session_lock.as_ref().map(|s| s.event_broadcaster.clone())
     }
 
     /// Subscribe to recorder events for WebSocket streaming
