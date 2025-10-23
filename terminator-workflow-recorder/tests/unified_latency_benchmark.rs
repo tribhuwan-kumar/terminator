@@ -57,7 +57,7 @@ impl LatencyStats {
         let max_ms = latencies[latencies.len() - 1];
         let mean_ms = latencies.iter().sum::<f64>() / latencies.len() as f64;
 
-        let median_ms = if latencies.len() % 2 == 0 {
+        let median_ms = if latencies.len().is_multiple_of(2) {
             (latencies[latencies.len() / 2 - 1] + latencies[latencies.len() / 2]) / 2.0
         } else {
             latencies[latencies.len() / 2]
