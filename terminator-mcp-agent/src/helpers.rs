@@ -530,7 +530,7 @@ pub fn should_add_focus_check(tool_calls: &[ToolCall], current_index: usize) -> 
             | "open_application"
             | "close_element"
             | "get_window_tree"
-            | "get_applications"
+            | "get_applications_and_windows_list"
             | "activate_element"
     )
 }

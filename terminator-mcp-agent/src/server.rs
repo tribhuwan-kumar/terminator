@@ -23,10 +23,12 @@ use rmcp::model::{
 use rmcp::{tool, ErrorData as McpError, ServerHandler};
 use rmcp::{tool_handler, tool_router};
 use serde_json::json;
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use sysinfo::{ProcessesToUpdate, System};
 use terminator::{AutomationError, Browser, Desktop, Selector, UIElement};
 use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::sync::Mutex;
@@ -545,14 +547,14 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Get all applications currently running and their state. This is a read-only operation."
+        description = "Get all applications and windows currently running with their process names. This is a read-only operation that returns a simple list without UI trees."
     )]
-    pub async fn get_applications(
+    pub async fn get_applications_and_windows_list(
         &self,
-        Parameters(args): Parameters<GetApplicationsArgs>,
+        Parameters(_args): Parameters<GetApplicationsArgs>,
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
-        let mut span = StepSpan::new("get_applications", None);
+        let mut span = StepSpan::new("get_applications_and_windows_list", None);
 
         let apps = self.desktop.applications().map_err(|e| {
             McpError::resource_not_found(
@@ -561,25 +563,34 @@ impl DesktopWrapper {
             )
         })?;
 
-        let include_tree = Self::should_include_tree(&args.tree.include_tree);
-        let tree_config = if include_tree {
-            Some(Self::create_tree_config(
-                args.tree.include_detailed_attributes,
-            ))
-        } else {
-            None
-        };
+        // Create System for process name lookup
+        let mut system = System::new();
+        system.refresh_processes(ProcessesToUpdate::All, true);
 
-        let app_info_futures: Vec<_> = apps
+        // Build PID -> process_name map
+        let process_names: HashMap<u32, String> = apps
+            .iter()
+            .filter_map(|app| {
+                let pid = app.process_id().unwrap_or(0);
+                if pid > 0 {
+                    system.process(sysinfo::Pid::from_u32(pid))
+                        .map(|p| (pid, p.name().to_string_lossy().to_string()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Simple iteration - no async spawning needed (no tree fetching)
+        let applications: Vec<_> = apps
             .iter()
             .map(|app| {
-                let desktop = self.desktop.clone();
                 let app_name = app.name().unwrap_or_default();
                 let app_id = app.id().unwrap_or_default();
                 let app_role = app.role();
                 let app_pid = app.process_id().unwrap_or(0);
                 let is_focused = app.is_focused().unwrap_or(false);
-                let config = tree_config.clone();
+                let process_name = process_names.get(&app_pid).cloned();
 
                 let suggested_selector = if !app_name.is_empty() {
                     format!("{}|{}", &app_role, &app_name)
@@ -587,43 +598,21 @@ impl DesktopWrapper {
                     format!("#{app_id}")
                 };
 
-                tokio::spawn(async move {
-                    let tree = if include_tree && app_pid > 0 {
-                        desktop.get_window_tree(app_pid, None, config).ok()
-                    } else {
-                        None
-                    };
-
-                    json!({
-                        "name": app_name,
-                        "id": app_id,
-                        "role": app_role,
-                        "pid": app_pid,
-                        "is_focused": is_focused,
-                        "suggested_selector": suggested_selector,
-                        "ui_tree": tree
-                    })
+                json!({
+                    "name": app_name,
+                    "process_name": process_name,
+                    "id": app_id,
+                    "role": app_role,
+                    "pid": app_pid,
+                    "is_focused": is_focused,
+                    "suggested_selector": suggested_selector
                 })
             })
             .collect();
 
-        let app_info_results = futures::future::join_all(app_info_futures).await;
-        let mut applications = Vec::new();
-
-        for result in app_info_results {
-            match result {
-                Ok(app_info) => applications.push(app_info),
-                Err(e) => {
-                    warn!("Failed to get app info: {}", e);
-                }
-            }
-        }
-
         let result_json = json!({
-            "action": "get_applications",
+            "action": "get_applications_and_windows_list",
             "status": "success",
-            "include_tree": include_tree,
-            "detailed_attributes": args.tree.include_detailed_attributes.unwrap_or(true),
             "applications": applications,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
@@ -631,14 +620,7 @@ impl DesktopWrapper {
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(
-            append_monitor_screenshots_if_enabled(
-                &self.desktop,
-                vec![Content::json(result_json)?],
-                args.monitor.include_monitor_screenshots,
-            )
-            .await,
-        ))
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
     }
 
     /// Helper function to ensure element is scrolled into view for reliable interaction
@@ -5723,11 +5705,11 @@ impl DesktopWrapper {
                     )),
                 }
             }
-            "get_applications" => {
+            "get_applications_and_windows_list" => {
                 match serde_json::from_value::<GetApplicationsArgs>(arguments.clone()) {
-                    Ok(args) => self.get_applications(Parameters(args)).await,
+                    Ok(args) => self.get_applications_and_windows_list(Parameters(args)).await,
                     Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for get_applications",
+                        "Invalid arguments for get_applications_and_windows_list",
                         Some(json!({"error": e.to_string()})),
                     )),
                 }

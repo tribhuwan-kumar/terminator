@@ -237,10 +237,9 @@ pub struct GetFocusedWindowTreeArgs {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetApplicationsArgs {
-    #[serde(flatten)]
-    pub tree: TreeOptions,
-    #[serde(flatten)]
-    pub monitor: MonitorScreenshotOptions,
+    // No parameters needed - this tool simply lists windows/applications
+    // Use get_window_tree if you need UI tree details
+    // Use capture_screen if you need screenshots
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
