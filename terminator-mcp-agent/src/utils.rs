@@ -880,8 +880,9 @@ pub enum VariableType {
 pub struct VariableDefinition {
     #[schemars(description = "The data type of the variable.")]
     pub r#type: VariableType,
-    #[schemars(description = "A user-friendly label for the variable, for UI generation.")]
-    pub label: String,
+    #[schemars(description = "A user-friendly label for the variable, for UI generation. Optional for nested schemas (value_schema, properties, item_schema).")]
+    #[serde(default)]
+    pub label: Option<String>,
     #[schemars(description = "A detailed description of what the variable is for.")]
     pub description: Option<String>,
     #[schemars(description = "The default value for the variable if not provided in the inputs.")]
@@ -892,6 +893,12 @@ pub struct VariableDefinition {
     pub options: Option<Vec<String>>,
     #[schemars(description = "Whether this variable is required. Defaults to true.")]
     pub required: Option<bool>,
+    #[schemars(description = "For object types with flat key-value structure, defines the schema for all values (e.g., all values must be enum with specific options).")]
+    pub value_schema: Option<Box<VariableDefinition>>,
+    #[schemars(description = "For object types with known properties, defines the schema for each named property.")]
+    pub properties: Option<HashMap<String, Box<VariableDefinition>>>,
+    #[schemars(description = "For array types, defines the schema for array items.")]
+    pub item_schema: Option<Box<VariableDefinition>>,
 }
 
 // Keep the old structures for internal use

@@ -2,7 +2,7 @@ use crate::helpers::substitute_variables;
 use crate::output_parser;
 use crate::server::extract_content_json;
 use crate::telemetry::{StepSpan, WorkflowSpan};
-use crate::utils::{DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup};
+use crate::utils::{DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup, VariableDefinition};
 use rmcp::model::{CallToolResult, Content};
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::ErrorData as McpError;
@@ -10,6 +10,120 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tracing::{debug, info, warn};
+
+/// Helper function to recursively validate a value against a variable definition
+fn validate_variable_value(
+    variable_name: &str,
+    value: &Value,
+    def: &VariableDefinition,
+) -> Result<(), McpError> {
+    match def.r#type {
+        crate::utils::VariableType::String => {
+            if !value.is_string() {
+                return Err(McpError::invalid_params(
+                    format!("Variable '{variable_name}' must be a string."),
+                    Some(json!({"value": value})),
+                ));
+            }
+        }
+        crate::utils::VariableType::Number => {
+            if !value.is_number() {
+                return Err(McpError::invalid_params(
+                    format!("Variable '{variable_name}' must be a number."),
+                    Some(json!({"value": value})),
+                ));
+            }
+        }
+        crate::utils::VariableType::Boolean => {
+            if !value.is_boolean() {
+                return Err(McpError::invalid_params(
+                    format!("Variable '{variable_name}' must be a boolean."),
+                    Some(json!({"value": value})),
+                ));
+            }
+        }
+        crate::utils::VariableType::Enum => {
+            let val_str = value.as_str().ok_or_else(|| {
+                McpError::invalid_params(
+                    format!("Enum variable '{variable_name}' must be a string."),
+                    Some(json!({"value": value})),
+                )
+            })?;
+            if let Some(options) = &def.options {
+                if !options.contains(&val_str.to_string()) {
+                    return Err(McpError::invalid_params(
+                        format!("Variable '{variable_name}' has an invalid value."),
+                        Some(json!({
+                            "value": val_str,
+                            "allowed_options": options
+                        })),
+                    ));
+                }
+            }
+        }
+        crate::utils::VariableType::Array => {
+            if !value.is_array() {
+                return Err(McpError::invalid_params(
+                    format!("Variable '{variable_name}' must be an array."),
+                    Some(json!({"value": value})),
+                ));
+            }
+            // Validate each array item against item_schema if provided
+            if let Some(item_schema) = &def.item_schema {
+                if let Some(array) = value.as_array() {
+                    for (index, item) in array.iter().enumerate() {
+                        validate_variable_value(
+                            &format!("{variable_name}[{index}]"),
+                            item,
+                            item_schema,
+                        )?;
+                    }
+                }
+            }
+        }
+        crate::utils::VariableType::Object => {
+            if !value.is_object() {
+                return Err(McpError::invalid_params(
+                    format!("Variable '{variable_name}' must be an object."),
+                    Some(json!({"value": value})),
+                ));
+            }
+
+            let obj = value.as_object().unwrap();
+
+            // Validate against properties if defined (for objects with known structure)
+            if let Some(properties) = &def.properties {
+                for (prop_key, prop_def) in properties {
+                    if let Some(prop_value) = obj.get(prop_key) {
+                        validate_variable_value(
+                            &format!("{variable_name}.{prop_key}"),
+                            prop_value,
+                            prop_def,
+                        )?;
+                    } else if prop_def.required.unwrap_or(true) {
+                        return Err(McpError::invalid_params(
+                            format!("Required property '{variable_name}.{prop_key}' is missing."),
+                            None,
+                        ));
+                    }
+                }
+            }
+
+            // Validate against value_schema if defined (for flat key-value objects)
+            if let Some(value_schema) = &def.value_schema {
+                for (key, val) in obj {
+                    validate_variable_value(
+                        &format!("{variable_name}.{key}"),
+                        val,
+                        value_schema,
+                    )?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
 
 impl DesktopWrapper {
     // Get the state file path for a workflow
@@ -413,68 +527,8 @@ impl DesktopWrapper {
 
                 match value {
                     Some(val) => {
-                        // Validate the value against the definition
-                        match def.r#type {
-                            crate::utils::VariableType::String => {
-                                if !val.is_string() {
-                                    return Err(McpError::invalid_params(
-                                        format!("Variable '{key}' must be a string."),
-                                        Some(json!({"value": val})),
-                                    ));
-                                }
-                            }
-                            crate::utils::VariableType::Number => {
-                                if !val.is_number() {
-                                    return Err(McpError::invalid_params(
-                                        format!("Variable '{key}' must be a number."),
-                                        Some(json!({"value": val})),
-                                    ));
-                                }
-                            }
-                            crate::utils::VariableType::Boolean => {
-                                if !val.is_boolean() {
-                                    return Err(McpError::invalid_params(
-                                        format!("Variable '{key}' must be a boolean."),
-                                        Some(json!({"value": val})),
-                                    ));
-                                }
-                            }
-                            crate::utils::VariableType::Enum => {
-                                let val_str = val.as_str().ok_or_else(|| {
-                                    McpError::invalid_params(
-                                        format!("Enum variable '{key}' must be a string."),
-                                        Some(json!({"value": val})),
-                                    )
-                                })?;
-                                if let Some(options) = &def.options {
-                                    if !options.contains(&val_str.to_string()) {
-                                        return Err(McpError::invalid_params(
-                                            format!("Variable '{key}' has an invalid value."),
-                                            Some(json!({
-                                                "value": val_str,
-                                                "allowed_options": options
-                                            })),
-                                        ));
-                                    }
-                                }
-                            }
-                            crate::utils::VariableType::Array => {
-                                if !val.is_array() {
-                                    return Err(McpError::invalid_params(
-                                        format!("Variable '{key}' must be an array."),
-                                        Some(json!({"value": val})),
-                                    ));
-                                }
-                            }
-                            crate::utils::VariableType::Object => {
-                                if !val.is_object() {
-                                    return Err(McpError::invalid_params(
-                                        format!("Variable '{key}' must be an object."),
-                                        Some(json!({"value": val})),
-                                    ));
-                                }
-                            }
-                        }
+                        // Use the recursive validation helper function
+                        validate_variable_value(key, val, def)?;
                     }
                     None => {
                         if def.required.unwrap_or(true) {
