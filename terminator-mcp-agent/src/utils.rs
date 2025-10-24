@@ -1,5 +1,5 @@
 use crate::cancellation::RequestManager;
-use crate::log_capture::{LogCapture, LogCaptureLayer};
+use crate::tool_logging::{LogCapture, LogCaptureLayer};
 use crate::mcp_types::{FontStyle, TextPosition, TreeOutputFormat};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};

@@ -331,7 +331,7 @@ impl DesktopWrapper {
     }
 
     pub fn new_with_log_capture(
-        log_capture: Option<crate::log_capture::LogCapture>,
+        log_capture: Option<crate::tool_logging::LogCapture>,
     ) -> Result<Self, McpError> {
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         let desktop = match Desktop::new(false, false) {
