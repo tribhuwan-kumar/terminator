@@ -577,16 +577,23 @@ pub fn build_parent_hierarchy(element: &UIElement) -> Vec<UIElementInfo> {
     let mut hierarchy = Vec::new();
     let mut current = element.parent().ok().flatten();
 
-    // Walk up the parent chain, collecting up to 10 parents to avoid infinite loops
+    // Walk up the parent chain, collecting up to 10 NAMED parents to avoid infinite loops
     let max_depth = 10;
     while let Some(parent) = current {
-        hierarchy.push(UIElementInfo::from_element(&parent));
+        let parent_info = UIElementInfo::from_element(&parent);
 
-        if hierarchy.len() >= max_depth {
-            break;
+        // Only include parents with meaningful names (skip unnamed elements like generic Panes/Groups)
+        if let Some(ref name) = parent_info.name {
+            if !name.is_empty() {
+                hierarchy.push(parent_info);
+
+                if hierarchy.len() >= max_depth {
+                    break;
+                }
+            }
         }
 
-        // Move to next parent
+        // Move to next parent (continue walking up even if we skipped this one)
         current = parent.parent().ok().flatten();
     }
 
