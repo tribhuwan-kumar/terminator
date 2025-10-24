@@ -1,27 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Desktop interface (from @mediar/terminator)
- * We define minimal interface here to avoid circular deps
- */
-export interface Desktop {
-  locator(selector: string): Locator;
-  openApplication(name: string): void;
-  wait(ms: number): Promise<void>;
-  screenshot(): Promise<Buffer>;
-  getAccessibilityTree(): Promise<any>;
-  [key: string]: any;
-}
-
-export interface Locator {
-  fill(value: string): Promise<void>;
-  type(text: string): Promise<void>;
-  click(): Promise<void>;
-  text(): Promise<string>;
-  exists(options?: { timeout?: number }): Promise<boolean>;
-  waitFor(options?: { timeout?: number; state?: string }): Promise<void>;
-  [key: string]: any;
-}
+// Re-export types from @mediar/terminator
+export type { Desktop, Locator, Element } from '@mediar/terminator';
 
 /**
  * Logger interface
@@ -51,7 +31,7 @@ export interface WorkflowContext {
  */
 export interface StepContext<TInput = any> {
   /** Desktop automation instance */
-  desktop: Desktop;
+  desktop: import('@mediar/terminator').Desktop;
   /** Workflow input (validated by Zod schema) */
   input: TInput;
   /** Shared workflow context */
@@ -67,7 +47,7 @@ export interface ErrorContext<TInput = any, TOutput = any> {
   /** The error that occurred */
   error: Error;
   /** Desktop instance for recovery actions */
-  desktop: Desktop;
+  desktop: import('@mediar/terminator').Desktop;
   /** Retry the step execution */
   retry: () => Promise<TOutput>;
   /** Current attempt number (0-indexed) */
@@ -201,7 +181,11 @@ export interface Workflow<TInput = any> {
   steps: Step[];
 
   /** Run the workflow */
-  run(input: TInput): Promise<void>;
+  run(
+    input: TInput,
+    desktop?: import('@mediar/terminator').Desktop,
+    logger?: Logger
+  ): Promise<void>;
 
   /** Get workflow metadata */
   getMetadata(): {

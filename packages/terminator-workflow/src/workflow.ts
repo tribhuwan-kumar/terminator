@@ -1,9 +1,9 @@
 import { z } from 'zod';
+import type { Desktop } from '@mediar/terminator';
 import {
   Workflow,
   WorkflowConfig,
   Step,
-  Desktop,
   WorkflowContext,
   WorkflowSuccessContext,
   WorkflowErrorContext,
@@ -108,8 +108,8 @@ function createWorkflowInstance<TInput = any>(
       if (!desktopInstance) {
         try {
           // Try to import Desktop from @mediar/terminator
-          const terminator = require('@mediar/terminator');
-          desktopInstance = new terminator.Desktop();
+          const { Desktop } = await import('@mediar/terminator');
+          desktopInstance = new Desktop();
         } catch (error) {
           log.error('❌ No desktop instance provided and @mediar/terminator not available');
           throw new Error('Desktop instance required');
