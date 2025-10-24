@@ -37,7 +37,7 @@ const openNotepad = createStep({
   execute: async ({ desktop, logger }) => {
     logger.info('📝 Opening Notepad...');
     desktop.openApplication('notepad');
-    await desktop.wait(2000);
+    await desktop.delay(2000);
   },
 });
 
@@ -49,12 +49,12 @@ const typeGreeting = createStep({
   execute: async ({ desktop, input, logger }) => {
     logger.info(`👋 Typing greeting for ${input.userName}...`);
 
-    const textbox = desktop.locator('role:Edit');
-    await textbox.type(`Hello, ${input.userName}!\n\n`);
+    const textbox = await desktop.locator('role:Edit').first(5000);
+    textbox.typeText(`Hello, ${input.userName}!\n\n`);
 
     if (input.includeDate) {
       const date = new Date().toLocaleDateString();
-      await textbox.type(`Date: ${date}\n`);
+      textbox.typeText(`Date: ${date}\n`);
     }
   },
 });

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-// Re-export types from @mediar/terminator
-export type { Desktop, Locator, Element } from '@mediar/terminator';
+// Re-export types from terminator.js
+export type { Desktop, Locator, Element } from 'terminator.js';
 
 /**
  * Logger interface
@@ -31,7 +31,7 @@ export interface WorkflowContext {
  */
 export interface StepContext<TInput = any> {
   /** Desktop automation instance */
-  desktop: import('@mediar/terminator').Desktop;
+  desktop: import('terminator.js').Desktop;
   /** Workflow input (validated by Zod schema) */
   input: TInput;
   /** Shared workflow context */
@@ -47,7 +47,7 @@ export interface ErrorContext<TInput = any, TOutput = any> {
   /** The error that occurred */
   error: Error;
   /** Desktop instance for recovery actions */
-  desktop: import('@mediar/terminator').Desktop;
+  desktop: import('terminator.js').Desktop;
   /** Retry the step execution */
   retry: () => Promise<TOutput>;
   /** Current attempt number (0-indexed) */
@@ -183,7 +183,7 @@ export interface Workflow<TInput = any> {
   /** Run the workflow */
   run(
     input: TInput,
-    desktop?: import('@mediar/terminator').Desktop,
+    desktop?: import('terminator.js').Desktop,
     logger?: Logger
   ): Promise<void>;
 

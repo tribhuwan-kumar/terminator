@@ -1,5 +1,5 @@
 {
-  "name": "@mediar/terminator-workflow",
+  "name": "terminator-workflow",
   "version": "0.1.0",
   "description": "TypeScript workflow SDK for Terminator",
   "main": "dist/index.js",
@@ -28,6 +28,6 @@
     "@types/jest": "^29.5.11"
   },
   "peerDependencies": {
-    "@mediar/terminator": "^0.19.0"
+    "terminator.js": "^0.19.0"
   }
 }

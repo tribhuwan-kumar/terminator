@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Desktop } from '@mediar/terminator';
+import type { Desktop } from 'terminator.js';
 import {
   Workflow,
   WorkflowConfig,
@@ -103,15 +103,15 @@ function createWorkflowInstance<TInput = any>(
         variables: validatedInput,
       };
 
-      // Get desktop instance (either passed or import from @mediar/terminator)
+      // Get desktop instance (either passed or import from terminator.js)
       let desktopInstance = desktop;
       if (!desktopInstance) {
         try {
-          // Try to import Desktop from @mediar/terminator
-          const { Desktop } = await import('@mediar/terminator');
+          // Try to import Desktop from terminator.js
+          const { Desktop } = await import('terminator.js');
           desktopInstance = new Desktop();
         } catch (error) {
-          log.error('❌ No desktop instance provided and @mediar/terminator not available');
+          log.error('❌ No desktop instance provided and terminator.js not available');
           throw new Error('Desktop instance required');
         }
       }
