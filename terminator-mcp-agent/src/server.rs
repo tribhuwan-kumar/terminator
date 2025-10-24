@@ -363,6 +363,115 @@ impl DesktopWrapper {
         })
     }
 
+    /// Detect if a PID belongs to a browser process
+    fn detect_browser_by_pid(pid: u32) -> bool {
+        const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
+            "chrome", "firefox", "msedge", "edge", "iexplore", "opera", "brave", "vivaldi",
+            "browser", "arc", "explorer",
+        ];
+
+        #[cfg(target_os = "windows")]
+        {
+            use terminator::get_process_name_by_pid;
+            if let Ok(process_name) = get_process_name_by_pid(pid as i32) {
+                let process_name_lower = process_name.to_lowercase();
+                return KNOWN_BROWSER_PROCESS_NAMES
+                    .iter()
+                    .any(|&browser| process_name_lower.contains(browser));
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = pid; // Suppress unused warning
+        }
+
+        false
+    }
+
+    /// Capture all visible DOM elements from the current browser tab
+    async fn capture_browser_dom_elements(&self) -> Result<Vec<serde_json::Value>, String> {
+        // Script to extract all visible, interactive elements
+        let script = r#"
+(function() {
+    const elements = [];
+    const maxElements = 100; // Limit to prevent huge responses
+
+    // Get all interactive elements
+    const selectors = [
+        'a[href]',
+        'button',
+        'input',
+        'select',
+        'textarea',
+        '[role="button"]',
+        '[role="link"]',
+        '[role="tab"]',
+        '[role="menuitem"]',
+        '[onclick]'
+    ];
+
+    const allElements = document.querySelectorAll(selectors.join(','));
+
+    for (let i = 0; i < Math.min(allElements.length, maxElements); i++) {
+        const el = allElements[i];
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+
+        // Only include visible elements
+        if (style.display === 'none' ||
+            style.visibility === 'hidden' ||
+            style.opacity === '0' ||
+            rect.width === 0 ||
+            rect.height === 0) {
+            continue;
+        }
+
+        elements.push({
+            tag: el.tagName.toLowerCase(),
+            id: el.id || null,
+            classes: Array.from(el.classList),
+            text: el.innerText ? el.innerText.substring(0, 100).trim() : null,
+            href: el.href || null,
+            type: el.type || null,
+            name: el.name || null,
+            value: el.value || null,
+            placeholder: el.placeholder || null,
+            aria_label: el.getAttribute('aria-label'),
+            role: el.getAttribute('role'),
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
+        });
+    }
+
+    return JSON.stringify({
+        elements: elements,
+        total_found: allElements.length,
+        page_url: window.location.href,
+        page_title: document.title
+    });
+})()
+"#;
+
+        match self.desktop.execute_browser_script(script).await {
+            Ok(result_str) => {
+                match serde_json::from_str::<serde_json::Value>(&result_str) {
+                    Ok(result) => {
+                        if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
+                            Ok(elements.clone())
+                        } else {
+                            Ok(vec![])
+                        }
+                    }
+                    Err(e) => Err(format!("Failed to parse DOM elements: {}", e)),
+                }
+            }
+            Err(e) => Err(format!("Failed to execute browser script: {}", e)),
+        }
+    }
+
     #[tool(
         description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" to get subtrees, and tree_output_format: \"compact_yaml\" (default, readable) or \"verbose_json\" (full data). This is a read-only operation."
     )]
@@ -384,6 +493,9 @@ impl DesktopWrapper {
                 .to_string(),
         );
 
+        // Detect if this is a browser window
+        let is_browser = Self::detect_browser_by_pid(args.pid);
+
         // Build the base result JSON first
         let mut result_json = json!({
             "action": "get_window_tree",
@@ -394,6 +506,27 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
+
+        // Add browser detection metadata
+        if is_browser {
+            result_json["is_browser"] = json!(true);
+            info!("Browser window detected for PID {}", args.pid);
+
+            // Try to capture DOM elements from browser
+            match self.capture_browser_dom_elements().await {
+                Ok(dom_elements) if !dom_elements.is_empty() => {
+                    result_json["browser_dom_elements"] = json!(dom_elements);
+                    result_json["browser_dom_count"] = json!(dom_elements.len());
+                    info!("Captured {} DOM elements from browser", dom_elements.len());
+                }
+                Ok(_) => {
+                    info!("Browser detected but no DOM elements captured (extension may not be available)");
+                }
+                Err(e) => {
+                    warn!("Failed to capture browser DOM: {}", e);
+                }
+            }
+        }
 
         // Force include_tree to default to true for this tool
         // Use maybe_attach_tree to handle tree extraction with from_selector support
