@@ -600,6 +600,30 @@ impl DesktopWrapper {
             "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
 
+        // Detect if this is a browser window
+        let is_browser = Self::detect_browser_by_pid(pid);
+
+        // Add browser detection metadata
+        if is_browser {
+            result_json["is_browser"] = json!(true);
+            info!("Browser window detected for PID {}", pid);
+
+            // Try to capture DOM elements from browser
+            match self.capture_browser_dom_elements().await {
+                Ok(dom_elements) if !dom_elements.is_empty() => {
+                    result_json["browser_dom_elements"] = json!(dom_elements);
+                    result_json["browser_dom_count"] = json!(dom_elements.len());
+                    info!("Captured {} DOM elements from browser", dom_elements.len());
+                }
+                Ok(_) => {
+                    info!("Browser detected but no DOM elements captured (extension may not be available)");
+                }
+                Err(e) => {
+                    warn!("Failed to capture browser DOM: {}", e);
+                }
+            }
+        }
+
         // Use maybe_attach_tree to handle tree extraction with from_selector support
         crate::helpers::maybe_attach_tree(
             &self.desktop,
