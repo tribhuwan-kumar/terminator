@@ -217,6 +217,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Update npm dist-tag to latest
+        run: |
+          cd terminator-mcp-agent
+          VERSION=$(node -p "require('./package.json').version")
+          npm dist-tag add terminator-mcp-agent@$VERSION latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   github-release:
     name: Publish GitHub Release for MCP Agent
     needs: build
