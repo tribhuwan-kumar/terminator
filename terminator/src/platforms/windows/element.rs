@@ -597,12 +597,15 @@ impl UIElementImpl for WindowsUIElement {
         // These can be loaded on-demand when specifically requested
 
         // Return minimal attribute set for maximum performance
+        // Note: application_name is NOT populated here to avoid expensive calls
+        // It will be populated by tree builder or when explicitly requested
         UIElementAttributes {
             role,
             name,
             label: None,                 // Deferred - load on demand
             value: None,                 // Deferred - load on demand
             description: None,           // Deferred - load on demand
+            application_name: None,      // Deferred - populated by tree builder
             properties,                  // Minimal properties only
             is_keyboard_focusable: None, // Deferred - load on demand
             is_focused: None,            // Deferred - load on demand

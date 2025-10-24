@@ -10,7 +10,7 @@ fn ui_node_to_serializable(node: &UINode) -> SerializableUIElement {
         bounds: node.attributes.bounds,
         value: node.attributes.value.clone(),
         description: node.attributes.description.clone(),
-        application: None,
+        application: node.attributes.application_name.clone(),
         window_title: None,
         url: None,
         process_id: None,

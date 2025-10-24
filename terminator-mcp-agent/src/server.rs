@@ -1223,6 +1223,8 @@ impl DesktopWrapper {
             span.set_attribute("element.window_title", window_title.clone());
         }
 
+        let element_info = build_element_info(&element);
+
         let mut result_json = json!({
             "action": "click",
             "status": "success",
@@ -1232,12 +1234,7 @@ impl DesktopWrapper {
                 "coordinates": click_result.coordinates,
                 "details": click_result.details,
             },
-            "element": {
-                "role": element.role(),
-                "name": element.name(),
-                "bounds": element.bounds().ok(),
-                "window_title": element.window_title()
-            },
+            "element": element_info,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 

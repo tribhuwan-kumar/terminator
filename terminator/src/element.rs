@@ -228,6 +228,8 @@ pub struct UIElementAttributes {
     pub value: Option<String>,
     #[serde(default, skip_serializing_if = "is_empty_string")]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "is_empty_string")]
+    pub application_name: Option<String>,
     #[serde(default, skip_serializing_if = "is_empty_properties")]
     pub properties: HashMap<String, Option<serde_json::Value>>,
     #[serde(default, skip_serializing_if = "is_false_bool")]
@@ -1494,6 +1496,7 @@ pub mod utils {
             name: element.name(),
             text: None,
             value: element.attributes().value,
+            application_name: None, // Deferred - avoid expensive calls
             bounds: None, // Not included in minimal attributes
             ..Default::default()
         }
