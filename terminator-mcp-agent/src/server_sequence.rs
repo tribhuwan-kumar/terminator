@@ -238,6 +238,32 @@ impl DesktopWrapper {
         serde_json::Value::Object(flattened_map)
     }
 
+    /// Deep merge JSON values - recursively merges objects, overwrites other types
+    /// This matches the Python executor's deep_merge behavior:
+    /// - For objects: recursively merge keys from source into target
+    /// - For other types: source value overwrites target value
+    fn deep_merge_json(target: &mut serde_json::Map<String, Value>, source: &Value) {
+        if let Some(source_obj) = source.as_object() {
+            for (key, source_value) in source_obj {
+                if let Some(target_value) = target.get_mut(key) {
+                    // Key exists in target
+                    if target_value.is_object() && source_value.is_object() {
+                        // Both are objects - recursively merge
+                        if let Some(target_obj) = target_value.as_object_mut() {
+                            Self::deep_merge_json(target_obj, source_value);
+                        }
+                    } else {
+                        // Not both objects - source overwrites target
+                        *target_value = source_value.clone();
+                    }
+                } else {
+                    // Key doesn't exist in target - add it
+                    target.insert(key.clone(), source_value.clone());
+                }
+            }
+        }
+    }
+
     pub async fn execute_sequence_impl(
         &self,
         peer: Peer<RoleServer>,
@@ -1155,11 +1181,28 @@ impl DesktopWrapper {
                             // Extract default values from VariableDefinition objects for consistency
                             if let Some(workflow_vars) = &args.variables {
                                 let mut resolved_vars = serde_json::Map::new();
+
+                                // Step 1: Start with defaults from variable schema
                                 for (key, def) in workflow_vars {
                                     if let Some(default_value) = &def.default {
                                         resolved_vars.insert(key.clone(), default_value.clone());
                                     }
                                 }
+
+                                // Step 2: Deep merge runtime inputs (overrides defaults)
+                                // This allows UI-provided parameters to override variable defaults
+                                if let Some(inputs) = &args.inputs {
+                                    tracing::debug!(
+                                        "[workflow_variables] Before merge: {}",
+                                        serde_json::to_string(&resolved_vars).unwrap_or_default()
+                                    );
+                                    Self::deep_merge_json(&mut resolved_vars, inputs);
+                                    tracing::debug!(
+                                        "[workflow_variables] After merge: {}",
+                                        serde_json::to_string(&resolved_vars).unwrap_or_default()
+                                    );
+                                }
+
                                 env_obj.insert(
                                     "_workflow_variables".to_string(),
                                     json!(resolved_vars),
