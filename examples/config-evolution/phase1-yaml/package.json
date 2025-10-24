@@ -1,0 +1,17 @@
+{
+  "name": "phase1-yaml-workflow",
+  "version": "1.0.0",
+  "description": "Phase 1: YAML + TypeScript workflow example",
+  "type": "commonjs",
+  "scripts": {
+    "start": "tsx workflow.ts",
+    "dev": "tsx watch workflow.ts"
+  },
+  "dependencies": {
+    "@mediar/terminator": "^0.19.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
