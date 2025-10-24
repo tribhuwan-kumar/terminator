@@ -604,6 +604,7 @@ async fn main() -> Result<()> {
             let mut router: Router = Router::new()
                 .route("/", get(root_handler))
                 .route("/health", get(health_check))
+                .route("/ready", get(readiness_check))
                 .route("/status", get(status_handler))
                 .nest("/mcp", mcp_router)
                 .with_state(app_state.clone());
@@ -667,7 +668,43 @@ async fn root_handler() -> impl axum::response::IntoResponse {
 }
 
 async fn health_check() -> impl axum::response::IntoResponse {
+    // Lightweight liveness check - confirms process is alive and HTTP server is responding
+    // Does NOT perform expensive UIAutomation API checks that can block during workflows
+    //
+    // Use cases:
+    // - Azure Load Balancer health probes (frequent, every 5-15s)
+    // - mediar-app health monitoring (every 30s)
+    // - Kubernetes liveness probes
+    //
+    // For deep UIAutomation API validation, use /ready endpoint instead
+
+    let response_body = serde_json::json!({
+        "status": "healthy",
+        "message": "MCP server process is alive and responding",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+        "endpoints": {
+            "/health": "Liveness check (this endpoint)",
+            "/ready": "Readiness check with full UIAutomation validation",
+            "/status": "Concurrency and load status"
+        }
+    });
+
+    (axum::http::StatusCode::OK, axum::Json(response_body))
+}
+
+async fn readiness_check() -> impl axum::response::IntoResponse {
     use terminator::health::{check_automation_health, HealthStatus};
+
+    // Deep readiness check - validates UIAutomation API is functional and ready to serve requests
+    // This performs expensive checks (500ms-5s) and may be slow during heavy automation workloads
+    //
+    // Use cases:
+    // - Pre-deployment validation
+    // - Diagnostics and troubleshooting
+    // - Kubernetes readiness probes (less frequent)
+    // - Manual health verification
+    //
+    // NOT recommended for frequent automated monitoring - use /health instead
 
     // Get bridge health status
     let bridge_health = terminator::extension_bridge::ExtensionBridge::health_status().await;
@@ -678,9 +715,9 @@ async fn health_check() -> impl axum::response::IntoResponse {
     // Build response body
     let response_body = serde_json::json!({
         "status": match automation_health.status {
-            HealthStatus::Healthy => "healthy",
+            HealthStatus::Healthy => "ready",
             HealthStatus::Degraded => "degraded",
-            HealthStatus::Unhealthy => "unhealthy",
+            HealthStatus::Unhealthy => "not_ready",
         },
         "extension_bridge": bridge_health,
         "automation": {

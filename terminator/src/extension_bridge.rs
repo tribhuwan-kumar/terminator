@@ -191,7 +191,7 @@ impl ExtensionBridge {
                     eprintln!("[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...");
                     tracing::info!("Checking for terminator-mcp-agent in parent chain...");
                     if let Some(ancestor_pid) = Self::find_terminator_ancestor().await {
-                        eprintln!("[SUBPROCESS DEBUG] Found ancestor PID: {}", ancestor_pid);
+                        eprintln!("[SUBPROCESS DEBUG] Found ancestor PID: {ancestor_pid}");
                         tracing::info!(
                             "Detected terminator-mcp-agent ancestor process (PID: {}). \
                             Port {} is in use by parent process. \
@@ -205,7 +205,7 @@ impl ExtensionBridge {
                             port,
                             source: std::io::Error::new(
                                 std::io::ErrorKind::AddrInUse,
-                                format!("Port {} is in use by parent MCP agent process {}. executeBrowserScript() cannot be used from run_command context. Use execute_browser_script MCP tool instead.", port, ancestor_pid)
+                                format!("Port {port} is in use by parent MCP agent process {ancestor_pid}. executeBrowserScript() cannot be used from run_command context. Use execute_browser_script MCP tool instead.")
                             )
                         });
                     }
@@ -510,11 +510,11 @@ impl ExtensionBridge {
 
         // Traverse the parent chain
         let mut checking_pid = current_pid;
-        eprintln!("[SUBPROCESS DEBUG] Starting parent chain traversal from PID {}", current_pid);
-        tracing::info!("Starting parent chain traversal from PID {}", current_pid);
+        eprintln!("[SUBPROCESS DEBUG] Starting parent chain traversal from PID {current_pid}");
+        tracing::info!("Starting parent chain traversal from PID {current_pid}");
         for iteration in 0..10 {
-            eprintln!("[SUBPROCESS DEBUG] Iteration {}: checking PID {}", iteration, checking_pid);
-            tracing::debug!("Iteration {}: checking PID {}", iteration, checking_pid);
+            eprintln!("[SUBPROCESS DEBUG] Iteration {iteration}: checking PID {checking_pid}");
+            tracing::debug!("Iteration {iteration}: checking PID {checking_pid}");
             // Limit depth to prevent infinite loops
             // Get parent PID using wmic
             let output = Command::new("wmic")
@@ -546,7 +546,7 @@ impl ExtensionBridge {
 
                 // Try to find ParentProcessId (should be a number)
                 let mut parent_pid_opt = None;
-                let mut has_terminator = data_line.to_lowercase().contains("terminator-mcp-agent");
+                let has_terminator = data_line.to_lowercase().contains("terminator-mcp-agent");
 
                 for part in &parts {
                     if let Ok(pid) = part.parse::<u32>() {
@@ -583,6 +583,7 @@ impl ExtensionBridge {
     }
 
     /// Check if the given PID is our parent process or an ancestor
+    #[allow(dead_code)]
     #[cfg(target_os = "windows")]
     async fn is_parent_or_ancestor_process(target_pid: u32) -> bool {
         use tokio::process::Command;

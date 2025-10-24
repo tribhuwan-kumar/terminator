@@ -71,8 +71,7 @@ pub async fn start_recording(
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8082".to_string());
     let websocket_url = format!(
-        "ws://127.0.0.1:{}/api/recording/events?session={}",
-        port, session_id
+        "ws://127.0.0.1:{port}/api/recording/events?session={session_id}"
     );
 
     let response = StartRecordingResponse {

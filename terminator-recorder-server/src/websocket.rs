@@ -43,7 +43,7 @@ async fn handle_socket(socket: WebSocket, session_id: String, manager: Arc<Recor
         Err(e) => {
             error!("❌ Failed to subscribe to events: {}", e);
             let error_msg = WebSocketMessage::Error {
-                message: format!("Failed to subscribe: {}", e),
+                message: format!("Failed to subscribe: {e}"),
             };
             let _ = sender
                 .send(Message::Text(

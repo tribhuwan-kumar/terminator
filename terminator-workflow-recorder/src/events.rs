@@ -562,8 +562,8 @@ impl UIElementInfo {
 
         // Generate basic selector for this parent element
         let selector = match &name {
-            Some(n) if !n.is_empty() => format!("role:{}|name:{}", role, n),
-            _ => format!("role:{}", role),
+            Some(n) if !n.is_empty() => format!("role:{role}|name:{n}"),
+            _ => format!("role:{role}"),
         };
 
         Self {
