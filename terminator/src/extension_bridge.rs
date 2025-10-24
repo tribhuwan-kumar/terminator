@@ -186,6 +186,30 @@ impl ExtensionBridge {
                         "Port in use, checking for existing terminator process..."
                     );
 
+                    // Check if ANY terminator-mcp-agent process is in our parent chain
+                    // This handles the case where we're in a subprocess (e.g., run_command)
+                    eprintln!("[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...");
+                    tracing::info!("Checking for terminator-mcp-agent in parent chain...");
+                    if let Some(ancestor_pid) = Self::find_terminator_ancestor().await {
+                        eprintln!("[SUBPROCESS DEBUG] Found ancestor PID: {}", ancestor_pid);
+                        tracing::info!(
+                            "Detected terminator-mcp-agent ancestor process (PID: {}). \
+                            Port {} is in use by parent process. \
+                            executeBrowserScript() cannot be used from run_command context - \
+                            use execute_browser_script MCP tool instead.",
+                            ancestor_pid,
+                            port
+                        );
+                        // Don't try to kill parent - just return error immediately
+                        return Err(ExtensionBridgeError::PortBindError {
+                            port,
+                            source: std::io::Error::new(
+                                std::io::ErrorKind::AddrInUse,
+                                format!("Port {} is in use by parent MCP agent process {}. executeBrowserScript() cannot be used from run_command context. Use execute_browser_script MCP tool instead.", port, ancestor_pid)
+                            )
+                        });
+                    }
+
                     // Try to find and kill existing terminator process
                     if let Some(pid) = Self::find_process_on_port(port).await {
                         tracing::info!(
@@ -475,6 +499,146 @@ impl ExtensionBridge {
         }
     }
 
+    /// Find any terminator-mcp-agent process in our parent chain
+    /// Returns the PID if found, None otherwise
+    #[cfg(target_os = "windows")]
+    async fn find_terminator_ancestor() -> Option<u32> {
+        use tokio::process::Command;
+
+        // Get current process ID
+        let current_pid = std::process::id();
+
+        // Traverse the parent chain
+        let mut checking_pid = current_pid;
+        eprintln!("[SUBPROCESS DEBUG] Starting parent chain traversal from PID {}", current_pid);
+        tracing::info!("Starting parent chain traversal from PID {}", current_pid);
+        for iteration in 0..10 {
+            eprintln!("[SUBPROCESS DEBUG] Iteration {}: checking PID {}", iteration, checking_pid);
+            tracing::debug!("Iteration {}: checking PID {}", iteration, checking_pid);
+            // Limit depth to prevent infinite loops
+            // Get parent PID using wmic
+            let output = Command::new("wmic")
+                .args([
+                    "process",
+                    "where",
+                    &format!("ProcessID={checking_pid}"),
+                    "get",
+                    "ParentProcessId,Name",
+                ])
+                .output()
+                .await
+                .ok()?;
+
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            // Parse output like:
+            // Name                          ParentProcessId
+            // bun.exe                       12345
+            //
+            // OR:
+            // ParentProcessId  Name
+            // 12345            bun.exe
+
+            let lines: Vec<&str> = output_str.lines().filter(|l| !l.trim().is_empty()).collect();
+            if lines.len() >= 2 {
+                // Skip header line, process data line
+                let data_line = lines[1].trim();
+                let parts: Vec<&str> = data_line.split_whitespace().collect();
+
+                // Try to find ParentProcessId (should be a number)
+                let mut parent_pid_opt = None;
+                let mut has_terminator = data_line.to_lowercase().contains("terminator-mcp-agent");
+
+                for part in &parts {
+                    if let Ok(pid) = part.parse::<u32>() {
+                        parent_pid_opt = Some(pid);
+                        break;
+                    }
+                }
+
+                if let Some(parent_pid) = parent_pid_opt {
+                    if parent_pid == 0 || parent_pid == checking_pid {
+                        // Reached root or circular reference
+                        break;
+                    }
+
+                    // Check if current process is terminator-mcp-agent
+                    if has_terminator {
+                        tracing::info!(
+                            "Found terminator-mcp-agent ancestor at PID {} (current_pid={}, checking_pid={})",
+                            checking_pid,
+                            current_pid,
+                            checking_pid
+                        );
+                        return Some(checking_pid);
+                    }
+
+                    checking_pid = parent_pid;
+                    continue;
+                }
+            }
+            break;
+        }
+
+        None
+    }
+
+    /// Check if the given PID is our parent process or an ancestor
+    #[cfg(target_os = "windows")]
+    async fn is_parent_or_ancestor_process(target_pid: u32) -> bool {
+        use tokio::process::Command;
+
+        // Get current process ID
+        let current_pid = std::process::id();
+
+        // Traverse the parent chain
+        let mut checking_pid = current_pid;
+        for _ in 0..10 {
+            // Limit depth to prevent infinite loops
+            // Get parent PID using wmic
+            let output = Command::new("wmic")
+                .args([
+                    "process",
+                    "where",
+                    &format!("ProcessID={checking_pid}"),
+                    "get",
+                    "ParentProcessId",
+                ])
+                .output()
+                .await
+                .ok();
+
+            if let Some(output) = output {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                // Parse the parent PID from output like:
+                // ParentProcessId
+                // 12345
+                let lines: Vec<&str> = output_str.lines().collect();
+                if lines.len() >= 2 {
+                    if let Ok(parent_pid) = lines[1].trim().parse::<u32>() {
+                        if parent_pid == target_pid {
+                            tracing::debug!(
+                                "Found target PID {} in parent chain (current_pid={}, checking_pid={})",
+                                target_pid,
+                                current_pid,
+                                checking_pid
+                            );
+                            return true;
+                        }
+                        if parent_pid == 0 || parent_pid == checking_pid {
+                            // Reached root or circular reference
+                            break;
+                        }
+                        checking_pid = parent_pid;
+                        continue;
+                    }
+                }
+            }
+            break;
+        }
+
+        false
+    }
+
     #[cfg(not(target_os = "windows"))]
     async fn is_terminator_process(pid: u32) -> bool {
         use tokio::process::Command;
@@ -491,6 +655,99 @@ impl ExtensionBridge {
         } else {
             false
         }
+    }
+
+    /// Find any terminator-mcp-agent process in our parent chain (Unix version)
+    #[cfg(not(target_os = "windows"))]
+    async fn find_terminator_ancestor() -> Option<u32> {
+        use tokio::process::Command;
+
+        // Get current process ID
+        let current_pid = std::process::id();
+
+        // Traverse the parent chain
+        let mut checking_pid = current_pid;
+        for _ in 0..10 {
+            // Get parent PID and command
+            let output = Command::new("ps")
+                .args(&["-p", &checking_pid.to_string(), "-o", "ppid=,comm="])
+                .output()
+                .await
+                .ok()?;
+
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            let parts: Vec<&str> = output_str.trim().split_whitespace().collect();
+
+            if parts.len() >= 2 {
+                if let Ok(parent_pid) = parts[0].parse::<u32>() {
+                    if parent_pid <= 1 || parent_pid == checking_pid {
+                        break;
+                    }
+
+                    // Check if parent is terminator
+                    let comm = parts[1];
+                    if comm.contains("terminator") {
+                        tracing::debug!(
+                            "Found terminator ancestor at PID {} (current_pid={})",
+                            parent_pid,
+                            current_pid
+                        );
+                        return Some(parent_pid);
+                    }
+
+                    checking_pid = parent_pid;
+                    continue;
+                }
+            }
+            break;
+        }
+
+        None
+    }
+
+    /// Check if the given PID is our parent process or an ancestor (Unix version)
+    #[cfg(not(target_os = "windows"))]
+    async fn is_parent_or_ancestor_process(target_pid: u32) -> bool {
+        use tokio::process::Command;
+
+        // Get current process ID
+        let current_pid = std::process::id();
+
+        // Traverse the parent chain
+        let mut checking_pid = current_pid;
+        for _ in 0..10 {
+            // Limit depth to prevent infinite loops
+            // Get parent PID using ps
+            let output = Command::new("ps")
+                .args(&["-p", &checking_pid.to_string(), "-o", "ppid="])
+                .output()
+                .await
+                .ok();
+
+            if let Some(output) = output {
+                let output_str = String::from_utf8_lossy(&output.stdout);
+                if let Ok(parent_pid) = output_str.trim().parse::<u32>() {
+                    if parent_pid == target_pid {
+                        tracing::debug!(
+                            "Found target PID {} in parent chain (current_pid={}, checking_pid={})",
+                            target_pid,
+                            current_pid,
+                            checking_pid
+                        );
+                        return true;
+                    }
+                    if parent_pid <= 1 || parent_pid == checking_pid {
+                        // Reached init or circular reference
+                        break;
+                    }
+                    checking_pid = parent_pid;
+                    continue;
+                }
+            }
+            break;
+        }
+
+        false
     }
 
     #[cfg(target_os = "windows")]
