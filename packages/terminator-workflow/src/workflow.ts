@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Desktop } from 'terminator.js';
-import {
+import { Desktop } from 'terminator.js';
+import type {
   Workflow,
   WorkflowConfig,
   Step,
@@ -103,18 +103,8 @@ function createWorkflowInstance<TInput = any>(
         variables: validatedInput,
       };
 
-      // Get desktop instance (either passed or import from terminator.js)
-      let desktopInstance = desktop;
-      if (!desktopInstance) {
-        try {
-          // Try to import Desktop from terminator.js
-          const { Desktop } = await import('terminator.js');
-          desktopInstance = new Desktop();
-        } catch (error) {
-          log.error('❌ No desktop instance provided and terminator.js not available');
-          throw new Error('Desktop instance required');
-        }
-      }
+      // Get desktop instance (either passed or create new one)
+      const desktopInstance = desktop || new Desktop();
 
       try {
         // Execute steps sequentially
@@ -124,7 +114,7 @@ function createWorkflowInstance<TInput = any>(
           log.info(`[${i + 1}/${steps.length}] ${step.config.name}`);
 
           await step.run({
-            desktop: desktopInstance!,
+            desktop: desktopInstance,
             input: validatedInput,
             context,
             logger: log,
