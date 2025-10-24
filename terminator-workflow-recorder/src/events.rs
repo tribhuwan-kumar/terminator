@@ -606,6 +606,49 @@ pub fn build_parent_hierarchy(element: &UIElement) -> Vec<UIElementInfo> {
     hierarchy
 }
 
+/// Build chained selector from parent hierarchy and target element
+/// Returns selector like: role:Window|name:contains:Chrome >> role:Pane >> role:Button|name:contains:Submit
+/// Uses only named parents (unnamed parents are already filtered by build_parent_hierarchy)
+pub fn build_chained_selector(
+    parent_hierarchy: &[UIElementInfo],
+    target_element: &UIElement,
+) -> Option<String> {
+    if parent_hierarchy.is_empty() {
+        return None;
+    }
+
+    let mut path_parts = Vec::new();
+
+    // Add each parent in the hierarchy chain
+    for parent in parent_hierarchy {
+        let selector = if let Some(ref name) = parent.name {
+            if !name.is_empty() {
+                // Use contains for more flexible matching
+                format!("role:{}|name:contains:{}", parent.role, name)
+            } else {
+                format!("role:{}", parent.role)
+            }
+        } else {
+            format!("role:{}", parent.role)
+        };
+        path_parts.push(selector);
+    }
+
+    // Add the target element itself
+    let target_role = target_element.role();
+    let target_name = target_element.name().unwrap_or_default();
+
+    let target_selector = if !target_name.is_empty() {
+        format!("role:{}|name:contains:{}", target_role, target_name)
+    } else {
+        format!("role:{}", target_role)
+    };
+    path_parts.push(target_selector);
+
+    // Join with >> operator for full path
+    Some(path_parts.join(" >> "))
+}
+
 /// Enhanced UI element capture with MCP context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancedUIElement {
@@ -613,8 +656,8 @@ pub struct EnhancedUIElement {
     pub ui_element: UIElement,
     /// Generated selector options for MCP tools
     pub suggested_selectors: Vec<String>,
-    /// Parent hierarchy for context
-    pub parent_hierarchy: Vec<UIElementInfo>,
+    /// Chained selector from parent hierarchy to target element (e.g., "role:Window|name:contains:Chrome >> role:Pane >> role:Button|name:contains:Submit")
+    pub chained_selector: Option<String>,
     /// Interaction context analysis
     pub interaction_context: InteractionContext,
 }
@@ -823,11 +866,17 @@ pub enum ApplicationSwitchMethod {
 /// High-level application switch event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplicationSwitchEvent {
-    /// The application being switched from
+    /// The window and application name being switched from (combined UI Automation name)
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub from_application: Option<String>,
-    /// The application being switched to
-    pub to_application: String,
+    pub from_window_and_application_name: Option<String>,
+    /// The window and application name being switched to (combined UI Automation name)
+    pub to_window_and_application_name: String,
+    /// Process name of the source application (e.g., "chrome.exe")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_process_name: Option<String>,
+    /// Process name of the target application (e.g., "notepad.exe")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_process_name: Option<String>,
     /// Process ID of the source application
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_process_id: Option<u32>,
