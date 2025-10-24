@@ -391,54 +391,56 @@ impl DesktopWrapper {
 
     /// Capture all visible DOM elements from the current browser tab
     async fn capture_browser_dom_elements(&self) -> Result<Vec<serde_json::Value>, String> {
-        // Script to extract all visible, interactive elements
+        // Script to extract ALL visible elements using TreeWalker
         let script = r#"
 (function() {
     const elements = [];
     const maxElements = 100; // Limit to prevent huge responses
 
-    // Get all interactive elements
-    const selectors = [
-        'a[href]',
-        'button',
-        'input',
-        'select',
-        'textarea',
-        '[role="button"]',
-        '[role="link"]',
-        '[role="tab"]',
-        '[role="menuitem"]',
-        '[onclick]'
-    ];
+    // Use TreeWalker to traverse ALL elements in the DOM
+    const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_ELEMENT,
+        {
+            acceptNode: function(node) {
+                // Check if element is visible
+                const style = window.getComputedStyle(node);
+                const rect = node.getBoundingClientRect();
 
-    const allElements = document.querySelectorAll(selectors.join(','));
+                if (style.display === 'none' ||
+                    style.visibility === 'hidden' ||
+                    style.opacity === '0' ||
+                    rect.width === 0 ||
+                    rect.height === 0) {
+                    return NodeFilter.FILTER_SKIP;
+                }
 
-    for (let i = 0; i < Math.min(allElements.length, maxElements); i++) {
-        const el = allElements[i];
-        const rect = el.getBoundingClientRect();
-        const style = window.getComputedStyle(el);
+                return NodeFilter.FILTER_ACCEPT;
+            }
+        }
+    );
 
-        // Only include visible elements
-        if (style.display === 'none' ||
-            style.visibility === 'hidden' ||
-            style.opacity === '0' ||
-            rect.width === 0 ||
-            rect.height === 0) {
-            continue;
+    let node;
+    while (node = walker.nextNode()) {
+        if (elements.length >= maxElements) {
+            break;
         }
 
+        const rect = node.getBoundingClientRect();
+        const text = node.innerText ? node.innerText.substring(0, 100).trim() : null;
+
         elements.push({
-            tag: el.tagName.toLowerCase(),
-            id: el.id || null,
-            classes: Array.from(el.classList),
-            text: el.innerText ? el.innerText.substring(0, 100).trim() : null,
-            href: el.href || null,
-            type: el.type || null,
-            name: el.name || null,
-            value: el.value || null,
-            placeholder: el.placeholder || null,
-            aria_label: el.getAttribute('aria-label'),
-            role: el.getAttribute('role'),
+            tag: node.tagName.toLowerCase(),
+            id: node.id || null,
+            classes: Array.from(node.classList),
+            text: text,
+            href: node.href || null,
+            type: node.type || null,
+            name: node.name || null,
+            value: node.value || null,
+            placeholder: node.placeholder || null,
+            aria_label: node.getAttribute('aria-label'),
+            role: node.getAttribute('role'),
             x: Math.round(rect.x),
             y: Math.round(rect.y),
             width: Math.round(rect.width),
@@ -448,7 +450,7 @@ impl DesktopWrapper {
 
     return JSON.stringify({
         elements: elements,
-        total_found: allElements.length,
+        total_found: elements.length,
         page_url: window.location.href,
         page_title: document.title
     });
