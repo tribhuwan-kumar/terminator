@@ -6,14 +6,13 @@ pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
     DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, GetApplicationsArgs,
-    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs, HighlightConfig,
+    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs,
     HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
-    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RecordWorkflowArgs, RunCommandArgs,
+    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
     ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
     SetValueArgs, SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs,
     WaitForElementArgs,
 };
-use futures::StreamExt;
 use image::{ExtendedColorType, ImageEncoder};
 use regex::Regex;
 use rmcp::handler::server::wrapper::Parameters;
@@ -30,7 +29,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::{ProcessesToUpdate, System};
 use terminator::{AutomationError, Browser, Desktop, Selector, UIElement};
-use terminator_workflow_recorder::{PerformanceMode, WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -359,7 +357,6 @@ impl DesktopWrapper {
             desktop: Arc::new(desktop),
             tool_router: Self::tool_router(),
             request_manager: crate::cancellation::RequestManager::new(),
-            recorder: Arc::new(Mutex::new(None)),
             active_highlights: Arc::new(Mutex::new(Vec::new())),
             log_capture,
             current_workflow_dir: Arc::new(Mutex::new(None)),
@@ -4263,292 +4260,6 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
         ))
     }
 
-    #[tool(
-        description = "Records a user's UI interactions into a reusable workflow file with optional visual highlighting. Use action: 'start' to begin recording (with enable_highlighting for real-time visual feedback) and 'stop' to end, save, and get MCP-ready sequences. Captures clicks, typing, selections, window switches, and more."
-    )]
-    pub async fn record_workflow(
-        &self,
-        Parameters(args): Parameters<RecordWorkflowArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("record_workflow", None);
-
-        let mut recorder_guard = self.recorder.lock().await;
-
-        match args.action.as_str() {
-            "start" => {
-                if recorder_guard.is_some() {
-                    return Err(McpError::invalid_params(
-                        "Recording is already in progress. Please stop the current recording first.",
-                        None,
-                    ));
-                }
-
-                let workflow_name = args.workflow_name.ok_or_else(|| {
-                    McpError::invalid_params(
-                        "`workflow_name` is required to start recording.",
-                        None,
-                    )
-                })?;
-
-                let config = if args.low_energy_mode.unwrap_or(false) {
-                    // This uses a config optimized for performance, which importantly disables
-                    // text input completion tracking, a feature the user found caused lag.
-                    PerformanceMode::low_energy_config()
-                } else {
-                    WorkflowRecorderConfig {
-                        filter_mouse_noise: !args.record_scroll_events.unwrap_or(false), // Filter out mouse movements and wheel events unless scroll recording is enabled
-                        ..WorkflowRecorderConfig::default()
-                    }
-                };
-
-                let mut recorder = WorkflowRecorder::new(workflow_name.clone(), config);
-
-                // Build highlight config from either nested object or flattened parameters
-                let highlight_config = if let Some(ref nested_config) = args.highlight_mode {
-                    // Use nested config if provided (for backwards compatibility)
-                    Some(nested_config.clone())
-                } else if args.enable_highlighting.unwrap_or(false) {
-                    // Build config from flattened parameters
-                    Some(HighlightConfig {
-                        enabled: true,
-                        color: args.highlight_color,
-                        duration_ms: args.highlight_duration_ms,
-                        show_labels: args.highlight_show_labels.unwrap_or(true),
-                        label_position: None,
-                        label_style: None,
-                    })
-                } else {
-                    None
-                };
-
-                // Start highlighting task if enabled
-                if let Some(ref highlight_config) = highlight_config {
-                    if highlight_config.enabled {
-                        let mut event_stream = recorder.event_stream();
-                        let highlight_cfg = highlight_config.clone();
-                        let active_highlights = self.active_highlights.clone();
-
-                        // Spawn a task to highlight elements as events are captured
-                        tokio::spawn(async move {
-                            while let Some(event) = event_stream.next().await {
-                                // Get the UI element from the event metadata
-                                let ui_element = match &event {
-                                    terminator_workflow_recorder::WorkflowEvent::Click(e) => {
-                                        e.metadata.ui_element.as_ref()
-                                    }
-                                    terminator_workflow_recorder::WorkflowEvent::TextInputCompleted(e) => {
-                                        e.metadata.ui_element.as_ref()
-                                    }
-                                    terminator_workflow_recorder::WorkflowEvent::Keyboard(e) => {
-                                        e.metadata.ui_element.as_ref()
-                                    }
-                                    terminator_workflow_recorder::WorkflowEvent::DragDrop(e) => {
-                                        e.metadata.ui_element.as_ref()
-                                    }
-                                    terminator_workflow_recorder::WorkflowEvent::ApplicationSwitch(e) => {
-                                        e.metadata.ui_element.as_ref()
-                                    }
-                                    terminator_workflow_recorder::WorkflowEvent::BrowserTabNavigation(e) => {
-                                        e.metadata.ui_element.as_ref()
-                                    }
-                                    terminator_workflow_recorder::WorkflowEvent::Mouse(e) => {
-                                        e.metadata.ui_element.as_ref()
-                                    }
-                                    _ => None,
-                                };
-
-                                if let Some(ui_element) = ui_element {
-                                    // Determine the event type label
-                                    let event_label_string;
-                                    let event_label = match &event {
-                                        terminator_workflow_recorder::WorkflowEvent::Click(_) => "CLICK",
-                                        terminator_workflow_recorder::WorkflowEvent::TextInputCompleted(_) => "TYPE",
-                                        terminator_workflow_recorder::WorkflowEvent::Keyboard(e) => {
-                                            // Show the key code for keyboard events
-                                            event_label_string = format!("KEY: {}", e.key_code);
-                                            &event_label_string
-                                        }
-                                        terminator_workflow_recorder::WorkflowEvent::DragDrop(_) => "DRAG",
-                                        terminator_workflow_recorder::WorkflowEvent::ApplicationSwitch(_) => "SWITCH",
-                                        terminator_workflow_recorder::WorkflowEvent::BrowserTabNavigation(_) => "TAB",
-                                        terminator_workflow_recorder::WorkflowEvent::Mouse(e) => {
-                                            match e.button {
-                                                terminator_workflow_recorder::MouseButton::Right => "RCLICK",
-                                                terminator_workflow_recorder::MouseButton::Middle => "MCLICK",
-                                                _ => "MOUSE",
-                                            }
-                                        }
-                                        _ => "EVENT",
-                                    };
-
-                                    // Highlight the element with the configured settings
-                                    if let Ok(handle) = ui_element.highlight(
-                                        highlight_cfg.color,
-                                        highlight_cfg.duration_ms.map(Duration::from_millis),
-                                        if highlight_cfg.show_labels {
-                                            Some(event_label)
-                                        } else {
-                                            None
-                                        },
-                                        #[cfg(target_os = "windows")]
-                                        highlight_cfg.label_position.clone().map(|pos| pos.into()),
-                                        #[cfg(not(target_os = "windows"))]
-                                        None,
-                                        #[cfg(target_os = "windows")]
-                                        highlight_cfg.label_style.clone().map(|style| style.into()),
-                                        #[cfg(not(target_os = "windows"))]
-                                        None,
-                                    ) {
-                                        // Track handle and schedule cleanup
-                                        {
-                                            let mut list = active_highlights.lock().await;
-                                            list.push(handle);
-                                        }
-                                        let active_highlights_clone = active_highlights.clone();
-                                        let expire_after = highlight_cfg.duration_ms.unwrap_or(500);
-                                        tokio::spawn(async move {
-                                            tokio::time::sleep(Duration::from_millis(expire_after))
-                                                .await;
-                                            let mut list = active_highlights_clone.lock().await;
-                                            // Natural expiry: drop one handle (LIFO best-effort)
-                                            let _ = list.pop();
-                                        });
-                                    }
-                                }
-                            }
-                        });
-
-                        info!("Recording started with visual highlighting enabled");
-                    }
-                }
-
-                recorder.start().await.map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to start recorder",
-                        Some(json!({ "error": e.to_string() })),
-                    )
-                })?;
-
-                *recorder_guard = Some(recorder);
-
-                let mut response = json!({
-                    "action": "record_workflow",
-                    "status": "started",
-                    "workflow_name": workflow_name,
-                    "message": "Recording started. Perform the UI actions you want to record. Call this tool again with action: 'stop' to finish."
-                });
-
-                // Add highlighting status to response
-                if let Some(ref hc) = highlight_config {
-                    if hc.enabled {
-                        response["highlighting_enabled"] = json!(true);
-                        response["highlight_color"] = json!(hc.color.unwrap_or(0x0000FF));
-                        response["highlight_duration_ms"] = json!(hc.duration_ms.unwrap_or(500));
-                    }
-                }
-
-                span.set_status(true, None);
-                span.end();
-
-                Ok(CallToolResult::success(
-                    append_monitor_screenshots_if_enabled(
-                        &self.desktop,
-                        vec![Content::json(response)?],
-                        None,
-                    )
-                    .await,
-                ))
-            }
-            "stop" => {
-                // Make stop idempotent - if no recording is in progress, return success instead of error
-                let Some(mut recorder) = recorder_guard.take() else {
-                    info!("Stop recording called but no recording in progress - treating as success (idempotent)");
-
-                    span.set_status(true, None);
-                    span.end();
-
-                    return Ok(CallToolResult::success(vec![Content::json(json!({
-                        "status": "success",
-                        "message": "No recording was in progress",
-                        "file_path": null,
-                        "mcp_workflow": null
-                    }))?]));
-                };
-
-                // CRITICAL: Stop the recorder immediately to prevent new events
-                // This sets is_stopping flag and waits for event listeners to exit
-                recorder.stop().await.map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to stop recorder",
-                        Some(json!({ "error": e.to_string() })),
-                    )
-                })?;
-
-                // Additional delay to ensure all events are fully processed
-                // before we start the slow file/conversion operations
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-                let workflow_name = {
-                    let workflow = recorder.workflow.lock().unwrap();
-                    workflow.name.clone()
-                };
-
-                let file_name = args.file_path.unwrap_or_else(|| {
-                    let sanitized_name = workflow_name.to_lowercase().replace(' ', "_");
-                    format!(
-                        "{}_workflow_{}.json",
-                        sanitized_name,
-                        chrono::Utc::now().format("%Y%m%d_%H%M%S")
-                    )
-                });
-
-                // Save in the system's temporary directory to ensure write permissions
-                let save_dir = std::env::temp_dir().join("terminator_workflows");
-                std::fs::create_dir_all(&save_dir).map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to create workflow directory in temp folder",
-                        Some(json!({ "error": e.to_string(), "path": save_dir.to_string_lossy() })),
-                    )
-                })?;
-
-                let file_path = save_dir.join(file_name);
-
-                info!("Saving workflow to {}", file_path.display());
-
-                recorder.save(&file_path).map_err(|e| {
-                    McpError::internal_error(
-                        "Failed to save workflow",
-                        Some(
-                            json!({ "error": e.to_string(), "path": file_path.to_string_lossy() }),
-                        ),
-                    )
-                })?;
-
-                // Build response matching client expectations
-                let response = json!({
-                    "status": "success",
-                    "file_path": file_path.to_string_lossy()
-                });
-
-                span.set_status(true, None);
-                span.end();
-
-                Ok(CallToolResult::success(
-                    append_monitor_screenshots_if_enabled(
-                        &self.desktop,
-                        vec![Content::json(response)?],
-                        None,
-                    )
-                    .await,
-                ))
-            }
-            _ => Err(McpError::invalid_params(
-                "Invalid action. Must be 'start' or 'stop'.",
-                Some(json!({ "provided_action": args.action })),
-            )),
-        }
-    }
 
     #[tool(
         description = "Stops active element highlights immediately. If an ID is provided, stops that specific highlight; otherwise stops all."
@@ -5897,15 +5608,6 @@ impl DesktopWrapper {
                     Some(json!({"error": e.to_string()})),
                 )),
             },
-            "record_workflow" => {
-                match serde_json::from_value::<RecordWorkflowArgs>(arguments.clone()) {
-                    Ok(args) => self.record_workflow(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for record_workflow",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
             "maximize_window" => {
                 match serde_json::from_value::<MaximizeWindowArgs>(arguments.clone()) {
                     Ok(args) => self.maximize_window(Parameters(args)).await,

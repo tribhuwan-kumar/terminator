@@ -13,7 +13,6 @@ pub mod telemetry;
 pub mod tree_formatter;
 pub mod utils;
 pub mod vcredist_check;
-pub mod workflow_events;
 
 // Re-export the extract_content_json function for testing
 pub use server::extract_content_json;
