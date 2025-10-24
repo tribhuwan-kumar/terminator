@@ -1,0 +1,87 @@
+id: crm-customer-entry
+name: CRM Customer Entry Workflow
+description: Automates customer data entry in CRM application
+version: 1.0.0
+tags:
+  - crm
+  - data-entry
+  - automation
+
+variables:
+  customerName:
+    type: string
+    label: Customer Name
+    description: Full name of the customer
+    required: true
+
+  email:
+    type: string
+    label: Email Address
+    description: Customer's email address
+    required: true
+
+  phone:
+    type: string
+    label: Phone Number
+    description: Customer's phone number
+    required: false
+
+  sendWelcomeEmail:
+    type: boolean
+    label: Send Welcome Email
+    description: Whether to send automated welcome email
+    default: true
+
+steps:
+  - id: open-crm
+    name: Open CRM Application
+    function: openCRM
+    description: Launches the CRM application and waits for it to be ready
+    timeout: 10000
+
+  - id: navigate-to-customers
+    name: Navigate to Customers
+    function: navigateToCustomers
+    description: Opens the customer management section
+
+  - id: click-new-customer
+    name: Click New Customer
+    function: clickNewCustomer
+    description: Opens the new customer form
+
+  - id: fill-customer-form
+    name: Fill Customer Details
+    function: fillCustomerForm
+    description: Populates the customer form with provided data
+    inputs:
+      - customerName
+      - email
+      - phone
+
+  - id: validate-form
+    name: Validate Form Data
+    function: validateForm
+    description: Checks that all required fields are filled correctly
+
+  - id: submit-form
+    name: Submit Customer Form
+    function: submitForm
+    description: Saves the customer record to the database
+
+  - id: verify-success
+    name: Verify Submission
+    function: verifySuccess
+    description: Confirms the customer was created successfully
+
+  - id: send-welcome-email
+    name: Send Welcome Email
+    function: sendWelcomeEmail
+    description: Sends automated welcome email to the new customer
+    condition: variables.sendWelcomeEmail === true
+    inputs:
+      - email
+
+  - id: close-form
+    name: Close Form
+    function: closeForm
+    description: Closes the customer form and returns to main view

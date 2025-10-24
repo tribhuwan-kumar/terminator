@@ -1,0 +1,36 @@
+id: simple-notepad
+name: Simple Notepad Workflow
+description: Opens Notepad and types a personalized message
+version: 1.0.0
+
+variables:
+  userName:
+    type: string
+    label: User Name
+    description: Name to include in the greeting
+    default: World
+
+  includeDate:
+    type: boolean
+    label: Include Date
+    description: Whether to add today's date
+    default: true
+
+steps:
+  - id: open-app
+    name: Open Notepad
+    function: openNotepad
+    description: Launches Notepad application
+
+  - id: type-greeting
+    name: Type Greeting
+    function: typeGreeting
+    description: Types a personalized greeting message
+    inputs:
+      - userName
+
+  - id: add-date
+    name: Add Date
+    function: addDate
+    description: Optionally adds today's date
+    condition: variables.includeDate === true
