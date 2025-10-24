@@ -17,6 +17,7 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime},
 };
+use sysinfo::{Pid, ProcessesToUpdate, System};
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 
 use tokio::runtime::Runtime;
@@ -327,6 +328,20 @@ impl WindowsRecorder {
                             None
                         };
 
+                        // Get process name for current and target process (do this BEFORE any conditional blocks)
+                        let mut system = System::new();
+                        system.refresh_processes(ProcessesToUpdate::All, true);
+
+                        let from_process_name = current.as_ref().and_then(|s| {
+                            system
+                                .process(Pid::from_u32(s.process_id))
+                                .map(|p| p.name().to_string_lossy().to_string())
+                        });
+
+                        let to_process_name = system
+                            .process(Pid::from_u32(process_id))
+                            .map(|p| p.name().to_string_lossy().to_string());
+
                         // Only emit if we have meaningful dwell time or this is first app
                         if dwell_time.is_some() || current.is_none() {
                             // Check if this is a browser and try to get URL
@@ -385,6 +400,7 @@ impl WindowsRecorder {
                                     // Update current app state and return early
                                     *current = Some(ApplicationState {
                                         name: app_name.clone(),
+                                        process_name: to_process_name.clone(),
                                         process_id,
                                         start_time: now,
                                     });
@@ -397,8 +413,10 @@ impl WindowsRecorder {
 
                             // Not a browser or couldn't find URL - emit normal application switch
                             let event = crate::ApplicationSwitchEvent {
-                                from_application: current.as_ref().map(|s| s.name.clone()),
-                                to_application: app_name.clone(),
+                                from_window_and_application_name: current.as_ref().map(|s| s.name.clone()),
+                                to_window_and_application_name: app_name.clone(),
+                                from_process_name: from_process_name.clone(),
+                                to_process_name: to_process_name.clone(),
                                 from_process_id: current.as_ref().map(|s| s.process_id),
                                 to_process_id: process_id,
                                 switch_method: actual_switch_method.clone(),
@@ -427,6 +445,7 @@ impl WindowsRecorder {
                         // Update current application state
                         *current = Some(ApplicationState {
                             name: app_name.clone(),
+                            process_name: to_process_name.clone(),
                             process_id,
                             start_time: now,
                         });

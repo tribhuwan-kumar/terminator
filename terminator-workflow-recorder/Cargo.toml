@@ -44,6 +44,7 @@ rand = "0.8"                                                # For random element
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
+sysinfo = { workspace = true }
 uiautomation = { workspace = true, features = ["event", "pattern"] }
 # uiautomation = { git = "https://github.com/mediar-ai/uiautomation-rs", branch = "main", features = [
 #     "event",

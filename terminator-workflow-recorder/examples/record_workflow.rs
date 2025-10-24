@@ -310,10 +310,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "🔄 APPLICATION SWITCH {}: {} → {} (Latency: {:?})",
                         event_count,
                         app_switch_event
-                            .from_application
+                            .from_window_and_application_name
                             .as_ref()
                             .unwrap_or(&"(unknown)".to_string()),
-                        app_switch_event.to_application,
+                        app_switch_event.to_window_and_application_name,
                         latency
                     );
 

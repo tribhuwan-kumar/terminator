@@ -247,8 +247,10 @@ pub struct HotkeyPattern {
 /// Tracks the current application state for switch detection
 #[derive(Debug, Clone)]
 pub struct ApplicationState {
-    /// Application name/title
+    /// Window and application name (as reported by Windows UI Automation)
     pub name: String,
+    /// Process executable name (e.g., "chrome.exe", "Notepad.exe")
+    pub process_name: Option<String>,
     /// Process ID
     pub process_id: u32,
     /// When the application became active

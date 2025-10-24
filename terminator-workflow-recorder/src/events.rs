@@ -866,15 +866,18 @@ pub enum ApplicationSwitchMethod {
 /// High-level application switch event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplicationSwitchEvent {
-    /// The window and application name being switched from (combined UI Automation name)
+    /// Window and application name being switched from (as reported by Windows UI Automation).
+    /// Format varies by application: may contain page/document title + app name, or just app name.
+    /// Examples: "GitHub - Google Chrome", "Settings", "*hi there - Notepad"
     #[serde(skip_serializing_if = "is_empty_string")]
     pub from_window_and_application_name: Option<String>,
-    /// The window and application name being switched to (combined UI Automation name)
+    /// Window and application name being switched to (as reported by Windows UI Automation).
+    /// Format varies by application: may contain page/document title + app name, or just app name.
     pub to_window_and_application_name: String,
-    /// Process name of the source application (e.g., "chrome.exe")
+    /// Process executable name being switched from (e.g., "chrome.exe", "Notepad.exe")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_process_name: Option<String>,
-    /// Process name of the target application (e.g., "notepad.exe")
+    /// Process executable name being switched to (e.g., "chrome.exe", "Notepad.exe")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_process_name: Option<String>,
     /// Process ID of the source application
@@ -1328,8 +1331,12 @@ impl From<&TextInputCompletedEvent> for SerializableTextInputCompletedEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableApplicationSwitchEvent {
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub from_application: Option<String>,
-    pub to_application: String,
+    pub from_window_and_application_name: Option<String>,
+    pub to_window_and_application_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_process_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_process_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_process_id: Option<u32>,
     pub to_process_id: u32,
@@ -1344,8 +1351,10 @@ pub struct SerializableApplicationSwitchEvent {
 impl From<&ApplicationSwitchEvent> for SerializableApplicationSwitchEvent {
     fn from(event: &ApplicationSwitchEvent) -> Self {
         Self {
-            from_application: event.from_application.clone(),
-            to_application: event.to_application.clone(),
+            from_window_and_application_name: event.from_window_and_application_name.clone(),
+            to_window_and_application_name: event.to_window_and_application_name.clone(),
+            from_process_name: event.from_process_name.clone(),
+            to_process_name: event.to_process_name.clone(),
             from_process_id: event.from_process_id,
             to_process_id: event.to_process_id,
             switch_method: event.switch_method.clone(),
