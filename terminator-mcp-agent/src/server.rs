@@ -218,34 +218,6 @@ impl DesktopWrapper {
 
         chars.all(|c| c.is_alphanumeric() || c == '_' || c == '$')
     }
-    /// Helper function to determine include_tree value
-    /// Checks the INCLUDE_TREE environment variable
-    /// If not present, defaults to true
-    /// Otherwise uses the environment variable value
-    fn get_include_tree_default(args_value: Option<bool>) -> bool {
-        // First check if args explicitly set a value
-        if let Some(value) = args_value {
-            return value;
-        }
-
-        // Then check environment variable
-        match std::env::var("INCLUDE_TREE") {
-            Ok(val) => {
-                // Parse the string value to bool
-                match val.to_lowercase().as_str() {
-                    "true" | "1" | "yes" | "on" => true,
-                    "false" | "0" | "no" | "off" => false,
-                    _ => true, // Default to true if invalid value
-                }
-            }
-            Err(_) => true, // Default to true if env var not present
-        }
-    }
-
-    /// Helper to determine if tree should be included
-    fn should_include_tree(option: &Option<bool>) -> bool {
-        option.unwrap_or_else(|| Self::get_include_tree_default(None))
-    }
 
     // Minimal, conservative parser to extract `{ set_env: {...} }` from simple scripts
     // like `return { set_env: { a: 1, b: 'x' } };`. This is only used as a fallback
@@ -359,7 +331,7 @@ impl DesktopWrapper {
     }
 
     pub fn new_with_log_capture(
-        log_capture: Option<crate::log_capture::LogCapture>,
+        log_capture: Option<crate::tool_logging::LogCapture>,
     ) -> Result<Self, McpError> {
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         let desktop = match Desktop::new(false, false) {
@@ -395,25 +367,6 @@ impl DesktopWrapper {
         })
     }
 
-    /// Create TreeBuildConfig based on include_detailed_attributes parameter
-    /// Defaults to comprehensive attributes for LLM usage if include_detailed_attributes is not specified
-    fn create_tree_config(
-        include_detailed_attributes: Option<bool>,
-    ) -> terminator::platforms::TreeBuildConfig {
-        let include_detailed = include_detailed_attributes.unwrap_or(true);
-
-        if include_detailed {
-            terminator::platforms::TreeBuildConfig {
-                property_mode: terminator::platforms::PropertyLoadingMode::Complete,
-                timeout_per_operation_ms: Some(100), // Slightly higher timeout for detailed loading
-                yield_every_n_elements: Some(25),    // More frequent yielding for responsiveness
-                batch_size: Some(25),
-                max_depth: None, // No limit by default
-            }
-        } else {
-            terminator::platforms::TreeBuildConfig::default() // Fast mode
-        }
-    }
 
     #[tool(
         description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" to get subtrees, and tree_output_format: \"compact_yaml\" (default, readable) or \"verbose_json\" (full data). This is a read-only operation."
@@ -573,7 +526,8 @@ impl DesktopWrapper {
             .filter_map(|app| {
                 let pid = app.process_id().unwrap_or(0);
                 if pid > 0 {
-                    system.process(sysinfo::Pid::from_u32(pid))
+                    system
+                        .process(sysinfo::Pid::from_u32(pid))
                         .map(|p| (pid, p.name().to_string_lossy().to_string()))
                 } else {
                     None
@@ -5707,7 +5661,10 @@ impl DesktopWrapper {
             }
             "get_applications_and_windows_list" => {
                 match serde_json::from_value::<GetApplicationsArgs>(arguments.clone()) {
-                    Ok(args) => self.get_applications_and_windows_list(Parameters(args)).await,
+                    Ok(args) => {
+                        self.get_applications_and_windows_list(Parameters(args))
+                            .await
+                    }
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for get_applications_and_windows_list",
                         Some(json!({"error": e.to_string()})),

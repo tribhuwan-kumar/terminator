@@ -513,6 +513,10 @@ pub struct McpToolStep {
     /// Delay after this step in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delay_ms: Option<u64>,
+    /// Expected UI changes after this action (diff between before/after UI trees)
+    /// Used for validation during workflow playback
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_ui_changes: Option<String>,
 }
 
 /// Represents the interaction context for UI element analysis
@@ -558,8 +562,8 @@ impl UIElementInfo {
 
         // Generate basic selector for this parent element
         let selector = match &name {
-            Some(n) if !n.is_empty() => format!("role:{}|name:{}", role, n),
-            _ => format!("role:{}", role),
+            Some(n) if !n.is_empty() => format!("role:{role}|name:{n}"),
+            _ => format!("role:{role}"),
         };
 
         Self {

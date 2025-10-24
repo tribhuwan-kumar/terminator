@@ -1,5 +1,5 @@
 use crate::cancellation::RequestManager;
-use crate::log_capture::{LogCapture, LogCaptureLayer};
+use crate::tool_logging::{LogCapture, LogCaptureLayer};
 use crate::mcp_types::{FontStyle, TextPosition, TreeOutputFormat};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
@@ -790,6 +790,12 @@ pub struct SequenceStep {
         description = "Simplified alias for 'delay_ms'. Supports human-readable durations like '1s', '500ms', '2m'. Defaults to milliseconds if no unit specified."
     )]
     pub delay: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(
+        description = "Expected UI changes after this action (diff between before/after UI trees). Used for validation during workflow playback to ensure actions had the expected effect."
+    )]
+    pub expected_ui_changes: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, Default, JsonSchema)]

@@ -337,14 +337,11 @@ impl Default for WorkflowRecorderConfig {
                 // Common applications to ignore by default
                 "dwm.exe".to_string(),
                 "taskmgr.exe".to_string(),
-                "powershell.exe".to_string(),
                 "cmd.exe".to_string(),
-                "cursor.exe".to_string(),
                 "code.exe".to_string(),
                 // Mediar product - ignore our own product interactions
                 "mediar.exe".to_string(),
                 // Windows system processes that generate noise
-                "explorer.exe".to_string(),
                 "winlogon.exe".to_string(),
                 "csrss.exe".to_string(),
                 "wininit.exe".to_string(),
@@ -363,7 +360,6 @@ impl Default for WorkflowRecorderConfig {
                 "cortana.exe".to_string(),
                 "sihost.exe".to_string(),
                 "winstore.app".to_string(),
-                "microsoftedge.exe".to_string(),
                 "msedgewebview2.exe".to_string(),
                 // Security and system maintenance
                 "msmpeng.exe".to_string(), // Windows Defender

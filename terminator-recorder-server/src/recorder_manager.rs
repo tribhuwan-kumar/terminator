@@ -71,7 +71,7 @@ impl RecorderManager {
         recorder
             .start()
             .await
-            .map_err(|e| format!("Failed to start recorder: {}", e))?;
+            .map_err(|e| format!("Failed to start recorder: {e}"))?;
 
         info!("✅ Recorder started successfully");
 
@@ -132,7 +132,7 @@ impl RecorderManager {
             .recorder
             .stop()
             .await
-            .map_err(|e| format!("Failed to stop recorder: {}", e))?;
+            .map_err(|e| format!("Failed to stop recorder: {e}"))?;
 
         info!("✅ Recorder stopped");
 
