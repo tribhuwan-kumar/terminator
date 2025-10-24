@@ -6,12 +6,11 @@ pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
     DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, GetApplicationsArgs,
-    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs,
-    HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
-    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs,
-    ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs,
-    SetValueArgs, SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs,
-    WaitForElementArgs,
+    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
+    MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
+    OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs,
+    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
+    StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use regex::Regex;
@@ -363,7 +362,6 @@ impl DesktopWrapper {
             current_scripts_base_path: Arc::new(Mutex::new(None)),
         })
     }
-
 
     #[tool(
         description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" to get subtrees, and tree_output_format: \"compact_yaml\" (default, readable) or \"verbose_json\" (full data). This is a read-only operation."
@@ -4259,7 +4257,6 @@ const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0; 
             .await,
         ))
     }
-
 
     #[tool(
         description = "Stops active element highlights immediately. If an ID is provided, stops that specific highlight; otherwise stops all."

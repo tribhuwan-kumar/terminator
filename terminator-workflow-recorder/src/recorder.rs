@@ -428,7 +428,7 @@ impl Default for WorkflowRecorderConfig {
             reduce_ui_element_capture: false,
             // Highlighting defaults
             enable_highlighting: false,
-            highlight_color: Some(0x0000FF), // Red in BGR
+            highlight_color: Some(0x0000FF),  // Red in BGR
             highlight_duration_ms: Some(500), // 500ms
             show_highlight_labels: true,
             highlight_max_concurrent: 10,

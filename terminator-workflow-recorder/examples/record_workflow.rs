@@ -23,14 +23,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("[LOG] Setting up comprehensive recording configuration");
 
     // Create a comprehensive configuration for maximum workflow capture
-    let mut config = WorkflowRecorderConfig::default();
-
-    // Enable visual highlighting during recording
-    config.enable_highlighting = true;
-    config.highlight_color = Some(0x00FF00); // Green in BGR
-    config.highlight_duration_ms = Some(800); // 800ms
-    config.show_highlight_labels = true;
-    config.highlight_max_concurrent = 10;
+    let config = WorkflowRecorderConfig {
+        enable_highlighting: true,
+        highlight_color: Some(0x00FF00), // Green in BGR
+        highlight_duration_ms: Some(800), // 800ms
+        show_highlight_labels: true,
+        highlight_max_concurrent: 10,
+        ..Default::default()
+    };
 
     info!("Comprehensive recorder config: {:?}", config);
 

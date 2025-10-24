@@ -1,6 +1,6 @@
 use crate::cancellation::RequestManager;
-use crate::tool_logging::{LogCapture, LogCaptureLayer};
 use crate::mcp_types::{FontStyle, TextPosition, TreeOutputFormat};
+use crate::tool_logging::{LogCapture, LogCaptureLayer};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -1714,4 +1714,3 @@ impl Default for HighlightConfig {
         }
     }
 }
-
