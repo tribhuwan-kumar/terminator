@@ -7,7 +7,6 @@ members = [
     "bindings/nodejs",
     "terminator-mcp-agent",
     "terminator-workflow-recorder",
-    "terminator-recorder-server",
 ]
 
 
