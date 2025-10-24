@@ -5,8 +5,7 @@
  * No YAML. Just TypeScript. Fully typed. AI-friendly.
  */
 
-import { createStep, createWorkflow, Desktop } from '@mediar/terminator';
-import { z } from 'zod';
+import { createStep, createWorkflow, z, type Desktop } from '../../packages/terminator-workflow/src';
 
 // ============================================================================
 // Input Schema (Using Zod)
@@ -39,7 +38,6 @@ const openNotepad = createStep({
     logger.info('📝 Opening Notepad...');
     desktop.openApplication('notepad');
     await desktop.wait(2000);
-    logger.success('✅ Notepad opened');
   },
 });
 
@@ -48,11 +46,7 @@ const typeGreeting = createStep({
   name: 'Type Greeting Message',
   description: 'Types personalized greeting',
 
-  execute: async ({ desktop, input, logger }: {
-    desktop: Desktop;
-    input: Input;
-    logger: any;
-  }) => {
+  execute: async ({ desktop, input, logger }) => {
     logger.info(`👋 Typing greeting for ${input.userName}...`);
 
     const textbox = desktop.locator('role:Edit');
@@ -62,8 +56,6 @@ const typeGreeting = createStep({
       const date = new Date().toLocaleDateString();
       await textbox.type(`Date: ${date}\n`);
     }
-
-    logger.success('✅ Greeting typed');
   },
 });
 
@@ -71,12 +63,10 @@ const typeGreeting = createStep({
 // Workflow
 // ============================================================================
 
-export default createWorkflow({
+const workflow = createWorkflow({
   name: 'Simple Notepad Demo',
   description: 'Opens Notepad and types a personalized greeting',
   version: '1.0.0',
-
-  // Type-safe input schema
   input: InputSchema,
 })
   .step(openNotepad)
@@ -93,13 +83,10 @@ if (require.main === module) {
     includeDate: true,
   };
 
-  console.log('🚀 Running workflow...');
-  console.log('Input:', input);
-
-  workflow.run(input).then(() => {
-    console.log('✅ Workflow completed!');
-  }).catch(error => {
-    console.error('❌ Workflow failed:', error);
+  workflow.run(input).catch(error => {
+    console.error('\n❌ Workflow execution failed');
     process.exit(1);
   });
 }
+
+export default workflow;
