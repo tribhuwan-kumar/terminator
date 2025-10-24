@@ -5165,6 +5165,7 @@ dependencies = [
  "arboard",
  "async-stream",
  "criterion",
+ "futures",
  "notify",
  "rand 0.8.5",
  "rdev",
