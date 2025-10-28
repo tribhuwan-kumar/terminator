@@ -1291,7 +1291,7 @@ impl WindowsRecorder {
                             let ui_element = if config.capture_ui_elements
                                 && !config.filter_mouse_noise
                             {
-                                Self::get_element_from_point_with_timeout(&config, position, 100)
+                                Self::get_element_from_point_with_timeout(&config, position, 1000)
                             } else {
                                 None
                             };
@@ -2419,7 +2419,7 @@ impl WindowsRecorder {
 
         let ui_element = if ctx.config.capture_ui_elements {
             // Use deepest element finder for more precise click detection
-            Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 100)
+            Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 1000)
         } else {
             None
         };
@@ -2911,7 +2911,7 @@ impl WindowsRecorder {
         is_stopping: &Arc<AtomicBool>,
     ) {
         let ui_element = if config.capture_ui_elements {
-            Self::get_element_from_point_with_timeout(config, *position, 100)
+            Self::get_element_from_point_with_timeout(config, *position, 1000)
         } else {
             None
         };
