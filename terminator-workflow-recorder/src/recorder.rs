@@ -575,7 +575,12 @@ impl WorkflowRecorder {
                 let handles = self.highlight_handles.clone();
 
                 let task = tokio::spawn(async move {
-                    info!("Visual highlighting enabled during recording");
+                    // Enable recording mode to prevent scroll_into_view during highlights
+                    // This prevents spurious keyboard events (down arrows) from being recorded
+                    #[cfg(target_os = "windows")]
+                    terminator::set_recording_mode(true);
+
+                    info!("Visual highlighting enabled during recording (recording mode: scroll disabled)");
 
                     while let Some(event) = event_stream.next().await {
                         // Get UI element from event
@@ -608,7 +613,11 @@ impl WorkflowRecorder {
                         }
                     }
 
-                    info!("Highlighting task ended");
+                    // Disable recording mode when highlighting task ends
+                    #[cfg(target_os = "windows")]
+                    terminator::set_recording_mode(false);
+
+                    info!("Highlighting task ended (recording mode disabled)");
                 });
 
                 self.highlight_task_handle = Some(task);
