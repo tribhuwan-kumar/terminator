@@ -13,13 +13,13 @@ mod recorder;
 pub use error::*;
 pub use events::{
     build_chained_selector, build_parent_hierarchy, ApplicationSwitchEvent,
-    ApplicationSwitchMethod, BrowserClickEvent, BrowserTabNavigationEvent,
-    BrowserTextInputEvent, ButtonInteractionType, ClickEvent, ClipboardAction, ClipboardEvent,
-    DomElementInfo, DragDropEvent, EnhancedUIElement, EventMetadata, FieldFocusMethod,
-    HotkeyEvent, InteractionContext, KeyboardEvent, McpToolStep, MouseButton, MouseEvent,
-    MouseEventType, Position, RecordedEvent, RecordedWorkflow, Rect, SelectionMethod,
-    SelectorCandidate, TabAction, TabNavigationMethod, TextInputCompletedEvent, TextInputMethod,
-    TextSelectionEvent, UIElementInfo, WorkflowEvent,
+    ApplicationSwitchMethod, BrowserClickEvent, BrowserTabNavigationEvent, BrowserTextInputEvent,
+    ButtonInteractionType, ClickEvent, ClipboardAction, ClipboardEvent, DomElementInfo,
+    DragDropEvent, EnhancedUIElement, EventMetadata, FieldFocusMethod, HotkeyEvent,
+    InteractionContext, KeyboardEvent, McpToolStep, MouseButton, MouseEvent, MouseEventType,
+    Position, RecordedEvent, RecordedWorkflow, Rect, SelectionMethod, SelectorCandidate, TabAction,
+    TabNavigationMethod, TextInputCompletedEvent, TextInputMethod, TextSelectionEvent,
+    UIElementInfo, WorkflowEvent,
 };
 pub use recorder::*;
 

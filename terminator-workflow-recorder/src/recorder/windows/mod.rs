@@ -413,7 +413,9 @@ impl WindowsRecorder {
 
                             // Not a browser or couldn't find URL - emit normal application switch
                             let event = crate::ApplicationSwitchEvent {
-                                from_window_and_application_name: current.as_ref().map(|s| s.name.clone()),
+                                from_window_and_application_name: current
+                                    .as_ref()
+                                    .map(|s| s.name.clone()),
                                 to_window_and_application_name: app_name.clone(),
                                 from_process_name: from_process_name.clone(),
                                 to_process_name: to_process_name.clone(),

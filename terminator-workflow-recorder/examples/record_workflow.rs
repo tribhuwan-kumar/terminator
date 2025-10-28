@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a comprehensive configuration for maximum workflow capture
     let config = WorkflowRecorderConfig {
         enable_highlighting: true,
-        highlight_color: Some(0x00FF00), // Green in BGR
+        highlight_color: Some(0x00FF00),  // Green in BGR
         highlight_duration_ms: Some(800), // 800ms
         show_highlight_labels: true,
         highlight_max_concurrent: 10,

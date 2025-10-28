@@ -1515,7 +1515,7 @@ pub mod utils {
             text: None,
             value: element.attributes().value,
             application_name: None, // Deferred - avoid expensive calls
-            bounds: None, // Not included in minimal attributes
+            bounds: None,           // Not included in minimal attributes
             ..Default::default()
         }
     }

@@ -87,7 +87,8 @@ pub(crate) fn build_ui_node_tree_configurable(
         }
 
         // Get element attributes with configurable property loading
-        let mut attributes = get_configurable_attributes(&work_item.element, &context.property_mode);
+        let mut attributes =
+            get_configurable_attributes(&work_item.element, &context.property_mode);
 
         // Populate application_name from context if available
         if attributes.application_name.is_none() && context.application_name.is_some() {

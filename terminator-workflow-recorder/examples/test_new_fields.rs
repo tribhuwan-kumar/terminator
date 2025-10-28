@@ -1,4 +1,6 @@
-use terminator_workflow_recorder::{ApplicationSwitchEvent, ApplicationSwitchMethod, EventMetadata};
+use terminator_workflow_recorder::{
+    ApplicationSwitchEvent, ApplicationSwitchMethod, EventMetadata,
+};
 
 fn main() {
     println!("Testing new ApplicationSwitchEvent fields...\n");
@@ -18,8 +20,14 @@ fn main() {
     };
 
     println!("Event structure:");
-    println!("  from_window_and_application_name: {:?}", event.from_window_and_application_name);
-    println!("  to_window_and_application_name: {}", event.to_window_and_application_name);
+    println!(
+        "  from_window_and_application_name: {:?}",
+        event.from_window_and_application_name
+    );
+    println!(
+        "  to_window_and_application_name: {}",
+        event.to_window_and_application_name
+    );
     println!("  from_process_name: {:?}", event.from_process_name);
     println!("  to_process_name: {:?}", event.to_process_name);
     println!("  from_process_id: {:?}", event.from_process_id);
@@ -29,6 +37,6 @@ fn main() {
     let json = serde_json::to_string_pretty(&event).expect("Failed to serialize");
     println!("\nJSON output:");
     println!("{}", json);
-    
+
     println!("\n✅ SUCCESS: All new fields are present and working!");
 }

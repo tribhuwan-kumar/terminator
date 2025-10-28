@@ -87,9 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#;
 
     // Execute the script
-    let result = tokio::runtime::Runtime::new()?.block_on(async {
-        desktop.execute_browser_script(test_script).await
-    })?;
+    let result = tokio::runtime::Runtime::new()?
+        .block_on(async { desktop.execute_browser_script(test_script).await })?;
 
     println!("📊 Script execution result:");
     println!("{}\n", result);
@@ -105,10 +104,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if parsed.get("success").and_then(|v| v.as_bool()) == Some(true) {
             println!("✅ SUCCESS! DOM Capture Script Executed Without Errors!\n");
             println!("📋 Captured Element Details:");
-            println!("   Tag: {}", parsed.get("tag_name").and_then(|v| v.as_str()).unwrap_or("N/A"));
-            println!("   Text: {}", parsed.get("text").and_then(|v| v.as_str()).unwrap_or("N/A"));
-            println!("   CSS Selector: {}", parsed.get("css_selector").and_then(|v| v.as_str()).unwrap_or("N/A"));
-            println!("   XPath: {}", parsed.get("xpath").and_then(|v| v.as_str()).unwrap_or("N/A"));
+            println!(
+                "   Tag: {}",
+                parsed
+                    .get("tag_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("N/A")
+            );
+            println!(
+                "   Text: {}",
+                parsed.get("text").and_then(|v| v.as_str()).unwrap_or("N/A")
+            );
+            println!(
+                "   CSS Selector: {}",
+                parsed
+                    .get("css_selector")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("N/A")
+            );
+            println!(
+                "   XPath: {}",
+                parsed
+                    .get("xpath")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("N/A")
+            );
 
             println!("\n🎉 TEST PASSED!");
             println!("   ✅ getCSSPath() function is accessible and working");
