@@ -246,6 +246,9 @@ async fn main() -> Result<()> {
 
     let log_capture = init_logging()?;
 
+    // Initialize Sentry if sentry feature is enabled (before OpenTelemetry)
+    let _sentry_guard = terminator_mcp_agent::sentry::init_sentry();
+
     // Initialize OpenTelemetry if telemetry feature is enabled (after logging is set up)
     terminator_mcp_agent::telemetry::init_telemetry()?;
 
@@ -652,6 +655,9 @@ async fn main() -> Result<()> {
 
     // Shutdown telemetry before exiting
     terminator_mcp_agent::telemetry::shutdown_telemetry();
+
+    // Shutdown Sentry before exiting (flushes pending events)
+    terminator_mcp_agent::sentry::shutdown_sentry();
 
     Ok(())
 }
