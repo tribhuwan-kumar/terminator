@@ -1,6 +1,6 @@
 use crate::cancellation::RequestManager;
-use crate::tool_logging::{LogCapture, LogCaptureLayer};
 use crate::mcp_types::{FontStyle, TextPosition, TreeOutputFormat};
+use crate::tool_logging::{LogCapture, LogCaptureLayer};
 use anyhow::Result;
 use rmcp::{schemars, schemars::JsonSchema};
 use serde::{Deserialize, Serialize};
@@ -174,8 +174,6 @@ pub struct DesktopWrapper {
     pub tool_router: rmcp::handler::server::tool::ToolRouter<Self>,
     #[serde(skip)]
     pub request_manager: RequestManager,
-    #[serde(skip)]
-    pub recorder: Arc<Mutex<Option<terminator_workflow_recorder::WorkflowRecorder>>>,
     #[serde(skip)]
     pub active_highlights: Arc<Mutex<Vec<terminator::HighlightHandle>>>,
     #[serde(skip)]
@@ -1715,32 +1713,4 @@ impl Default for HighlightConfig {
             }),
         }
     }
-}
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct RecordWorkflowArgs {
-    /// The action to perform: 'start' to begin recording, 'stop' to end and save.
-    pub action: String,
-    /// A descriptive name for the workflow being recorded. Required when starting.
-    pub workflow_name: Option<String>,
-    /// Optional file path to save the workflow. If not provided, a default path will be used.
-    pub file_path: Option<String>,
-    /// Sets the recording to a low-energy mode to reduce system load, which can help prevent lag on less powerful machines.
-    pub low_energy_mode: Option<bool>,
-    /// Visual highlighting configuration for recorded UI interactions (nested object - use flattened params for MCP compatibility)
-    pub highlight_mode: Option<HighlightConfig>,
-    /// Enable visual highlighting of UI elements during recording (simple parameter alternative to highlight_mode)
-    pub enable_highlighting: Option<bool>,
-    /// Border color for highlights in BGR format (default: 0x0000FF - red). Example: 0xFF0000 for blue, 0x00FF00 for green
-    pub highlight_color: Option<u32>,
-    /// Duration in milliseconds for each highlight (default: 500ms)
-    pub highlight_duration_ms: Option<u64>,
-    /// Show event type labels (CLICK, TYPE, etc.) on highlighted elements (default: true)
-    pub highlight_show_labels: Option<bool>,
-    /// Whether to record scroll events (default: false to reduce noise)
-    pub record_scroll_events: Option<bool>,
-    #[schemars(
-        description = "Whether to include screenshots of all monitors in the response. Defaults to false."
-    )]
-    pub include_monitor_screenshots: Option<bool>,
 }

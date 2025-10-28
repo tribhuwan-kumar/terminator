@@ -1990,6 +1990,7 @@ impl UIElementImpl for LinuxUIElement {
             label: self.name(),
             value: self.get_text(0).ok(),
             description: self.description(),
+            application_name: None, // Deferred - avoid expensive calls
             text: self.get_text(0).ok(),
             is_keyboard_focusable: self.is_keyboard_focusable().ok(),
             is_focused: self.is_focused().ok(),

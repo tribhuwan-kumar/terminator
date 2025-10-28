@@ -18,6 +18,7 @@ pub mod platforms;
 pub mod selector;
 #[cfg(test)]
 mod tests;
+pub mod tree_formatter;
 pub mod types;
 pub mod utils;
 
@@ -25,6 +26,7 @@ pub use element::{SerializableUIElement, UIElement, UIElementAttributes};
 pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
+pub use tree_formatter::{format_tree_as_compact_yaml, format_ui_node_as_compact_yaml};
 pub use types::{FontStyle, HighlightHandle, TextPosition};
 
 /// Recommend to use any of these: ["Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi"]

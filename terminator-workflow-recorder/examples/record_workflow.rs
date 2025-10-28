@@ -24,6 +24,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a comprehensive configuration for maximum workflow capture
     let config = WorkflowRecorderConfig {
+        enable_highlighting: true,
+        highlight_color: Some(0x00FF00),  // Green in BGR
+        highlight_duration_ms: Some(800), // 800ms
+        show_highlight_labels: true,
+        highlight_max_concurrent: 10,
         ..Default::default()
     };
 
@@ -305,10 +310,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "🔄 APPLICATION SWITCH {}: {} → {} (Latency: {:?})",
                         event_count,
                         app_switch_event
-                            .from_application
+                            .from_window_and_application_name
                             .as_ref()
                             .unwrap_or(&"(unknown)".to_string()),
-                        app_switch_event.to_application,
+                        app_switch_event.to_window_and_application_name,
                         latency
                     );
 

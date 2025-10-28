@@ -123,6 +123,49 @@ impl BrowserContextRecorder {
         return JSON.stringify({{ error: 'No element at coordinates' }});
     }}
 
+    // Helper function to generate XPath (defined at IIFE scope)
+    function getXPath(element) {{
+        if (element.id) {{
+            return `//*[@id="${{element.id}}"]`;
+        }}
+
+        const parts = [];
+        while (element && element.nodeType === Node.ELEMENT_NODE) {{
+            let index = 1;
+            let sibling = element.previousElementSibling;
+            while (sibling) {{
+                if (sibling.tagName === element.tagName) index++;
+                sibling = sibling.previousElementSibling;
+            }}
+            const tagName = element.tagName.toLowerCase();
+            const part = tagName + '[' + index + ']';
+            parts.unshift(part);
+            element = element.parentElement;
+        }}
+        return '/' + parts.join('/');
+    }}
+
+    // Helper function to generate CSS path (defined at IIFE scope)
+    function getCSSPath(el) {{
+        const path = [];
+        while (el && el.nodeType === Node.ELEMENT_NODE) {{
+            let selector = el.tagName.toLowerCase();
+            if (el.id) {{
+                selector = '#' + CSS.escape(el.id);
+                path.unshift(selector);
+                break;
+            }} else if (el.className && typeof el.className === 'string') {{
+                const classes = el.className.split(' ').filter(c => c);
+                if (classes.length > 0) {{
+                    selector += '.' + classes.map(c => CSS.escape(c)).join('.');
+                }}
+            }}
+            path.unshift(selector);
+            el = el.parentElement;
+        }}
+        return path.join(' > ');
+    }}
+
     // Generate selector candidates
     function generateSelectors(el) {{
         const selectors = [];
@@ -185,28 +228,7 @@ impl BrowserContextRecorder {
             }}
         }}
 
-        // 6. Generate XPath
-        function getXPath(element) {{
-            if (element.id) {{
-                return `//*[@id="${{element.id}}"]`;
-            }}
-
-            const parts = [];
-            while (element && element.nodeType === Node.ELEMENT_NODE) {{
-                let index = 1;
-                let sibling = element.previousElementSibling;
-                while (sibling) {{
-                    if (sibling.tagName === element.tagName) index++;
-                    sibling = sibling.previousElementSibling;
-                }}
-                const tagName = element.tagName.toLowerCase();
-                const part = tagName + '[' + index + ']';
-                parts.unshift(part);
-                element = element.parentElement;
-            }}
-            return '/' + parts.join('/');
-        }}
-
+        // 6. XPath selector
         selectors.push({{
             selector: getXPath(el),
             selector_type: 'XPath',
@@ -215,23 +237,6 @@ impl BrowserContextRecorder {
         }});
 
         // 7. CSS path (most specific, least maintainable)
-        function getCSSPath(el) {{
-            const path = [];
-            while (el && el.nodeType === Node.ELEMENT_NODE) {{
-                let selector = el.tagName.toLowerCase();
-                if (el.id) {{
-                    selector = '#' + CSS.escape(el.id);
-                    path.unshift(selector);
-                    break;
-                }} else if (el.className && typeof el.className === 'string') {{
-                    selector += '.' + el.className.split(' ').filter(c => c).map(c => CSS.escape(c)).join('.');
-                }}
-                path.unshift(selector);
-                el = el.parentElement;
-            }}
-            return path.join(' > ');
-        }}
-
         selectors.push({{
             selector: getCSSPath(el),
             selector_type: 'CssPath',
