@@ -51,8 +51,10 @@ try {
 const buildType = isRelease ? "--release" : "";
 console.log(`Building for target ${target} (${buildType || "debug"})`);
 // Build without explicit target to use default host target
+// Enable sentry feature for release builds
+const features = isRelease ? "--features sentry" : "";
 execSync(
-  `cargo build -p terminator-mcp-agent ${buildType}`,
+  `cargo build -p terminator-mcp-agent ${buildType} ${features}`,
   { stdio: "inherit" },
 );
 
