@@ -158,6 +158,9 @@ name = "anyhow"
 version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
+dependencies = [
+ "backtrace",
+]
 
 [[package]]
 name = "arbitrary"
@@ -4695,6 +4698,7 @@ dependencies = [
  "httpdate",
  "reqwest",
  "rustls",
+ "sentry-anyhow",
  "sentry-backtrace",
  "sentry-contexts",
  "sentry-core",
@@ -4703,6 +4707,17 @@ dependencies = [
  "tokio",
  "ureq",
  "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "sentry-anyhow"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4084c497026eaa8115c31449881502b8b212d76cc10138014143a2c7595478ab"
+dependencies = [
+ "anyhow",
+ "sentry-backtrace",
+ "sentry-core",
 ]
 
 [[package]]

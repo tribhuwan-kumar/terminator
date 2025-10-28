@@ -75,6 +75,11 @@ jobs:
           cargo build -p terminator-mcp-agent --features telemetry
           cargo test -p terminator-mcp-agent --features telemetry -- --test-threads=1
 
+      - name: Test with sentry feature
+        run: |
+          cargo build -p terminator-mcp-agent --features sentry
+          cargo test -p terminator-mcp-agent --features sentry -- --test-threads=1
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

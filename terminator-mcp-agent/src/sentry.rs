@@ -10,7 +10,7 @@ pub use without_sentry::*;
 // Implementation with Sentry enabled
 #[cfg(feature = "sentry")]
 mod with_sentry {
-    use tracing::{error, info};
+    use tracing::info;
 
     /// Initialize Sentry error tracking
     /// Requires SENTRY_DSN environment variable to be set
@@ -37,19 +37,20 @@ mod with_sentry {
         info!("Initializing Sentry error tracking...");
 
         // Get environment and release information
-        let environment = std::env::var("SENTRY_ENVIRONMENT")
-            .unwrap_or_else(|_| "production".to_string());
+        let environment =
+            std::env::var("SENTRY_ENVIRONMENT").unwrap_or_else(|_| "production".to_string());
 
         let release = std::env::var("SENTRY_RELEASE")
-            .unwrap_or_else(|_| {
-                format!("terminator-mcp-agent@{}", env!("CARGO_PKG_VERSION"))
-            });
+            .unwrap_or_else(|_| format!("terminator-mcp-agent@{}", env!("CARGO_PKG_VERSION")));
 
         // Get sample rate (default to 1.0 = 100% of errors)
         let traces_sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
             .ok()
             .and_then(|s| s.parse::<f32>().ok())
             .unwrap_or(1.0);
+
+        // Clone release for logging since it will be moved into ClientOptions
+        let release_for_log = release.clone();
 
         // Initialize Sentry with configuration
         let guard = sentry::init((
@@ -87,7 +88,7 @@ mod with_sentry {
         info!(
             "Sentry initialized successfully (environment: {}, release: {})",
             std::env::var("SENTRY_ENVIRONMENT").unwrap_or_else(|_| "production".to_string()),
-            release
+            release_for_log
         );
 
         Some(guard)
@@ -119,13 +120,17 @@ mod with_sentry {
     /// This flushes any pending events
     pub fn shutdown_sentry() {
         info!("Shutting down Sentry...");
-        // Flush with a 2 second timeout
-        sentry::flush(std::time::Duration::from_secs(2));
+        // Flush with a 2 second timeout using the client
+        sentry::Hub::current().client().map(|client| {
+            client.close(Some(std::time::Duration::from_secs(2)))
+        });
     }
 
     /// Capture an error manually (useful for non-panic errors)
     pub fn capture_error(error: &anyhow::Error) {
-        sentry::capture_error(error);
+        // Convert anyhow::Error to a type that implements std::error::Error
+        // anyhow::Error doesn't implement std::error::Error directly, but we can use the source
+        sentry::integrations::anyhow::capture_anyhow(error);
     }
 
     /// Add a breadcrumb (useful for tracking events leading to errors)

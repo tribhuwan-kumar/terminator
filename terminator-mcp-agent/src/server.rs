@@ -458,19 +458,17 @@ impl DesktopWrapper {
 "#;
 
         match self.desktop.execute_browser_script(script).await {
-            Ok(result_str) => {
-                match serde_json::from_str::<serde_json::Value>(&result_str) {
-                    Ok(result) => {
-                        if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
-                            Ok(elements.clone())
-                        } else {
-                            Ok(vec![])
-                        }
+            Ok(result_str) => match serde_json::from_str::<serde_json::Value>(&result_str) {
+                Ok(result) => {
+                    if let Some(elements) = result.get("elements").and_then(|v| v.as_array()) {
+                        Ok(elements.clone())
+                    } else {
+                        Ok(vec![])
                     }
-                    Err(e) => Err(format!("Failed to parse DOM elements: {}", e)),
                 }
-            }
-            Err(e) => Err(format!("Failed to execute browser script: {}", e)),
+                Err(e) => Err(format!("Failed to parse DOM elements: {e}")),
+            },
+            Err(e) => Err(format!("Failed to execute browser script: {e}")),
         }
     }
 
