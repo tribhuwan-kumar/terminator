@@ -2200,8 +2200,9 @@ impl WindowsRecorder {
         let role = element.role().to_lowercase();
 
         // Only track actual input fields, not documents or other containers
+        // Note: "text" role is for static text content (labels, hyperlinks, etc.), NOT text inputs
+        // Actual text inputs use "edit" role in Windows UIA
         role.contains("edit")
-            || role == "text"
             || (role.contains("combobox") && element.is_enabled().unwrap_or(false))
         // Only editable combobox
     }
