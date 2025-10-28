@@ -6,6 +6,7 @@ pub mod mcp_types;
 pub mod output_parser;
 pub mod prompt;
 pub mod scripting_engine;
+pub mod sentry;
 pub mod server;
 pub mod server_sequence;
 pub mod telemetry;
