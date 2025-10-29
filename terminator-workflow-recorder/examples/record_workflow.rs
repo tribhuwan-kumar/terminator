@@ -524,7 +524,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Cancel the event display task
     event_display_task.abort();
 
-    let output_path = PathBuf::from("comprehensive_workflow_recording.json");
+    // Save to temp directory instead of root
+    let temp_dir = std::env::temp_dir();
+    let output_path = temp_dir.join("comprehensive_workflow_recording.json");
     info!("Saving comprehensive recording to {:?}", output_path);
     recorder
         .save(&output_path)
