@@ -583,32 +583,48 @@ impl WorkflowRecorder {
                     info!("Visual highlighting enabled during recording (recording mode: scroll disabled)");
 
                     while let Some(event) = event_stream.next().await {
-                        // Get UI element from event
-                        if let Some(ui_element) = event.ui_element() {
-                            // Get event label
-                            let label = if config.show_highlight_labels {
-                                Some(Self::get_event_label(&event))
-                            } else {
-                                None
-                            };
+                        // Only highlight semantic/high-level events to avoid double highlighting
+                        // Low-level Mouse(Up/Down) events are still recorded but not highlighted
+                        let should_highlight = matches!(
+                            event,
+                            WorkflowEvent::Click(_)
+                                | WorkflowEvent::TextInputCompleted(_)
+                                | WorkflowEvent::ApplicationSwitch(_)
+                                | WorkflowEvent::BrowserTabNavigation(_)
+                                | WorkflowEvent::BrowserClick(_)
+                                | WorkflowEvent::DragDrop(_)
+                                | WorkflowEvent::Hotkey(_)
+                                | WorkflowEvent::BrowserTextInput(_)
+                        );
 
-                            // Create highlight
-                            if let Ok(handle) = ui_element.highlight(
-                                config.highlight_color,
-                                config.highlight_duration_ms.map(Duration::from_millis),
-                                label,
-                                None, // text_position
-                                None, // font_style
-                            ) {
-                                // Enforce max concurrent limit
-                                let mut list = handles.lock().await;
-                                if list.len() >= config.highlight_max_concurrent {
-                                    // Remove oldest (FIFO)
-                                    if let Some(old) = list.pop_front() {
-                                        old.close();
+                        if should_highlight {
+                            // Get UI element from event
+                            if let Some(ui_element) = event.ui_element() {
+                                // Get event label
+                                let label = if config.show_highlight_labels {
+                                    Some(Self::get_event_label(&event))
+                                } else {
+                                    None
+                                };
+
+                                // Create highlight
+                                if let Ok(handle) = ui_element.highlight(
+                                    config.highlight_color,
+                                    config.highlight_duration_ms.map(Duration::from_millis),
+                                    label,
+                                    None, // text_position
+                                    None, // font_style
+                                ) {
+                                    // Enforce max concurrent limit
+                                    let mut list = handles.lock().await;
+                                    if list.len() >= config.highlight_max_concurrent {
+                                        // Remove oldest (FIFO)
+                                        if let Some(old) = list.pop_front() {
+                                            old.close();
+                                        }
                                     }
+                                    list.push_back(handle);
                                 }
-                                list.push_back(handle);
                             }
                         }
                     }
