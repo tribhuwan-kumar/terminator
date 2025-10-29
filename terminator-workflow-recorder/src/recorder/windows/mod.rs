@@ -2668,9 +2668,10 @@ impl WindowsRecorder {
                     }
                 }
 
-                // Only emit click event if it's NOT a text input that we're tracking
-                // This prevents duplicate events (Click + TextInputCompleted) for the same interaction
-                if !(ctx.config.record_text_input_completion && is_text_input) {
+                // Always emit click event, even for text inputs
+                // Both Click and TextInputCompleted events provide valuable information
+                // Click shows the interaction happened, TextInputCompleted shows what was typed
+                {
                     debug!(
                         "≡ƒû▒∩╕Å Mouse click on element: '{}' (role: '{}') - emitting Click event",
                         element_name, element_role
@@ -2879,12 +2880,35 @@ impl WindowsRecorder {
                     } else {
                         debug!("Γ£à Click event sent successfully");
                     }
-                } else {
-                    debug!(
-                        "≡ƒöñ Skipping Click event for text input '{}' (role: '{}') - will emit TextInputCompleted instead",
-                        element_name, element_role
-                    );
                 }
+            }
+        } else if button == MouseButton::Left {
+            // UI element capture failed, but we should still emit a Click event
+            // This ensures we don't lose click events during page transitions or when element capture times out
+            debug!(
+                "⚠️ Mouse click without UI element at position ({}, {}) - still emitting Click event",
+                ctx.position.x, ctx.position.y
+            );
+
+            let click_event = ClickEvent {
+                element_text: String::from("[Element capture failed]"),
+                interaction_type: crate::ButtonInteractionType::Click,
+                element_role: String::from("unknown"),
+                was_enabled: true,
+                click_position: Some(*ctx.position),
+                element_description: None,
+                child_text_content: Vec::new(),
+                relative_position: None,
+                metadata: EventMetadata {
+                    ui_element: None,
+                    timestamp: Some(Self::capture_timestamp()),
+                },
+            };
+
+            if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
+                debug!("Failed to send click event (no UI element): {}", e);
+            } else {
+                debug!("✅ Click event sent successfully (no UI element)");
             }
         }
 
