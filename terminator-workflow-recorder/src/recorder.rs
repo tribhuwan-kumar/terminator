@@ -585,13 +585,14 @@ impl WorkflowRecorder {
                     while let Some(event) = event_stream.next().await {
                         // Only highlight semantic/high-level events to avoid double highlighting
                         // Low-level Mouse(Up/Down) events are still recorded but not highlighted
+                        // BrowserClick events are also skipped since a regular Click is always emitted alongside them
                         let should_highlight = matches!(
                             event,
                             WorkflowEvent::Click(_)
                                 | WorkflowEvent::TextInputCompleted(_)
                                 | WorkflowEvent::ApplicationSwitch(_)
                                 | WorkflowEvent::BrowserTabNavigation(_)
-                                | WorkflowEvent::BrowserClick(_)
+                                // BrowserClick excluded - a regular Click is always emitted for these
                                 | WorkflowEvent::DragDrop(_)
                                 | WorkflowEvent::Hotkey(_)
                                 | WorkflowEvent::BrowserTextInput(_)
