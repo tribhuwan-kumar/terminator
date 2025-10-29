@@ -121,9 +121,9 @@ mod with_sentry {
     pub fn shutdown_sentry() {
         info!("Shutting down Sentry...");
         // Flush with a 2 second timeout using the client
-        sentry::Hub::current().client().map(|client| {
-            client.close(Some(std::time::Duration::from_secs(2)))
-        });
+        sentry::Hub::current()
+            .client()
+            .map(|client| client.close(Some(std::time::Duration::from_secs(2))));
     }
 
     /// Capture an error manually (useful for non-panic errors)

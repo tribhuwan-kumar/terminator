@@ -1896,26 +1896,6 @@ impl WindowsRecorder {
         ButtonInteractionType::Click
     }
 
-    /// Maps a browser keyword (like 'chrome') to a display name (like 'Google Chrome').
-    fn map_keyword_to_browser_name(keyword: &str) -> String {
-        match keyword.to_lowercase().as_str() {
-            "chrome" | "google chrome" => "Google Chrome".to_string(),
-            "firefox" | "mozilla firefox" => "Mozilla Firefox".to_string(),
-            "edge" | "msedge" | "microsoft edge" => "Microsoft Edge".to_string(),
-            "iexplore" | "internet explorer" => "Internet Explorer".to_string(),
-            "safari" => "Safari".to_string(),
-            "opera" => "Opera".to_string(),
-            other => {
-                // Capitalize the first letter as a fallback
-                let mut c = other.chars();
-                match c.next() {
-                    None => String::new(),
-                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                }
-            }
-        }
-    }
-
     /// Static version for use in event listeners where self is not available
     fn send_filtered_event_static(
         event_tx: &broadcast::Sender<WorkflowEvent>,
@@ -2003,185 +1983,6 @@ impl WindowsRecorder {
 
         if !should_filter {
             let _ = event_tx.send(event);
-        }
-    }
-
-    /// Helper function to check if two URLs represent meaningful navigation
-    fn is_meaningful_navigation(old_url: &str, new_url: &str) -> bool {
-        // Extract base URL without query params and fragments
-        fn get_base(url: &str) -> &str {
-            url.split('?')
-                .next()
-                .unwrap_or(url)
-                .split('#')
-                .next()
-                .unwrap_or(url)
-        }
-
-        // Compare only base URLs, ignoring all query parameters and fragments
-        // Real navigation means the path or domain changed, not just parameters
-        get_base(old_url) != get_base(new_url)
-    }
-
-    /// Check and emit browser navigation events with improved filtering
-    async fn check_and_emit_browser_navigation(
-        tracker: &Arc<Mutex<BrowserTabTracker>>,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        ui_element: &Option<UIElement>,
-        config: &WorkflowRecorderConfig,
-    ) {
-        if !config.record_browser_tab_navigation {
-            return;
-        }
-
-        if let Some(element) = ui_element {
-            let app_name = element.application_name();
-            let app_name_lower = app_name.to_lowercase();
-
-            let matched_browser_keyword = {
-                let tracker_guard = tracker.lock().unwrap();
-                tracker_guard
-                    .known_browsers
-                    .iter()
-                    .find(|b| app_name_lower.contains(*b))
-                    .cloned()
-            };
-
-            debug!(
-                "Checking browser navigation for app: '{}', matched browser keyword: {:?}",
-                app_name, matched_browser_keyword
-            );
-
-            if let Some(keyword) = matched_browser_keyword {
-                let browser_display_name = Self::map_keyword_to_browser_name(&keyword);
-
-                // Try multiple methods to get URL information
-                let url_info = element
-                    .url()
-                    .or_else(|| {
-                        // Try to get URL from element attributes or text
-                        if let Ok(text) = element.text(0) {
-                            if text.starts_with("http") {
-                                Some(text)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    })
-                    .or_else(|| {
-                        // Try to extract URL from window title (common in browsers)
-                        let window_title = element.window_title();
-                        if window_title.contains("http") {
-                            // Extract URL from title
-                            window_title
-                                .split_whitespace()
-                                .find(|s| s.starts_with("http"))
-                                .map(|s| s.to_string())
-                        } else {
-                            None
-                        }
-                    });
-
-                if let Some(new_url) = url_info {
-                    // Use window title as page title, fallback to app name
-                    let new_title = {
-                        let window_title = element.window_title();
-                        if window_title.is_empty() {
-                            app_name.clone()
-                        } else {
-                            window_title
-                        }
-                    };
-
-                    debug!(
-                        "Browser navigation detected - URL: '{}', Title: '{}'",
-                        new_url, new_title
-                    );
-
-                    let mut tracker_guard = tracker.lock().unwrap();
-
-                    let is_switch = match &tracker_guard.current_url {
-                        Some(current_url) => {
-                            // Check if this is a meaningful navigation, not just query param changes
-                            Self::is_meaningful_navigation(current_url, &new_url)
-                        }
-                        None => {
-                            // First time seeing a URL - check if it's a real page or just a blank tab
-                            // Common new tab/blank pages to ignore
-                            !new_url.is_empty()
-                                && !new_url.starts_with("about:blank")
-                                && !new_url.starts_with("about:newtab")
-                                && !new_url.starts_with("chrome://newtab")
-                                && !new_url.starts_with("edge://newtab")
-                                && !new_url.starts_with("about:home")
-                                && !new_url.contains("://newtab")
-                                && !new_url.contains("://new-tab-page")
-                        }
-                    };
-
-                    if !is_switch && tracker_guard.current_url.is_some() {
-                        debug!(
-                            "Ignoring non-meaningful navigation: {} -> {} (likely just query params or in-page state change)",
-                            tracker_guard.current_url.as_ref().unwrap(),
-                            new_url
-                        );
-                    }
-
-                    debug!(
-                        "Is switch: {}, current_url: {:?}, current_title: {:?}",
-                        is_switch, tracker_guard.current_url, tracker_guard.current_title
-                    );
-
-                    if is_switch {
-                        let now = Instant::now();
-                        let dwell_time = now
-                            .duration_since(tracker_guard.last_navigation_time)
-                            .as_millis() as u64;
-
-                        let nav_event = BrowserTabNavigationEvent {
-                            action: crate::TabAction::Switched,
-                            method: crate::TabNavigationMethod::Other, // Updated from focus change
-                            to_url: Some(new_url.clone()),
-                            from_url: tracker_guard.current_url.clone(),
-                            to_title: Some(new_title.clone()),
-                            from_title: tracker_guard.current_title.clone(),
-                            browser: browser_display_name.clone(),
-                            tab_index: None,
-                            total_tabs: None,
-                            page_dwell_time_ms: Some(dwell_time),
-                            is_back_forward: false,
-                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                                element.clone(),
-                            )),
-                        };
-
-                        debug!("Sending browser navigation event: {:?}", nav_event);
-
-                        if event_tx
-                            .send(WorkflowEvent::BrowserTabNavigation(nav_event))
-                            .is_ok()
-                        {
-                            debug!("Γ£à Browser navigation event sent successfully");
-                            tracker_guard.last_navigation_time = now;
-                        } else {
-                            debug!("Γ¥î Failed to send browser navigation event");
-                        }
-                    }
-
-                    // Always update tracker state, regardless of whether we sent an event
-                    // This ensures we track the current state even when no navigation occurs
-                    tracker_guard.current_browser = Some(browser_display_name);
-                    tracker_guard.current_url = Some(new_url);
-                    tracker_guard.current_title = Some(new_title);
-                } else {
-                    debug!(
-                        "No URL information found for browser element: '{}'",
-                        element.name_or_empty()
-                    );
-                }
-            }
         }
     }
 
@@ -2404,12 +2205,17 @@ impl WindowsRecorder {
         let ui_element = if ctx.config.capture_ui_elements {
             // Use deepest element finder for more precise click detection
             // Try with 350ms timeout first
-            let mut element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
+            let mut element =
+                Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
 
             // If first attempt failed, retry once with another 350ms
             if element.is_none() {
                 debug!("First element capture attempt failed, retrying with 350ms timeout...");
-                element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
+                element = Self::get_deepest_element_from_point_with_timeout(
+                    ctx.config,
+                    *ctx.position,
+                    350,
+                );
             }
 
             element
@@ -2718,44 +2524,40 @@ impl WindowsRecorder {
                                             let _ = tx.send(result);
                                         });
 
-                                        if let Ok(dom_result) =
+                                        if let Ok(Some(browser_dom_info)) =
                                             rx.recv_timeout(Duration::from_millis(200))
                                         {
-                                            if let Some(browser_dom_info) = dom_result {
-                                                debug!(
-                                                    "✅ DOM element captured: {} with {} selectors",
-                                                    browser_dom_info.tag_name,
-                                                    browser_dom_info.selector_candidates.len()
-                                                );
-                                                let converted_dom = crate::events::DomElementInfo {
-                                                    tag_name: browser_dom_info.tag_name,
-                                                    id: browser_dom_info.id,
-                                                    class_names: browser_dom_info.class_names,
-                                                    css_selector: browser_dom_info.css_selector,
-                                                    xpath: browser_dom_info.xpath,
-                                                    inner_text: browser_dom_info.inner_text,
-                                                    input_value: browser_dom_info.input_value,
-                                                    is_visible: browser_dom_info.is_visible,
-                                                    is_interactive: browser_dom_info.is_interactive,
-                                                    aria_label: browser_dom_info.aria_label,
-                                                    selector_candidates: browser_dom_info
-                                                        .selector_candidates
-                                                        .into_iter()
-                                                        .map(|sc| {
-                                                            crate::events::SelectorCandidate {
-                                                                selector: sc.selector,
-                                                                selector_type: format!(
-                                                                    "{:?}",
-                                                                    sc.selector_type
-                                                                ),
-                                                                specificity: sc.specificity,
-                                                                requires_jquery: sc.requires_jquery,
-                                                            }
-                                                        })
-                                                        .collect(),
-                                                };
-                                                dom_element = Some(converted_dom);
-                                            }
+                                            debug!(
+                                                "✅ DOM element captured: {} with {} selectors",
+                                                browser_dom_info.tag_name,
+                                                browser_dom_info.selector_candidates.len()
+                                            );
+                                            let converted_dom = crate::events::DomElementInfo {
+                                                tag_name: browser_dom_info.tag_name,
+                                                id: browser_dom_info.id,
+                                                class_names: browser_dom_info.class_names,
+                                                css_selector: browser_dom_info.css_selector,
+                                                xpath: browser_dom_info.xpath,
+                                                inner_text: browser_dom_info.inner_text,
+                                                input_value: browser_dom_info.input_value,
+                                                is_visible: browser_dom_info.is_visible,
+                                                is_interactive: browser_dom_info.is_interactive,
+                                                aria_label: browser_dom_info.aria_label,
+                                                selector_candidates: browser_dom_info
+                                                    .selector_candidates
+                                                    .into_iter()
+                                                    .map(|sc| crate::events::SelectorCandidate {
+                                                        selector: sc.selector,
+                                                        selector_type: format!(
+                                                            "{:?}",
+                                                            sc.selector_type
+                                                        ),
+                                                        specificity: sc.specificity,
+                                                        requires_jquery: sc.requires_jquery,
+                                                    })
+                                                    .collect(),
+                                            };
+                                            dom_element = Some(converted_dom);
                                         }
                                     }
                                 }

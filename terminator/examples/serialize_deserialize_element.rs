@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut custom_element = SerializableUIElement::new("Button".to_string());
     custom_element.name = Some("Click Me".to_string());
     custom_element.bounds = Some((100.0, 200.0, 80.0, 30.0));
-    custom_element.application = Some("My App".to_string());
+    custom_element.window_and_application_name = Some("My App".to_string());
 
     let custom_json = custom_element.to_json()?;
     println!("Custom SerializableUIElement:");

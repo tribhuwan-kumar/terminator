@@ -148,7 +148,7 @@ impl TextInputTracker {
 
         // For suggestion clicks, always emit (autocomplete selections are valid)
         if reason == "suggestion_click" {
-            return true;  // Always emit for suggestion clicks
+            return true; // Always emit for suggestion clicks
         }
 
         // Default: require activity
@@ -184,7 +184,10 @@ impl TextInputTracker {
                         error!("❌ Second attempt also failed: {}", e2);
                         // Graceful fallback: still emit event with metadata about the interaction
                         if self.keystroke_count > 0 {
-                            format!("[Text extraction failed - {} keystrokes]", self.keystroke_count)
+                            format!(
+                                "[Text extraction failed - {} keystrokes]",
+                                self.keystroke_count
+                            )
                         } else {
                             String::from("[Text extraction failed]")
                         }
@@ -207,7 +210,10 @@ impl TextInputTracker {
         // Still emit the event but note it's unchanged (for focus tracking)
         if let Some(ref initial) = self.initial_text {
             if text_value == *initial && !self.has_typing_activity {
-                info!("ℹ️ Text unchanged from initial value '{}' - emitting with unchanged text.", initial);
+                info!(
+                    "ℹ️ Text unchanged from initial value '{}' - emitting with unchanged text.",
+                    initial
+                );
                 // Continue to emit event (don't return None)
             }
         }

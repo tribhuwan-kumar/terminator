@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
 use tokio::time::sleep;
