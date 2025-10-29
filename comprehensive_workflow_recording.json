@@ -1,0 +1,1493 @@
+{
+  "name": "Comprehensive Workflow Recording",
+  "start_time": 1761754371285,
+  "end_time": 1761754381386,
+  "events": [
+    {
+      "timestamp": 1761754371402,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2544,
+            "y": 978
+          },
+          "metadata": {
+            "timestamp": 1761754371402
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754371491,
+      "event": {
+        "ApplicationSwitch": {
+          "to_window_and_application_name": "test_backend_output.txt - screenpipe-windows - Cursor",
+          "to_process_name": "Cursor.exe",
+          "to_process_id": 17492,
+          "switch_method": "WindowClick",
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754371491
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754371507,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2595,
+            "y": 983
+          },
+          "metadata": {
+            "timestamp": 1761754371507
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754371703,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2629,
+            "y": 988
+          },
+          "metadata": {
+            "timestamp": 1761754371703
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754371807,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2627,
+            "y": 993
+          },
+          "metadata": {
+            "timestamp": 1761754371807
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754371912,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2660,
+            "y": 1002
+          },
+          "metadata": {
+            "timestamp": 1761754371912
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372018,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2679,
+            "y": 1009
+          },
+          "metadata": {
+            "timestamp": 1761754372018
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372122,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2690,
+            "y": 1019
+          },
+          "metadata": {
+            "timestamp": 1761754372122
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372234,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2694,
+            "y": 1022
+          },
+          "metadata": {
+            "timestamp": 1761754372234
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372339,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2696,
+            "y": 1025
+          },
+          "metadata": {
+            "timestamp": 1761754372339
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372444,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2714,
+            "y": 1044
+          },
+          "metadata": {
+            "timestamp": 1761754372444
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372550,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2725,
+            "y": 1060
+          },
+          "metadata": {
+            "timestamp": 1761754372550
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372654,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2725,
+            "y": 1064
+          },
+          "metadata": {
+            "timestamp": 1761754372654
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372759,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2725,
+            "y": 1076
+          },
+          "metadata": {
+            "timestamp": 1761754372759
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372873,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2725,
+            "y": 1077
+          },
+          "metadata": {
+            "timestamp": 1761754372873
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754372977,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2694,
+            "y": 710
+          },
+          "metadata": {
+            "timestamp": 1761754372977
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754373082,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2533,
+            "y": 336
+          },
+          "metadata": {
+            "timestamp": 1761754373082
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754373255,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2531,
+            "y": 334
+          },
+          "metadata": {
+            "timestamp": 1761754373255
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754373359,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2531,
+            "y": 344
+          },
+          "metadata": {
+            "timestamp": 1761754373359
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754373502,
+      "event": {
+        "Mouse": {
+          "event_type": "Down",
+          "button": "Left",
+          "position": {
+            "x": 2531,
+            "y": 345
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754373502
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754373638,
+      "event": {
+        "Click": {
+          "element_text": "Name",
+          "interaction_type": "Click",
+          "element_role": "edit",
+          "was_enabled": true,
+          "click_position": {
+            "x": 2531,
+            "y": 345
+          },
+          "relative_position": [
+            0.21097046,
+            0.13043478
+          ],
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754373638
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754373638,
+      "event": {
+        "Mouse": {
+          "event_type": "Up",
+          "button": "Left",
+          "position": {
+            "x": 2531,
+            "y": 345
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754373638
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754373787,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2531,
+            "y": 346
+          },
+          "metadata": {
+            "timestamp": 1761754373787
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754374687,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2529,
+            "y": 347
+          },
+          "metadata": {
+            "timestamp": 1761754374687
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754374793,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2726,
+            "y": 675
+          },
+          "metadata": {
+            "timestamp": 1761754374793
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754374898,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2790,
+            "y": 988
+          },
+          "metadata": {
+            "timestamp": 1761754374898
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375003,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2754,
+            "y": 1056
+          },
+          "metadata": {
+            "timestamp": 1761754375003
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375107,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2754,
+            "y": 1042
+          },
+          "metadata": {
+            "timestamp": 1761754375107
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375220,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2773,
+            "y": 996
+          },
+          "metadata": {
+            "timestamp": 1761754375220
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375325,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2776,
+            "y": 977
+          },
+          "metadata": {
+            "timestamp": 1761754375325
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375487,
+      "event": {
+        "Mouse": {
+          "event_type": "Down",
+          "button": "Left",
+          "position": {
+            "x": 2776,
+            "y": 969
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754375487
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375602,
+      "event": {
+        "TextInputCompleted": {
+          "text_value": "",
+          "field_name": "Windows PowerShell",
+          "field_type": "Text",
+          "input_method": "Typed",
+          "focus_method": "MouseClick",
+          "typing_duration_ms": 43,
+          "keystroke_count": 0,
+          "metadata": {
+            "ui_element": {
+              "id": "129703",
+              "role": "Text",
+              "name": "Windows PowerShell",
+              "bounds": [
+                2335.0,
+                45.0,
+                463.0,
+                1678.0
+              ],
+              "application": "✳ Test Recorder Script",
+              "process_id": 2760
+            },
+            "timestamp": 1761754375602
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375603,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2776,
+            "y": 969
+          },
+          "metadata": {
+            "timestamp": 1761754375603
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375715,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2656,
+            "y": 542
+          },
+          "metadata": {
+            "timestamp": 1761754375715
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375828,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2558,
+            "y": 356
+          },
+          "metadata": {
+            "timestamp": 1761754375828
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375933,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2552,
+            "y": 377
+          },
+          "metadata": {
+            "timestamp": 1761754375933
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375964,
+      "event": {
+        "Click": {
+          "element_text": "Windows PowerShell",
+          "interaction_type": "Click",
+          "element_role": "text",
+          "was_enabled": true,
+          "click_position": {
+            "x": 2776,
+            "y": 969
+          },
+          "child_text_content": [
+            "Vertical"
+          ],
+          "relative_position": [
+            0.9524838,
+            0.55065554
+          ],
+          "metadata": {
+            "ui_element": {
+              "id": "129703",
+              "role": "Text",
+              "name": "Windows PowerShell",
+              "bounds": [
+                2335.0,
+                45.0,
+                463.0,
+                1678.0
+              ],
+              "application": "✳ Test Recorder Script",
+              "process_id": 2760
+            },
+            "timestamp": 1761754375964
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754375964,
+      "event": {
+        "Mouse": {
+          "event_type": "Up",
+          "button": "Left",
+          "position": {
+            "x": 2776,
+            "y": 969
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "129703",
+              "role": "Text",
+              "name": "Windows PowerShell",
+              "bounds": [
+                2335.0,
+                45.0,
+                463.0,
+                1678.0
+              ],
+              "application": "✳ Test Recorder Script",
+              "process_id": 2760
+            },
+            "timestamp": 1761754375964
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376038,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2550,
+            "y": 369
+          },
+          "metadata": {
+            "timestamp": 1761754376038
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376143,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2548,
+            "y": 362
+          },
+          "metadata": {
+            "timestamp": 1761754376143
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376248,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2546,
+            "y": 353
+          },
+          "metadata": {
+            "timestamp": 1761754376248
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376790,
+      "event": {
+        "Mouse": {
+          "event_type": "Down",
+          "button": "Left",
+          "position": {
+            "x": 2546,
+            "y": 352
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754376790
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376795,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2546,
+            "y": 352
+          },
+          "metadata": {
+            "timestamp": 1761754376795
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376837,
+      "event": {
+        "Click": {
+          "element_text": "Name",
+          "interaction_type": "Click",
+          "element_role": "edit",
+          "was_enabled": true,
+          "click_position": {
+            "x": 2546,
+            "y": 352
+          },
+          "relative_position": [
+            0.2742616,
+            0.4347826
+          ],
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754376837
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376837,
+      "event": {
+        "Mouse": {
+          "event_type": "Up",
+          "button": "Left",
+          "position": {
+            "x": 2546,
+            "y": 352
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754376837
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754376900,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2819,
+            "y": 592
+          },
+          "metadata": {
+            "timestamp": 1761754376900
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377058,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2878,
+            "y": 683
+          },
+          "metadata": {
+            "timestamp": 1761754377058
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377163,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2878,
+            "y": 683
+          },
+          "metadata": {
+            "timestamp": 1761754377163
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377268,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2870,
+            "y": 695
+          },
+          "metadata": {
+            "timestamp": 1761754377268
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377380,
+      "event": {
+        "Mouse": {
+          "event_type": "Down",
+          "button": "Left",
+          "position": {
+            "x": 2870,
+            "y": 695
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "228779",
+              "role": "unknown"
+            },
+            "timestamp": 1761754377380
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377740,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2869,
+            "y": 695
+          },
+          "metadata": {
+            "timestamp": 1761754377740
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377821,
+      "event": {
+        "TextInputCompleted": {
+          "text_value": "",
+          "field_name": "Windows PowerShell",
+          "field_type": "Text",
+          "input_method": "Typed",
+          "focus_method": "MouseClick",
+          "typing_duration_ms": 324,
+          "keystroke_count": 0,
+          "metadata": {
+            "ui_element": {
+              "id": "129703",
+              "role": "Text",
+              "name": "Windows PowerShell",
+              "bounds": [
+                2798.0,
+                43.0,
+                463.0,
+                1678.0
+              ],
+              "application": "✳ Test Recorder Script",
+              "process_id": 2760
+            },
+            "timestamp": 1761754377821
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377846,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2732,
+            "y": 654
+          },
+          "metadata": {
+            "timestamp": 1761754377846
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754377853,
+      "event": {
+        "TextInputCompleted": {
+          "text_value": "",
+          "field_name": "The editor is not accessible at this time. To enable screen reader optimized mode, use Shift+Alt+F1",
+          "field_type": "Edit",
+          "input_method": "Typed",
+          "focus_method": "KeyboardNav",
+          "typing_duration_ms": 20,
+          "keystroke_count": 0,
+          "metadata": {
+            "ui_element": {
+              "id": "478031",
+              "role": "Edit",
+              "bounds": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "application": "recorder_test_output.txt - screenpipe-windows - Cursor",
+              "process_id": 17492
+            },
+            "timestamp": 1761754377853
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378028,
+      "event": {
+        "TextInputCompleted": {
+          "text_value": "",
+          "field_type": "Edit",
+          "input_method": "Typed",
+          "focus_method": "KeyboardNav",
+          "typing_duration_ms": 168,
+          "keystroke_count": 0,
+          "metadata": {
+            "ui_element": {
+              "id": "478031",
+              "role": "Edit",
+              "bounds": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "application": "recorder_test_output.txt - screenpipe-windows - Cursor",
+              "process_id": 17492
+            },
+            "timestamp": 1761754378028
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378389,
+      "event": {
+        "Click": {
+          "element_text": "Windows PowerShell",
+          "interaction_type": "Click",
+          "element_role": "text",
+          "was_enabled": true,
+          "click_position": {
+            "x": 2870,
+            "y": 695
+          },
+          "child_text_content": [
+            "Vertical"
+          ],
+          "relative_position": [
+            0.15550756,
+            0.38855782
+          ],
+          "metadata": {
+            "ui_element": {
+              "id": "129703",
+              "role": "Text",
+              "name": "Windows PowerShell",
+              "bounds": [
+                2798.0,
+                43.0,
+                463.0,
+                1678.0
+              ],
+              "application": "✳ Test Recorder Script",
+              "process_id": 2760
+            },
+            "timestamp": 1761754378389
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378389,
+      "event": {
+        "Mouse": {
+          "event_type": "Up",
+          "button": "Left",
+          "position": {
+            "x": 2870,
+            "y": 695
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "129703",
+              "role": "Text",
+              "name": "Windows PowerShell",
+              "bounds": [
+                2798.0,
+                43.0,
+                463.0,
+                1678.0
+              ],
+              "application": "✳ Test Recorder Script",
+              "process_id": 2760
+            },
+            "timestamp": 1761754378389
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378415,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2591,
+            "y": 568
+          },
+          "metadata": {
+            "timestamp": 1761754378415
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378490,
+      "event": {
+        "TextInputCompleted": {
+          "text_value": "vscode-file://vscode-app/c:/Users/screenpipe-windows/AppData/Local/Programs/cursor/resources/app/out/vs/code/electron-sandbox/workbench/workbench.html",
+          "field_name": "test_backend_output.txt - screenpipe-windows - Cursor",
+          "field_type": "Document",
+          "input_method": "Typed",
+          "focus_method": "KeyboardNav",
+          "typing_duration_ms": 459,
+          "keystroke_count": 0,
+          "metadata": {
+            "ui_element": {
+              "id": "663579",
+              "role": "Document",
+              "name": "recorder_test_output.txt - screenpipe-windows - Cursor",
+              "bounds": [
+                1854.0,
+                0.0,
+                481.0,
+                2113.0
+              ],
+              "application": "recorder_test_output.txt - screenpipe-windows - Cursor",
+              "process_id": 17492
+            },
+            "timestamp": 1761754378490
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378528,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2497,
+            "y": 478
+          },
+          "metadata": {
+            "timestamp": 1761754378528
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378640,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2180,
+            "y": 251
+          },
+          "metadata": {
+            "timestamp": 1761754378640
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754378955,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2171,
+            "y": 254
+          },
+          "metadata": {
+            "timestamp": 1761754378955
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379060,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 2051,
+            "y": 175
+          },
+          "metadata": {
+            "timestamp": 1761754379060
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379345,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 1923,
+            "y": 93
+          },
+          "metadata": {
+            "timestamp": 1761754379345
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379458,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 1464,
+            "y": 133
+          },
+          "metadata": {
+            "timestamp": 1761754379458
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379563,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 842,
+            "y": 119
+          },
+          "metadata": {
+            "timestamp": 1761754379563
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379647,
+      "event": {
+        "ApplicationSwitch": {
+          "from_window_and_application_name": "test_backend_output.txt - screenpipe-windows - Cursor",
+          "to_window_and_application_name": "recorder_test_output.txt - screenpipe-windows - Cursor",
+          "from_process_name": "Cursor.exe",
+          "to_process_name": "Cursor.exe",
+          "from_process_id": 17492,
+          "to_process_id": 17492,
+          "switch_method": "WindowClick",
+          "dwell_time_ms": 8146,
+          "metadata": {
+            "ui_element": {
+              "id": "167148",
+              "role": "Edit",
+              "name": "The editor is not accessible at this time. To enable screen reader optimized mode, use Shift+Alt+F1",
+              "bounds": [
+                1901.0,
+                81.0,
+                2.0,
+                3.0
+              ],
+              "application": "recorder_test_output.txt - screenpipe-windows - Cursor",
+              "process_id": 17492
+            },
+            "timestamp": 1761754379647
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379743,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 769,
+            "y": 125
+          },
+          "metadata": {
+            "timestamp": 1761754379743
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379848,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 677,
+            "y": 206
+          },
+          "metadata": {
+            "timestamp": 1761754379848
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379992,
+      "event": {
+        "TextInputCompleted": {
+          "text_value": "",
+          "field_name": "The editor is not accessible at this time. To enable screen reader optimized mode, use Shift+Alt+F1",
+          "field_type": "Edit",
+          "input_method": "Typed",
+          "focus_method": "KeyboardNav",
+          "typing_duration_ms": 1499,
+          "keystroke_count": 0,
+          "metadata": {
+            "ui_element": {
+              "id": "167148",
+              "role": "Edit",
+              "name": "The editor is not accessible at this time. To enable screen reader optimized mode, use Shift+Alt+F1",
+              "bounds": [
+                1901.0,
+                81.0,
+                2.0,
+                3.0
+              ],
+              "application": "recorder_test_output.txt - screenpipe-windows - Cursor",
+              "process_id": 17492
+            },
+            "timestamp": 1761754379992
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754379992,
+      "event": {
+        "Mouse": {
+          "event_type": "Down",
+          "button": "Left",
+          "position": {
+            "x": 656,
+            "y": 224
+          },
+          "metadata": {
+            "ui_element": {
+              "id": "129295",
+              "role": "Group",
+              "bounds": [
+                8.0,
+                145.0,
+                922.0,
+                84.0
+              ],
+              "application": "Oxford Languages and Google - English | Oxford Languages - Google Chrome",
+              "process_id": 41524
+            },
+            "timestamp": 1761754379992
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754380009,
+      "event": {
+        "TextInputCompleted": {
+          "text_value": "https://languages.oup.com/google-dictionary-en/",
+          "field_name": "Oxford Languages and Google - English | Oxford Languages",
+          "field_type": "Document",
+          "input_method": "Typed",
+          "focus_method": "KeyboardNav",
+          "typing_duration_ms": 12,
+          "keystroke_count": 0,
+          "metadata": {
+            "ui_element": {
+              "id": "829951",
+              "role": "Document",
+              "name": "Oxford Languages and Google - English | Oxford Languages",
+              "bounds": [
+                8.0,
+                145.0,
+                937.0,
+                689.0
+              ],
+              "application": "Oxford Languages and Google - English | Oxford Languages - Google Chrome",
+              "process_id": 41524
+            },
+            "timestamp": 1761754380009
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754380140,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 656,
+            "y": 224
+          },
+          "metadata": {
+            "timestamp": 1761754380140
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754380245,
+      "event": {
+        "Mouse": {
+          "event_type": "Move",
+          "button": "Left",
+          "position": {
+            "x": 603,
+            "y": 224
+          },
+          "metadata": {
+            "timestamp": 1761754380245
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754380777,
+      "event": {
+        "Click": {
+          "element_text": "[Element capture failed]",
+          "interaction_type": "Click",
+          "element_role": "unknown",
+          "was_enabled": true,
+          "click_position": {
+            "x": 656,
+            "y": 224
+          },
+          "metadata": {
+            "timestamp": 1761754380777
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754380777,
+      "event": {
+        "Mouse": {
+          "event_type": "Up",
+          "button": "Left",
+          "position": {
+            "x": 656,
+            "y": 224
+          },
+          "metadata": {
+            "timestamp": 1761754380777
+          }
+        }
+      }
+    },
+    {
+      "timestamp": 1761754381320,
+      "event": {
+        "BrowserTabNavigation": {
+          "action": "Switched",
+          "method": "Other",
+          "to_url": "https://languages.oup.com/google-dictionary-en/",
+          "to_title": "Oxford Languages and Google - English | Oxford Languages - Google Chrome",
+          "browser": "Google Chrome",
+          "page_dwell_time_ms": 10033,
+          "is_back_forward": false,
+          "metadata": {
+            "ui_element": {
+              "id": "829951",
+              "role": "Document",
+              "name": "Oxford Languages and Google - English | Oxford Languages",
+              "bounds": [
+                8.0,
+                145.0,
+                937.0,
+                689.0
+              ],
+              "application": "Oxford Languages and Google - English | Oxford Languages - Google Chrome",
+              "process_id": 41524
+            },
+            "timestamp": 1761754381320
+          }
+        }
+      }
+    }
+  ]
+}
