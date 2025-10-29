@@ -5,6 +5,8 @@ use crate::telemetry::{StepSpan, WorkflowSpan};
 use crate::utils::{
     DesktopWrapper, ExecuteSequenceArgs, SequenceItem, ToolCall, ToolGroup, VariableDefinition,
 };
+use crate::workflow_format::{detect_workflow_format, WorkflowFormat};
+use crate::workflow_typescript::TypeScriptWorkflow;
 use rmcp::model::{CallToolResult, Content};
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::ErrorData as McpError;
@@ -278,7 +280,24 @@ impl DesktopWrapper {
             ));
         }
 
-        // Handle URL fetching if provided
+        // Detect workflow format if URL is provided
+        if let Some(url) = &args.url {
+            let format = detect_workflow_format(url);
+
+            match format {
+                WorkflowFormat::TypeScript => {
+                    // Execute TypeScript workflow
+                    let url_clone = url.clone();
+                    return self.execute_typescript_workflow(&url_clone, args).await;
+                }
+                WorkflowFormat::Yaml => {
+                    // Continue with existing YAML workflow logic
+                    info!("Detected YAML workflow format");
+                }
+            }
+        }
+
+        // Handle URL fetching if provided (YAML workflow path)
         if let Some(url) = &args.url {
             info!("Fetching workflow from URL: {}", url);
 
@@ -2225,5 +2244,56 @@ impl DesktopWrapper {
         };
 
         (processed_result, error_occurred)
+    }
+
+    /// Execute TypeScript workflow
+    async fn execute_typescript_workflow(
+        &self,
+        url: &str,
+        args: ExecuteSequenceArgs,
+    ) -> Result<CallToolResult, McpError> {
+        info!("Executing TypeScript workflow from URL: {}", url);
+
+        // Load saved state if resuming
+        let restored_state = if args.start_from_step.is_some() {
+            Self::load_workflow_state(url).await?
+        } else {
+            None
+        };
+
+        // Create TypeScript workflow executor
+        let ts_workflow = TypeScriptWorkflow::new(url)?;
+
+        // Execute workflow
+        let result = ts_workflow
+            .execute(
+                args.inputs.unwrap_or(json!({})),
+                args.start_from_step.as_deref(),
+                args.end_at_step.as_deref(),
+                restored_state,
+            )
+            .await?;
+
+        // Save state for resumption
+        if let Some(ref last_step_id) = result.result.last_step_id {
+            Self::save_workflow_state(url, Some(last_step_id), result.result.last_step_index, &result.state)
+                .await?;
+        }
+
+        // Return result
+        let output = json!({
+            "status": result.result.status,
+            "metadata": result.metadata,
+            "state": result.state,
+            "last_step_id": result.result.last_step_id,
+            "last_step_index": result.result.last_step_index,
+        });
+
+        Ok(CallToolResult {
+            content: vec![Content::text(serde_json::to_string_pretty(&output).unwrap())],
+            is_error: Some(result.result.status != "success"),
+            meta: None,
+            structured_content: None,
+        })
     }
 }

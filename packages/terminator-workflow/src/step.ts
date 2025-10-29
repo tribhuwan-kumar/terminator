@@ -89,7 +89,8 @@ export function createStep<TInput = any, TOutput = any>(
             attempt: 0,
             retry: async () => {
               logger.info(`🔄 Retrying step: ${config.name}...`);
-              return this.run(context);
+              const result = await this.run(context);
+              return result as TOutput;
             },
           };
 

@@ -7,6 +7,7 @@
 
 export { createStep } from './step';
 export { createWorkflow } from './workflow';
+export { createWorkflowRunner, WorkflowRunner } from './runner';
 
 export type {
   Desktop,
@@ -24,6 +25,11 @@ export type {
   WorkflowSuccessContext,
   WorkflowErrorContext,
 } from './types';
+
+export type {
+  WorkflowRunnerOptions,
+  WorkflowState,
+} from './runner';
 
 export { ConsoleLogger } from './types';
 

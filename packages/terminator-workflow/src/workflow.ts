@@ -7,9 +7,9 @@ import type {
   WorkflowContext,
   WorkflowSuccessContext,
   WorkflowErrorContext,
-  ConsoleLogger,
   Logger,
 } from './types';
+import { ConsoleLogger } from './types';
 
 /**
  * Workflow builder for composing steps
