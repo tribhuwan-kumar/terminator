@@ -2700,7 +2700,6 @@ impl WindowsRecorder {
 
             // If first attempt failed, retry once with another 350ms
             if element.is_none() {
-                debug!("First element capture attempt failed (Mouse Up), retrying with 350ms timeout...");
                 element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
             }
 
@@ -2915,11 +2914,7 @@ impl WindowsRecorder {
                         )),
                     };
 
-                    if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
-                        debug!("Failed to send click event: {}", e);
-                    } else {
-                        debug!("✅ Click event sent successfully (Mouse Up)");
-                    }
+                    let _ = ctx.event_tx.send(WorkflowEvent::Click(click_event));
                 }
             }
         } else if button == MouseButton::Left {
@@ -2944,11 +2939,7 @@ impl WindowsRecorder {
                 },
             };
 
-            if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
-                debug!("Failed to send click event (no UI element): {}", e);
-            } else {
-                debug!("✅ Click event sent successfully (no UI element, Mouse Up)");
-            }
+            let _ = ctx.event_tx.send(WorkflowEvent::Click(click_event));
         }
 
         // Send Mouse Up event unfiltered (like Click) to avoid it being dropped by processing delay
@@ -2963,11 +2954,7 @@ impl WindowsRecorder {
                 timestamp: Some(Self::capture_timestamp()),
             },
         };
-        if let Err(e) = ctx.event_tx.send(WorkflowEvent::Mouse(mouse_event)) {
-            debug!("Failed to send mouse up event: {}", e);
-        } else {
-            debug!("✅ Mouse Up event sent successfully (unfiltered)");
-        }
+        let _ = ctx.event_tx.send(WorkflowEvent::Mouse(mouse_event));
     }
 
     /// Find the deepest/most specific element at the given coordinates.
