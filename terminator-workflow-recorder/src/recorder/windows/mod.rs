@@ -2951,6 +2951,7 @@ impl WindowsRecorder {
             }
         }
 
+        // Send Mouse Up event unfiltered (like Click) to avoid it being dropped by processing delay
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Up,
             button,
@@ -2962,14 +2963,11 @@ impl WindowsRecorder {
                 timestamp: Some(Self::capture_timestamp()),
             },
         };
-        Self::send_filtered_event_static(
-            ctx.event_tx,
-            ctx.config,
-            ctx.performance_last_event_time,
-            ctx.performance_events_counter,
-            ctx.is_stopping,
-            WorkflowEvent::Mouse(mouse_event),
-        );
+        if let Err(e) = ctx.event_tx.send(WorkflowEvent::Mouse(mouse_event)) {
+            debug!("Failed to send mouse up event: {}", e);
+        } else {
+            debug!("✅ Mouse Up event sent successfully (unfiltered)");
+        }
     }
 
     /// Find the deepest/most specific element at the given coordinates.
