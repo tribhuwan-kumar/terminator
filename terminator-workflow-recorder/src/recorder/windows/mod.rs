@@ -2198,15 +2198,11 @@ impl WindowsRecorder {
     }
 
     /// Check if a UI element is a text input field
-    fn is_text_input_element(element: &UIElement) -> bool {
-        let role = element.role().to_lowercase();
-
-        // Only track actual input fields, not documents or other containers
-        // Note: "text" role is for static text content (labels, hyperlinks, etc.), NOT text inputs
-        // Actual text inputs use "edit" role in Windows UIA
-        role.contains("edit")
-            || (role.contains("combobox") && element.is_enabled().unwrap_or(false))
-        // Only editable combobox
+    fn is_text_input_element(_element: &UIElement) -> bool {
+        // Track ANY clicked element as potential text input
+        // The actual typing activity will determine if a meaningful TextInputCompleted event is generated
+        // This ensures we never miss text input due to role detection failures (e.g., "unknown" role elements)
+        true
     }
 
     /// Get the text value from a UI element
