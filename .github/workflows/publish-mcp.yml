@@ -47,7 +47,16 @@ jobs:
       - name: Install Linux dependencies
         if: matrix.settings.host == 'ubuntu-22.04'
         run: bash scripts/install_linux_deps.sh
-      - name: Setup node
+
+      - name: Setup node (Windows ARM64)
+        if: matrix.settings.host == 'windows-11-arm'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup node (default)
+        if: matrix.settings.host != 'windows-11-arm'
         uses: actions/setup-node@v4
         with:
           node-version: 18
