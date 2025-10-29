@@ -92,7 +92,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     info!("   ⌨️ Try different methods: typing vs pasting, keyboard vs mouse navigation");
     info!("");
-    info!("⏱️  Recording for 10 seconds - perform some mouse clicks!");
+    info!("⏱️  Recording for 20 seconds - perform some mouse clicks!");
 
     // Process and display events from the stream
     let event_display_task = tokio::spawn(async move {
@@ -514,10 +514,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    info!("⏱️  Waiting 10 seconds...");
-    sleep(Duration::from_secs(10)).await;
+    info!("⏱️  Waiting 20 seconds...");
+    sleep(Duration::from_secs(20)).await;
 
-    info!("🛑 10 seconds elapsed, finalizing recording...");
+    info!("🛑 20 seconds elapsed, finalizing recording...");
     info!("Sending stop signal to recorder...");
     recorder.stop().await.expect("Failed to stop recorder");
 
