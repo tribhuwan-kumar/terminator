@@ -2670,72 +2670,17 @@ impl WindowsRecorder {
             }
         }
 
-        let mouse_event = MouseEvent {
-            event_type: MouseEventType::Down,
-            button,
-            position: *ctx.position,
-            scroll_delta: None,
-            drag_start: None,
-            metadata: EventMetadata {
-                ui_element,
-                timestamp: Some(Self::capture_timestamp()),
-            },
-        };
-        Self::send_filtered_event_static(
-            ctx.event_tx,
-            ctx.config,
-            ctx.performance_last_event_time,
-            ctx.performance_events_counter,
-            ctx.is_stopping,
-            WorkflowEvent::Mouse(mouse_event),
-        );
-    }
-
-    /// Handles a button release request from the input listener thread.
-    fn handle_button_release_request(button: MouseButton, ctx: &ButtonPressContext) {
-        // Use deepest element finder for more precise click detection on Mouse Up
-        // Try with 350ms timeout first
-        let ui_element = if ctx.config.capture_ui_elements {
-            let mut element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
-
-            // If first attempt failed, retry once with another 350ms
-            if element.is_none() {
-                element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
-            }
-
-            element
-        } else {
-            None
-        };
-
-        // Generate Click events on Mouse Up (after UI has settled)
-        // Check if this is a left click and process it
+        // Generate Click event on Mouse Down (when element is reliably captured)
+        // This ensures we have the correct UI element before UI state changes
         if let Some(ref element) = ui_element {
             if button == MouseButton::Left {
                 let element_role = element.role().to_lowercase();
                 let element_name = element.name_or_empty();
 
                 debug!(
-                    "🖱️ Mouse up on element: '{}' (role: '{}') - generating Click event",
+                    "🖱️ Mouse down on element: '{}' (role: '{}') - generating Click event",
                     element_name, element_role
                 );
-
-                // Check if this is a text input element for tracking
-                let is_text_input = Self::is_text_input_element(element);
-
-                // Start text input tracking if needed
-                if ctx.config.record_text_input_completion && is_text_input {
-                    info!(
-                        "📝 Detected mouse release on text input element: '{}' (role: '{}') - STARTING TRACKING",
-                        element_name, element_role
-                    );
-                    if let Ok(mut tracker) = ctx.current_text_input.try_lock() {
-                        let mut new_tracker = TextInputTracker::new(element.clone());
-                        new_tracker.focus_method = crate::events::FieldFocusMethod::MouseClick;
-                        *tracker = Some(new_tracker);
-                        debug!("Started text input tracking with MouseClick focus method");
-                    }
-                }
 
                 // Always emit click event (even for text inputs)
                 // Both Click and TextInputCompleted events provide valuable information
@@ -2878,7 +2823,7 @@ impl WindowsRecorder {
                             page_title,
                             timestamp: Self::capture_timestamp(),
                             button,
-                            is_double_click: false, // Not checking double click on Mouse Up
+                            is_double_click,
                             metadata: EventMetadata::with_ui_element_and_timestamp(Some(
                                 element.clone(),
                             )),
@@ -2920,7 +2865,7 @@ impl WindowsRecorder {
         } else if button == MouseButton::Left {
             // UI element capture failed, but we should still emit a Click event
             debug!(
-                "⚠️ Mouse release without UI element at position ({}, {}) - still emitting Click event",
+                "⚠️ Mouse down without UI element at position ({}, {}) - still emitting Click event",
                 ctx.position.x, ctx.position.y
             );
 
@@ -2942,7 +2887,31 @@ impl WindowsRecorder {
             let _ = ctx.event_tx.send(WorkflowEvent::Click(click_event));
         }
 
-        // Send Mouse Up event unfiltered (like Click) to avoid it being dropped by processing delay
+        let mouse_event = MouseEvent {
+            event_type: MouseEventType::Down,
+            button,
+            position: *ctx.position,
+            scroll_delta: None,
+            drag_start: None,
+            metadata: EventMetadata {
+                ui_element,
+                timestamp: Some(Self::capture_timestamp()),
+            },
+        };
+        Self::send_filtered_event_static(
+            ctx.event_tx,
+            ctx.config,
+            ctx.performance_last_event_time,
+            ctx.performance_events_counter,
+            ctx.is_stopping,
+            WorkflowEvent::Mouse(mouse_event),
+        );
+    }
+
+    /// Handles a button release request from the input listener thread.
+    fn handle_button_release_request(button: MouseButton, ctx: &ButtonPressContext) {
+        // Send Mouse Up event unfiltered to avoid it being dropped by processing delay
+        // Note: Click events are now generated on Mouse Down for better element capture reliability
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Up,
             button,
@@ -2950,7 +2919,7 @@ impl WindowsRecorder {
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
-                ui_element: ui_element.clone(),
+                ui_element: None,
                 timestamp: Some(Self::capture_timestamp()),
             },
         };
