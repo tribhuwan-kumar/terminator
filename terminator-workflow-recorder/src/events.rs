@@ -517,6 +517,10 @@ pub struct McpToolStep {
     /// Used for validation during workflow playback
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_ui_changes: Option<String>,
+    /// Expected DOM changes after this action (diff between before/after HTML DOM)
+    /// Only populated for browser events
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_dom_changes: Option<String>,
 }
 
 /// Represents the interaction context for UI element analysis
