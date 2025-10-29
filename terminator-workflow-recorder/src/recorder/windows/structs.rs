@@ -140,9 +140,10 @@ impl TextInputTracker {
             return self.has_typing_activity && self.keystroke_count > 0;
         }
 
-        // For focus changes, always emit to ensure no interactions are lost
+        // For focus changes, only emit if there was actual typing activity
+        // This prevents false positives from focusing non-input elements
         if reason == "focus_change" {
-            return true;  // Always emit on focus change
+            return self.has_typing_activity || self.keystroke_count > 0;
         }
 
         // For suggestion clicks, always emit (autocomplete selections are valid)
@@ -192,13 +193,13 @@ impl TextInputTracker {
             }
         };
 
-        // For empty text, still emit if there was interaction (for focus change events)
-        // This ensures we track all text field interactions
+        // Add minimum threshold: Only emit TextInputCompleted if there was actual typing activity
+        // This prevents false positives from focus events on non-input elements
         if text_value.trim().is_empty() && !text_value.starts_with("[Text extraction failed") {
-            // Only skip if truly empty AND no keystrokes (no interaction at all)
+            // Skip emission if there's no actual typing activity
             if self.keystroke_count == 0 && !self.has_typing_activity {
-                info!("ℹ️ Empty field with no interaction, emitting empty completion event.");
-                // Still emit with empty value to track the focus event
+                info!("ℹ️ Skipping TextInputCompleted event: empty field with no typing activity (keystroke_count: 0)");
+                return None;
             }
         }
 
