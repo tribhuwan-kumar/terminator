@@ -2419,7 +2419,16 @@ impl WindowsRecorder {
 
         let ui_element = if ctx.config.capture_ui_elements {
             // Use deepest element finder for more precise click detection
-            Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 1000)
+            // Try with 350ms timeout first
+            let mut element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
+
+            // If first attempt failed, retry once with another 350ms
+            if element.is_none() {
+                debug!("First element capture attempt failed, retrying with 350ms timeout...");
+                element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
+            }
+
+            element
         } else {
             None
         };
