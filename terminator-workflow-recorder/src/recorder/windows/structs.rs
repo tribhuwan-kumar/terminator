@@ -140,14 +140,14 @@ impl TextInputTracker {
             return self.has_typing_activity && self.keystroke_count > 0;
         }
 
-        // For focus changes, be more lenient - emit if there was any activity
+        // For focus changes, always emit to ensure no interactions are lost
         if reason == "focus_change" {
-            return self.has_typing_activity || self.keystroke_count > 0;
+            return true;  // Always emit on focus change
         }
 
-        // For suggestion clicks, check if we have activity
+        // For suggestion clicks, always emit (autocomplete selections are valid)
         if reason == "suggestion_click" {
-            return self.has_typing_activity || self.keystroke_count > 0;
+            return true;  // Always emit for suggestion clicks
         }
 
         // Default: require activity
@@ -165,12 +165,6 @@ impl TextInputTracker {
         &self,
         input_method: Option<crate::TextInputMethod>,
     ) -> Option<crate::TextInputCompletedEvent> {
-        // Only proceed if we have typing activity
-        if !self.has_typing_activity && self.keystroke_count == 0 {
-            info!("❌ No typing activity or keystrokes");
-            return None;
-        }
-
         // Try to get actual text value from the element with retry mechanism
         // First attempt
         let text_value = match self.element.text(0) {
@@ -187,23 +181,33 @@ impl TextInputTracker {
                     }
                     Err(e2) => {
                         error!("❌ Second attempt also failed: {}", e2);
-                        String::new()
+                        // Graceful fallback: still emit event with metadata about the interaction
+                        if self.keystroke_count > 0 {
+                            format!("[Text extraction failed - {} keystrokes]", self.keystroke_count)
+                        } else {
+                            String::from("[Text extraction failed]")
+                        }
                     }
                 }
             }
         };
 
-        // Do not emit an event for empty or whitespace-only text.
-        if text_value.trim().is_empty() {
-            info!("❌ Text value is empty or whitespace-only, not emitting completion event.");
-            return None;
+        // For empty text, still emit if there was interaction (for focus change events)
+        // This ensures we track all text field interactions
+        if text_value.trim().is_empty() && !text_value.starts_with("[Text extraction failed") {
+            // Only skip if truly empty AND no keystrokes (no interaction at all)
+            if self.keystroke_count == 0 && !self.has_typing_activity {
+                info!("ℹ️ Empty field with no interaction, emitting empty completion event.");
+                // Still emit with empty value to track the focus event
+            }
         }
 
         // Check if text is unchanged from initial value (placeholder text)
+        // Still emit the event but note it's unchanged (for focus tracking)
         if let Some(ref initial) = self.initial_text {
             if text_value == *initial && !self.has_typing_activity {
-                info!("❌ Text unchanged from initial value '{}' with no typing activity - likely placeholder, not emitting completion event.", initial);
-                return None;
+                info!("ℹ️ Text unchanged from initial value '{}' - emitting with unchanged text.", initial);
+                // Continue to emit event (don't return None)
             }
         }
 

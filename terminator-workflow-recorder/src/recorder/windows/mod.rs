@@ -2532,8 +2532,8 @@ impl WindowsRecorder {
                     is_suggestion_click
                 );
 
-                // Text input completion is no longer tracked in simplified version
-                if false {
+                // Re-enabled: Track text input completion for autocomplete/suggestions
+                if is_suggestion_click {
                     debug!(
                         "≡ƒÄ» Detected potential autocomplete/suggestion click: '{}' (role: '{}') - SUGGESTION SELECTED",
                         element_name, element_role
