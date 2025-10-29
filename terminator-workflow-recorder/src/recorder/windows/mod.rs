@@ -1679,22 +1679,6 @@ impl WindowsRecorder {
                             );
                         });
 
-                        // Task for browser navigation check
-                        let browser_nav_tracker = Arc::clone(&focus_browser_tracker);
-                        let browser_nav_event_tx_clone = focus_event_tx_clone.clone();
-                        let browser_nav_ui_element = Some(element.clone());
-                        let browser_nav_config_clone = focus_processing_config.clone();
-
-                        processing_handle.spawn(async move {
-                            Self::check_and_emit_browser_navigation(
-                                &browser_nav_tracker,
-                                &browser_nav_event_tx_clone,
-                                &browser_nav_ui_element,
-                                &browser_nav_config_clone,
-                            )
-                            .await;
-                        });
-
                         // Task for text input completion check
                         let text_input_tracker = Arc::clone(&focus_current_text_input);
                         let text_input_event_tx = focus_event_tx_clone.clone();
