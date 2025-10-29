@@ -31,13 +31,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 const OVERLAY_CLASS_NAME: PCWSTR = w!("TerminatorHighlightOverlay");
 
-// Thread-local storage for recording mode flag
+// Global atomic storage for recording mode flag
 // When enabled, highlights will not trigger scroll_into_view (for passive recording)
-thread_local! {
-    static RECORDING_MODE: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) };
-}
+/// Global recording mode flag using AtomicBool to work across threads.
+/// This is critical because Tokio can switch threads between await points,
+/// and thread_local! storage doesn't survive those switches.
+static RECORDING_MODE: AtomicBool = AtomicBool::new(false);
 
-/// Enable or disable recording mode for highlights on the current thread.
+/// Enable or disable recording mode for highlights globally.
 /// When recording mode is enabled, highlights will NOT scroll elements into view.
 /// This is useful for workflow recording where highlighting should be passive (no UI changes).
 ///
@@ -57,9 +58,7 @@ thread_local! {
 /// set_recording_mode(false);
 /// ```
 pub fn set_recording_mode(enabled: bool) {
-    RECORDING_MODE.with(|mode| {
-        *mode.borrow_mut() = enabled;
-    });
+    RECORDING_MODE.store(enabled, Ordering::Relaxed);
 }
 
 /// Implementation of element highlighting for Windows UI elements
@@ -77,7 +76,7 @@ pub fn highlight(
         convert_uiautomation_element_to_terminator(element.as_ref().clone());
 
     // Check if we're in recording mode - if so, skip scroll to avoid spurious events
-    let skip_scroll = RECORDING_MODE.with(|mode| *mode.borrow());
+    let skip_scroll = RECORDING_MODE.load(Ordering::Relaxed);
 
     if !skip_scroll {
         // Simply use the core library's scroll_into_view method
