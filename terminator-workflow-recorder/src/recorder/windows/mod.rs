@@ -984,15 +984,19 @@ impl WindowsRecorder {
                         Self::handle_button_press_request(button, &ctx);
                     }
                     UIAInputRequest::ButtonRelease { button, position } => {
-                        Self::handle_button_release_request(
-                            button,
-                            &position,
-                            &uia_processor_config,
-                            &uia_processor_event_tx,
-                            &uia_processor_last_event_time,
-                            &uia_processor_events_counter,
-                            &uia_processor_is_stopping,
-                        );
+                        let ctx = ButtonPressContext {
+                            position: &position,
+                            config: &uia_processor_config,
+                            current_text_input: &uia_processor_text_input,
+                            event_tx: &uia_processor_event_tx,
+                            performance_last_event_time: &uia_processor_last_event_time,
+                            performance_events_counter: &uia_processor_events_counter,
+                            is_stopping: &uia_processor_is_stopping,
+                            double_click_tracker: &uia_processor_double_click_tracker,
+                            browser_recorder: &uia_processor_browser_recorder,
+                            tokio_runtime: &uia_processor_tokio_runtime,
+                        };
+                        Self::handle_button_release_request(button, &ctx);
                     }
                     UIAInputRequest::KeyPressForCompletion { key_code } => {
                         Self::handle_key_press_for_completion_request(
@@ -2663,16 +2667,80 @@ impl WindowsRecorder {
                         debug!("Γ¥î Could not lock text input tracker for suggestion click");
                     }
                 }
+            }
+        }
 
-                // Always emit click event, even for text inputs
-                // Both Click and TextInputCompleted events provide valuable information
-                // Click shows the interaction happened, TextInputCompleted shows what was typed
-                {
-                    debug!(
-                        "≡ƒû▒∩╕Å Mouse click on element: '{}' (role: '{}') - emitting Click event",
+        let mouse_event = MouseEvent {
+            event_type: MouseEventType::Down,
+            button,
+            position: *ctx.position,
+            scroll_delta: None,
+            drag_start: None,
+            metadata: EventMetadata {
+                ui_element,
+                timestamp: Some(Self::capture_timestamp()),
+            },
+        };
+        Self::send_filtered_event_static(
+            ctx.event_tx,
+            ctx.config,
+            ctx.performance_last_event_time,
+            ctx.performance_events_counter,
+            ctx.is_stopping,
+            WorkflowEvent::Mouse(mouse_event),
+        );
+    }
+
+    /// Handles a button release request from the input listener thread.
+    fn handle_button_release_request(button: MouseButton, ctx: &ButtonPressContext) {
+        // Use deepest element finder for more precise click detection on Mouse Up
+        // Try with 350ms timeout first
+        let ui_element = if ctx.config.capture_ui_elements {
+            let mut element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
+
+            // If first attempt failed, retry once with another 350ms
+            if element.is_none() {
+                debug!("First element capture attempt failed (Mouse Up), retrying with 350ms timeout...");
+                element = Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
+            }
+
+            element
+        } else {
+            None
+        };
+
+        // Generate Click events on Mouse Up (after UI has settled)
+        // Check if this is a left click and process it
+        if let Some(ref element) = ui_element {
+            if button == MouseButton::Left {
+                let element_role = element.role().to_lowercase();
+                let element_name = element.name_or_empty();
+
+                debug!(
+                    "🖱️ Mouse up on element: '{}' (role: '{}') - generating Click event",
+                    element_name, element_role
+                );
+
+                // Check if this is a text input element for tracking
+                let is_text_input = Self::is_text_input_element(element);
+
+                // Start text input tracking if needed
+                if ctx.config.record_text_input_completion && is_text_input {
+                    info!(
+                        "📝 Detected mouse release on text input element: '{}' (role: '{}') - STARTING TRACKING",
                         element_name, element_role
                     );
+                    if let Ok(mut tracker) = ctx.current_text_input.try_lock() {
+                        let mut new_tracker = TextInputTracker::new(element.clone());
+                        new_tracker.focus_method = crate::events::FieldFocusMethod::MouseClick;
+                        *tracker = Some(new_tracker);
+                        debug!("Started text input tracking with MouseClick focus method");
+                    }
+                }
 
+                // Always emit click event (even for text inputs)
+                // Both Click and TextInputCompleted events provide valuable information
+                {
                     let element_desc = element.attributes().description.unwrap_or_default();
                     let interaction_type = Self::determine_button_interaction_type(
                         &element_name,
@@ -2680,13 +2748,7 @@ impl WindowsRecorder {
                         &element_role,
                     );
 
-                    // Since we now have the deepest element, collect only direct children (not unlimited depth)
                     let child_text_content = Self::collect_direct_child_text_content(element);
-                    info!(
-                        "≡ƒöì DIRECT CHILD TEXT COLLECTION: Found {} child elements: {:?}",
-                        child_text_content.len(),
-                        child_text_content
-                    );
 
                     // Calculate relative position within the element
                     let relative_position = element.bounds().ok().map(|bounds| {
@@ -2696,14 +2758,6 @@ impl WindowsRecorder {
                             ((ctx.position.y as f64 - bounds.1) / bounds.3).clamp(0.0, 1.0) as f32;
                         (x_ratio, y_ratio)
                     });
-
-                    if let Some((x, y)) = relative_position {
-                        debug!(
-                            "📍 Click relative position: {:.1}% x {:.1}% within element",
-                            x * 100.0,
-                            y * 100.0
-                        );
-                    }
 
                     // Check if this is a browser click and try to capture DOM information
                     let app_name = element.application_name().to_lowercase();
@@ -2720,7 +2774,6 @@ impl WindowsRecorder {
                             ctx.position.x, ctx.position.y
                         );
 
-                        // Use async/sync bridge to query DOM
                         if let Ok(browser_lock) = ctx.browser_recorder.lock() {
                             if let Some(ref browser) = *browser_lock {
                                 if let Ok(runtime_lock) = ctx.tokio_runtime.lock() {
@@ -2728,10 +2781,8 @@ impl WindowsRecorder {
                                         let browser_clone = browser.clone();
                                         let position_clone = *ctx.position;
 
-                                        // Create channel for async result
                                         let (tx, rx) = std::sync::mpsc::channel();
 
-                                        // Spawn async task
                                         runtime.spawn(async move {
                                             let result = browser_clone
                                                 .capture_dom_element(position_clone)
@@ -2739,7 +2790,6 @@ impl WindowsRecorder {
                                             let _ = tx.send(result);
                                         });
 
-                                        // Wait for DOM result with timeout
                                         if let Ok(dom_result) =
                                             rx.recv_timeout(Duration::from_millis(200))
                                         {
@@ -2749,7 +2799,6 @@ impl WindowsRecorder {
                                                     browser_dom_info.tag_name,
                                                     browser_dom_info.selector_candidates.len()
                                                 );
-                                                // Convert from browser_context::DomElementInfo to events::DomElementInfo
                                                 let converted_dom = crate::events::DomElementInfo {
                                                     tag_name: browser_dom_info.tag_name,
                                                     id: browser_dom_info.id,
@@ -2778,11 +2827,7 @@ impl WindowsRecorder {
                                                         .collect(),
                                                 };
                                                 dom_element = Some(converted_dom);
-                                            } else {
-                                                debug!("⚠️ No DOM element found at coordinates");
                                             }
-                                        } else {
-                                            debug!("⚠️ DOM capture timed out");
                                         }
                                     }
                                 }
@@ -2790,9 +2835,8 @@ impl WindowsRecorder {
                         }
                     }
 
-                    // Emit browser click event if DOM was captured, regular click otherwise
+                    // Emit browser click event if DOM was captured
                     if let Some(dom_info) = dom_element {
-                        // Get page context
                         let (page_url, page_title) =
                             if let Ok(browser_lock) = ctx.browser_recorder.lock() {
                                 if let Some(ref browser) = *browser_lock {
@@ -2835,7 +2879,7 @@ impl WindowsRecorder {
                             page_title,
                             timestamp: Self::capture_timestamp(),
                             button,
-                            is_double_click,
+                            is_double_click: false, // Not checking double click on Mouse Up
                             metadata: EventMetadata::with_ui_element_and_timestamp(Some(
                                 element.clone(),
                             )),
@@ -2852,7 +2896,7 @@ impl WindowsRecorder {
                         }
                     }
 
-                    // Always emit regular click event as well (for dual recording)
+                    // Always emit regular click event
                     let click_event = ClickEvent {
                         element_text: element_name,
                         interaction_type,
@@ -2874,15 +2918,14 @@ impl WindowsRecorder {
                     if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
                         debug!("Failed to send click event: {}", e);
                     } else {
-                        debug!("Γ£à Click event sent successfully");
+                        debug!("✅ Click event sent successfully (Mouse Up)");
                     }
                 }
             }
         } else if button == MouseButton::Left {
             // UI element capture failed, but we should still emit a Click event
-            // This ensures we don't lose click events during page transitions or when element capture times out
             debug!(
-                "⚠️ Mouse click without UI element at position ({}, {}) - still emitting Click event",
+                "⚠️ Mouse release without UI element at position ({}, {}) - still emitting Click event",
                 ctx.position.x, ctx.position.y
             );
 
@@ -2904,18 +2947,18 @@ impl WindowsRecorder {
             if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
                 debug!("Failed to send click event (no UI element): {}", e);
             } else {
-                debug!("✅ Click event sent successfully (no UI element)");
+                debug!("✅ Click event sent successfully (no UI element, Mouse Up)");
             }
         }
 
         let mouse_event = MouseEvent {
-            event_type: MouseEventType::Down,
+            event_type: MouseEventType::Up,
             button,
             position: *ctx.position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
-                ui_element,
+                ui_element: ui_element.clone(),
                 timestamp: Some(Self::capture_timestamp()),
             },
         };
@@ -2925,43 +2968,6 @@ impl WindowsRecorder {
             ctx.performance_last_event_time,
             ctx.performance_events_counter,
             ctx.is_stopping,
-            WorkflowEvent::Mouse(mouse_event),
-        );
-    }
-
-    /// Handles a button release request from the input listener thread.
-    fn handle_button_release_request(
-        button: MouseButton,
-        position: &Position,
-        config: &WorkflowRecorderConfig,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        performance_last_event_time: &Arc<Mutex<Instant>>,
-        performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
-        is_stopping: &Arc<AtomicBool>,
-    ) {
-        let ui_element = if config.capture_ui_elements {
-            Self::get_element_from_point_with_timeout(config, *position, 1000)
-        } else {
-            None
-        };
-
-        let mouse_event = MouseEvent {
-            event_type: MouseEventType::Up,
-            button,
-            position: *position,
-            scroll_delta: None,
-            drag_start: None,
-            metadata: EventMetadata {
-                ui_element,
-                timestamp: Some(Self::capture_timestamp()),
-            },
-        };
-        Self::send_filtered_event_static(
-            event_tx,
-            config,
-            performance_last_event_time,
-            performance_events_counter,
-            is_stopping,
             WorkflowEvent::Mouse(mouse_event),
         );
     }
