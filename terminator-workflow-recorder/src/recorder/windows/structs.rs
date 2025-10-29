@@ -171,12 +171,25 @@ impl TextInputTracker {
             return None;
         }
 
-        // Try to get actual text value from the element
+        // Try to get actual text value from the element with retry mechanism
+        // First attempt
         let text_value = match self.element.text(0) {
             Ok(actual_text) => actual_text,
             Err(e) => {
-                error!("❌ Could not get text value: {}", e);
-                String::new()
+                error!("❌ First attempt to get text value failed: {}", e);
+                // Retry after short delay (similar to mouse down retry logic)
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                info!("🔄 Retrying text extraction...");
+                match self.element.text(0) {
+                    Ok(actual_text) => {
+                        info!("✅ Second attempt succeeded!");
+                        actual_text
+                    }
+                    Err(e2) => {
+                        error!("❌ Second attempt also failed: {}", e2);
+                        String::new()
+                    }
+                }
             }
         };
 
