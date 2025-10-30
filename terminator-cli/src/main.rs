@@ -29,6 +29,7 @@ use tokio::sync::Mutex;
 
 mod commands;
 mod mcp_client;
+mod typescript_workflow;
 mod telemetry_receiver;
 mod workflow_result;
 mod workflow_validator;
@@ -1286,7 +1287,67 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     // Resolve actual input type (auto-detect if needed)
     let resolved_type = determine_input_type(&args.input, args.input_type);
 
-    // Fetch workflow content
+    // Check if this is a TypeScript/JavaScript workflow
+    let is_ts_workflow = typescript_workflow::is_typescript_workflow(
+        &args.input,
+        resolved_type == InputType::File,
+    );
+
+    // For TypeScript workflows, skip content fetching and parsing - just pass the path to MCP
+    if is_ts_workflow {
+        info!("Detected TypeScript/JavaScript workflow - delegating to MCP server");
+
+        // Convert to absolute path and create file:// URL
+        let file_url = typescript_workflow::path_to_file_url(&args.input)?;
+        info!("TypeScript workflow URL: {}", file_url);
+
+        // Build execute_sequence args
+        let workflow_args = typescript_workflow::build_typescript_workflow_args(
+            file_url,
+            args.inputs.as_ref(),
+            args.start_from_step.as_ref(),
+            args.end_at_step.as_ref(),
+            args.follow_fallback,
+            args.execute_jumps_at_end,
+            args.no_stop_on_error,
+            args.no_detailed_results,
+        )?;
+
+        let workflow_str = serde_json::to_string(&workflow_args)?;
+        info!("Sending TypeScript workflow args to MCP: {}", workflow_str);
+
+        // Execute via MCP
+        let result_json = mcp_client::execute_command_with_progress_and_retry(
+            transport,
+            "execute_sequence".to_string(),
+            Some(workflow_str),
+            true, // Show progress for workflow steps
+            args.no_retry,
+        )
+        .await?;
+
+        // Parse and display the workflow result
+        let workflow_result = WorkflowResult::from_mcp_response(&result_json)?;
+        workflow_result.display();
+
+        // Always show parsed_output if it exists
+        if let Some(parsed_output) = result_json.get("parsed_output") {
+            println!("{}", "─".repeat(60));
+            println!("📋 Complete Output Parser Result:");
+            println!("{}", serde_json::to_string_pretty(parsed_output)?);
+        }
+
+        // If verbose mode, also show FULL raw MCP response
+        if args.verbose {
+            println!("{}", "─".repeat(60));
+            println!("📝 Full Raw MCP Response:");
+            println!("{}", serde_json::to_string_pretty(&result_json)?);
+        }
+
+        return Ok(());
+    }
+
+    // Fetch workflow content (for YAML workflows)
     let content = match resolved_type {
         InputType::File => {
             info!("Reading local file");
