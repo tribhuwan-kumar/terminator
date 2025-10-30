@@ -83,6 +83,29 @@ mod with_sentry {
             // Add platform info
             scope.set_tag("platform", std::env::consts::OS);
             scope.set_tag("arch", std::env::consts::ARCH);
+
+            // Add deployment type to distinguish backend VMs from desktop clients
+            // backend-vm = Azure Windows VMs (Terraform/Packer deployed)
+            // desktop-client = User's local machine (mediar-app)
+            if let Ok(deployment_type) = std::env::var("SENTRY_DEPLOYMENT_TYPE") {
+                scope.set_tag("deployment_type", deployment_type);
+            }
+
+            // Add Azure VM context (only present on backend VMs)
+            if let Ok(vm_name) = std::env::var("AZURE_VM_NAME") {
+                scope.set_tag("vm_name", vm_name);
+            }
+            if let Ok(resource_group) = std::env::var("AZURE_RESOURCE_GROUP") {
+                scope.set_tag("resource_group", resource_group);
+            }
+            if let Ok(vm_purpose) = std::env::var("AZURE_VM_PURPOSE") {
+                scope.set_tag("vm_purpose", vm_purpose);
+            }
+            if let Ok(org_id) = std::env::var("ORGANIZATION_ID") {
+                if !org_id.is_empty() {
+                    scope.set_tag("organization_id", org_id);
+                }
+            }
         });
 
         info!(
