@@ -596,6 +596,7 @@ impl WorkflowRecorder {
                                 | WorkflowEvent::DragDrop(_)
                                 | WorkflowEvent::Hotkey(_)
                                 | WorkflowEvent::BrowserTextInput(_)
+                                | WorkflowEvent::FileOpened(_)
                         );
 
                         if should_highlight {
@@ -760,6 +761,7 @@ impl WorkflowRecorder {
             WorkflowEvent::Hotkey(_) => "HOTKEY",
             WorkflowEvent::Clipboard(_) => "CLIPBOARD",
             WorkflowEvent::TextSelection(_) => "SELECT",
+            WorkflowEvent::FileOpened(_) => "FILE",
             _ => "EVENT",
         }
     }

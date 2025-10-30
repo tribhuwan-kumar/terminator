@@ -509,6 +509,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("     └─ Selector: {}", browser_input.selector);
                     }
                 }
+                terminator_workflow_recorder::WorkflowEvent::FileOpened(file_event) => {
+                    println!(
+                        "📄 File Opened {}: {}",
+                        event_count, file_event.filename
+                    );
+                    println!("     ├─ Application: {}", file_event.application_name);
+                    println!("     ├─ Window Title: {}", file_event.window_title);
+                    println!("     ├─ Confidence: {:?}", file_event.confidence);
+                    println!("     ├─ Search Time: {:.2}ms", file_event.search_time_ms);
+                    if let Some(primary_path) = &file_event.primary_path {
+                        println!("     ├─ Primary Path: {}", primary_path);
+                    }
+                    println!("     └─ Total Candidates: {}", file_event.candidate_paths.len());
+                    for (i, candidate) in file_event.candidate_paths.iter().enumerate().take(3) {
+                        println!("        {}. {}", i + 1, candidate.path);
+                        println!("           Last Accessed: {}", candidate.last_accessed);
+                    }
+                    if file_event.candidate_paths.len() > 3 {
+                        println!("        ... and {} more", file_event.candidate_paths.len() - 3);
+                    }
+                }
             }
         }
     });
@@ -523,20 +544,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Cancel the event display task
     event_display_task.abort();
 
-    // Save to temp directory instead of root
-    let temp_dir = std::env::temp_dir();
-    let output_path = temp_dir.join("comprehensive_workflow_recording.json");
-    info!("Saving comprehensive recording to {:?}", output_path);
-    recorder
-        .save(&output_path)
-        .expect("Failed to save recording");
-
-    info!(
-        "✅ Comprehensive workflow recording saved to {:?}",
-        output_path
-    );
-    info!("📊 The recording includes detailed interaction context and metadata");
-    info!("🔍 You can analyze the JSON file to understand the complete workflow");
+    // Human-readable output is already being captured via console redirection (2>&1 | tee)
+    // No need to save JSON - the console output is much more readable
+    info!("✅ Recording complete!");
+    info!("📊 Console output contains human-readable event log");
+    info!("🔍 Use 2>&1 | tee to capture output to a file");
 
     Ok(())
 }

@@ -441,6 +441,28 @@ impl WindowsRecorder {
                                     app_name,
                                     actual_switch_method
                                 );
+
+                                // Check if window title contains a filename and resolve paths
+                                if let Some(filename) = Self::extract_filename_from_window_title(&app_name) {
+                                    info!("📄 Detected file in window title: {}", filename);
+
+                                    // Resolve file paths using PowerShell script
+                                    if let Some(file_event) = Self::resolve_file_paths(
+                                        &filename,
+                                        &app_name,
+                                        to_process_name.as_ref().map(|s| s.as_str()),
+                                        process_id,
+                                        element,
+                                    ) {
+                                        if let Err(e) = event_tx.send(WorkflowEvent::FileOpened(file_event)) {
+                                            warn!("Failed to send file opened event: {}", e);
+                                        } else {
+                                            info!("✅ File opened event sent for: {}", filename);
+                                        }
+                                    } else {
+                                        info!("⚠️ Could not resolve file paths for: {}", filename);
+                                    }
+                                }
                             }
                         }
 
@@ -2998,6 +3020,195 @@ impl WindowsRecorder {
                         element_name, e
                     );
                 }
+            }
+        }
+    }
+
+    /// Extract filename from window title
+    /// Examples:
+    /// - "todolist-backup.txt - Notepad" -> Some("todolist-backup.txt")
+    /// - "Document1.docx - Microsoft Word" -> Some("Document1.docx")
+    /// - "Settings" -> None
+    fn extract_filename_from_window_title(window_title: &str) -> Option<String> {
+        // Common file extensions to look for
+        let file_extensions = [
+            ".txt", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+            ".pdf", ".json", ".xml", ".csv", ".html", ".htm", ".css", ".js",
+            ".ts", ".rs", ".py", ".java", ".cpp", ".c", ".h", ".md", ".log",
+            ".sql", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
+            ".mp3", ".mp4", ".wav", ".avi", ".mkv", ".mov", ".zip", ".rar",
+            ".7z", ".tar", ".gz", ".exe", ".dll", ".bat", ".sh", ".ps1",
+        ];
+
+        // Try to find a file extension in the window title
+        // Look for extension followed by a word boundary (space, dash, or end of string)
+        for ext in &file_extensions {
+            let lower_title = window_title.to_lowercase();
+            if let Some(ext_pos) = lower_title.find(ext) {
+                let ext_end = ext_pos + ext.len();
+
+                // Check if this is followed by a word boundary (space, dash, or end)
+                let is_boundary = ext_end >= lower_title.len()
+                    || lower_title.chars().nth(ext_end).map_or(true, |c| c == ' ' || c == '-');
+
+                if !is_boundary {
+                    continue; // Not a real file extension, keep looking
+                }
+
+                // Find the start of the filename (look backwards from extension)
+                let before_ext = &window_title[..ext_pos];
+
+                // Strategy: Most Windows apps use " - " to separate filename from app name
+                // Examples: "My File.txt - Notepad", "Photo.jpg - Photos"
+                // So we look for " - " pattern AFTER the extension to determine if filename comes before or after it
+
+                let after_ext = &window_title[ext_end..];
+                let start_pos = if after_ext.trim_start().starts_with("-") || after_ext.trim_start().starts_with("–") {
+                    // Pattern: "filename.ext - AppName" or "filename.ext – AppName"
+                    // The filename is everything before the extension, up to start of string or last " - " before it
+                    before_ext.rfind(" - ")
+                        .or_else(|| before_ext.rfind(" – "))
+                        .map(|pos| pos + 3)
+                        .unwrap_or(0)
+                } else {
+                    // No separator after extension, so filename likely ends at extension
+                    // Look backwards for path separators or beginning of string
+                    before_ext.rfind(|c: char| c == '/' || c == '\\')
+                        .map(|pos| pos + 1)
+                        .unwrap_or(0)
+                };
+
+                // Extract the filename including extension
+                let filename = window_title[start_pos..ext_end].trim();
+
+                // Validate that this looks like a reasonable filename
+                if !filename.is_empty() && filename.len() < 260 { // MAX_PATH on Windows
+                    return Some(filename.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Resolve file paths by calling PowerShell script
+    /// Returns FileOpenedEvent if file paths were found
+    fn resolve_file_paths(
+        filename: &str,
+        window_title: &str,
+        process_name: Option<&str>,
+        process_id: u32,
+        element: &UIElement,
+    ) -> Option<crate::events::FileOpenedEvent> {
+        use std::process::Command;
+        use crate::events::{FileOpenedEvent, FileCandidatePath, FilePathConfidence, EventMetadata};
+
+        // Get the PowerShell script path
+        let script_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join("find_file_paths.ps1");
+
+        if !script_path.exists() {
+            warn!("PowerShell script not found: {:?}", script_path);
+            return None;
+        }
+
+        debug!("🔍 Resolving file paths for: {}", filename);
+
+        // Execute PowerShell script
+        let output = Command::new("powershell")
+            .args([
+                "-ExecutionPolicy", "Bypass",
+                "-File", script_path.to_str().unwrap(),
+                "-FileName", filename,
+            ])
+            .output();
+
+        match output {
+            Ok(result) if result.status.success() => {
+                let json_output = String::from_utf8_lossy(&result.stdout);
+                debug!("PowerShell output: {}", json_output);
+
+                // Parse JSON response
+                match serde_json::from_str::<serde_json::Value>(&json_output) {
+                    Ok(data) => {
+                        let match_count = data["match_count"].as_u64().unwrap_or(0);
+                        let search_time_ms = data["search_time_ms"].as_f64().unwrap_or(0.0);
+
+                        if match_count == 0 {
+                            debug!("No file paths found for: {}", filename);
+                            return None;
+                        }
+
+                        // Extract candidate paths
+                        let matches = data["matches"].as_array()?;
+                        let candidates: Vec<FileCandidatePath> = matches.iter().filter_map(|m| {
+                            Some(FileCandidatePath {
+                                path: m["path"].as_str()?.to_string(),
+                                last_accessed: m["last_accessed"].as_str()?.to_string(),
+                                last_modified: m["last_modified"].as_str()?.to_string(),
+                                size_bytes: m["size_bytes"].as_u64()?,
+                            })
+                        }).collect();
+
+                        if candidates.is_empty() {
+                            return None;
+                        }
+
+                        // Determine confidence based on number of matches
+                        let confidence = if candidates.len() == 1 {
+                            FilePathConfidence::High
+                        } else if candidates.len() <= 5 {
+                            FilePathConfidence::Medium
+                        } else {
+                            FilePathConfidence::Low
+                        };
+
+                        // Primary path is the first one (most recently accessed)
+                        let primary_path = candidates.first().map(|c| c.path.clone());
+
+                        // Extract file extension
+                        let file_extension = std::path::Path::new(filename)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|s| s.to_string());
+
+                        // Extract application name from window title
+                        let application_name = window_title
+                            .rsplit(" - ")
+                            .next()
+                            .unwrap_or(window_title)
+                            .to_string();
+
+                        Some(FileOpenedEvent {
+                            filename: filename.to_string(),
+                            primary_path,
+                            candidate_paths: candidates,
+                            confidence,
+                            application_name,
+                            process_id: Some(process_id),
+                            process_name: process_name.map(|s| s.to_string()),
+                            search_time_ms,
+                            file_extension,
+                            window_title: window_title.to_string(),
+                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
+                        })
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse PowerShell JSON output: {}", e);
+                        None
+                    }
+                }
+            }
+            Ok(result) => {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                warn!("PowerShell script failed: {}", stderr);
+                None
+            }
+            Err(e) => {
+                warn!("Failed to execute PowerShell script: {}", e);
+                None
             }
         }
     }

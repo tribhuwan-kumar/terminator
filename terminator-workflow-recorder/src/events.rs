@@ -445,6 +445,9 @@ pub enum WorkflowEvent {
 
     /// Browser text input event
     BrowserTextInput(BrowserTextInputEvent),
+
+    /// File opened event (detected via window title and file system search)
+    FileOpened(FileOpenedEvent),
 }
 
 impl WorkflowEvent {
@@ -463,6 +466,7 @@ impl WorkflowEvent {
             WorkflowEvent::Click(e) => &e.metadata,
             WorkflowEvent::BrowserClick(e) => &e.metadata,
             WorkflowEvent::BrowserTextInput(e) => &e.metadata,
+            WorkflowEvent::FileOpened(e) => &e.metadata,
         }
     }
 
@@ -481,6 +485,7 @@ impl WorkflowEvent {
             WorkflowEvent::Click(e) => &mut e.metadata,
             WorkflowEvent::BrowserClick(e) => &mut e.metadata,
             WorkflowEvent::BrowserTextInput(e) => &mut e.metadata,
+            WorkflowEvent::FileOpened(e) => &mut e.metadata,
         }
     }
 
@@ -977,6 +982,72 @@ pub struct BrowserTabNavigationEvent {
     pub metadata: EventMetadata,
 }
 
+/// Confidence level for file path resolution
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FilePathConfidence {
+    /// High confidence - only one file found with this name
+    High,
+    /// Medium confidence - multiple files found, but clear most recent access time
+    Medium,
+    /// Low confidence - multiple files with ambiguous access times
+    Low,
+}
+
+/// Represents a candidate file path with its metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileCandidatePath {
+    /// Full path to the file
+    pub path: String,
+    /// When the file was last accessed (ISO 8601 format)
+    pub last_accessed: String,
+    /// When the file was last modified (ISO 8601 format)
+    pub last_modified: String,
+    /// File size in bytes
+    pub size_bytes: u64,
+}
+
+/// File opened event detected via window title parsing and file system search
+/// Captures when a file is opened from Explorer or other applications
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileOpenedEvent {
+    /// File name extracted from window title (e.g., "todolist-backup.txt")
+    pub filename: String,
+
+    /// Most likely file path (highest confidence based on LastAccessTime)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_path: Option<String>,
+
+    /// All candidate file paths found with this filename, sorted by most recently accessed
+    pub candidate_paths: Vec<FileCandidatePath>,
+
+    /// Confidence level in the primary_path selection
+    pub confidence: FilePathConfidence,
+
+    /// Name of the application that opened the file (e.g., "Notepad")
+    pub application_name: String,
+
+    /// Process ID of the application
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<u32>,
+
+    /// Process executable name (e.g., "notepad.exe")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_name: Option<String>,
+
+    /// Time taken to search for file paths in milliseconds
+    pub search_time_ms: f64,
+
+    /// File extension (e.g., "txt", "xlsx", "pdf")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_extension: Option<String>,
+
+    /// Full window title from which filename was extracted
+    pub window_title: String,
+
+    /// Event metadata
+    pub metadata: EventMetadata,
+}
+
 /// Helper type for deserializing Option<UIElement> with error tolerance
 #[derive(Debug, Clone, Default)]
 struct OptionalUIElement(Option<UIElement>);
@@ -1461,6 +1532,7 @@ pub enum SerializableWorkflowEvent {
     Click(SerializableClickEvent),
     BrowserClick(BrowserClickEvent),
     BrowserTextInput(BrowserTextInputEvent),
+    FileOpened(FileOpenedEvent),
 }
 
 impl From<&WorkflowEvent> for SerializableWorkflowEvent {
@@ -1486,6 +1558,7 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             WorkflowEvent::BrowserTextInput(e) => {
                 SerializableWorkflowEvent::BrowserTextInput(e.clone())
             }
+            WorkflowEvent::FileOpened(e) => SerializableWorkflowEvent::FileOpened(e.clone()),
         }
     }
 }
