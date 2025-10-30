@@ -445,6 +445,9 @@ pub enum WorkflowEvent {
 
     /// Browser text input event
     BrowserTextInput(BrowserTextInputEvent),
+
+    /// File opened event (detected via window title and file system search)
+    FileOpened(FileOpenedEvent),
 }
 
 impl WorkflowEvent {
@@ -463,6 +466,7 @@ impl WorkflowEvent {
             WorkflowEvent::Click(e) => &e.metadata,
             WorkflowEvent::BrowserClick(e) => &e.metadata,
             WorkflowEvent::BrowserTextInput(e) => &e.metadata,
+            WorkflowEvent::FileOpened(e) => &e.metadata,
         }
     }
 
@@ -481,6 +485,7 @@ impl WorkflowEvent {
             WorkflowEvent::Click(e) => &mut e.metadata,
             WorkflowEvent::BrowserClick(e) => &mut e.metadata,
             WorkflowEvent::BrowserTextInput(e) => &mut e.metadata,
+            WorkflowEvent::FileOpened(e) => &mut e.metadata,
         }
     }
 
@@ -517,6 +522,10 @@ pub struct McpToolStep {
     /// Used for validation during workflow playback
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_ui_changes: Option<String>,
+    /// Expected DOM changes after this action (diff between before/after HTML DOM)
+    /// Only populated for browser events
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_dom_changes: Option<String>,
 }
 
 /// Represents the interaction context for UI element analysis
@@ -606,6 +615,49 @@ pub fn build_parent_hierarchy(element: &UIElement) -> Vec<UIElementInfo> {
     hierarchy
 }
 
+/// Build chained selector from parent hierarchy and target element
+/// Returns selector like: role:Window|name:contains:Chrome >> role:Pane >> role:Button|name:contains:Submit
+/// Uses only named parents (unnamed parents are already filtered by build_parent_hierarchy)
+pub fn build_chained_selector(
+    parent_hierarchy: &[UIElementInfo],
+    target_element: &UIElement,
+) -> Option<String> {
+    if parent_hierarchy.is_empty() {
+        return None;
+    }
+
+    let mut path_parts = Vec::new();
+
+    // Add each parent in the hierarchy chain
+    for parent in parent_hierarchy {
+        let selector = if let Some(ref name) = parent.name {
+            if !name.is_empty() {
+                // Use contains for more flexible matching
+                format!("role:{}|name:contains:{}", parent.role, name)
+            } else {
+                format!("role:{}", parent.role)
+            }
+        } else {
+            format!("role:{}", parent.role)
+        };
+        path_parts.push(selector);
+    }
+
+    // Add the target element itself
+    let target_role = target_element.role();
+    let target_name = target_element.name().unwrap_or_default();
+
+    let target_selector = if !target_name.is_empty() {
+        format!("role:{}|name:contains:{}", target_role, target_name)
+    } else {
+        format!("role:{}", target_role)
+    };
+    path_parts.push(target_selector);
+
+    // Join with >> operator for full path
+    Some(path_parts.join(" >> "))
+}
+
 /// Enhanced UI element capture with MCP context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnhancedUIElement {
@@ -613,8 +665,8 @@ pub struct EnhancedUIElement {
     pub ui_element: UIElement,
     /// Generated selector options for MCP tools
     pub suggested_selectors: Vec<String>,
-    /// Parent hierarchy for context
-    pub parent_hierarchy: Vec<UIElementInfo>,
+    /// Chained selector from parent hierarchy to target element (e.g., "role:Window|name:contains:Chrome >> role:Pane >> role:Button|name:contains:Submit")
+    pub chained_selector: Option<String>,
     /// Interaction context analysis
     pub interaction_context: InteractionContext,
 }
@@ -823,11 +875,20 @@ pub enum ApplicationSwitchMethod {
 /// High-level application switch event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApplicationSwitchEvent {
-    /// The application being switched from
+    /// Window and application name being switched from (as reported by Windows UI Automation).
+    /// Format varies by application: may contain page/document title + app name, or just app name.
+    /// Examples: "GitHub - Google Chrome", "Settings", "*hi there - Notepad"
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub from_application: Option<String>,
-    /// The application being switched to
-    pub to_application: String,
+    pub from_window_and_application_name: Option<String>,
+    /// Window and application name being switched to (as reported by Windows UI Automation).
+    /// Format varies by application: may contain page/document title + app name, or just app name.
+    pub to_window_and_application_name: String,
+    /// Process executable name being switched from (e.g., "chrome.exe", "Notepad.exe")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_process_name: Option<String>,
+    /// Process executable name being switched to (e.g., "chrome.exe", "Notepad.exe")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_process_name: Option<String>,
     /// Process ID of the source application
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_process_id: Option<u32>,
@@ -917,6 +978,72 @@ pub struct BrowserTabNavigationEvent {
     pub page_dwell_time_ms: Option<u64>,
     /// Whether this was a back/forward navigation
     pub is_back_forward: bool,
+    /// Event metadata
+    pub metadata: EventMetadata,
+}
+
+/// Confidence level for file path resolution
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FilePathConfidence {
+    /// High confidence - only one file found with this name
+    High,
+    /// Medium confidence - multiple files found, but clear most recent access time
+    Medium,
+    /// Low confidence - multiple files with ambiguous access times
+    Low,
+}
+
+/// Represents a candidate file path with its metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileCandidatePath {
+    /// Full path to the file
+    pub path: String,
+    /// When the file was last accessed (ISO 8601 format)
+    pub last_accessed: String,
+    /// When the file was last modified (ISO 8601 format)
+    pub last_modified: String,
+    /// File size in bytes
+    pub size_bytes: u64,
+}
+
+/// File opened event detected via window title parsing and file system search
+/// Captures when a file is opened from Explorer or other applications
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileOpenedEvent {
+    /// File name extracted from window title (e.g., "todolist-backup.txt")
+    pub filename: String,
+
+    /// Most likely file path (highest confidence based on LastAccessTime)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub primary_path: Option<String>,
+
+    /// All candidate file paths found with this filename, sorted by most recently accessed
+    pub candidate_paths: Vec<FileCandidatePath>,
+
+    /// Confidence level in the primary_path selection
+    pub confidence: FilePathConfidence,
+
+    /// Name of the application that opened the file (e.g., "Notepad")
+    pub application_name: String,
+
+    /// Process ID of the application
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<u32>,
+
+    /// Process executable name (e.g., "notepad.exe")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_name: Option<String>,
+
+    /// Time taken to search for file paths in milliseconds
+    pub search_time_ms: f64,
+
+    /// File extension (e.g., "txt", "xlsx", "pdf")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_extension: Option<String>,
+
+    /// Full window title from which filename was extracted
+    pub window_title: String,
+
     /// Event metadata
     pub metadata: EventMetadata,
 }
@@ -1279,8 +1406,12 @@ impl From<&TextInputCompletedEvent> for SerializableTextInputCompletedEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializableApplicationSwitchEvent {
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub from_application: Option<String>,
-    pub to_application: String,
+    pub from_window_and_application_name: Option<String>,
+    pub to_window_and_application_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_process_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_process_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_process_id: Option<u32>,
     pub to_process_id: u32,
@@ -1295,8 +1426,10 @@ pub struct SerializableApplicationSwitchEvent {
 impl From<&ApplicationSwitchEvent> for SerializableApplicationSwitchEvent {
     fn from(event: &ApplicationSwitchEvent) -> Self {
         Self {
-            from_application: event.from_application.clone(),
-            to_application: event.to_application.clone(),
+            from_window_and_application_name: event.from_window_and_application_name.clone(),
+            to_window_and_application_name: event.to_window_and_application_name.clone(),
+            from_process_name: event.from_process_name.clone(),
+            to_process_name: event.to_process_name.clone(),
             from_process_id: event.from_process_id,
             to_process_id: event.to_process_id,
             switch_method: event.switch_method.clone(),
@@ -1399,6 +1532,7 @@ pub enum SerializableWorkflowEvent {
     Click(SerializableClickEvent),
     BrowserClick(BrowserClickEvent),
     BrowserTextInput(BrowserTextInputEvent),
+    FileOpened(FileOpenedEvent),
 }
 
 impl From<&WorkflowEvent> for SerializableWorkflowEvent {
@@ -1424,6 +1558,7 @@ impl From<&WorkflowEvent> for SerializableWorkflowEvent {
             WorkflowEvent::BrowserTextInput(e) => {
                 SerializableWorkflowEvent::BrowserTextInput(e.clone())
             }
+            WorkflowEvent::FileOpened(e) => SerializableWorkflowEvent::FileOpened(e.clone()),
         }
     }
 }

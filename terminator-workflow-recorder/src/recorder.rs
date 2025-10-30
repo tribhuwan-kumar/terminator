@@ -1,8 +1,9 @@
 use crate::{RecordedWorkflow, Result, WorkflowEvent, WorkflowRecorderError};
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     path::Path,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::sync::broadcast;
 use tokio_stream::Stream;
@@ -169,6 +170,26 @@ pub struct WorkflowRecorderConfig {
 
     /// Reduce expensive UI element capture operations
     pub reduce_ui_element_capture: bool,
+
+    // Visual highlighting options
+    /// Enable real-time visual highlighting during recording
+    pub enable_highlighting: bool,
+
+    /// Highlight color in BGR format (0xBBGGRR)
+    /// Default: 0x0000FF (red)
+    pub highlight_color: Option<u32>,
+
+    /// Highlight duration in milliseconds
+    /// Default: 500ms
+    pub highlight_duration_ms: Option<u64>,
+
+    /// Show event type labels (CLICK, TYPE, etc.) on highlights
+    pub show_highlight_labels: bool,
+
+    /// Maximum number of concurrent highlights to prevent thread explosion
+    /// Older highlights are automatically closed when this limit is reached
+    /// Default: 10
+    pub highlight_max_concurrent: usize,
 }
 
 impl Default for WorkflowRecorderConfig {
@@ -405,6 +426,12 @@ impl Default for WorkflowRecorderConfig {
             filter_mouse_noise: false,
             filter_keyboard_noise: false,
             reduce_ui_element_capture: false,
+            // Highlighting defaults
+            enable_highlighting: false,
+            highlight_color: Some(0x0000FF),  // Red in BGR
+            highlight_duration_ms: Some(500), // 500ms
+            show_highlight_labels: true,
+            highlight_max_concurrent: 10,
         }
     }
 }
@@ -474,6 +501,12 @@ pub struct WorkflowRecorder {
     /// The platform-specific recorder
     #[cfg(target_os = "windows")]
     windows_recorder: Option<WindowsRecorder>,
+
+    /// Active highlight handles (FIFO queue for cleanup)
+    highlight_handles: Arc<tokio::sync::Mutex<VecDeque<terminator::HighlightHandle>>>,
+
+    /// Handle to the highlighting task
+    highlight_task_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl WorkflowRecorder {
@@ -488,6 +521,8 @@ impl WorkflowRecorder {
             config,
             #[cfg(target_os = "windows")]
             windows_recorder: None,
+            highlight_handles: Arc::new(tokio::sync::Mutex::new(VecDeque::new())),
+            highlight_task_handle: None,
         }
     }
 
@@ -531,6 +566,81 @@ impl WorkflowRecorder {
                 Self::process_events(workflow, event_rx).await;
             });
 
+            // Start highlighting task if enabled
+            if self.config.enable_highlighting {
+                use futures::StreamExt;
+
+                let mut event_stream = self.event_stream();
+                let config = self.config.clone();
+                let handles = self.highlight_handles.clone();
+
+                let task = tokio::spawn(async move {
+                    // Enable recording mode to prevent scroll_into_view during highlights
+                    // This prevents spurious keyboard events (down arrows) from being recorded
+                    #[cfg(target_os = "windows")]
+                    terminator::set_recording_mode(true);
+
+                    info!("Visual highlighting enabled during recording (recording mode: scroll disabled)");
+
+                    while let Some(event) = event_stream.next().await {
+                        // Only highlight semantic/high-level events to avoid double highlighting
+                        // Low-level Mouse(Up/Down) events are still recorded but not highlighted
+                        // BrowserClick events are also skipped since a regular Click is always emitted alongside them
+                        let should_highlight = matches!(
+                            event,
+                            WorkflowEvent::Click(_)
+                                | WorkflowEvent::TextInputCompleted(_)
+                                | WorkflowEvent::ApplicationSwitch(_)
+                                | WorkflowEvent::BrowserTabNavigation(_)
+                                // BrowserClick excluded - a regular Click is always emitted for these
+                                | WorkflowEvent::DragDrop(_)
+                                | WorkflowEvent::Hotkey(_)
+                                | WorkflowEvent::BrowserTextInput(_)
+                                | WorkflowEvent::FileOpened(_)
+                        );
+
+                        if should_highlight {
+                            // Get UI element from event
+                            if let Some(ui_element) = event.ui_element() {
+                                // Get event label
+                                let label = if config.show_highlight_labels {
+                                    Some(Self::get_event_label(&event))
+                                } else {
+                                    None
+                                };
+
+                                // Create highlight
+                                if let Ok(handle) = ui_element.highlight(
+                                    config.highlight_color,
+                                    config.highlight_duration_ms.map(Duration::from_millis),
+                                    label,
+                                    None, // text_position
+                                    None, // font_style
+                                ) {
+                                    // Enforce max concurrent limit
+                                    let mut list = handles.lock().await;
+                                    if list.len() >= config.highlight_max_concurrent {
+                                        // Remove oldest (FIFO)
+                                        if let Some(old) = list.pop_front() {
+                                            old.close();
+                                        }
+                                    }
+                                    list.push_back(handle);
+                                }
+                            }
+                        }
+                    }
+
+                    // Disable recording mode when highlighting task ends
+                    #[cfg(target_os = "windows")]
+                    terminator::set_recording_mode(false);
+
+                    info!("Highlighting task ended (recording mode disabled)");
+                });
+
+                self.highlight_task_handle = Some(task);
+            }
+
             Ok(())
         }
 
@@ -555,6 +665,24 @@ impl WorkflowRecorder {
                 // Additional delay to ensure all event processing is fully stopped
                 // before we proceed with workflow processing
                 tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            }
+        }
+
+        // Stop highlighting task if running
+        if let Some(task) = self.highlight_task_handle.take() {
+            task.abort(); // Cancel the task immediately
+            info!("Highlighting task aborted");
+        }
+
+        // Close all active highlights immediately
+        {
+            let mut list = self.highlight_handles.lock().await;
+            let count = list.len();
+            while let Some(handle) = list.pop_front() {
+                handle.close();
+            }
+            if count > 0 {
+                info!("Closed {} active highlight(s)", count);
             }
         }
 
@@ -605,6 +733,36 @@ impl WorkflowRecorder {
             if let Ok(mut workflow_guard) = workflow.lock() {
                 workflow_guard.add_enhanced_event(recorded_event);
             }
+        }
+    }
+
+    /// Get a human-readable label for a workflow event
+    fn get_event_label(event: &WorkflowEvent) -> &'static str {
+        match event {
+            WorkflowEvent::Click(_) => "CLICK",
+            WorkflowEvent::TextInputCompleted(_) => "TYPE",
+            WorkflowEvent::Keyboard(e) => {
+                // For keyboard events, we could show the key, but static str is simpler
+                // The MCP agent shows dynamic labels like "KEY: A", but here we keep it simple
+                let _ = e; // Suppress unused warning
+                "KEY"
+            }
+            WorkflowEvent::DragDrop(_) => "DRAG",
+            WorkflowEvent::ApplicationSwitch(_) => "SWITCH",
+            WorkflowEvent::BrowserTabNavigation(_) => "TAB",
+            WorkflowEvent::Mouse(e) => {
+                // Differentiate right-click, middle-click
+                match e.button {
+                    crate::MouseButton::Right => "RCLICK",
+                    crate::MouseButton::Middle => "MCLICK",
+                    _ => "MOUSE",
+                }
+            }
+            WorkflowEvent::Hotkey(_) => "HOTKEY",
+            WorkflowEvent::Clipboard(_) => "CLIPBOARD",
+            WorkflowEvent::TextSelection(_) => "SELECT",
+            WorkflowEvent::FileOpened(_) => "FILE",
+            _ => "EVENT",
         }
     }
 }

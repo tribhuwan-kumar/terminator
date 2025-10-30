@@ -167,10 +167,10 @@ async fn test_alt_tab_automation() {
         println!(
             "      ✅ App switch captured: {} → {} via {:?}",
             switch
-                .from_application
+                .from_window_and_application_name
                 .as_ref()
                 .unwrap_or(&"(unknown)".to_string()),
-            switch.to_application,
+            switch.to_window_and_application_name,
             switch.switch_method
         );
 
@@ -228,10 +228,10 @@ async fn test_alt_tab_automation() {
         println!(
             "      ✅ Second app switch captured: {} → {} via {:?}",
             switch
-                .from_application
+                .from_window_and_application_name
                 .as_ref()
                 .unwrap_or(&"(unknown)".to_string()),
-            switch.to_application,
+            switch.to_window_and_application_name,
             switch.switch_method
         );
 
@@ -270,10 +270,10 @@ async fn test_alt_tab_automation() {
         println!(
             "      ✅ Window click switch captured: {} → {} via {:?}",
             switch
-                .from_application
+                .from_window_and_application_name
                 .as_ref()
                 .unwrap_or(&"(unknown)".to_string()),
-            switch.to_application,
+            switch.to_window_and_application_name,
             switch.switch_method
         );
 
@@ -384,20 +384,20 @@ async fn test_alt_tab_rapid_switching() {
                         "   🔄 App switch #{} attributed to Alt+Tab: {} → {}",
                         switch_count,
                         switch
-                            .from_application
+                            .from_window_and_application_name
                             .as_ref()
                             .unwrap_or(&"(unknown)".to_string()),
-                        switch.to_application
+                        switch.to_window_and_application_name
                     );
                 } else {
                     println!(
                         "   🔄 App switch #{} NOT attributed to Alt+Tab: {} → {} (method: {:?})",
                         switch_count,
                         switch
-                            .from_application
+                            .from_window_and_application_name
                             .as_ref()
                             .unwrap_or(&"(unknown)".to_string()),
-                        switch.to_application,
+                        switch.to_window_and_application_name,
                         switch.switch_method
                     );
                 }

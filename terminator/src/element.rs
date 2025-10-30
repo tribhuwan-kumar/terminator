@@ -86,13 +86,15 @@ pub struct SerializableUIElement {
     #[serde(skip_serializing_if = "is_empty_string")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
-    pub application: Option<String>,
+    pub window_and_application_name: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub window_title: Option<String>,
     #[serde(skip_serializing_if = "is_empty_string")]
     pub url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub process_id: Option<u32>,
+    #[serde(skip_serializing_if = "is_empty_string")]
+    pub process_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub children: Option<Vec<SerializableUIElement>>,
 
@@ -122,6 +124,19 @@ impl From<&UIElement> for SerializableUIElement {
         let attrs = element.attributes();
         let bounds = element.bounds().ok();
 
+        // Get process_id and derive process_name
+        let process_id = element.process_id().ok();
+        let process_name = process_id.and_then(|pid| {
+            #[cfg(target_os = "windows")]
+            {
+                crate::platforms::windows::get_process_name_by_pid(pid as i32).ok()
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                None
+            }
+        });
+
         Self {
             id: element.id(),
             role: element.role(),
@@ -129,10 +144,11 @@ impl From<&UIElement> for SerializableUIElement {
             bounds,
             value: attrs.value,
             description: attrs.description,
-            application: Some(element.application_name()),
+            window_and_application_name: Some(element.application_name()),
             window_title: Some(element.window_title()),
             url: element.url(),
-            process_id: element.process_id().ok(),
+            process_id,
+            process_name,
             children: None,
 
             // Additional fields for better LLM understanding of UI state
@@ -159,10 +175,11 @@ impl SerializableUIElement {
             bounds: None,
             value: None,
             description: None,
-            application: None,
+            window_and_application_name: None,
             window_title: None,
             url: None,
             process_id: None,
+            process_name: None,
             children: None,
 
             // Additional fields for better LLM understanding of UI state
@@ -228,6 +245,8 @@ pub struct UIElementAttributes {
     pub value: Option<String>,
     #[serde(default, skip_serializing_if = "is_empty_string")]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "is_empty_string")]
+    pub application_name: Option<String>,
     #[serde(default, skip_serializing_if = "is_empty_properties")]
     pub properties: HashMap<String, Option<serde_json::Value>>,
     #[serde(default, skip_serializing_if = "is_false_bool")]
@@ -1395,9 +1414,10 @@ impl UIElement {
             // For child elements (depth > 0), remove redundant window/app info.
             // This information is only needed at the root of the tree.
             if depth > 0 {
-                serializable.application = None;
+                serializable.window_and_application_name = None;
                 serializable.window_title = None;
                 serializable.process_id = None;
+                serializable.process_name = None;
                 serializable.url = None;
             }
 
@@ -1494,7 +1514,8 @@ pub mod utils {
             name: element.name(),
             text: None,
             value: element.attributes().value,
-            bounds: None, // Not included in minimal attributes
+            application_name: None, // Deferred - avoid expensive calls
+            bounds: None,           // Not included in minimal attributes
             ..Default::default()
         }
     }

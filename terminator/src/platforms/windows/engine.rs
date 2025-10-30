@@ -3362,6 +3362,16 @@ impl AccessibilityEngine for WindowsEngine {
         // Build the UI tree with configurable performance optimizations
         info!("Building UI tree with config: {:?}", config);
 
+        // Get application name from process using sysinfo (efficient single lookup)
+        let application_name = {
+            use sysinfo::{ProcessesToUpdate, System};
+            let mut system = System::new();
+            system.refresh_processes(ProcessesToUpdate::All, true);
+            system
+                .process(sysinfo::Pid::from_u32(pid))
+                .map(|p| p.name().to_string_lossy().to_string())
+        };
+
         // Use configured tree building approach
         let mut context = TreeBuildingContext {
             config: TreeBuildingConfig {
@@ -3376,6 +3386,7 @@ impl AccessibilityEngine for WindowsEngine {
             cache_hits: 0,
             fallback_calls: 0,
             errors_encountered: 0,
+            application_name, // Cache application name for all nodes in tree
         };
 
         let result = build_ui_node_tree_configurable(&window_element_wrapper, 0, &mut context)?;

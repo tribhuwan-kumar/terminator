@@ -31,6 +31,36 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 const OVERLAY_CLASS_NAME: PCWSTR = w!("TerminatorHighlightOverlay");
 
+// Global atomic storage for recording mode flag
+// When enabled, highlights will not trigger scroll_into_view (for passive recording)
+/// Global recording mode flag using AtomicBool to work across threads.
+/// This is critical because Tokio can switch threads between await points,
+/// and thread_local! storage doesn't survive those switches.
+static RECORDING_MODE: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable recording mode for highlights globally.
+/// When recording mode is enabled, highlights will NOT scroll elements into view.
+/// This is useful for workflow recording where highlighting should be passive (no UI changes).
+///
+/// # Arguments
+/// * `enabled` - true to enable recording mode (disable scroll), false to use normal mode (enable scroll)
+///
+/// # Example
+/// ```
+/// use terminator::platforms::windows::set_recording_mode;
+///
+/// // Enable recording mode (no scrolling during highlights)
+/// set_recording_mode(true);
+///
+/// // ... perform highlighting during recording ...
+///
+/// // Restore normal mode (scrolling enabled)
+/// set_recording_mode(false);
+/// ```
+pub fn set_recording_mode(enabled: bool) {
+    RECORDING_MODE.store(enabled, Ordering::Relaxed);
+}
+
 /// Implementation of element highlighting for Windows UI elements
 pub fn highlight(
     element: Arc<UIElement>,
@@ -45,24 +75,31 @@ pub fn highlight(
     let wrapped: TerminatorElement =
         convert_uiautomation_element_to_terminator(element.as_ref().clone());
 
-    // Simply use the core library's scroll_into_view method
-    // This method already handles viewport detection, focus attempts, and iterative scrolling
-    // We don't need all the sophisticated logic here - that's now in the MCP server
-    if let Err(e) = wrapped.scroll_into_view() {
-        // Log but don't fail - scrolling is best-effort for highlighting
-        debug!("highlight: scroll_into_view failed (best-effort): {}", e);
+    // Check if we're in recording mode - if so, skip scroll to avoid spurious events
+    let skip_scroll = RECORDING_MODE.load(Ordering::Relaxed);
+
+    if !skip_scroll {
+        // Simply use the core library's scroll_into_view method
+        // This method already handles viewport detection, focus attempts, and iterative scrolling
+        // We don't need all the sophisticated logic here - that's now in the MCP server
+        if let Err(e) = wrapped.scroll_into_view() {
+            // Log but don't fail - scrolling is best-effort for highlighting
+            debug!("highlight: scroll_into_view failed (best-effort): {}", e);
+        } else {
+            debug!("highlight: scroll_into_view succeeded");
+        }
+
+        // Get the (possibly updated) element bounding rectangle
+        // First check what the wrapped element thinks its bounds are
+        if let Ok((_wx, _wy, _ww, _wh)) = wrapped.bounds() {
+            // info!("highlight: wrapped element final bounds: x={wx}, y={wy}, w={ww}, h={wh}");
+        }
+
+        // Small delay to let any scrolling animation settle
+        std::thread::sleep(Duration::from_millis(100));
     } else {
-        debug!("highlight: scroll_into_view succeeded");
+        debug!("highlight: skipping scroll_into_view (recording mode enabled)");
     }
-
-    // Get the (possibly updated) element bounding rectangle
-    // First check what the wrapped element thinks its bounds are
-    if let Ok((_wx, _wy, _ww, _wh)) = wrapped.bounds() {
-        // info!("highlight: wrapped element final bounds: x={wx}, y={wy}, w={ww}, h={wh}");
-    }
-
-    // Small delay to let any scrolling animation settle
-    std::thread::sleep(Duration::from_millis(100));
 
     let rect = element.get_bounding_rectangle().map_err(|e| {
         AutomationError::PlatformError(format!("Failed to get element bounds: {e}"))

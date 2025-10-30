@@ -1,5 +1,5 @@
-use terminator::element::SerializableUIElement;
-use terminator::UINode;
+use crate::element::SerializableUIElement;
+use crate::UINode;
 
 /// Convert UINode to SerializableUIElement for unified formatting
 fn ui_node_to_serializable(node: &UINode) -> SerializableUIElement {
@@ -10,7 +10,7 @@ fn ui_node_to_serializable(node: &UINode) -> SerializableUIElement {
         bounds: node.attributes.bounds,
         value: node.attributes.value.clone(),
         description: node.attributes.description.clone(),
-        window_and_application_name: None,
+        window_and_application_name: node.attributes.application_name.clone(),
         window_title: None,
         url: None,
         process_id: None,
@@ -162,10 +162,10 @@ mod tests {
             value: None,
             description: None,
             window_and_application_name: None,
+            process_name: None,
             window_title: None,
             url: None,
             process_id: None,
-            process_name: None,
             children: None,
             label: None,
             text: None,
@@ -194,10 +194,10 @@ mod tests {
             value: None,
             description: None,
             window_and_application_name: None,
+            process_name: None,
             window_title: None,
             url: None,
             process_id: None,
-            process_name: None,
             children: None,
             label: None,
             text: None,
@@ -218,10 +218,10 @@ mod tests {
             value: None,
             description: None,
             window_and_application_name: None,
+            process_name: None,
             window_title: None,
             url: None,
             process_id: None,
-            process_name: None,
             children: Some(vec![child]),
             label: None,
             text: None,

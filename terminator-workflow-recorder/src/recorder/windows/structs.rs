@@ -140,14 +140,15 @@ impl TextInputTracker {
             return self.has_typing_activity && self.keystroke_count > 0;
         }
 
-        // For focus changes, be more lenient - emit if there was any activity
+        // For focus changes, only emit if there was actual typing activity
+        // This prevents false positives from focusing non-input elements
         if reason == "focus_change" {
             return self.has_typing_activity || self.keystroke_count > 0;
         }
 
-        // For suggestion clicks, check if we have activity
+        // For suggestion clicks, always emit (autocomplete selections are valid)
         if reason == "suggestion_click" {
-            return self.has_typing_activity || self.keystroke_count > 0;
+            return true; // Always emit for suggestion clicks
         }
 
         // Default: require activity
@@ -165,32 +166,55 @@ impl TextInputTracker {
         &self,
         input_method: Option<crate::TextInputMethod>,
     ) -> Option<crate::TextInputCompletedEvent> {
-        // Only proceed if we have typing activity
-        if !self.has_typing_activity && self.keystroke_count == 0 {
-            info!("❌ No typing activity or keystrokes");
-            return None;
-        }
-
-        // Try to get actual text value from the element
+        // Try to get actual text value from the element with retry mechanism
+        // First attempt
         let text_value = match self.element.text(0) {
             Ok(actual_text) => actual_text,
             Err(e) => {
-                error!("❌ Could not get text value: {}", e);
-                String::new()
+                error!("❌ First attempt to get text value failed: {}", e);
+                // Retry after short delay (similar to mouse down retry logic)
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                info!("🔄 Retrying text extraction...");
+                match self.element.text(0) {
+                    Ok(actual_text) => {
+                        info!("✅ Second attempt succeeded!");
+                        actual_text
+                    }
+                    Err(e2) => {
+                        error!("❌ Second attempt also failed: {}", e2);
+                        // Graceful fallback: still emit event with metadata about the interaction
+                        if self.keystroke_count > 0 {
+                            format!(
+                                "[Text extraction failed - {} keystrokes]",
+                                self.keystroke_count
+                            )
+                        } else {
+                            String::from("[Text extraction failed]")
+                        }
+                    }
+                }
             }
         };
 
-        // Do not emit an event for empty or whitespace-only text.
-        if text_value.trim().is_empty() {
-            info!("❌ Text value is empty or whitespace-only, not emitting completion event.");
-            return None;
+        // Add minimum threshold: Only emit TextInputCompleted if there was actual typing activity
+        // This prevents false positives from focus events on non-input elements
+        if text_value.trim().is_empty() && !text_value.starts_with("[Text extraction failed") {
+            // Skip emission if there's no actual typing activity
+            if self.keystroke_count == 0 && !self.has_typing_activity {
+                info!("ℹ️ Skipping TextInputCompleted event: empty field with no typing activity (keystroke_count: 0)");
+                return None;
+            }
         }
 
         // Check if text is unchanged from initial value (placeholder text)
+        // Still emit the event but note it's unchanged (for focus tracking)
         if let Some(ref initial) = self.initial_text {
             if text_value == *initial && !self.has_typing_activity {
-                info!("❌ Text unchanged from initial value '{}' with no typing activity - likely placeholder, not emitting completion event.", initial);
-                return None;
+                info!(
+                    "ℹ️ Text unchanged from initial value '{}' - emitting with unchanged text.",
+                    initial
+                );
+                // Continue to emit event (don't return None)
             }
         }
 
@@ -247,8 +271,10 @@ pub struct HotkeyPattern {
 /// Tracks the current application state for switch detection
 #[derive(Debug, Clone)]
 pub struct ApplicationState {
-    /// Application name/title
+    /// Window and application name (as reported by Windows UI Automation)
     pub name: String,
+    /// Process executable name (e.g., "chrome.exe", "Notepad.exe")
+    pub process_name: Option<String>,
     /// Process ID
     pub process_id: u32,
     /// When the application became active

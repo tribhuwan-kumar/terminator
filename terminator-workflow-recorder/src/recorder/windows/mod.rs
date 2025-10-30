@@ -17,6 +17,7 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime},
 };
+use sysinfo::{Pid, ProcessesToUpdate, System};
 use terminator::{convert_uiautomation_element_to_terminator, UIElement};
 
 use tokio::runtime::Runtime;
@@ -327,6 +328,20 @@ impl WindowsRecorder {
                             None
                         };
 
+                        // Get process name for current and target process (do this BEFORE any conditional blocks)
+                        let mut system = System::new();
+                        system.refresh_processes(ProcessesToUpdate::All, true);
+
+                        let from_process_name = current.as_ref().and_then(|s| {
+                            system
+                                .process(Pid::from_u32(s.process_id))
+                                .map(|p| p.name().to_string_lossy().to_string())
+                        });
+
+                        let to_process_name = system
+                            .process(Pid::from_u32(process_id))
+                            .map(|p| p.name().to_string_lossy().to_string());
+
                         // Only emit if we have meaningful dwell time or this is first app
                         if dwell_time.is_some() || current.is_none() {
                             // Check if this is a browser and try to get URL
@@ -385,6 +400,7 @@ impl WindowsRecorder {
                                     // Update current app state and return early
                                     *current = Some(ApplicationState {
                                         name: app_name.clone(),
+                                        process_name: to_process_name.clone(),
                                         process_id,
                                         start_time: now,
                                     });
@@ -397,8 +413,12 @@ impl WindowsRecorder {
 
                             // Not a browser or couldn't find URL - emit normal application switch
                             let event = crate::ApplicationSwitchEvent {
-                                from_application: current.as_ref().map(|s| s.name.clone()),
-                                to_application: app_name.clone(),
+                                from_window_and_application_name: current
+                                    .as_ref()
+                                    .map(|s| s.name.clone()),
+                                to_window_and_application_name: app_name.clone(),
+                                from_process_name: from_process_name.clone(),
+                                to_process_name: to_process_name.clone(),
                                 from_process_id: current.as_ref().map(|s| s.process_id),
                                 to_process_id: process_id,
                                 switch_method: actual_switch_method.clone(),
@@ -421,12 +441,35 @@ impl WindowsRecorder {
                                     app_name,
                                     actual_switch_method
                                 );
+
+                                // Check if window title contains a filename and resolve paths
+                                if let Some(filename) = Self::extract_filename_from_window_title(&app_name) {
+                                    info!("📄 Detected file in window title: {}", filename);
+
+                                    // Resolve file paths using PowerShell script
+                                    if let Some(file_event) = Self::resolve_file_paths(
+                                        &filename,
+                                        &app_name,
+                                        to_process_name.as_ref().map(|s| s.as_str()),
+                                        process_id,
+                                        element,
+                                    ) {
+                                        if let Err(e) = event_tx.send(WorkflowEvent::FileOpened(file_event)) {
+                                            warn!("Failed to send file opened event: {}", e);
+                                        } else {
+                                            info!("✅ File opened event sent for: {}", filename);
+                                        }
+                                    } else {
+                                        info!("⚠️ Could not resolve file paths for: {}", filename);
+                                    }
+                                }
                             }
                         }
 
                         // Update current application state
                         *current = Some(ApplicationState {
                             name: app_name.clone(),
+                            process_name: to_process_name.clone(),
                             process_id,
                             start_time: now,
                         });
@@ -963,15 +1006,19 @@ impl WindowsRecorder {
                         Self::handle_button_press_request(button, &ctx);
                     }
                     UIAInputRequest::ButtonRelease { button, position } => {
-                        Self::handle_button_release_request(
-                            button,
-                            &position,
-                            &uia_processor_config,
-                            &uia_processor_event_tx,
-                            &uia_processor_last_event_time,
-                            &uia_processor_events_counter,
-                            &uia_processor_is_stopping,
-                        );
+                        let ctx = ButtonPressContext {
+                            position: &position,
+                            config: &uia_processor_config,
+                            current_text_input: &uia_processor_text_input,
+                            event_tx: &uia_processor_event_tx,
+                            performance_last_event_time: &uia_processor_last_event_time,
+                            performance_events_counter: &uia_processor_events_counter,
+                            is_stopping: &uia_processor_is_stopping,
+                            double_click_tracker: &uia_processor_double_click_tracker,
+                            browser_recorder: &uia_processor_browser_recorder,
+                            tokio_runtime: &uia_processor_tokio_runtime,
+                        };
+                        Self::handle_button_release_request(button, &ctx);
                     }
                     UIAInputRequest::KeyPressForCompletion { key_code } => {
                         Self::handle_key_press_for_completion_request(
@@ -1270,7 +1317,7 @@ impl WindowsRecorder {
                             let ui_element = if config.capture_ui_elements
                                 && !config.filter_mouse_noise
                             {
-                                Self::get_element_from_point_with_timeout(&config, position, 100)
+                                Self::get_element_from_point_with_timeout(&config, position, 1000)
                             } else {
                                 None
                             };
@@ -1654,22 +1701,6 @@ impl WindowsRecorder {
                             );
                         });
 
-                        // Task for browser navigation check
-                        let browser_nav_tracker = Arc::clone(&focus_browser_tracker);
-                        let browser_nav_event_tx_clone = focus_event_tx_clone.clone();
-                        let browser_nav_ui_element = Some(element.clone());
-                        let browser_nav_config_clone = focus_processing_config.clone();
-
-                        processing_handle.spawn(async move {
-                            Self::check_and_emit_browser_navigation(
-                                &browser_nav_tracker,
-                                &browser_nav_event_tx_clone,
-                                &browser_nav_ui_element,
-                                &browser_nav_config_clone,
-                            )
-                            .await;
-                        });
-
                         // Task for text input completion check
                         let text_input_tracker = Arc::clone(&focus_current_text_input);
                         let text_input_event_tx = focus_event_tx_clone.clone();
@@ -1887,26 +1918,6 @@ impl WindowsRecorder {
         ButtonInteractionType::Click
     }
 
-    /// Maps a browser keyword (like 'chrome') to a display name (like 'Google Chrome').
-    fn map_keyword_to_browser_name(keyword: &str) -> String {
-        match keyword.to_lowercase().as_str() {
-            "chrome" | "google chrome" => "Google Chrome".to_string(),
-            "firefox" | "mozilla firefox" => "Mozilla Firefox".to_string(),
-            "edge" | "msedge" | "microsoft edge" => "Microsoft Edge".to_string(),
-            "iexplore" | "internet explorer" => "Internet Explorer".to_string(),
-            "safari" => "Safari".to_string(),
-            "opera" => "Opera".to_string(),
-            other => {
-                // Capitalize the first letter as a fallback
-                let mut c = other.chars();
-                match c.next() {
-                    None => String::new(),
-                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-                }
-            }
-        }
-    }
-
     /// Static version for use in event listeners where self is not available
     fn send_filtered_event_static(
         event_tx: &broadcast::Sender<WorkflowEvent>,
@@ -1997,194 +2008,12 @@ impl WindowsRecorder {
         }
     }
 
-    /// Helper function to check if two URLs represent meaningful navigation
-    fn is_meaningful_navigation(old_url: &str, new_url: &str) -> bool {
-        // Extract base URL without query params and fragments
-        fn get_base(url: &str) -> &str {
-            url.split('?')
-                .next()
-                .unwrap_or(url)
-                .split('#')
-                .next()
-                .unwrap_or(url)
-        }
-
-        // Compare only base URLs, ignoring all query parameters and fragments
-        // Real navigation means the path or domain changed, not just parameters
-        get_base(old_url) != get_base(new_url)
-    }
-
-    /// Check and emit browser navigation events with improved filtering
-    async fn check_and_emit_browser_navigation(
-        tracker: &Arc<Mutex<BrowserTabTracker>>,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        ui_element: &Option<UIElement>,
-        config: &WorkflowRecorderConfig,
-    ) {
-        if !config.record_browser_tab_navigation {
-            return;
-        }
-
-        if let Some(element) = ui_element {
-            let app_name = element.application_name();
-            let app_name_lower = app_name.to_lowercase();
-
-            let matched_browser_keyword = {
-                let tracker_guard = tracker.lock().unwrap();
-                tracker_guard
-                    .known_browsers
-                    .iter()
-                    .find(|b| app_name_lower.contains(*b))
-                    .cloned()
-            };
-
-            debug!(
-                "Checking browser navigation for app: '{}', matched browser keyword: {:?}",
-                app_name, matched_browser_keyword
-            );
-
-            if let Some(keyword) = matched_browser_keyword {
-                let browser_display_name = Self::map_keyword_to_browser_name(&keyword);
-
-                // Try multiple methods to get URL information
-                let url_info = element
-                    .url()
-                    .or_else(|| {
-                        // Try to get URL from element attributes or text
-                        if let Ok(text) = element.text(0) {
-                            if text.starts_with("http") {
-                                Some(text)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    })
-                    .or_else(|| {
-                        // Try to extract URL from window title (common in browsers)
-                        let window_title = element.window_title();
-                        if window_title.contains("http") {
-                            // Extract URL from title
-                            window_title
-                                .split_whitespace()
-                                .find(|s| s.starts_with("http"))
-                                .map(|s| s.to_string())
-                        } else {
-                            None
-                        }
-                    });
-
-                if let Some(new_url) = url_info {
-                    // Use window title as page title, fallback to app name
-                    let new_title = {
-                        let window_title = element.window_title();
-                        if window_title.is_empty() {
-                            app_name.clone()
-                        } else {
-                            window_title
-                        }
-                    };
-
-                    debug!(
-                        "Browser navigation detected - URL: '{}', Title: '{}'",
-                        new_url, new_title
-                    );
-
-                    let mut tracker_guard = tracker.lock().unwrap();
-
-                    let is_switch = match &tracker_guard.current_url {
-                        Some(current_url) => {
-                            // Check if this is a meaningful navigation, not just query param changes
-                            Self::is_meaningful_navigation(current_url, &new_url)
-                        }
-                        None => {
-                            // First time seeing a URL - check if it's a real page or just a blank tab
-                            // Common new tab/blank pages to ignore
-                            !new_url.is_empty()
-                                && !new_url.starts_with("about:blank")
-                                && !new_url.starts_with("about:newtab")
-                                && !new_url.starts_with("chrome://newtab")
-                                && !new_url.starts_with("edge://newtab")
-                                && !new_url.starts_with("about:home")
-                                && !new_url.contains("://newtab")
-                                && !new_url.contains("://new-tab-page")
-                        }
-                    };
-
-                    if !is_switch && tracker_guard.current_url.is_some() {
-                        debug!(
-                            "Ignoring non-meaningful navigation: {} -> {} (likely just query params or in-page state change)",
-                            tracker_guard.current_url.as_ref().unwrap(),
-                            new_url
-                        );
-                    }
-
-                    debug!(
-                        "Is switch: {}, current_url: {:?}, current_title: {:?}",
-                        is_switch, tracker_guard.current_url, tracker_guard.current_title
-                    );
-
-                    if is_switch {
-                        let now = Instant::now();
-                        let dwell_time = now
-                            .duration_since(tracker_guard.last_navigation_time)
-                            .as_millis() as u64;
-
-                        let nav_event = BrowserTabNavigationEvent {
-                            action: crate::TabAction::Switched,
-                            method: crate::TabNavigationMethod::Other, // Updated from focus change
-                            to_url: Some(new_url.clone()),
-                            from_url: tracker_guard.current_url.clone(),
-                            to_title: Some(new_title.clone()),
-                            from_title: tracker_guard.current_title.clone(),
-                            browser: browser_display_name.clone(),
-                            tab_index: None,
-                            total_tabs: None,
-                            page_dwell_time_ms: Some(dwell_time),
-                            is_back_forward: false,
-                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(
-                                element.clone(),
-                            )),
-                        };
-
-                        debug!("Sending browser navigation event: {:?}", nav_event);
-
-                        if event_tx
-                            .send(WorkflowEvent::BrowserTabNavigation(nav_event))
-                            .is_ok()
-                        {
-                            debug!("Γ£à Browser navigation event sent successfully");
-                            tracker_guard.last_navigation_time = now;
-                        } else {
-                            debug!("Γ¥î Failed to send browser navigation event");
-                        }
-                    }
-
-                    // Always update tracker state, regardless of whether we sent an event
-                    // This ensures we track the current state even when no navigation occurs
-                    tracker_guard.current_browser = Some(browser_display_name);
-                    tracker_guard.current_url = Some(new_url);
-                    tracker_guard.current_title = Some(new_title);
-                } else {
-                    debug!(
-                        "No URL information found for browser element: '{}'",
-                        element.name_or_empty()
-                    );
-                }
-            }
-        }
-    }
-
     /// Check if a UI element is a text input field
-    fn is_text_input_element(element: &UIElement) -> bool {
-        let role = element.role().to_lowercase();
-
-        // Only track actual input fields, not documents or other containers
-        role.contains("edit")
-            || role == "text"
-            || (role.contains("combobox") && element.is_enabled().unwrap_or(false))
-        // Only editable combobox
+    fn is_text_input_element(_element: &UIElement) -> bool {
+        // Track ANY clicked element as potential text input
+        // The actual typing activity will determine if a meaningful TextInputCompleted event is generated
+        // This ensures we never miss text input due to role detection failures (e.g., "unknown" role elements)
+        true
     }
 
     /// Get the text value from a UI element
@@ -2397,7 +2226,21 @@ impl WindowsRecorder {
 
         let ui_element = if ctx.config.capture_ui_elements {
             // Use deepest element finder for more precise click detection
-            Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 100)
+            // Try with 350ms timeout first
+            let mut element =
+                Self::get_deepest_element_from_point_with_timeout(ctx.config, *ctx.position, 350);
+
+            // If first attempt failed, retry once with another 350ms
+            if element.is_none() {
+                debug!("First element capture attempt failed, retrying with 350ms timeout...");
+                element = Self::get_deepest_element_from_point_with_timeout(
+                    ctx.config,
+                    *ctx.position,
+                    350,
+                );
+            }
+
+            element
         } else {
             None
         };
@@ -2501,8 +2344,8 @@ impl WindowsRecorder {
                     is_suggestion_click
                 );
 
-                // Text input completion is no longer tracked in simplified version
-                if false {
+                // Re-enabled: Track text input completion for autocomplete/suggestions
+                if is_suggestion_click {
                     debug!(
                         "≡ƒÄ» Detected potential autocomplete/suggestion click: '{}' (role: '{}') - SUGGESTION SELECTED",
                         element_name, element_role
@@ -2636,15 +2479,24 @@ impl WindowsRecorder {
                         debug!("Γ¥î Could not lock text input tracker for suggestion click");
                     }
                 }
+            }
+        }
 
-                // Only emit click event if it's NOT a text input that we're tracking
-                // This prevents duplicate events (Click + TextInputCompleted) for the same interaction
-                if !(ctx.config.record_text_input_completion && is_text_input) {
-                    debug!(
-                        "≡ƒû▒∩╕Å Mouse click on element: '{}' (role: '{}') - emitting Click event",
-                        element_name, element_role
-                    );
+        // Generate Click event on Mouse Down (when element is reliably captured)
+        // This ensures we have the correct UI element before UI state changes
+        if let Some(ref element) = ui_element {
+            if button == MouseButton::Left {
+                let element_role = element.role().to_lowercase();
+                let element_name = element.name_or_empty();
 
+                debug!(
+                    "🖱️ Mouse down on element: '{}' (role: '{}') - generating Click event",
+                    element_name, element_role
+                );
+
+                // Always emit click event (even for text inputs)
+                // Both Click and TextInputCompleted events provide valuable information
+                {
                     let element_desc = element.attributes().description.unwrap_or_default();
                     let interaction_type = Self::determine_button_interaction_type(
                         &element_name,
@@ -2652,13 +2504,7 @@ impl WindowsRecorder {
                         &element_role,
                     );
 
-                    // Since we now have the deepest element, collect only direct children (not unlimited depth)
                     let child_text_content = Self::collect_direct_child_text_content(element);
-                    info!(
-                        "≡ƒöì DIRECT CHILD TEXT COLLECTION: Found {} child elements: {:?}",
-                        child_text_content.len(),
-                        child_text_content
-                    );
 
                     // Calculate relative position within the element
                     let relative_position = element.bounds().ok().map(|bounds| {
@@ -2668,14 +2514,6 @@ impl WindowsRecorder {
                             ((ctx.position.y as f64 - bounds.1) / bounds.3).clamp(0.0, 1.0) as f32;
                         (x_ratio, y_ratio)
                     });
-
-                    if let Some((x, y)) = relative_position {
-                        debug!(
-                            "📍 Click relative position: {:.1}% x {:.1}% within element",
-                            x * 100.0,
-                            y * 100.0
-                        );
-                    }
 
                     // Check if this is a browser click and try to capture DOM information
                     let app_name = element.application_name().to_lowercase();
@@ -2692,7 +2530,6 @@ impl WindowsRecorder {
                             ctx.position.x, ctx.position.y
                         );
 
-                        // Use async/sync bridge to query DOM
                         if let Ok(browser_lock) = ctx.browser_recorder.lock() {
                             if let Some(ref browser) = *browser_lock {
                                 if let Ok(runtime_lock) = ctx.tokio_runtime.lock() {
@@ -2700,10 +2537,8 @@ impl WindowsRecorder {
                                         let browser_clone = browser.clone();
                                         let position_clone = *ctx.position;
 
-                                        // Create channel for async result
                                         let (tx, rx) = std::sync::mpsc::channel();
 
-                                        // Spawn async task
                                         runtime.spawn(async move {
                                             let result = browser_clone
                                                 .capture_dom_element(position_clone)
@@ -2711,50 +2546,40 @@ impl WindowsRecorder {
                                             let _ = tx.send(result);
                                         });
 
-                                        // Wait for DOM result with timeout
-                                        if let Ok(dom_result) =
+                                        if let Ok(Some(browser_dom_info)) =
                                             rx.recv_timeout(Duration::from_millis(200))
                                         {
-                                            if let Some(browser_dom_info) = dom_result {
-                                                debug!(
-                                                    "✅ DOM element captured: {} with {} selectors",
-                                                    browser_dom_info.tag_name,
-                                                    browser_dom_info.selector_candidates.len()
-                                                );
-                                                // Convert from browser_context::DomElementInfo to events::DomElementInfo
-                                                let converted_dom = crate::events::DomElementInfo {
-                                                    tag_name: browser_dom_info.tag_name,
-                                                    id: browser_dom_info.id,
-                                                    class_names: browser_dom_info.class_names,
-                                                    css_selector: browser_dom_info.css_selector,
-                                                    xpath: browser_dom_info.xpath,
-                                                    inner_text: browser_dom_info.inner_text,
-                                                    input_value: browser_dom_info.input_value,
-                                                    is_visible: browser_dom_info.is_visible,
-                                                    is_interactive: browser_dom_info.is_interactive,
-                                                    aria_label: browser_dom_info.aria_label,
-                                                    selector_candidates: browser_dom_info
-                                                        .selector_candidates
-                                                        .into_iter()
-                                                        .map(|sc| {
-                                                            crate::events::SelectorCandidate {
-                                                                selector: sc.selector,
-                                                                selector_type: format!(
-                                                                    "{:?}",
-                                                                    sc.selector_type
-                                                                ),
-                                                                specificity: sc.specificity,
-                                                                requires_jquery: sc.requires_jquery,
-                                                            }
-                                                        })
-                                                        .collect(),
-                                                };
-                                                dom_element = Some(converted_dom);
-                                            } else {
-                                                debug!("⚠️ No DOM element found at coordinates");
-                                            }
-                                        } else {
-                                            debug!("⚠️ DOM capture timed out");
+                                            debug!(
+                                                "✅ DOM element captured: {} with {} selectors",
+                                                browser_dom_info.tag_name,
+                                                browser_dom_info.selector_candidates.len()
+                                            );
+                                            let converted_dom = crate::events::DomElementInfo {
+                                                tag_name: browser_dom_info.tag_name,
+                                                id: browser_dom_info.id,
+                                                class_names: browser_dom_info.class_names,
+                                                css_selector: browser_dom_info.css_selector,
+                                                xpath: browser_dom_info.xpath,
+                                                inner_text: browser_dom_info.inner_text,
+                                                input_value: browser_dom_info.input_value,
+                                                is_visible: browser_dom_info.is_visible,
+                                                is_interactive: browser_dom_info.is_interactive,
+                                                aria_label: browser_dom_info.aria_label,
+                                                selector_candidates: browser_dom_info
+                                                    .selector_candidates
+                                                    .into_iter()
+                                                    .map(|sc| crate::events::SelectorCandidate {
+                                                        selector: sc.selector,
+                                                        selector_type: format!(
+                                                            "{:?}",
+                                                            sc.selector_type
+                                                        ),
+                                                        specificity: sc.specificity,
+                                                        requires_jquery: sc.requires_jquery,
+                                                    })
+                                                    .collect(),
+                                            };
+                                            dom_element = Some(converted_dom);
                                         }
                                     }
                                 }
@@ -2762,9 +2587,8 @@ impl WindowsRecorder {
                         }
                     }
 
-                    // Emit browser click event if DOM was captured, regular click otherwise
+                    // Emit browser click event if DOM was captured
                     if let Some(dom_info) = dom_element {
-                        // Get page context
                         let (page_url, page_title) =
                             if let Ok(browser_lock) = ctx.browser_recorder.lock() {
                                 if let Some(ref browser) = *browser_lock {
@@ -2824,7 +2648,7 @@ impl WindowsRecorder {
                         }
                     }
 
-                    // Always emit regular click event as well (for dual recording)
+                    // Always emit regular click event
                     let click_event = ClickEvent {
                         element_text: element_name,
                         interaction_type,
@@ -2843,18 +2667,32 @@ impl WindowsRecorder {
                         )),
                     };
 
-                    if let Err(e) = ctx.event_tx.send(WorkflowEvent::Click(click_event)) {
-                        debug!("Failed to send click event: {}", e);
-                    } else {
-                        debug!("Γ£à Click event sent successfully");
-                    }
-                } else {
-                    debug!(
-                        "≡ƒöñ Skipping Click event for text input '{}' (role: '{}') - will emit TextInputCompleted instead",
-                        element_name, element_role
-                    );
+                    let _ = ctx.event_tx.send(WorkflowEvent::Click(click_event));
                 }
             }
+        } else if button == MouseButton::Left {
+            // UI element capture failed, but we should still emit a Click event
+            debug!(
+                "⚠️ Mouse down without UI element at position ({}, {}) - still emitting Click event",
+                ctx.position.x, ctx.position.y
+            );
+
+            let click_event = ClickEvent {
+                element_text: String::from("[Element capture failed]"),
+                interaction_type: crate::ButtonInteractionType::Click,
+                element_role: String::from("unknown"),
+                was_enabled: true,
+                click_position: Some(*ctx.position),
+                element_description: None,
+                child_text_content: Vec::new(),
+                relative_position: None,
+                metadata: EventMetadata {
+                    ui_element: None,
+                    timestamp: Some(Self::capture_timestamp()),
+                },
+            };
+
+            let _ = ctx.event_tx.send(WorkflowEvent::Click(click_event));
         }
 
         let mouse_event = MouseEvent {
@@ -2879,40 +2717,21 @@ impl WindowsRecorder {
     }
 
     /// Handles a button release request from the input listener thread.
-    fn handle_button_release_request(
-        button: MouseButton,
-        position: &Position,
-        config: &WorkflowRecorderConfig,
-        event_tx: &broadcast::Sender<WorkflowEvent>,
-        performance_last_event_time: &Arc<Mutex<Instant>>,
-        performance_events_counter: &Arc<Mutex<(u32, Instant)>>,
-        is_stopping: &Arc<AtomicBool>,
-    ) {
-        let ui_element = if config.capture_ui_elements {
-            Self::get_element_from_point_with_timeout(config, *position, 100)
-        } else {
-            None
-        };
-
+    fn handle_button_release_request(button: MouseButton, ctx: &ButtonPressContext) {
+        // Send Mouse Up event unfiltered to avoid it being dropped by processing delay
+        // Note: Click events are now generated on Mouse Down for better element capture reliability
         let mouse_event = MouseEvent {
             event_type: MouseEventType::Up,
             button,
-            position: *position,
+            position: *ctx.position,
             scroll_delta: None,
             drag_start: None,
             metadata: EventMetadata {
-                ui_element,
+                ui_element: None,
                 timestamp: Some(Self::capture_timestamp()),
             },
         };
-        Self::send_filtered_event_static(
-            event_tx,
-            config,
-            performance_last_event_time,
-            performance_events_counter,
-            is_stopping,
-            WorkflowEvent::Mouse(mouse_event),
-        );
+        let _ = ctx.event_tx.send(WorkflowEvent::Mouse(mouse_event));
     }
 
     /// Find the deepest/most specific element at the given coordinates.
@@ -3201,6 +3020,195 @@ impl WindowsRecorder {
                         element_name, e
                     );
                 }
+            }
+        }
+    }
+
+    /// Extract filename from window title
+    /// Examples:
+    /// - "todolist-backup.txt - Notepad" -> Some("todolist-backup.txt")
+    /// - "Document1.docx - Microsoft Word" -> Some("Document1.docx")
+    /// - "Settings" -> None
+    fn extract_filename_from_window_title(window_title: &str) -> Option<String> {
+        // Common file extensions to look for
+        let file_extensions = [
+            ".txt", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+            ".pdf", ".json", ".xml", ".csv", ".html", ".htm", ".css", ".js",
+            ".ts", ".rs", ".py", ".java", ".cpp", ".c", ".h", ".md", ".log",
+            ".sql", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
+            ".mp3", ".mp4", ".wav", ".avi", ".mkv", ".mov", ".zip", ".rar",
+            ".7z", ".tar", ".gz", ".exe", ".dll", ".bat", ".sh", ".ps1",
+        ];
+
+        // Try to find a file extension in the window title
+        // Look for extension followed by a word boundary (space, dash, or end of string)
+        for ext in &file_extensions {
+            let lower_title = window_title.to_lowercase();
+            if let Some(ext_pos) = lower_title.find(ext) {
+                let ext_end = ext_pos + ext.len();
+
+                // Check if this is followed by a word boundary (space, dash, or end)
+                let is_boundary = ext_end >= lower_title.len()
+                    || lower_title.chars().nth(ext_end).map_or(true, |c| c == ' ' || c == '-');
+
+                if !is_boundary {
+                    continue; // Not a real file extension, keep looking
+                }
+
+                // Find the start of the filename (look backwards from extension)
+                let before_ext = &window_title[..ext_pos];
+
+                // Strategy: Most Windows apps use " - " to separate filename from app name
+                // Examples: "My File.txt - Notepad", "Photo.jpg - Photos"
+                // So we look for " - " pattern AFTER the extension to determine if filename comes before or after it
+
+                let after_ext = &window_title[ext_end..];
+                let start_pos = if after_ext.trim_start().starts_with("-") || after_ext.trim_start().starts_with("–") {
+                    // Pattern: "filename.ext - AppName" or "filename.ext – AppName"
+                    // The filename is everything before the extension, up to start of string or last " - " before it
+                    before_ext.rfind(" - ")
+                        .or_else(|| before_ext.rfind(" – "))
+                        .map(|pos| pos + 3)
+                        .unwrap_or(0)
+                } else {
+                    // No separator after extension, so filename likely ends at extension
+                    // Look backwards for path separators or beginning of string
+                    before_ext.rfind(|c: char| c == '/' || c == '\\')
+                        .map(|pos| pos + 1)
+                        .unwrap_or(0)
+                };
+
+                // Extract the filename including extension
+                let filename = window_title[start_pos..ext_end].trim();
+
+                // Validate that this looks like a reasonable filename
+                if !filename.is_empty() && filename.len() < 260 { // MAX_PATH on Windows
+                    return Some(filename.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Resolve file paths by calling PowerShell script
+    /// Returns FileOpenedEvent if file paths were found
+    fn resolve_file_paths(
+        filename: &str,
+        window_title: &str,
+        process_name: Option<&str>,
+        process_id: u32,
+        element: &UIElement,
+    ) -> Option<crate::events::FileOpenedEvent> {
+        use std::process::Command;
+        use crate::events::{FileOpenedEvent, FileCandidatePath, FilePathConfidence, EventMetadata};
+
+        // Get the PowerShell script path
+        let script_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("scripts")
+            .join("find_file_paths.ps1");
+
+        if !script_path.exists() {
+            warn!("PowerShell script not found: {:?}", script_path);
+            return None;
+        }
+
+        debug!("🔍 Resolving file paths for: {}", filename);
+
+        // Execute PowerShell script
+        let output = Command::new("powershell")
+            .args([
+                "-ExecutionPolicy", "Bypass",
+                "-File", script_path.to_str().unwrap(),
+                "-FileName", filename,
+            ])
+            .output();
+
+        match output {
+            Ok(result) if result.status.success() => {
+                let json_output = String::from_utf8_lossy(&result.stdout);
+                debug!("PowerShell output: {}", json_output);
+
+                // Parse JSON response
+                match serde_json::from_str::<serde_json::Value>(&json_output) {
+                    Ok(data) => {
+                        let match_count = data["match_count"].as_u64().unwrap_or(0);
+                        let search_time_ms = data["search_time_ms"].as_f64().unwrap_or(0.0);
+
+                        if match_count == 0 {
+                            debug!("No file paths found for: {}", filename);
+                            return None;
+                        }
+
+                        // Extract candidate paths
+                        let matches = data["matches"].as_array()?;
+                        let candidates: Vec<FileCandidatePath> = matches.iter().filter_map(|m| {
+                            Some(FileCandidatePath {
+                                path: m["path"].as_str()?.to_string(),
+                                last_accessed: m["last_accessed"].as_str()?.to_string(),
+                                last_modified: m["last_modified"].as_str()?.to_string(),
+                                size_bytes: m["size_bytes"].as_u64()?,
+                            })
+                        }).collect();
+
+                        if candidates.is_empty() {
+                            return None;
+                        }
+
+                        // Determine confidence based on number of matches
+                        let confidence = if candidates.len() == 1 {
+                            FilePathConfidence::High
+                        } else if candidates.len() <= 5 {
+                            FilePathConfidence::Medium
+                        } else {
+                            FilePathConfidence::Low
+                        };
+
+                        // Primary path is the first one (most recently accessed)
+                        let primary_path = candidates.first().map(|c| c.path.clone());
+
+                        // Extract file extension
+                        let file_extension = std::path::Path::new(filename)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|s| s.to_string());
+
+                        // Extract application name from window title
+                        let application_name = window_title
+                            .rsplit(" - ")
+                            .next()
+                            .unwrap_or(window_title)
+                            .to_string();
+
+                        Some(FileOpenedEvent {
+                            filename: filename.to_string(),
+                            primary_path,
+                            candidate_paths: candidates,
+                            confidence,
+                            application_name,
+                            process_id: Some(process_id),
+                            process_name: process_name.map(|s| s.to_string()),
+                            search_time_ms,
+                            file_extension,
+                            window_title: window_title.to_string(),
+                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
+                        })
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse PowerShell JSON output: {}", e);
+                        None
+                    }
+                }
+            }
+            Ok(result) => {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                warn!("PowerShell script failed: {}", stderr);
+                None
+            }
+            Err(e) => {
+                warn!("Failed to execute PowerShell script: {}", e);
+                None
             }
         }
     }

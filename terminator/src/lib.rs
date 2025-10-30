@@ -18,6 +18,7 @@ pub mod platforms;
 pub mod selector;
 #[cfg(test)]
 mod tests;
+pub mod tree_formatter;
 pub mod types;
 pub mod utils;
 
@@ -25,6 +26,7 @@ pub use element::{SerializableUIElement, UIElement, UIElementAttributes};
 pub use errors::AutomationError;
 pub use locator::Locator;
 pub use selector::Selector;
+pub use tree_formatter::{format_tree_as_compact_yaml, format_ui_node_as_compact_yaml};
 pub use types::{FontStyle, HighlightHandle, TextPosition};
 
 /// Recommend to use any of these: ["Default", "Chrome", "Firefox", "Edge", "Brave", "Opera", "Vivaldi"]
@@ -41,7 +43,9 @@ pub enum Browser {
 }
 
 #[cfg(target_os = "windows")]
-pub use platforms::windows::{convert_uiautomation_element_to_terminator, get_process_name_by_pid};
+pub use platforms::windows::{
+    convert_uiautomation_element_to_terminator, get_process_name_by_pid, set_recording_mode,
+};
 
 // Define a new struct to hold click result information - move to module level
 pub struct ClickResult {

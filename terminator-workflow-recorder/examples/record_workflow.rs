@@ -1,11 +1,9 @@
-use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use terminator_workflow_recorder::{WorkflowRecorder, WorkflowRecorderConfig};
-use tokio::signal::ctrl_c;
+use tokio::time::sleep;
 use tokio_stream::StreamExt;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
-// use std::panic::AssertUnwindSafe; // Not used due to async limitation
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,6 +22,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a comprehensive configuration for maximum workflow capture
     let config = WorkflowRecorderConfig {
+        enable_highlighting: true,
+        highlight_color: Some(0x00FF00),  // Green in BGR
+        highlight_duration_ms: Some(800), // 800ms
+        show_highlight_labels: true,
+        highlight_max_concurrent: 10,
         ..Default::default()
     };
 
@@ -88,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     info!("   ⌨️ Try different methods: typing vs pasting, keyboard vs mouse navigation");
     info!("");
-    info!("🛑 Press Ctrl+C to stop recording and save the workflow");
+    info!("⏱️  Recording for 20 seconds - perform some mouse clicks!");
 
     // Process and display events from the stream
     let event_display_task = tokio::spawn(async move {
@@ -305,10 +308,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "🔄 APPLICATION SWITCH {}: {} → {} (Latency: {:?})",
                         event_count,
                         app_switch_event
-                            .from_application
+                            .from_window_and_application_name
                             .as_ref()
                             .unwrap_or(&"(unknown)".to_string()),
-                        app_switch_event.to_application,
+                        app_switch_event.to_window_and_application_name,
                         latency
                     );
 
@@ -345,57 +348,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("     └─ 🎯 High-level application navigation tracking!");
                 }
                 terminator_workflow_recorder::WorkflowEvent::Mouse(mouse_event) => {
-                    // Only show down events (clicks)
-                    if matches!(
-                        mouse_event.event_type,
-                        terminator_workflow_recorder::MouseEventType::Down
-                            | terminator_workflow_recorder::MouseEventType::Click
-                    ) {
-                        let button_name = match mouse_event.button {
-                            terminator_workflow_recorder::MouseButton::Left => "Left",
-                            terminator_workflow_recorder::MouseButton::Right => "Right",
-                            terminator_workflow_recorder::MouseButton::Middle => "Middle",
-                        };
+                    // Show ALL mouse events including Up, Down, Click
+                    let button_name = match mouse_event.button {
+                        terminator_workflow_recorder::MouseButton::Left => "Left",
+                        terminator_workflow_recorder::MouseButton::Right => "Right",
+                        terminator_workflow_recorder::MouseButton::Middle => "Middle",
+                    };
 
-                        let event_type_name = match mouse_event.event_type {
-                            terminator_workflow_recorder::MouseEventType::Click => "Click",
-                            terminator_workflow_recorder::MouseEventType::Down => "Down",
-                            _ => "Event",
-                        };
+                    let event_type_name = format!("{:?}", mouse_event.event_type);
 
+                    println!(
+                        "🖱️  Mouse {} {}: {} button at ({}, {}) (Latency: {:?})",
+                        event_type_name,
+                        event_count,
+                        button_name,
+                        mouse_event.position.x,
+                        mouse_event.position.y,
+                        latency
+                    );
+
+                    if let Some(ref ui_element) = mouse_event.metadata.ui_element {
                         println!(
-                            "🖱️  Mouse {} {}: {} button at ({}, {}) (Latency: {:?})",
-                            event_type_name,
-                            event_count,
-                            button_name,
-                            mouse_event.position.x,
-                            mouse_event.position.y,
-                            latency
+                            "     └─ Target: {} in {} 🎯",
+                            ui_element.role(),
+                            ui_element.application_name()
                         );
 
-                        if let Some(ref ui_element) = mouse_event.metadata.ui_element {
-                            // Highlight the clicked element in blue/orange
-                            // if let Err(e) = ui_element.highlight(Some(0xFF8000), None) {
-                            //     info!("Error highlighting clicked UI element: {:?}", e);
-                            // }
-
-                            println!(
-                                "     └─ Target: {} in {} 🎯",
-                                ui_element.role(),
-                                ui_element.application_name()
-                            );
-
-                            if let Some(ref name) = ui_element.name() {
-                                if !name.is_empty() {
-                                    println!("     └─ Element: \"{name}\"");
-                                }
+                        if let Some(ref name) = ui_element.name() {
+                            if !name.is_empty() {
+                                println!("     └─ Element: \"{name}\"");
                             }
+                        }
 
-                            // Show element text if available
-                            if let Ok(text) = ui_element.text(1) {
-                                if !text.is_empty() && text.len() <= 100 {
-                                    println!("     └─ Text: \"{text}\"");
-                                }
+                        // Show element text if available
+                        if let Ok(text) = ui_element.text(1) {
+                            if !text.is_empty() && text.len() <= 100 {
+                                println!("     └─ Text: \"{text}\"");
                             }
                         }
                     }
@@ -521,32 +509,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("     └─ Selector: {}", browser_input.selector);
                     }
                 }
+                terminator_workflow_recorder::WorkflowEvent::FileOpened(file_event) => {
+                    println!(
+                        "📄 File Opened {}: {}",
+                        event_count, file_event.filename
+                    );
+                    println!("     ├─ Application: {}", file_event.application_name);
+                    println!("     ├─ Window Title: {}", file_event.window_title);
+                    println!("     ├─ Confidence: {:?}", file_event.confidence);
+                    println!("     ├─ Search Time: {:.2}ms", file_event.search_time_ms);
+                    if let Some(primary_path) = &file_event.primary_path {
+                        println!("     ├─ Primary Path: {}", primary_path);
+                    }
+                    println!("     └─ Total Candidates: {}", file_event.candidate_paths.len());
+                    for (i, candidate) in file_event.candidate_paths.iter().enumerate().take(3) {
+                        println!("        {}. {}", i + 1, candidate.path);
+                        println!("           Last Accessed: {}", candidate.last_accessed);
+                    }
+                    if file_event.candidate_paths.len() > 3 {
+                        println!("        ... and {} more", file_event.candidate_paths.len() - 3);
+                    }
+                }
             }
         }
     });
 
-    info!("Waiting for Ctrl+C signal...");
-    ctrl_c().await.expect("Failed to wait for Ctrl+C");
+    info!("⏱️  Waiting 20 seconds...");
+    sleep(Duration::from_secs(20)).await;
 
-    info!("🛑 Stop signal received, finalizing recording...");
+    info!("🛑 20 seconds elapsed, finalizing recording...");
     info!("Sending stop signal to recorder...");
     recorder.stop().await.expect("Failed to stop recorder");
 
     // Cancel the event display task
     event_display_task.abort();
 
-    let output_path = PathBuf::from("comprehensive_workflow_recording.json");
-    info!("Saving comprehensive recording to {:?}", output_path);
-    recorder
-        .save(&output_path)
-        .expect("Failed to save recording");
-
-    info!(
-        "✅ Comprehensive workflow recording saved to {:?}",
-        output_path
-    );
-    info!("📊 The recording includes detailed interaction context and metadata");
-    info!("🔍 You can analyze the JSON file to understand the complete workflow");
+    // Human-readable output is already being captured via console redirection (2>&1 | tee)
+    // No need to save JSON - the console output is much more readable
+    info!("✅ Recording complete!");
+    info!("📊 Console output contains human-readable event log");
+    info!("🔍 Use 2>&1 | tee to capture output to a file");
 
     Ok(())
 }

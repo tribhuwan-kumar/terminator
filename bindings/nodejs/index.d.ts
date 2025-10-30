@@ -12,17 +12,6 @@ export interface ValidationResult {
   /** Error message if validation failed (not element not found, but actual error) */
   error?: string
 }
-/** Result of waiting for a condition */
-export interface WaitForResult {
-  /** Whether the condition was met */
-  conditionMet: boolean
-  /** The element if condition was met */
-  element?: Element
-  /** Time elapsed in milliseconds */
-  elapsedMs: number
-  /** Error message if wait failed */
-  error?: string
-}
 export interface Bounds {
   x: number
   y: number
@@ -72,22 +61,6 @@ export interface UIElementAttributes {
   properties: Record<string, string | undefined | null>
   isKeyboardFocusable?: boolean
   bounds?: Bounds
-}
-export interface ExploredElementDetail {
-  role: string
-  name?: string
-  id?: string
-  bounds?: Bounds
-  value?: string
-  description?: string
-  text?: string
-  parentId?: string
-  childrenIds: Array<string>
-  suggestedSelector: string
-}
-export interface ExploreResponse {
-  parent: Element
-  children: Array<ExploredElementDetail>
 }
 export interface UINode {
   id?: string

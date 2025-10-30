@@ -23,6 +23,7 @@ pub(crate) struct TreeBuildingContext {
     pub(crate) cache_hits: usize,
     pub(crate) fallback_calls: usize,
     pub(crate) errors_encountered: usize,
+    pub(crate) application_name: Option<String>, // Cached application name for all nodes in tree
 }
 
 impl TreeBuildingContext {
@@ -86,7 +87,13 @@ pub(crate) fn build_ui_node_tree_configurable(
         }
 
         // Get element attributes with configurable property loading
-        let attributes = get_configurable_attributes(&work_item.element, &context.property_mode);
+        let mut attributes =
+            get_configurable_attributes(&work_item.element, &context.property_mode);
+
+        // Populate application_name from context if available
+        if attributes.application_name.is_none() && context.application_name.is_some() {
+            attributes.application_name = context.application_name.clone();
+        }
 
         // Create node without children initially
         let mut node = crate::UINode {

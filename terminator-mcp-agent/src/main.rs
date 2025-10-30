@@ -82,29 +82,41 @@ enum TransportMode {
 use windows::Win32::Foundation::{CloseHandle, HANDLE, STILL_ACTIVE};
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::{
-    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION,
+    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 
 #[cfg(target_os = "windows")]
 fn is_process_alive(pid: u32) -> bool {
     unsafe {
-        let process: HANDLE = match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
+        // Try PROCESS_QUERY_LIMITED_INFORMATION first (works across privilege boundaries)
+        // Fall back to PROCESS_QUERY_INFORMATION if that fails
+        let process: HANDLE = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
             Ok(handle) => handle,
-            Err(e) => {
-                debug!("Failed to open process with PID ({}): {:?}", pid, e);
-                return false;
+            Err(_) => {
+                // Fallback to PROCESS_QUERY_INFORMATION
+                match OpenProcess(PROCESS_QUERY_INFORMATION, false, pid) {
+                    Ok(handle) => handle,
+                    Err(e) => {
+                        debug!("Failed to open process with PID ({}) with both LIMITED and FULL query permissions: {:?}", pid, e);
+                        return false;
+                    }
+                }
             }
         };
+
         if process.is_invalid() {
             return false;
         }
+
         let mut exit_code: u32 = 0;
         let result = GetExitCodeProcess(process, &mut exit_code);
         let _ = CloseHandle(process);
+
         if result.is_err() {
             debug!("Failed to get exit code for process with PID ({})", pid);
             return false;
         }
+
         exit_code == STILL_ACTIVE.0 as u32
     }
 }
@@ -233,6 +245,9 @@ async fn main() -> Result<()> {
     }
 
     let log_capture = init_logging()?;
+
+    // Initialize Sentry if sentry feature is enabled (before OpenTelemetry)
+    let _sentry_guard = terminator_mcp_agent::sentry::init_sentry();
 
     // Initialize OpenTelemetry if telemetry feature is enabled (after logging is set up)
     terminator_mcp_agent::telemetry::init_telemetry()?;
@@ -640,6 +655,9 @@ async fn main() -> Result<()> {
 
     // Shutdown telemetry before exiting
     terminator_mcp_agent::telemetry::shutdown_telemetry();
+
+    // Shutdown Sentry before exiting (flushes pending events)
+    terminator_mcp_agent::sentry::shutdown_sentry();
 
     Ok(())
 }

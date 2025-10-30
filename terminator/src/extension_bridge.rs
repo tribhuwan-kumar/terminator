@@ -188,7 +188,9 @@ impl ExtensionBridge {
 
                     // Check if ANY terminator-mcp-agent process is in our parent chain
                     // This handles the case where we're in a subprocess (e.g., run_command)
-                    eprintln!("[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...");
+                    eprintln!(
+                        "[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain..."
+                    );
                     tracing::info!("Checking for terminator-mcp-agent in parent chain...");
                     if let Some(ancestor_pid) = Self::find_terminator_ancestor().await {
                         eprintln!("[SUBPROCESS DEBUG] Found ancestor PID: {ancestor_pid}");
@@ -538,7 +540,10 @@ impl ExtensionBridge {
             // ParentProcessId  Name
             // 12345            bun.exe
 
-            let lines: Vec<&str> = output_str.lines().filter(|l| !l.trim().is_empty()).collect();
+            let lines: Vec<&str> = output_str
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .collect();
             if lines.len() >= 2 {
                 // Skip header line, process data line
                 let data_line = lines[1].trim();

@@ -758,6 +758,7 @@ impl UIElementImpl for MacOSUIElement {
                 label: None,
                 value: None,
                 description: None,
+                application_name: None, // Deferred - avoid expensive calls
                 text: self.get_text(0).ok(),
                 properties,
                 is_keyboard_focusable: Some(false), // macos: not implemented
@@ -883,6 +884,7 @@ impl UIElementImpl for MacOSUIElement {
             label: None,
             value: None,
             description: None,
+            application_name: None, // Deferred - avoid expensive calls
             text: self.get_text(0).ok(),
             properties,
             is_keyboard_focusable: Some(false), // macos: not implemented

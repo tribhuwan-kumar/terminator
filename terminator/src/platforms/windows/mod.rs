@@ -25,6 +25,9 @@ pub use utils::{convert_uiautomation_element_to_terminator, generate_element_id}
 // Re-export from applications module
 pub use applications::get_process_name_by_pid;
 
+// Re-export highlighting control functions
+pub use highlighting::set_recording_mode;
+
 // Re-export virtual display support
 pub use virtual_display::{
     is_headless_environment, HeadlessConfig, VirtualDisplayConfig, VirtualDisplayManager,
