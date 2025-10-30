@@ -49,7 +49,7 @@ const typeGreeting = createStep({
   execute: async ({ desktop, input, logger }) => {
     logger.info(`👋 Typing greeting for ${input.userName}...`);
 
-    const textbox = await desktop.locator('role:Edit').first(5000);
+    const textbox = await desktop.locator('role:Document|name:Text editor').first(5000);
     textbox.typeText(`Hello, ${input.userName}!\n\n`);
 
     if (input.includeDate) {

@@ -8,6 +8,7 @@ import type {
   WorkflowSuccessContext,
   WorkflowErrorContext,
   Logger,
+  ExecutionResponse,
 } from './types';
 import { ConsoleLogger } from './types';
 
@@ -74,7 +75,7 @@ function createWorkflowInstance<TInput = any>(
     config,
     steps,
 
-    async run(input: TInput, desktop?: Desktop, logger?: Logger): Promise<void> {
+    async run(input: TInput, desktop?: Desktop, logger?: Logger): Promise<ExecutionResponse> {
       const log = logger || new ConsoleLogger();
       const startTime = Date.now();
 
@@ -138,6 +139,13 @@ function createWorkflowInstance<TInput = any>(
             duration,
           });
         }
+
+        // Return success response
+        return {
+          status: 'success',
+          message: `Workflow completed successfully in ${duration}ms`,
+          data: context.data,
+        };
       } catch (error: any) {
         const duration = Date.now() - startTime;
 
@@ -153,7 +161,27 @@ function createWorkflowInstance<TInput = any>(
 
         const failedStep = failedStepIndex >= 0 ? steps[failedStepIndex] : steps[steps.length - 1];
 
-        // Call error handler if provided
+        // Call workflow-level error handler from config
+        if (config.onError) {
+          try {
+            const errorResponse = await config.onError({
+              error,
+              step: failedStep,
+              input: validatedInput,
+              context,
+              logger: log,
+            });
+
+            // If workflow onError returns a response, use it
+            if (errorResponse) {
+              return errorResponse;
+            }
+          } catch (handlerError) {
+            log.error(`❌ Workflow error handler failed: ${handlerError}`);
+          }
+        }
+
+        // Call legacy error handler if provided (for backward compat)
         if (errorHandler) {
           try {
             await errorHandler({
@@ -168,8 +196,17 @@ function createWorkflowInstance<TInput = any>(
           }
         }
 
-        // Rethrow original error
-        throw error;
+        // Return error response
+        return {
+          status: 'error',
+          message: error.message,
+          error: {
+            category: 'technical',
+            code: error.code || 'UNKNOWN_ERROR',
+            message: error.message,
+          },
+          data: context.data,
+        };
       }
     },
 

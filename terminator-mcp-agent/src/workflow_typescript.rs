@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Command;
 use tracing::{debug, info};
+use std::fs;
 
 use rmcp::ErrorData as McpError;
 
@@ -29,12 +30,56 @@ pub fn detect_js_runtime() -> JsRuntime {
     JsRuntime::Node
 }
 
+#[derive(Debug)]
 pub struct TypeScriptWorkflow {
     workflow_path: PathBuf,
     entry_file: String,
 }
 
 impl TypeScriptWorkflow {
+    /// Validate that only one workflow exists in the folder
+    fn validate_single_workflow(path: &PathBuf) -> Result<(), McpError> {
+        use std::fs;
+
+        // Count .ts files that might be workflows (excluding terminator.ts itself)
+        let mut workflow_files = Vec::new();
+
+        if let Ok(entries) = fs::read_dir(path) {
+            for entry in entries.flatten() {
+                if let Ok(file_type) = entry.file_type() {
+                    if file_type.is_file() {
+                        if let Some(file_name) = entry.file_name().to_str() {
+                            // Check for common workflow file patterns (but not terminator.ts)
+                            if file_name.ends_with(".workflow.ts")
+                                || (file_name.ends_with(".ts")
+                                    && file_name != "terminator.ts"
+                                    && file_name.contains("workflow"))
+                            {
+                                workflow_files.push(file_name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !workflow_files.is_empty() {
+            return Err(McpError::invalid_params(
+                format!(
+                    "Multiple workflow files detected. Only one workflow per folder is allowed. Found: {}",
+                    workflow_files.join(", ")
+                ),
+                Some(json!({
+                    "path": path.display().to_string(),
+                    "conflicting_files": workflow_files,
+                    "hint": "Move additional workflows to separate folders or rename them to not include 'workflow' in the filename"
+                })),
+            ));
+        }
+
+        Ok(())
+    }
+
     pub fn new(url: &str) -> Result<Self, McpError> {
         let path_str = url
             .strip_prefix("file://")
@@ -49,17 +94,22 @@ impl TypeScriptWorkflow {
 
         // Determine workflow path and entry file
         let (workflow_path, entry_file) = if path.is_dir() {
-            // Directory: look for workflow.ts or index.ts
-            if path.join("workflow.ts").exists() {
-                (path, "workflow.ts".to_string())
-            } else if path.join("index.ts").exists() {
-                (path, "index.ts".to_string())
-            } else {
+            // Directory: MUST have terminator.ts as entrypoint
+            let terminator_path = path.join("terminator.ts");
+            if !terminator_path.exists() {
                 return Err(McpError::invalid_params(
-                    "No workflow.ts or index.ts found in directory".to_string(),
-                    Some(json!({"path": path.display().to_string()})),
+                    "Missing required entrypoint: terminator.ts. TypeScript workflows must use 'terminator.ts' as the entry file.".to_string(),
+                    Some(json!({
+                        "path": path.display().to_string(),
+                        "hint": "Rename your workflow file to 'terminator.ts' or create a terminator.ts that exports your workflow"
+                    })),
                 ));
             }
+
+            // Validate single workflow per folder
+            Self::validate_single_workflow(&path)?;
+
+            (path, "terminator.ts".to_string())
         } else if path.is_file() {
             // File: use parent directory and file name
             let parent = path.parent().ok_or_else(|| {
@@ -100,6 +150,9 @@ impl TypeScriptWorkflow {
         end_at_step: Option<&str>,
         restored_state: Option<Value>,
     ) -> Result<TypeScriptWorkflowResult, McpError> {
+        // Ensure dependencies are installed and cached
+        self.ensure_dependencies().await?;
+
         // Create execution script
         let exec_script = self.create_execution_script(
             inputs,
@@ -216,12 +269,14 @@ impl TypeScriptWorkflow {
             "null".to_string()
         };
 
-        let workflow_path = self.workflow_path.display();
+        // Convert Windows path to forward slashes for file:// URL
+        let workflow_path_str = self.workflow_path.display().to_string();
+        let workflow_path = workflow_path_str.replace('\\', "/");
         let entry_file = &self.entry_file;
 
         Ok(format!(
             r#"
-import {{ createWorkflowRunner }} from '@mediar/terminator-workflow/runner';
+import {{ createWorkflowRunner }} from '../../packages/terminator-workflow/src/runner.js';
 
 const workflow = await import('file://{workflow_path}/{entry_file}');
 
@@ -244,6 +299,70 @@ console.log(JSON.stringify({{
 "#
         ))
     }
+
+    /// Ensure dependencies are installed
+    ///
+    /// Simple strategy: Just run bun/npm install in the workflow directory.
+    /// Since workflow is mounted from S3, node_modules will be persisted there automatically.
+    async fn ensure_dependencies(&self) -> Result<(), McpError> {
+        let package_json_path = self.workflow_path.join("package.json");
+
+        // Check if package.json exists
+        if !package_json_path.exists() {
+            info!("No package.json found - skipping dependency installation");
+            return Ok(());
+        }
+
+        let workflow_node_modules = self.workflow_path.join("node_modules");
+
+        // If node_modules already exists, we're good (already installed and persisted in S3)
+        if workflow_node_modules.exists() {
+            info!("✓ Dependencies already installed (node_modules exists in workflow directory)");
+            return Ok(());
+        }
+
+        // Install dependencies in workflow directory (will be persisted to S3)
+        info!("⏳ Installing dependencies...");
+        let runtime = detect_js_runtime();
+
+        let install_result = match runtime {
+            JsRuntime::Bun => {
+                Command::new("bun")
+                    .arg("install")
+                    .current_dir(&self.workflow_path)
+                    .output()
+            }
+            JsRuntime::Node => {
+                Command::new("npm")
+                    .arg("install")
+                    .current_dir(&self.workflow_path)
+                    .output()
+            }
+        }
+        .map_err(|e| {
+            McpError::internal_error(
+                format!("Failed to run dependency installation: {}", e),
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+
+        if !install_result.status.success() {
+            let stderr = String::from_utf8_lossy(&install_result.stderr);
+            return Err(McpError::internal_error(
+                format!("Dependency installation failed: {}", stderr),
+                Some(json!({
+                    "stderr": stderr.to_string(),
+                    "stdout": String::from_utf8_lossy(&install_result.stdout).to_string(),
+                })),
+            ));
+        }
+
+        info!("✓ Dependencies installed successfully");
+        info!("✓ node_modules will be persisted to S3 with workflow");
+
+        Ok(())
+    }
+
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -294,53 +413,86 @@ mod tests {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
-        let workflow_file = temp_dir.path().join("workflow.ts");
+        let workflow_file = temp_dir.path().join("test-workflow.ts");
         fs::write(&workflow_file, "export default {};").unwrap();
 
         let url = format!("file://{}", workflow_file.display());
         let ts_workflow = TypeScriptWorkflow::new(&url).unwrap();
 
-        assert_eq!(ts_workflow.entry_file, "workflow.ts");
+        assert_eq!(ts_workflow.entry_file, "test-workflow.ts");
         assert_eq!(ts_workflow.workflow_path, temp_dir.path());
     }
 
     #[test]
-    fn test_typescript_workflow_from_directory() {
+    fn test_typescript_workflow_requires_terminator_ts() {
         use std::fs;
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
-        fs::write(temp_dir.path().join("workflow.ts"), "export default {};").unwrap();
+
+        // Create terminator.ts
+        fs::write(temp_dir.path().join("terminator.ts"), "export default {};").unwrap();
 
         let url = format!("file://{}", temp_dir.path().display());
         let ts_workflow = TypeScriptWorkflow::new(&url).unwrap();
 
-        assert_eq!(ts_workflow.entry_file, "workflow.ts");
+        assert_eq!(ts_workflow.entry_file, "terminator.ts");
         assert_eq!(ts_workflow.workflow_path, temp_dir.path());
     }
 
     #[test]
-    fn test_typescript_workflow_index_ts() {
+    fn test_typescript_workflow_missing_terminator_ts() {
         use std::fs;
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
-        fs::write(temp_dir.path().join("index.ts"), "export default {};").unwrap();
 
-        let url = format!("file://{}", temp_dir.path().display());
-        let ts_workflow = TypeScriptWorkflow::new(&url).unwrap();
+        // Create other workflow file, but no terminator.ts
+        fs::write(temp_dir.path().join("my-workflow.ts"), "export default {};").unwrap();
 
-        assert_eq!(ts_workflow.entry_file, "index.ts");
-    }
-
-    #[test]
-    fn test_typescript_workflow_missing_file() {
-        use tempfile::TempDir;
-
-        let temp_dir = TempDir::new().unwrap();
         let url = format!("file://{}", temp_dir.path().display());
         let result = TypeScriptWorkflow::new(&url);
 
         assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("Missing required entrypoint: terminator.ts"));
     }
+
+    #[test]
+    fn test_single_workflow_validation_passes() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create only terminator.ts (no other workflow files)
+        fs::write(temp_dir.path().join("terminator.ts"), "export default {};").unwrap();
+        fs::write(temp_dir.path().join("utils.ts"), "export const helper = () => {};").unwrap();
+
+        let url = format!("file://{}", temp_dir.path().display());
+        let result = TypeScriptWorkflow::new(&url);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_single_workflow_validation_fails_with_multiple_workflows() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create terminator.ts and another workflow file
+        fs::write(temp_dir.path().join("terminator.ts"), "export default {};").unwrap();
+        fs::write(temp_dir.path().join("my-workflow.ts"), "export default {};").unwrap();
+
+        let url = format!("file://{}", temp_dir.path().display());
+        let result = TypeScriptWorkflow::new(&url);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("Multiple workflow files detected"));
+        assert!(err.message.contains("my-workflow.ts"));
+    }
+
 }

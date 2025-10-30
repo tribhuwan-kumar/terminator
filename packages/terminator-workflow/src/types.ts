@@ -71,6 +71,62 @@ export interface ErrorRecoveryResult {
 }
 
 /**
+ * Expectation validation result
+ */
+export interface ExpectationResult {
+  /** Whether the expectation was met */
+  success: boolean;
+  /** Optional message describing the result */
+  message?: string;
+  /** Optional custom data */
+  data?: any;
+}
+
+/**
+ * Expectation context - runs after execute() to verify step outcome
+ */
+export interface ExpectationContext<TInput = any, TOutput = any> {
+  /** Desktop instance for validation checks */
+  desktop: import('terminator.js').Desktop;
+  /** Workflow input */
+  input: TInput;
+  /** Result from execute() */
+  result: TOutput;
+  /** Shared context */
+  context: WorkflowContext;
+  /** Logger instance */
+  logger: Logger;
+}
+
+/**
+ * Workflow execution status
+ */
+export type ExecutionStatus = 'success' | 'error' | 'warning' | 'user_input_required';
+
+/**
+ * Error category
+ */
+export type ErrorCategory = 'business' | 'technical';
+
+/**
+ * Workflow execution response
+ */
+export interface ExecutionResponse<TData = any> {
+  /** Well-rendered status in UI */
+  status: ExecutionStatus;
+  /** Error information (if status is 'error') */
+  error?: {
+    category: ErrorCategory;
+    code: string;
+    message?: string;
+  };
+  /** Optional custom data (less well-rendered in UI) */
+  data?: TData;
+  /** Optional user-facing message */
+  message?: string;
+}
+
+/**
  * Step configuration
  */
 export interface StepConfig<TInput = any, TOutput = any> {
@@ -83,6 +139,9 @@ export interface StepConfig<TInput = any, TOutput = any> {
 
   /** Main step execution function */
   execute: (context: StepContext<TInput>) => Promise<TOutput | void>;
+
+  /** Expectation validation - runs after execute() to verify outcome */
+  expect?: (context: ExpectationContext<TInput, TOutput>) => Promise<ExpectationResult>;
 
   /** Error recovery function */
   onError?: (
@@ -127,6 +186,8 @@ export interface WorkflowConfig<TInput = any> {
   input: z.ZodSchema<TInput>;
   /** Optional tags */
   tags?: string[];
+  /** Workflow-level error handler */
+  onError?: (context: WorkflowErrorContext<TInput>) => Promise<ExecutionResponse | void>;
 }
 
 /**
@@ -185,7 +246,7 @@ export interface Workflow<TInput = any> {
     input: TInput,
     desktop?: import('terminator.js').Desktop,
     logger?: Logger
-  ): Promise<void>;
+  ): Promise<ExecutionResponse>;
 
   /** Get workflow metadata */
   getMetadata(): {

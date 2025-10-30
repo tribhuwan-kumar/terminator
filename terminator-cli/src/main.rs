@@ -1286,7 +1286,138 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     // Resolve actual input type (auto-detect if needed)
     let resolved_type = determine_input_type(&args.input, args.input_type);
 
-    // Fetch workflow content
+    // Check if this is a TypeScript/JavaScript workflow (file or directory)
+    let is_typescript_workflow = if resolved_type == InputType::File {
+        let path = std::path::Path::new(&args.input);
+        // Check if it's a .ts/.js file OR a directory with package.json
+        if path.is_file() {
+            path.extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext == "ts" || ext == "js")
+                .unwrap_or(false)
+        } else if path.is_dir() {
+            // Check for package.json AND (workflow.ts OR index.ts)
+            let package_json = path.join("package.json");
+            let workflow_ts = path.join("workflow.ts");
+            let index_ts = path.join("index.ts");
+            package_json.exists() && (workflow_ts.exists() || index_ts.exists())
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // For TypeScript workflows, skip content fetching and parsing - just pass the path to MCP
+    if is_typescript_workflow && resolved_type == InputType::File {
+        info!("Detected TypeScript/JavaScript workflow - delegating to MCP server");
+
+        // Convert to absolute path and create file:// URL
+        let abs_path = std::fs::canonicalize(&args.input)
+            .with_context(|| format!("Failed to resolve path: {}", args.input))?;
+
+        // Strip Windows \\?\ prefix if present
+        let path_str = abs_path.display().to_string();
+        let normalized_path = path_str.strip_prefix(r"\\?\").unwrap_or(&path_str);
+        let file_url = format!("file://{}", normalized_path);
+
+        info!("TypeScript workflow URL: {}", file_url);
+
+        // Build execute_sequence args with just the URL
+        let mut workflow_args = serde_json::Map::new();
+        workflow_args.insert("url".to_string(), serde_json::Value::String(file_url));
+
+        // Apply overrides
+        if args.no_stop_on_error {
+            workflow_args.insert("stop_on_error".to_string(), serde_json::Value::Bool(false));
+        }
+        if args.no_detailed_results {
+            workflow_args.insert(
+                "include_detailed_results".to_string(),
+                serde_json::Value::Bool(false),
+            );
+        } else {
+            workflow_args.insert(
+                "include_detailed_results".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+
+        // Add step control parameters if provided
+        if let Some(start_step) = &args.start_from_step {
+            workflow_args.insert(
+                "start_from_step".to_string(),
+                serde_json::Value::String(start_step.clone()),
+            );
+        }
+        if let Some(end_step) = &args.end_at_step {
+            workflow_args.insert(
+                "end_at_step".to_string(),
+                serde_json::Value::String(end_step.clone()),
+            );
+        }
+        if let Some(follow) = args.follow_fallback {
+            workflow_args.insert(
+                "follow_fallback".to_string(),
+                serde_json::Value::Bool(follow),
+            );
+        }
+        if let Some(execute_jumps) = args.execute_jumps_at_end {
+            workflow_args.insert(
+                "execute_jumps_at_end".to_string(),
+                serde_json::Value::Bool(execute_jumps),
+            );
+        }
+
+        // Add CLI inputs if provided
+        if let Some(inputs_str) = &args.inputs {
+            match serde_json::from_str::<serde_json::Value>(inputs_str) {
+                Ok(inputs_val) => {
+                    workflow_args.insert("inputs".to_string(), inputs_val);
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!("Invalid JSON in --inputs parameter: {}", e));
+                }
+            }
+        }
+
+        let workflow_str = serde_json::to_string(&workflow_args)?;
+        info!("Sending TypeScript workflow args to MCP: {}", workflow_str);
+
+        // Execute via MCP
+        let result_json = mcp_client::execute_command_with_progress_and_retry(
+            transport,
+            "execute_sequence".to_string(),
+            Some(workflow_str),
+            true, // Show progress for workflow steps
+            args.no_retry,
+        )
+        .await?;
+
+        // Parse and display the workflow result
+        let workflow_result = WorkflowResult::from_mcp_response(&result_json)?;
+
+        // Display result in user-friendly format
+        workflow_result.display();
+
+        // Always show parsed_output if it exists
+        if let Some(parsed_output) = result_json.get("parsed_output") {
+            println!("{}", "─".repeat(60));
+            println!("📋 Complete Output Parser Result:");
+            println!("{}", serde_json::to_string_pretty(parsed_output)?);
+        }
+
+        // If verbose mode, also show FULL raw MCP response
+        if args.verbose {
+            println!("{}", "─".repeat(60));
+            println!("📝 Full Raw MCP Response:");
+            println!("{}", serde_json::to_string_pretty(&result_json)?);
+        }
+
+        return Ok(());
+    }
+
+    // Fetch workflow content (for YAML workflows)
     let content = match resolved_type {
         InputType::File => {
             info!("Reading local file");

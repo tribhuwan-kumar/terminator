@@ -4,6 +4,8 @@ import {
   StepContext,
   ErrorContext,
   ErrorRecoveryResult,
+  ExpectationContext,
+  ExpectationResult,
 } from './types';
 
 /**
@@ -67,6 +69,29 @@ export function createStep<TInput = any, TOutput = any>(
           ]);
         } else {
           result = await config.execute(context);
+        }
+
+        // Run expectation validation if provided
+        if (config.expect) {
+          logger.info(`🔍 Validating expectations for: ${config.name}`);
+
+          const expectContext: ExpectationContext<TInput, TOutput> = {
+            desktop: context.desktop,
+            input: context.input,
+            result: result as TOutput,
+            context: context.context,
+            logger: context.logger,
+          };
+
+          const expectResult = await config.expect(expectContext);
+
+          if (!expectResult.success) {
+            const errorMsg = expectResult.message || 'Expectation not met';
+            logger.error(`❌ Expectation failed: ${errorMsg}`);
+            throw new Error(`Expectation failed: ${errorMsg}`);
+          }
+
+          logger.success(`✅ Expectations met: ${expectResult.message || 'Success'}`);
         }
 
         const duration = Date.now() - startTime;
