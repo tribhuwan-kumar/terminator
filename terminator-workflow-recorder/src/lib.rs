@@ -12,7 +12,7 @@ mod recorder;
 
 pub use error::*;
 pub use events::{
-    build_chained_selector, build_parent_hierarchy, ApplicationSwitchEvent,
+    build_chained_selector, build_parent_hierarchy, ApplicationSwitchEvent, FileOpenedEvent,
     ApplicationSwitchMethod, BrowserClickEvent, BrowserTabNavigationEvent, BrowserTextInputEvent,
     ButtonInteractionType, ClickEvent, ClipboardAction, ClipboardEvent, DomElementInfo,
     DragDropEvent, EnhancedUIElement, EventMetadata, FieldFocusMethod, HotkeyEvent,
