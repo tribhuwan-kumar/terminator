@@ -1,14 +1,19 @@
-const native = require('./index.js');
-const util = require('util');
+import * as native from './index.js';
+import * as util from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
 
-function patchInspector(Klass, methodName = 'toString', forcePlainObject = false) {
+// Type definitions for native classes
+type NativeClass = typeof native.Desktop | typeof native.Element | typeof native.Locator | typeof native.Selector;
+
+function patchInspector(Klass: any, methodName = 'toString', forcePlainObject = false): void {
   if (!Klass || typeof Klass !== 'function') {
     console.log('inspect not a function')
     return;
   }
   const proto = Klass.prototype;
   const original = proto[util.inspect.custom];
-  proto[util.inspect.custom] = function(...args) {
+  proto[util.inspect.custom] = function(...args: any[]) {
     if (typeof this[methodName] === 'function') {
       const result = this[methodName](...args);
       if (forcePlainObject && result && typeof result === 'object') {
@@ -23,9 +28,9 @@ function patchInspector(Klass, methodName = 'toString', forcePlainObject = false
   };
 }
 
-function wrapNativeFunction(fn) {
+function wrapNativeFunction<T extends Function>(fn: T): T {
   if (typeof fn !== 'function') return fn;
-  return function(...args) {
+  return function(this: any, ...args: any[]) {
     try {
       const result = fn.apply(this, args);
       if (result instanceof Promise) {
@@ -37,10 +42,10 @@ function wrapNativeFunction(fn) {
     } catch (error) {
       throw mapNativeError(error);
     }
-  };
+  } as any;
 }
 
-function wrapClassMethods(Class) {
+function wrapClassMethods<T extends NativeClass>(Class: T): T {
   const prototype = Class.prototype;
   const methods = Object.getOwnPropertyNames(prototype);
   methods.forEach(method => {
@@ -51,71 +56,71 @@ function wrapClassMethods(Class) {
   return Class;
 }
 
-function wrapClass(Class, inspectOptions) {
+function wrapClass<T extends NativeClass>(Class: T, ...inspectOptions: any[]): T {
   const Wrapped = wrapClassMethods(Class);
   patchInspector(Wrapped, ...(inspectOptions || []));
   return Wrapped;
 }
 
 // Custom error classes
-class ElementNotFoundError extends Error {
-    constructor(message) {
+export class ElementNotFoundError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'ElementNotFoundError';
     }
 }
 
-class TimeoutError extends Error {
-    constructor(message) {
+export class TimeoutError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'TimeoutError';
     }
 }
 
-class PermissionDeniedError extends Error {
-    constructor(message) {
+export class PermissionDeniedError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'PermissionDeniedError';
     }
 }
 
-class PlatformError extends Error {
-    constructor(message) {
+export class PlatformError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'PlatformError';
     }
 }
 
-class UnsupportedOperationError extends Error {
-    constructor(message) {
+export class UnsupportedOperationError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'UnsupportedOperationError';
     }
 }
 
-class UnsupportedPlatformError extends Error {
-    constructor(message) {
+export class UnsupportedPlatformError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'UnsupportedPlatformError';
     }
 }
 
-class InvalidArgumentError extends Error {
-    constructor(message) {
+export class InvalidArgumentError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'InvalidArgumentError';
     }
 }
 
-class InternalError extends Error {
-    constructor(message) {
+export class InternalError extends Error {
+    constructor(message: string) {
         super(message);
         this.name = 'InternalError';
     }
 }
 
 // Error mapping function
-function mapNativeError(error) {
+function mapNativeError(error: any): Error {
     if (!error.message) return error;
 
     const message = error.message;
@@ -146,13 +151,22 @@ function mapNativeError(error) {
     return error;
 }
 
-// Enhanced executeBrowserScript with function and file support
-async function enhancedExecuteBrowserScript(scriptOrFunction, envOrOptions) {
-  const fs = require('fs');
-  const path = require('path');
+// Types for executeBrowserScript arguments
+type BrowserScriptFunction = (env?: any) => any;
+type BrowserScriptOptions = {
+  file: string;
+  env?: any;
+};
+type BrowserScriptInput = string | BrowserScriptFunction | BrowserScriptOptions;
 
-  let script;
-  let env = {};
+// Enhanced executeBrowserScript with function and file support
+async function enhancedExecuteBrowserScript(
+  this: any,
+  scriptOrFunction: BrowserScriptInput,
+  envOrOptions?: any
+): Promise<any> {
+  let script: string;
+  let env: any = {};
 
   // Handle different input types
   if (typeof scriptOrFunction === 'string') {
@@ -176,7 +190,7 @@ async function enhancedExecuteBrowserScript(scriptOrFunction, envOrOptions) {
             format: 'iife'
           });
           fileContent = result.code;
-        } catch (e) {
+        } catch (e: any) {
           // If esbuild not available, try to use as-is (may work for simple TS)
           console.warn('esbuild not found - using TypeScript file as-is:', e.message);
         }
@@ -209,9 +223,10 @@ async function enhancedExecuteBrowserScript(scriptOrFunction, envOrOptions) {
         return null;
       })()
     `;
-  } else if (typeof scriptOrFunction === 'object' && scriptOrFunction.file) {
+  } else if (typeof scriptOrFunction === 'object' && (scriptOrFunction as BrowserScriptOptions).file) {
     // Object with file property
-    const filePath = path.resolve(scriptOrFunction.file);
+    const options = scriptOrFunction as BrowserScriptOptions;
+    const filePath = path.resolve(options.file);
     if (!fs.existsSync(filePath)) {
       throw new Error(`Browser script file not found: ${filePath}`);
     }
@@ -228,13 +243,13 @@ async function enhancedExecuteBrowserScript(scriptOrFunction, envOrOptions) {
           format: 'iife'
         });
         fileContent = result.code;
-      } catch (e) {
+      } catch (e: any) {
         console.warn('esbuild not found - using TypeScript file as-is:', e.message);
       }
     }
 
     script = fileContent;
-    env = scriptOrFunction.env || {};
+    env = options.env || {};
   } else {
     throw new Error('Invalid argument to executeBrowserScript: expected string, function, or {file, env} object');
   }
@@ -257,35 +272,22 @@ async function enhancedExecuteBrowserScript(scriptOrFunction, envOrOptions) {
 }
 
 // Wrap the native classes
-const Desktop = wrapClassMethods(native.Desktop);
-const Element = wrapClass(native.Element);
-const Locator = wrapClass(native.Locator);
-const Selector = wrapClass(native.Selector);
+export const Desktop = wrapClassMethods(native.Desktop);
+export const Element = wrapClass(native.Element);
+export const Locator = wrapClass(native.Locator);
+export const Selector = wrapClass(native.Selector);
 
 // Patch executeBrowserScript on Desktop and Element
 if (Desktop.prototype.executeBrowserScript) {
-  Desktop.prototype._originalExecuteBrowserScript = Desktop.prototype.executeBrowserScript;
+  (Desktop.prototype as any)._originalExecuteBrowserScript = Desktop.prototype.executeBrowserScript;
   Desktop.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
 }
 
 if (Element.prototype.executeBrowserScript) {
-  Element.prototype._originalExecuteBrowserScript = Element.prototype.executeBrowserScript;
+  (Element.prototype as any)._originalExecuteBrowserScript = Element.prototype.executeBrowserScript;
   Element.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
 }
 
-// Export everything
-module.exports = {
-    Desktop,
-    Element,
-    Locator,
-    Selector,
-    // Export error classes
-    ElementNotFoundError,
-    TimeoutError,
-    PermissionDeniedError,
-    PlatformError,
-    UnsupportedOperationError,
-    UnsupportedPlatformError,
-    InvalidArgumentError,
-    InternalError
-};
+// Re-export native types
+export type { ValidationResult, Bounds, Coordinates, ClickResult, CommandOutput, Monitor, MonitorScreenshotPair, ScreenshotResult, UIElementAttributes, UINode } from './index.js';
+export { PropertyLoadingMode, TextPosition } from './index.js';
