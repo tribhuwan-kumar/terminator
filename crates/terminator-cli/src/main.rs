@@ -269,15 +269,38 @@ fn main() {
 
 fn ensure_project_root() {
     // Check if we're already in the project root
-    if Path::new("Cargo.toml").exists() && Path::new("terminator").exists() {
+    if Path::new("Cargo.toml").exists() && Path::new("crates/terminator").exists() {
         return;
     }
 
-    // If we're in terminator-cli, go up one level
+    // If we're in terminator-cli, go up two levels (crates/terminator-cli -> crates -> root)
     if env::current_dir()
         .map(|p| {
             p.file_name()
                 .map(|n| n == "terminator-cli")
+                .unwrap_or(false)
+        })
+        .unwrap_or(false)
+    {
+        // Go up one level to crates/
+        if env::set_current_dir("..").is_ok() {
+            // Go up one more level to project root
+            if env::set_current_dir("..").is_err() {
+                eprintln!("❌ Failed to change to project root directory");
+                std::process::exit(1);
+            }
+        } else {
+            eprintln!("❌ Failed to change to crates directory");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // If we're in crates/, go up one level
+    if env::current_dir()
+        .map(|p| {
+            p.file_name()
+                .map(|n| n == "crates")
                 .unwrap_or(false)
         })
         .unwrap_or(false)
@@ -288,7 +311,7 @@ fn ensure_project_root() {
     }
 
     // Final check
-    if !Path::new("Cargo.toml").exists() || !Path::new("terminator").exists() {
+    if !Path::new("Cargo.toml").exists() || !Path::new("crates/terminator").exists() {
         eprintln!("❌ Not in Terminator project root. Please run from workspace root.");
         eprintln!("💡 Usage: terminator <command>");
         std::process::exit(1);
