@@ -304,7 +304,7 @@ export declare class Desktop {
    * @param {string} script - The JavaScript code to execute in browser context.
    * @returns {Promise<string>} The result of script execution.
    */
-  executeBrowserScript<T = any>(scriptOrFunction: string | ((env?: any) => T) | { file: string; env?: any }, envOrOptions?: any): Promise<T>
+  executeBrowserScript(script: string): Promise<string>
   /**
    * (async) Delay execution for a specified number of milliseconds.
    * Useful for waiting between actions to ensure UI stability.
@@ -629,7 +629,7 @@ export declare class Element {
    * @param {string} script - The JavaScript code to execute.
    * @returns {Promise<string>} The result of script execution.
    */
-  executeBrowserScript<T = any>(scriptOrFunction: string | ((env?: any) => T) | { file: string; env?: any }, envOrOptions?: any): Promise<T>
+  executeBrowserScript(script: string): Promise<string>
   /**
    * Get the UI tree starting from this element.
    * Returns a tree structure containing this element and all its descendants.
