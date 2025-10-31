@@ -5824,7 +5824,6 @@ impl ServerHandler for DesktopWrapper {
             protocol_version: ProtocolVersion::LATEST,
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
-                .enable_logging()
                 .build(),
             server_info: Implementation::from_build_env(),
             instructions: Some(crate::prompt::get_server_instructions().to_string()),
