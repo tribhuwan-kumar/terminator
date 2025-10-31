@@ -1,46 +1,46 @@
 {
-  "name": "@mediar-ai/workflow",
-  "version": "0.1.0",
-  "description": "TypeScript workflow SDK for Terminator",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "type": "commonjs",
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "jest"
-  },
-  "keywords": [
-    "terminator",
-    "workflow",
-    "automation",
-    "typescript"
-  ],
   "author": "Mediar AI",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/mediar-ai/terminator",
-    "directory": "packages/workflow"
+  "dependencies": {
+    "zod": "^3.22.4"
   },
-  "publishConfig": {
-    "access": "public"
+  "description": "TypeScript workflow SDK for Terminator",
+  "devDependencies": {
+    "@types/jest": "^29.5.11",
+    "@types/node": "^20.11.5",
+    "jest": "^29.7.0",
+    "typescript": "^5.3.3"
   },
   "files": [
     "dist",
     "README.md",
     "package.json"
   ],
-  "dependencies": {
-    "zod": "^3.22.4"
-  },
-  "devDependencies": {
-    "@types/node": "^20.11.5",
-    "typescript": "^5.3.3",
-    "jest": "^29.7.0",
-    "@types/jest": "^29.5.11"
-  },
+  "keywords": [
+    "terminator",
+    "workflow",
+    "automation",
+    "typescript"
+  ],
+  "license": "MIT",
+  "main": "dist/index.js",
+  "name": "@mediar-ai/workflow",
   "peerDependencies": {
     "@mediar-ai/terminator": "^0.20.0"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "directory": "packages/workflow",
+    "type": "git",
+    "url": "https://github.com/mediar-ai/terminator"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "type": "commonjs",
+  "types": "dist/index.d.ts",
+  "version": "0.20.9"
 }
