@@ -5,7 +5,6 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::process::Command;
 use tracing::{debug, info};
-use std::fs;
 
 use rmcp::ErrorData as McpError;
 

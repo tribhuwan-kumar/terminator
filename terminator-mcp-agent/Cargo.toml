@@ -63,8 +63,8 @@ opentelemetry-semantic-conventions = { version = "0.27", optional = true }
 opentelemetry-appender-tracing = { version = "0.27", optional = true }
 
 # Sentry dependencies (optional, behind 'sentry' feature)
-sentry = { version = "0.35", optional = true, default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "anyhow"] }
-sentry-tracing = { version = "0.35", optional = true }
+sentry = { version = "0.45", optional = true, default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls", "anyhow", "tracing"] }
+sentry-tracing = { version = "0.45", optional = true }
 
 # Dependencies for AI summarizer binary - TODO add behind feature flag
 ollama-rs = "0.3.2"

@@ -11,7 +11,7 @@ use std::time::Duration;
 use terminator::{AutomationError, Desktop, UIElement};
 use tokio::sync::Mutex;
 use tracing::{warn, Level};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+use tracing_subscriber::{util::SubscriberInitExt, EnvFilter, Layer};
 
 // ===== Composition Base Types for Reducing Duplication =====
 
@@ -1109,21 +1109,25 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
         warn!("Failed to create log directory: {}", e);
     }
 
-    // Create a daily rolling file appender
+    // Create daily rolling file appenders (need separate instances for each layer)
     let file_appender = rolling::daily(&log_dir, "terminator-mcp-agent.log");
+    let file_appender2 = rolling::daily(&log_dir, "terminator-mcp-agent.log");
 
     // Create log capture instance (max 1000 entries to prevent unbounded growth)
     let log_capture = LogCapture::new(1000);
     let capture_layer = LogCaptureLayer::new(log_capture.clone());
+    let capture_layer2 = LogCaptureLayer::new(log_capture.clone());
 
-    // Build the subscriber with stderr output, file output, log capture, and optional OTLP
+    // Build the subscriber with stderr output, file output, log capture, optional OTLP, and optional Sentry
     #[cfg(feature = "telemetry")]
     {
         // Try to create OTLP layer - ADD IT FIRST so it works with Registry type
         match crate::telemetry::create_otel_logs_layer() {
             Some(otel_layer) => {
                 use tracing_subscriber::layer::SubscriberExt;
-                let subscriber = tracing_subscriber::registry()
+
+                // Start with Registry - add OTLP first, then optionally Sentry
+                let base_subscriber = tracing_subscriber::registry()
                     .with(
                         // OTEL layer with RUST_LOG filtering - CRITICAL to avoid HTTP client noise
                         otel_layer.with_filter(
@@ -1156,7 +1160,16 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                                         .unwrap(),
                                 ),
                         ),
-                    )
+                    );
+
+                // Add Sentry layer when feature is enabled
+                #[cfg(feature = "sentry")]
+                let base_subscriber = {
+                    eprintln!("✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)");
+                    base_subscriber.with(sentry_tracing::layer())
+                };
+
+                let subscriber = base_subscriber
                     .with(
                         // Console/stderr layer
                         tracing_subscriber::fmt::layer()
@@ -1223,6 +1236,7 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                             ),
                     )
                     .with(capture_layer);
+
                 tracing::subscriber::set_global_default(subscriber)
                     .expect("Failed to set subscriber");
                 eprintln!(
@@ -1231,7 +1245,19 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
             }
             None => {
                 // No OTLP layer - standard logging only
-                tracing_subscriber::registry()
+                use tracing_subscriber::layer::SubscriberExt;
+
+                // Start with Registry and optionally add Sentry layer first (when feature is enabled)
+                #[cfg(feature = "sentry")]
+                let base_subscriber = {
+                    eprintln!("✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)");
+                    tracing_subscriber::registry().with(sentry_tracing::layer())
+                };
+
+                #[cfg(not(feature = "sentry"))]
+                let base_subscriber = tracing_subscriber::registry();
+
+                let subscriber = base_subscriber
                     .with(
                         // Console/stderr layer
                         tracing_subscriber::fmt::layer()
@@ -1265,7 +1291,7 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                     .with(
                         // File layer with timestamps
                         tracing_subscriber::fmt::layer()
-                            .with_writer(file_appender)
+                            .with_writer(file_appender2)
                             .with_ansi(false)
                             .with_target(true)
                             .with_thread_ids(true)
@@ -1297,8 +1323,9 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                                     .add_directive("hyper::proto=error".parse().unwrap()),
                             ),
                     )
-                    .with(capture_layer)
-                    .init();
+                    .with(capture_layer2);
+
+                subscriber.init();
             }
         }
     }
@@ -1306,7 +1333,19 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
     #[cfg(not(feature = "telemetry"))]
     {
         // No OTLP layer when telemetry feature is disabled
-        tracing_subscriber::registry()
+        use tracing_subscriber::layer::SubscriberExt;
+
+        // Start with Registry and optionally add Sentry layer first (when feature is enabled)
+        #[cfg(feature = "sentry")]
+        let base_subscriber = {
+            eprintln!("✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)");
+            tracing_subscriber::registry().with(sentry_tracing::layer())
+        };
+
+        #[cfg(not(feature = "sentry"))]
+        let base_subscriber = tracing_subscriber::registry();
+
+        let subscriber = base_subscriber
             .with(
                 // Console/stderr layer
                 tracing_subscriber::fmt::layer()
@@ -1326,8 +1365,9 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                     .with_line_number(true)
                     .with_filter(EnvFilter::from_default_env().add_directive(log_level.into())),
             )
-            .with(capture_layer)
-            .init();
+            .with(capture_layer);
+
+        subscriber.init();
     }
 
     // Log the log directory location on startup
