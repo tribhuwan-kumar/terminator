@@ -60,5 +60,8 @@
     "test:chaining": "node tests/element-chaining.test.js"
   },
   "types": "wrapper.d.ts",
-  "version": "0.20.10"
+  "version": "0.20.10",
+  "dependencies": {
+    "esbuild": "^0.25.11"
+  }
 }

@@ -117,7 +117,7 @@ class InternalError extends Error {
 // Error mapping function
 function mapNativeError(error) {
     if (!error.message) return error;
-    
+
     const message = error.message;
     if (message.startsWith('ELEMENT_NOT_FOUND:')) {
         return new ElementNotFoundError(message.replace('ELEMENT_NOT_FOUND:', '').trim());
@@ -146,11 +146,132 @@ function mapNativeError(error) {
     return error;
 }
 
+// Enhanced executeBrowserScript with function and file support
+async function enhancedExecuteBrowserScript(scriptOrFunction, envOrOptions) {
+  const fs = require('fs');
+  const path = require('path');
+
+  let script;
+  let env = {};
+
+  // Handle different input types
+  if (typeof scriptOrFunction === 'string') {
+    // Check if it's a file path
+    if (scriptOrFunction.endsWith('.ts') || scriptOrFunction.endsWith('.js')) {
+      // File path - read and compile
+      const filePath = path.resolve(scriptOrFunction);
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`Browser script file not found: ${filePath}`);
+      }
+
+      let fileContent = fs.readFileSync(filePath, 'utf-8');
+
+      // If TypeScript, compile it
+      if (filePath.endsWith('.ts')) {
+        try {
+          const esbuild = require('esbuild');
+          const result = await esbuild.transform(fileContent, {
+            loader: 'ts',
+            target: 'es2020',
+            format: 'iife'
+          });
+          fileContent = result.code;
+        } catch (e) {
+          // If esbuild not available, try to use as-is (may work for simple TS)
+          console.warn('esbuild not found - using TypeScript file as-is:', e.message);
+        }
+      }
+
+      script = fileContent;
+      env = envOrOptions || {};
+    } else {
+      // Plain string script - use as-is (backward compatible)
+      script = scriptOrFunction;
+    }
+  } else if (typeof scriptOrFunction === 'function') {
+    // Function - convert to IIFE with proper wrapping
+    const funcString = scriptOrFunction.toString();
+    env = envOrOptions || {};
+
+    // Wrap function in IIFE that handles return values
+    script = `
+      (async function() {
+        const fn = ${funcString};
+        const result = await fn(${JSON.stringify(env)});
+
+        // Auto-stringify result if it's an object
+        if (result !== undefined && result !== null) {
+          if (typeof result === 'object') {
+            return JSON.stringify(result);
+          }
+          return String(result);
+        }
+        return null;
+      })()
+    `;
+  } else if (typeof scriptOrFunction === 'object' && scriptOrFunction.file) {
+    // Object with file property
+    const filePath = path.resolve(scriptOrFunction.file);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Browser script file not found: ${filePath}`);
+    }
+
+    let fileContent = fs.readFileSync(filePath, 'utf-8');
+
+    // If TypeScript, compile it
+    if (filePath.endsWith('.ts')) {
+      try {
+        const esbuild = require('esbuild');
+        const result = await esbuild.transform(fileContent, {
+          loader: 'ts',
+          target: 'es2020',
+          format: 'iife'
+        });
+        fileContent = result.code;
+      } catch (e) {
+        console.warn('esbuild not found - using TypeScript file as-is:', e.message);
+      }
+    }
+
+    script = fileContent;
+    env = scriptOrFunction.env || {};
+  } else {
+    throw new Error('Invalid argument to executeBrowserScript: expected string, function, or {file, env} object');
+  }
+
+  // Call the original native method
+  const resultStr = await this._originalExecuteBrowserScript(script);
+
+  // If function was passed, try to parse JSON result
+  if (typeof scriptOrFunction === 'function') {
+    try {
+      return JSON.parse(resultStr);
+    } catch (e) {
+      // Not JSON, return as-is
+      return resultStr;
+    }
+  }
+
+  // For string/file, return raw result (backward compatible)
+  return resultStr;
+}
+
 // Wrap the native classes
 const Desktop = wrapClassMethods(native.Desktop);
 const Element = wrapClass(native.Element);
 const Locator = wrapClass(native.Locator);
 const Selector = wrapClass(native.Selector);
+
+// Patch executeBrowserScript on Desktop and Element
+if (Desktop.prototype.executeBrowserScript) {
+  Desktop.prototype._originalExecuteBrowserScript = Desktop.prototype.executeBrowserScript;
+  Desktop.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
+}
+
+if (Element.prototype.executeBrowserScript) {
+  Element.prototype._originalExecuteBrowserScript = Element.prototype.executeBrowserScript;
+  Element.prototype.executeBrowserScript = enhancedExecuteBrowserScript;
+}
 
 // Export everything
 module.exports = {
@@ -167,4 +288,4 @@ module.exports = {
     UnsupportedPlatformError,
     InvalidArgumentError,
     InternalError
-}; 
+};
