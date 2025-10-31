@@ -24,6 +24,7 @@ export type {
   ErrorCategory,
   ExecuteError,
   ExecutionResponse,
+  StepResult,
   StepConfig,
   Step,
   WorkflowConfig,

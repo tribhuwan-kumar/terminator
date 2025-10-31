@@ -157,6 +157,16 @@ export interface ExecutionResponse<TData = any> {
 }
 
 /**
+ * Step execution result - enforces structured output
+ */
+export interface StepResult<TData = any> {
+  /** Optional data to store in workflow context */
+  data?: TData;
+  /** Optional state updates to merge into workflow context.state */
+  state?: Record<string, any>;
+}
+
+/**
  * Step configuration
  */
 export interface StepConfig<TInput = any, TOutput = any> {
@@ -167,8 +177,15 @@ export interface StepConfig<TInput = any, TOutput = any> {
   /** Optional step description */
   description?: string;
 
-  /** Main step execution function */
-  execute: (context: StepContext<TInput>) => Promise<TOutput | void>;
+  /**
+   * Main step execution function
+   *
+   * Should return either:
+   * - StepResult with structured data/state updates
+   * - void (for side-effect only steps)
+   * - Plain object (backward compatibility - will be wrapped in StepResult)
+   */
+  execute: (context: StepContext<TInput>) => Promise<StepResult<TOutput> | TOutput | void>;
 
   /** Expectation validation - runs after execute() to verify outcome */
   expect?: (context: ExpectationContext<TInput, TOutput>) => Promise<ExpectationResult>;

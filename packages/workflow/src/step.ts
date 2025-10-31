@@ -7,6 +7,7 @@ import {
   ExpectationContext,
   ExpectationResult,
   ExecuteError,
+  StepResult,
 } from './types';
 
 /**
@@ -56,7 +57,7 @@ export function createStep<TInput = any, TOutput = any>(
         logger.info(`▶️  Executing step: ${config.name}`);
 
         // Execute with timeout if specified
-        let result: TOutput | void;
+        let result: StepResult<TOutput> | TOutput | void;
 
         if (config.timeout) {
           result = await Promise.race([
@@ -72,6 +73,29 @@ export function createStep<TInput = any, TOutput = any>(
           result = await config.execute(context);
         }
 
+        // Normalize result to StepResult format
+        let normalizedResult: StepResult<TOutput> | void;
+
+        if (result === undefined || result === null) {
+          normalizedResult = undefined;
+        } else if (typeof result === 'object' && ('data' in result || 'state' in result)) {
+          // Already a StepResult
+          normalizedResult = result as StepResult<TOutput>;
+        } else {
+          // Plain object - wrap it as state updates for backward compatibility
+          normalizedResult = { state: result as any };
+        }
+
+        // Merge state updates into context
+        if (normalizedResult && normalizedResult.state) {
+          Object.assign(context.context.state, normalizedResult.state);
+        }
+
+        // Store data in context
+        if (normalizedResult && normalizedResult.data !== undefined) {
+          context.context.data[config.id] = normalizedResult.data;
+        }
+
         // Run expectation validation if provided
         if (config.expect) {
           logger.info(`🔍 Validating expectations for: ${config.name}`);
@@ -79,7 +103,7 @@ export function createStep<TInput = any, TOutput = any>(
           const expectContext: ExpectationContext<TInput, TOutput> = {
             desktop: context.desktop,
             input: context.input,
-            result: result as TOutput,
+            result: normalizedResult?.data as TOutput,
             context: context.context,
             logger: context.logger,
           };
@@ -98,7 +122,7 @@ export function createStep<TInput = any, TOutput = any>(
         const duration = Date.now() - startTime;
         logger.success(`✅ Completed step: ${config.name} (${duration}ms)`);
 
-        return result;
+        return normalizedResult?.data as TOutput;
       } catch (error: any) {
         const duration = Date.now() - startTime;
         logger.error(`❌ Step failed: ${config.name} (${duration}ms)`);
