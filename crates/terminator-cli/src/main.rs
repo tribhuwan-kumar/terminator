@@ -511,6 +511,9 @@ fn sync_all_versions() {
     // Sync Browser Extension
     sync_browser_extension(&workspace_version);
 
+    // Sync Workflow Package
+    sync_workflow_package(&workspace_version);
+
     // Update Cargo.lock
     println!("🔒 Updating Cargo.lock...");
     if let Err(e) = run_command("cargo", &["check", "--quiet"]) {
@@ -657,7 +660,7 @@ fn sync_mcp_agent(version: &str) {
 fn sync_browser_extension(version: &str) {
     println!("📦 Syncing browser extension to version {version}...");
 
-    let ext_dir = Path::new("terminator/browser-extension");
+    let ext_dir = Path::new("crates/terminator/browser-extension");
     if !ext_dir.exists() {
         println!("⚠️  Browser extension directory not found, skipping");
         return;
@@ -686,6 +689,28 @@ fn sync_browser_extension(version: &str) {
             );
         } else {
             println!("✅ Updated build_check.json to {version}");
+        }
+    }
+}
+
+fn sync_workflow_package(version: &str) {
+    println!("📦 Syncing workflow package to version {version}...");
+
+    let workflow_dir = Path::new("packages/workflow");
+    if !workflow_dir.exists() {
+        println!("⚠️  Workflow package directory not found, skipping");
+        return;
+    }
+
+    let package_json = workflow_dir.join("package.json");
+    if package_json.exists() {
+        if let Err(e) = update_package_json(&package_json.to_string_lossy(), version) {
+            eprintln!(
+                "⚠️  Warning: Failed to update workflow package.json: {}",
+                e
+            );
+        } else {
+            println!("✅ Workflow package synced to {version}");
         }
     }
 }
@@ -740,12 +765,14 @@ fn show_status() {
     let mcp_version = get_package_version("crates/terminator-mcp-agent/package.json");
     let browser_extension_version =
         get_package_version("crates/terminator/browser-extension/manifest.json");
+    let workflow_version = get_package_version("packages/workflow/package.json");
 
     println!();
     println!("Package versions:");
     println!("  Node.js bindings:  {nodejs_version}");
     println!("  MCP agent:         {mcp_version}");
     println!("  Browser extension: {browser_extension_version}");
+    println!("  Workflow package:  {workflow_version}");
 
     // Git status
     println!();

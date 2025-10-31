@@ -369,6 +369,7 @@ The tool syncs these package versions:
 - ✅ **Workspace version** (`Cargo.toml`) - Main source of truth
 - ✅ **Node.js bindings** (`packages/terminator-nodejs/package.json`)
 - ✅ **MCP agent** (`crates/terminator-mcp-agent/package.json`)
+- ✅ **Workflow package** (`packages/workflow/package.json`)
 - ✅ **Platform packages** (all `npm/*/package.json` files)
 
 ### CI/CD Triggers
@@ -377,6 +378,7 @@ The release tool automatically triggers these workflows:
 
 - [publish-npm.yml](.github/workflows/publish-npm.yml) - Node.js packages
 - [publish-mcp.yml](.github/workflows/publish-mcp.yml) - MCP agent
+- [publish-workflow.yml](.github/workflows/publish-workflow.yml) - Workflow package
 
 ## 🛠️ Development Setup
 
