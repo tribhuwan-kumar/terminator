@@ -87,18 +87,18 @@ jobs:
 
       - name: Install Node.js dependencies
         run: |
-          cd bindings/nodejs
+          cd packages/terminator-nodejs
           npm install
         shell: pwsh
 
       - name: Build Node.js bindings
         run: |
-          cd bindings/nodejs
+          cd packages/terminator-nodejs
           npm run build
         shell: pwsh
 
       - name: Run Node.js tests
         run: |
-          cd bindings/nodejs
+          cd packages/terminator-nodejs
           npm test
         shell: pwsh

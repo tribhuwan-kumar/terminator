@@ -2327,11 +2327,11 @@ pub async fn execute_javascript_with_local_bindings(
     info!("[Node.js Local] Using runtime: {}", runtime);
 
     // Resolve local bindings path robustly
-    // 1) Explicit override via env var TERMINATOR_JS_LOCAL_BINDINGS (points directly to bindings/nodejs)
-    // 2) Derive from compile-time crate dir (../bindings/nodejs)
-    // 3) Try CWD/bindings/nodejs
-    // 4) Try parent_of_CWD/bindings/nodejs
-    // 5) Walk up a few ancestors looking for bindings/nodejs
+    // 1) Explicit override via env var TERMINATOR_JS_LOCAL_BINDINGS (points directly to packages/terminator-nodejs)
+    // 2) Derive from compile-time crate dir (../packages/terminator-nodejs)
+    // 3) Try CWD/packages/terminator-nodejs
+    // 4) Try parent_of_CWD/packages/terminator-nodejs
+    // 5) Walk up a few ancestors looking for packages/terminator-nodejs
     let local_bindings_path: PathBuf = {
         if let Ok(override_path) = std::env::var("TERMINATOR_JS_LOCAL_BINDINGS") {
             let p = PathBuf::from(override_path);
@@ -2344,24 +2344,24 @@ pub async fn execute_javascript_with_local_bindings(
             // Candidates to probe
             let mut candidates: Vec<PathBuf> = Vec::new();
 
-            // From compile-time crate dir: <workspace>/terminator-mcp-agent => <workspace>/bindings/nodejs
+            // From compile-time crate dir: <workspace>/terminator-mcp-agent => <workspace>/packages/terminator-nodejs
             let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             if let Some(ws) = crate_dir.parent() {
-                candidates.push(ws.join("bindings").join("nodejs"));
+                candidates.push(ws.join("packages").join("terminator-nodejs"));
             }
 
             // From current dir
             if let Ok(cwd) = std::env::current_dir() {
-                candidates.push(cwd.join("bindings").join("nodejs"));
+                candidates.push(cwd.join("packages").join("terminator-nodejs"));
                 if let Some(parent) = cwd.parent() {
-                    candidates.push(parent.join("bindings").join("nodejs"));
+                    candidates.push(parent.join("packages").join("terminator-nodejs"));
                 }
 
-                // Walk up to 5 ancestors looking for bindings/nodejs
+                // Walk up to 5 ancestors looking for packages/terminator-nodejs
                 let mut anc = Some(cwd.as_path());
                 for _ in 0..5 {
                     if let Some(a) = anc {
-                        candidates.push(a.join("bindings").join("nodejs"));
+                        candidates.push(a.join("packages").join("terminator-nodejs"));
                         anc = a.parent();
                     }
                 }
@@ -2377,7 +2377,7 @@ pub async fn execute_javascript_with_local_bindings(
                     return Err(McpError::internal_error(
                         "Local bindings directory not found",
                         Some(json!({
-                            "hint": "Set TERMINATOR_JS_LOCAL_BINDINGS to the path of bindings/nodejs or run from the repo",
+                            "hint": "Set TERMINATOR_JS_LOCAL_BINDINGS to the path of packages/terminator-nodejs or run from the repo",
                             "cwd": std::env::current_dir().ok().map(|p| p.to_string_lossy().to_string()),
                             "crate_dir": crate_dir.to_string_lossy().to_string(),
                         })),

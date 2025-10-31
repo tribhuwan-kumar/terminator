@@ -503,20 +503,20 @@ fn sync_all_versions() {
 fn sync_nodejs_bindings(version: &str) {
     println!("📦 Syncing Node.js bindings to version {version}...");
 
-    let nodejs_dir = Path::new("bindings/nodejs");
+    let nodejs_dir = Path::new("packages/terminator-nodejs");
     if !nodejs_dir.exists() {
         println!("⚠️  Node.js bindings directory not found, skipping");
         return;
     }
 
     // Update main package.json directly
-    if let Err(e) = update_package_json("bindings/nodejs/package.json", version) {
+    if let Err(e) = update_package_json("packages/terminator-nodejs/package.json", version) {
         eprintln!("⚠️  Warning: Failed to update Node.js package.json directly: {e}");
     } else {
         println!("✅ Updated Node.js package.json to {version}");
     }
 
-    // ALSO update CPU/platform-specific packages under bindings/nodejs/npm
+    // ALSO update CPU/platform-specific packages under packages/terminator-nodejs/npm
     let npm_dir = nodejs_dir.join("npm");
     if npm_dir.exists() {
         if let Ok(entries) = fs::read_dir(&npm_dir) {
@@ -756,7 +756,7 @@ fn show_status() {
     println!("📦 Workspace version: {workspace_version}");
 
     // Show package versions
-    let nodejs_version = get_package_version("bindings/nodejs/package.json");
+    let nodejs_version = get_package_version("packages/terminator-nodejs/package.json");
     let mcp_version = get_package_version("terminator-mcp-agent/package.json");
     let workflow_builder_version = get_package_version("workflow-builder-mcp/package.json");
     let browser_extension_version =

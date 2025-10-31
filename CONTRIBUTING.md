@@ -140,11 +140,11 @@ sccache --show-stats  # Shows cache statistics
 
    ```bash
    # Python bindings
-   cd bindings/python
+   cd packages/terminator-python
    pip install -e .
 
    # Node.js bindings
-   cd ../nodejs
+   cd ../terminator-nodejs
    npm install
    npm run build
    ```
@@ -154,8 +154,8 @@ sccache --show-stats  # Shows cache statistics
 Terminator uses a Cargo workspace with the following key components:
 
 - `terminator/` - Core Rust library
-- `bindings/python/` - Python wrapper
-- `bindings/nodejs/` - TypeScript/Node.js wrapper
+- `packages/terminator-python/` - Python wrapper
+- `packages/terminator-nodejs/` - TypeScript/Node.js wrapper
 - `examples/` - Usage examples and integration tests
 - `terminator-workflow-recorder/` - Workflow recording tool
 
@@ -367,7 +367,7 @@ cargo run --bin terminator -- --help     # Show all commands and options
 The tool syncs these package versions:
 
 - ✅ **Workspace version** (`Cargo.toml`) - Main source of truth
-- ✅ **Node.js bindings** (`bindings/nodejs/package.json`)
+- ✅ **Node.js bindings** (`packages/terminator-nodejs/package.json`)
 - ✅ **MCP agent** (`terminator-mcp-agent/package.json`)
 - ✅ **Platform packages** (all `npm/*/package.json` files)
 

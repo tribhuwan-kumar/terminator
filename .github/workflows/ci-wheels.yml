@@ -38,12 +38,12 @@ jobs:
       - name: Generate stubs
         run: |
           cargo run --bin stub_gen
-        working-directory: bindings/python
+        working-directory: packages/terminator-python
 
       - name: Build wheels with system deps
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: bindings/python
+          working-directory: packages/terminator-python
           target: x86_64
           manylinux: '2_34'
           args: --release --strip --out dist
@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-linux-x86_64
-          path: bindings/python/dist
+          path: packages/terminator-python/dist
 
   windows-x64:
     runs-on: windows-latest
@@ -88,12 +88,12 @@ jobs:
       - name: Generate stubs
         run: |
           cargo run --bin stub_gen
-        working-directory: bindings/python
+        working-directory: packages/terminator-python
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: bindings/python
+          working-directory: packages/terminator-python
           target: x64
           args: --release --strip --out dist
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -101,7 +101,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-x64
-          path: bindings/python/dist
+          path: packages/terminator-python/dist
 
   windows-arm64:
     runs-on: windows-11-arm
@@ -123,12 +123,12 @@ jobs:
       - name: Generate stubs
         run: |
           cargo run --bin stub_gen
-        working-directory: bindings/python
+        working-directory: packages/terminator-python
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: bindings/python
+          working-directory: packages/terminator-python
           target: aarch64
           args: --release --strip --out dist
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -136,7 +136,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-windows-arm64
-          path: bindings/python/dist
+          path: packages/terminator-python/dist
 
   macos-x64:
     runs-on: macos-13
@@ -157,12 +157,12 @@ jobs:
       - name: Generate stubs
         run: |
           RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup" cargo run --bin stub_gen
-        working-directory: bindings/python
+        working-directory: packages/terminator-python
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: bindings/python
+          working-directory: packages/terminator-python
           target: x86_64
           args: --release --strip --out dist
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -170,7 +170,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-x86_64
-          path: bindings/python/dist
+          path: packages/terminator-python/dist
 
   macos-arm64:
     runs-on: macos-14
@@ -191,12 +191,12 @@ jobs:
       - name: Generate stubs
         run: |
           RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup" cargo run --bin stub_gen
-        working-directory: bindings/python
+        working-directory: packages/terminator-python
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: bindings/python
+          working-directory: packages/terminator-python
           target: aarch64
           args: --release --strip --out dist
           sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -204,7 +204,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-arm64
-          path: bindings/python/dist
+          path: packages/terminator-python/dist
 
   sdist:
     runs-on: ubuntu-latest
@@ -213,14 +213,14 @@ jobs:
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: bindings/python
+          working-directory: packages/terminator-python
           command: sdist
           args: --out dist
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist
-          path: bindings/python/dist
+          path: packages/terminator-python/dist
 
   release:
     name: Release
@@ -234,19 +234,19 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: bindings/python/
+          path: packages/terminator-python/
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: 'bindings/python/wheels-*/*.whl'
+          subject-path: 'packages/terminator-python/wheels-*/*.whl'
 
       - name: Publish to PyPI (terminator-py)
         uses: PyO3/maturin-action@v1
         env:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         with:
-          working-directory: bindings/python
+          working-directory: packages/terminator-python
           command: upload
           args: --non-interactive --skip-existing wheels-sdist/* wheels-windows-x64/* wheels-windows-arm64/* wheels-linux-x86_64/* wheels-macos-x86_64/* wheels-macos-arm64/*
 
@@ -268,7 +268,7 @@ jobs:
         run: |
           mkdir -p terminator-wheels
           # Copy all wheel files
-          find bindings/python/wheels-* -name "*.whl" -exec cp {} terminator-wheels/ \;
+          find packages/terminator-python/wheels-* -name "*.whl" -exec cp {} terminator-wheels/ \;
           
           # Update metadata inside wheels and rename files
           cd terminator-wheels

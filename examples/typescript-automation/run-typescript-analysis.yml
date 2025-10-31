@@ -1,9 +1,0 @@
-# TypeScript Application Analysis Workflow
-# This workflow runs TypeScript code from an external .ts file
-
-steps:
-  # Run TypeScript analysis from file
-  - tool_name: run_command
-    arguments:
-      engine: typescript
-      script_file: analyze-apps.ts
