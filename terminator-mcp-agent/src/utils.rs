@@ -1127,45 +1127,46 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                 use tracing_subscriber::layer::SubscriberExt;
 
                 // Start with Registry - add OTLP first, then optionally Sentry
-                let base_subscriber = tracing_subscriber::registry()
-                    .with(
-                        // OTEL layer with RUST_LOG filtering - CRITICAL to avoid HTTP client noise
-                        otel_layer.with_filter(
-                            EnvFilter::from_default_env()
-                                .add_directive(log_level.into())
-                                // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
-                                .add_directive(
-                                    "terminator::platforms::windows::health=error"
-                                        .parse()
-                                        .unwrap(),
-                                )
-                                .add_directive("axum::serve=error".parse().unwrap())
-                                .add_directive("h2::proto=error".parse().unwrap())
-                                .add_directive("h2::codec=error".parse().unwrap())
-                                .add_directive("h2::server=error".parse().unwrap())
-                                .add_directive("h2::frame=error".parse().unwrap())
-                                .add_directive("rmcp::transport=warn".parse().unwrap())
-                                .add_directive(
-                                    "rmcp::transport::streamable_http_server=error"
-                                        .parse()
-                                        .unwrap(),
-                                )
-                                .add_directive("rmcp::service=error".parse().unwrap())
-                                .add_directive("hyper::client=error".parse().unwrap())
-                                .add_directive("hyper::proto=error".parse().unwrap())
-                                // Also filter scripting engine DEBUG logs from telemetry
-                                .add_directive(
-                                    "terminator_mcp_agent::scripting_engine=info"
-                                        .parse()
-                                        .unwrap(),
-                                ),
-                        ),
-                    );
+                let base_subscriber = tracing_subscriber::registry().with(
+                    // OTEL layer with RUST_LOG filtering - CRITICAL to avoid HTTP client noise
+                    otel_layer.with_filter(
+                        EnvFilter::from_default_env()
+                            .add_directive(log_level.into())
+                            // Filter out noisy health check and connection logs - set to ERROR to suppress repetitive warnings
+                            .add_directive(
+                                "terminator::platforms::windows::health=error"
+                                    .parse()
+                                    .unwrap(),
+                            )
+                            .add_directive("axum::serve=error".parse().unwrap())
+                            .add_directive("h2::proto=error".parse().unwrap())
+                            .add_directive("h2::codec=error".parse().unwrap())
+                            .add_directive("h2::server=error".parse().unwrap())
+                            .add_directive("h2::frame=error".parse().unwrap())
+                            .add_directive("rmcp::transport=warn".parse().unwrap())
+                            .add_directive(
+                                "rmcp::transport::streamable_http_server=error"
+                                    .parse()
+                                    .unwrap(),
+                            )
+                            .add_directive("rmcp::service=error".parse().unwrap())
+                            .add_directive("hyper::client=error".parse().unwrap())
+                            .add_directive("hyper::proto=error".parse().unwrap())
+                            // Also filter scripting engine DEBUG logs from telemetry
+                            .add_directive(
+                                "terminator_mcp_agent::scripting_engine=info"
+                                    .parse()
+                                    .unwrap(),
+                            ),
+                    ),
+                );
 
                 // Add Sentry layer when feature is enabled
                 #[cfg(feature = "sentry")]
                 let base_subscriber = {
-                    eprintln!("✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)");
+                    eprintln!(
+                        "✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)"
+                    );
                     base_subscriber.with(sentry_tracing::layer())
                 };
 
@@ -1250,7 +1251,9 @@ pub fn init_logging() -> Result<Option<LogCapture>> {
                 // Start with Registry and optionally add Sentry layer first (when feature is enabled)
                 #[cfg(feature = "sentry")]
                 let base_subscriber = {
-                    eprintln!("✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)");
+                    eprintln!(
+                        "✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)"
+                    );
                     tracing_subscriber::registry().with(sentry_tracing::layer())
                 };
 

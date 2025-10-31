@@ -29,8 +29,8 @@ use tokio::sync::Mutex;
 
 mod commands;
 mod mcp_client;
-mod typescript_workflow;
 mod telemetry_receiver;
+mod typescript_workflow;
 mod workflow_result;
 mod workflow_validator;
 
@@ -1288,10 +1288,8 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     let resolved_type = determine_input_type(&args.input, args.input_type);
 
     // Check if this is a TypeScript/JavaScript workflow
-    let is_ts_workflow = typescript_workflow::is_typescript_workflow(
-        &args.input,
-        resolved_type == InputType::File,
-    );
+    let is_ts_workflow =
+        typescript_workflow::is_typescript_workflow(&args.input, resolved_type == InputType::File);
 
     // For TypeScript workflows, skip content fetching and parsing - just pass the path to MCP
     if is_ts_workflow {

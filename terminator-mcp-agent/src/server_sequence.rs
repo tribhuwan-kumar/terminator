@@ -2276,8 +2276,13 @@ impl DesktopWrapper {
 
         // Save state for resumption
         if let Some(ref last_step_id) = result.result.last_step_id {
-            Self::save_workflow_state(url, Some(last_step_id), result.result.last_step_index, &result.state)
-                .await?;
+            Self::save_workflow_state(
+                url,
+                Some(last_step_id),
+                result.result.last_step_index,
+                &result.state,
+            )
+            .await?;
         }
 
         // Return result
@@ -2290,7 +2295,9 @@ impl DesktopWrapper {
         });
 
         Ok(CallToolResult {
-            content: vec![Content::text(serde_json::to_string_pretty(&output).unwrap())],
+            content: vec![Content::text(
+                serde_json::to_string_pretty(&output).unwrap(),
+            )],
             is_error: Some(result.result.status != "success"),
             meta: None,
             structured_content: None,

@@ -443,7 +443,9 @@ impl WindowsRecorder {
                                 );
 
                                 // Check if window title contains a filename and resolve paths
-                                if let Some(filename) = Self::extract_filename_from_window_title(&app_name) {
+                                if let Some(filename) =
+                                    Self::extract_filename_from_window_title(&app_name)
+                                {
                                     info!("📄 Detected file in window title: {}", filename);
 
                                     // Resolve file paths using PowerShell script
@@ -454,7 +456,9 @@ impl WindowsRecorder {
                                         process_id,
                                         element,
                                     ) {
-                                        if let Err(e) = event_tx.send(WorkflowEvent::FileOpened(file_event)) {
+                                        if let Err(e) =
+                                            event_tx.send(WorkflowEvent::FileOpened(file_event))
+                                        {
                                             warn!("Failed to send file opened event: {}", e);
                                         } else {
                                             info!("✅ File opened event sent for: {}", filename);
@@ -3032,13 +3036,12 @@ impl WindowsRecorder {
     fn extract_filename_from_window_title(window_title: &str) -> Option<String> {
         // Common file extensions to look for
         let file_extensions = [
-            ".txt", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-            ".pdf", ".json", ".xml", ".csv", ".html", ".htm", ".css", ".js",
-            ".ts", ".rs", ".py", ".java", ".cpp", ".c", ".h", ".md", ".log",
-            ".sql", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
-            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico",
-            ".mp3", ".mp4", ".wav", ".avi", ".mkv", ".mov", ".zip", ".rar",
-            ".7z", ".tar", ".gz", ".exe", ".dll", ".bat", ".sh", ".ps1",
+            ".txt", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".pdf", ".json", ".xml",
+            ".csv", ".html", ".htm", ".css", ".js", ".ts", ".rs", ".py", ".java", ".cpp", ".c",
+            ".h", ".md", ".log", ".sql", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".png",
+            ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".ico", ".mp3", ".mp4", ".wav", ".avi",
+            ".mkv", ".mov", ".zip", ".rar", ".7z", ".tar", ".gz", ".exe", ".dll", ".bat", ".sh",
+            ".ps1",
         ];
 
         // Try to find a file extension in the window title
@@ -3050,7 +3053,10 @@ impl WindowsRecorder {
 
                 // Check if this is followed by a word boundary (space, dash, or end)
                 let is_boundary = ext_end >= lower_title.len()
-                    || lower_title.chars().nth(ext_end).map_or(true, |c| c == ' ' || c == '-');
+                    || lower_title
+                        .chars()
+                        .nth(ext_end)
+                        .map_or(true, |c| c == ' ' || c == '-');
 
                 if !is_boundary {
                     continue; // Not a real file extension, keep looking
@@ -3064,17 +3070,21 @@ impl WindowsRecorder {
                 // So we look for " - " pattern AFTER the extension to determine if filename comes before or after it
 
                 let after_ext = &window_title[ext_end..];
-                let start_pos = if after_ext.trim_start().starts_with("-") || after_ext.trim_start().starts_with("–") {
+                let start_pos = if after_ext.trim_start().starts_with("-")
+                    || after_ext.trim_start().starts_with("–")
+                {
                     // Pattern: "filename.ext - AppName" or "filename.ext – AppName"
                     // The filename is everything before the extension, up to start of string or last " - " before it
-                    before_ext.rfind(" - ")
+                    before_ext
+                        .rfind(" - ")
                         .or_else(|| before_ext.rfind(" – "))
                         .map(|pos| pos + 3)
                         .unwrap_or(0)
                 } else {
                     // No separator after extension, so filename likely ends at extension
                     // Look backwards for path separators or beginning of string
-                    before_ext.rfind(|c: char| c == '/' || c == '\\')
+                    before_ext
+                        .rfind(|c: char| c == '/' || c == '\\')
                         .map(|pos| pos + 1)
                         .unwrap_or(0)
                 };
@@ -3083,7 +3093,8 @@ impl WindowsRecorder {
                 let filename = window_title[start_pos..ext_end].trim();
 
                 // Validate that this looks like a reasonable filename
-                if !filename.is_empty() && filename.len() < 260 { // MAX_PATH on Windows
+                if !filename.is_empty() && filename.len() < 260 {
+                    // MAX_PATH on Windows
                     return Some(filename.to_string());
                 }
             }
@@ -3101,8 +3112,10 @@ impl WindowsRecorder {
         process_id: u32,
         element: &UIElement,
     ) -> Option<crate::events::FileOpenedEvent> {
+        use crate::events::{
+            EventMetadata, FileCandidatePath, FileOpenedEvent, FilePathConfidence,
+        };
         use std::process::Command;
-        use crate::events::{FileOpenedEvent, FileCandidatePath, FilePathConfidence, EventMetadata};
 
         // Get the PowerShell script path
         let script_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3119,9 +3132,12 @@ impl WindowsRecorder {
         // Execute PowerShell script
         let output = Command::new("powershell")
             .args([
-                "-ExecutionPolicy", "Bypass",
-                "-File", script_path.to_str().unwrap(),
-                "-FileName", filename,
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                script_path.to_str().unwrap(),
+                "-FileName",
+                filename,
             ])
             .output();
 
@@ -3143,14 +3159,17 @@ impl WindowsRecorder {
 
                         // Extract candidate paths
                         let matches = data["matches"].as_array()?;
-                        let candidates: Vec<FileCandidatePath> = matches.iter().filter_map(|m| {
-                            Some(FileCandidatePath {
-                                path: m["path"].as_str()?.to_string(),
-                                last_accessed: m["last_accessed"].as_str()?.to_string(),
-                                last_modified: m["last_modified"].as_str()?.to_string(),
-                                size_bytes: m["size_bytes"].as_u64()?,
+                        let candidates: Vec<FileCandidatePath> = matches
+                            .iter()
+                            .filter_map(|m| {
+                                Some(FileCandidatePath {
+                                    path: m["path"].as_str()?.to_string(),
+                                    last_accessed: m["last_accessed"].as_str()?.to_string(),
+                                    last_modified: m["last_modified"].as_str()?.to_string(),
+                                    size_bytes: m["size_bytes"].as_u64()?,
+                                })
                             })
-                        }).collect();
+                            .collect();
 
                         if candidates.is_empty() {
                             return None;
@@ -3192,7 +3211,9 @@ impl WindowsRecorder {
                             search_time_ms,
                             file_extension,
                             window_title: window_title.to_string(),
-                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(element.clone())),
+                            metadata: EventMetadata::with_ui_element_and_timestamp(Some(
+                                element.clone(),
+                            )),
                         })
                     }
                     Err(e) => {

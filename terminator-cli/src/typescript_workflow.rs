@@ -24,8 +24,8 @@ pub fn is_typescript_workflow(input: &str, is_file_input: bool) -> bool {
         let workflow_ts = path.join("workflow.ts");
         let index_ts = path.join("index.ts");
 
-        package_json.exists() &&
-            (terminator_ts.exists() || workflow_ts.exists() || index_ts.exists())
+        package_json.exists()
+            && (terminator_ts.exists() || workflow_ts.exists() || index_ts.exists())
     } else {
         false
     }
@@ -78,10 +78,7 @@ pub fn build_typescript_workflow_args(
     }
 
     if let Some(end_step) = end_at_step {
-        workflow_args.insert(
-            "end_at_step".to_string(),
-            Value::String(end_step.clone()),
-        );
+        workflow_args.insert("end_at_step".to_string(), Value::String(end_step.clone()));
     }
 
     if let Some(follow) = follow_fallback {

@@ -80,14 +80,12 @@ impl TypeScriptWorkflow {
     }
 
     pub fn new(url: &str) -> Result<Self, McpError> {
-        let path_str = url
-            .strip_prefix("file://")
-            .ok_or_else(|| {
-                McpError::invalid_params(
-                    "TypeScript workflows must use file:// URLs".to_string(),
-                    Some(json!({"url": url})),
-                )
-            })?;
+        let path_str = url.strip_prefix("file://").ok_or_else(|| {
+            McpError::invalid_params(
+                "TypeScript workflows must use file:// URLs".to_string(),
+                Some(json!({"url": url})),
+            )
+        })?;
 
         let path = PathBuf::from(path_str);
 
@@ -117,15 +115,12 @@ impl TypeScriptWorkflow {
                     Some(json!({"path": path.display().to_string()})),
                 )
             })?;
-            let file_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| {
-                    McpError::invalid_params(
-                        "Invalid file name".to_string(),
-                        Some(json!({"path": path.display().to_string()})),
-                    )
-                })?;
+            let file_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+                McpError::invalid_params(
+                    "Invalid file name".to_string(),
+                    Some(json!({"path": path.display().to_string()})),
+                )
+            })?;
 
             (parent.to_path_buf(), file_name.to_string())
         } else {
@@ -153,14 +148,13 @@ impl TypeScriptWorkflow {
         self.ensure_dependencies().await?;
 
         // Create execution script
-        let exec_script = self.create_execution_script(
-            inputs,
-            start_from_step,
-            end_at_step,
-            restored_state,
-        )?;
+        let exec_script =
+            self.create_execution_script(inputs, start_from_step, end_at_step, restored_state)?;
 
-        debug!("Executing TypeScript workflow with script:\n{}", exec_script);
+        debug!(
+            "Executing TypeScript workflow with script:\n{}",
+            exec_script
+        );
 
         // Execute via bun (priority) or node (fallback)
         let runtime = detect_js_runtime();
@@ -325,18 +319,14 @@ console.log(JSON.stringify({{
         let runtime = detect_js_runtime();
 
         let install_result = match runtime {
-            JsRuntime::Bun => {
-                Command::new("bun")
-                    .arg("install")
-                    .current_dir(&self.workflow_path)
-                    .output()
-            }
-            JsRuntime::Node => {
-                Command::new("npm")
-                    .arg("install")
-                    .current_dir(&self.workflow_path)
-                    .output()
-            }
+            JsRuntime::Bun => Command::new("bun")
+                .arg("install")
+                .current_dir(&self.workflow_path)
+                .output(),
+            JsRuntime::Node => Command::new("npm")
+                .arg("install")
+                .current_dir(&self.workflow_path)
+                .output(),
         }
         .map_err(|e| {
             McpError::internal_error(
@@ -361,7 +351,6 @@ console.log(JSON.stringify({{
 
         Ok(())
     }
-
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -454,7 +443,9 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.message.contains("Missing required entrypoint: terminator.ts"));
+        assert!(err
+            .message
+            .contains("Missing required entrypoint: terminator.ts"));
     }
 
     #[test]
@@ -466,7 +457,11 @@ mod tests {
 
         // Create only terminator.ts (no other workflow files)
         fs::write(temp_dir.path().join("terminator.ts"), "export default {};").unwrap();
-        fs::write(temp_dir.path().join("utils.ts"), "export const helper = () => {};").unwrap();
+        fs::write(
+            temp_dir.path().join("utils.ts"),
+            "export const helper = () => {};",
+        )
+        .unwrap();
 
         let url = format!("file://{}", temp_dir.path().display());
         let result = TypeScriptWorkflow::new(&url);
@@ -493,5 +488,4 @@ mod tests {
         assert!(err.message.contains("Multiple workflow files detected"));
         assert!(err.message.contains("my-workflow.ts"));
     }
-
 }

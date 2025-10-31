@@ -510,10 +510,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 terminator_workflow_recorder::WorkflowEvent::FileOpened(file_event) => {
-                    println!(
-                        "📄 File Opened {}: {}",
-                        event_count, file_event.filename
-                    );
+                    println!("📄 File Opened {}: {}", event_count, file_event.filename);
                     println!("     ├─ Application: {}", file_event.application_name);
                     println!("     ├─ Window Title: {}", file_event.window_title);
                     println!("     ├─ Confidence: {:?}", file_event.confidence);
@@ -521,13 +518,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(primary_path) = &file_event.primary_path {
                         println!("     ├─ Primary Path: {}", primary_path);
                     }
-                    println!("     └─ Total Candidates: {}", file_event.candidate_paths.len());
+                    println!(
+                        "     └─ Total Candidates: {}",
+                        file_event.candidate_paths.len()
+                    );
                     for (i, candidate) in file_event.candidate_paths.iter().enumerate().take(3) {
                         println!("        {}. {}", i + 1, candidate.path);
                         println!("           Last Accessed: {}", candidate.last_accessed);
                     }
                     if file_event.candidate_paths.len() > 3 {
-                        println!("        ... and {} more", file_event.candidate_paths.len() - 3);
+                        println!(
+                            "        ... and {} more",
+                            file_event.candidate_paths.len() - 3
+                        );
                     }
                 }
             }
