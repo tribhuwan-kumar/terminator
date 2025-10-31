@@ -63,10 +63,10 @@ execSync(
 );
 
 const buildDir = isRelease ? "release" : "debug";
-// Binary is in target/release or target/debug when no --target is specified
+// Binary is in workspace root target/release or target/debug when no --target is specified
 const binaryPath = path.join(
   __dirname,
-  "../../target",
+  "../../../target",
   buildDir,
   binName,
 );
