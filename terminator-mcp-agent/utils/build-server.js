@@ -21,6 +21,10 @@ if (platform === "win32" && arch === "x64") {
   target = "x86_64-pc-windows-msvc";
   binName = "terminator-mcp-agent.exe";
   npmDir = "win32-x64-msvc";
+} else if (platform === "win32" && arch === "arm64") {
+  target = "aarch64-pc-windows-msvc";
+  binName = "terminator-mcp-agent.exe";
+  npmDir = "win32-arm64-msvc";
 } else if (platform === "linux" && arch === "x64") {
   target = "x86_64-unknown-linux-gnu";
   binName = "terminator-mcp-agent";
