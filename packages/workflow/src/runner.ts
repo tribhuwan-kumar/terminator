@@ -1,5 +1,5 @@
 import { Workflow, WorkflowContext, Logger, ConsoleLogger } from './types';
-import { Desktop } from 'terminator.js';
+import { Desktop } from '@mediar-ai/terminator';
 
 export interface WorkflowRunnerOptions {
   workflow: Workflow;

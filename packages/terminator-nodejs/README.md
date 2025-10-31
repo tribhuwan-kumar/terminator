@@ -1,21 +1,21 @@
-# terminator.js
+# @mediar-ai/terminator
 
 Node.js/TypeScript bindings for the Terminator Rust library - AI-native GUI automation for Windows, macOS, and Linux.
 
 ## Installation
 
 ```bash
-npm install terminator.js
+npm install @mediar-ai/terminator
 # or
-bun install terminator.js
+bun install @mediar-ai/terminator
 # or
-yarn add terminator.js
+yarn add @mediar-ai/terminator
 ```
 
 ## Quick Start
 
 ```javascript
-const { Desktop } = require('terminator.js');
+const { Desktop } = require('@mediar-ai/terminator');
 
 async function main() {
   const desktop = new Desktop();
@@ -51,7 +51,7 @@ main().catch(console.error);
 This package includes TypeScript definitions out of the box:
 
 ```typescript
-import { Desktop, ElementNotFoundError } from 'terminator.js';
+import { Desktop, ElementNotFoundError } from '@mediar-ai/terminator';
 
 const desktop = new Desktop();
 const root = desktop.root();
@@ -67,7 +67,7 @@ const {
   ElementNotFoundError, 
   TimeoutError, 
   PermissionDeniedError 
-} = require('terminator.js');
+} = require('@mediar-ai/terminator');
 
 try {
   const button = await desktop.locator('role:button').first(1000); // wait up to 1 second
@@ -134,7 +134,7 @@ try {
 The `validate()` method is useful for conditional logic when you need to check if an element exists without throwing an error:
 
 ```javascript
-const { Desktop } = require('terminator.js');
+const { Desktop } = require('@mediar-ai/terminator');
 
 async function main() {
   const desktop = new Desktop();
@@ -170,7 +170,7 @@ main().catch(console.error);
 The `waitFor()` method waits for an element to meet a specific condition. This is useful for dynamic UIs where elements change state:
 
 ```javascript
-const { Desktop } = require('terminator.js');
+const { Desktop } = require('@mediar-ai/terminator');
 
 async function main() {
   const desktop = new Desktop();

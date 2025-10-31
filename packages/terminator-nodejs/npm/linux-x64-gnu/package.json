@@ -12,7 +12,7 @@
     "glibc"
   ],
   "main": "terminator.linux-x64-gnu.node",
-  "name": "terminator.js-linux-x64-gnu",
+  "name": "@mediar-ai/terminator-linux-x64-gnu",
   "os": [
     "linux"
   ],

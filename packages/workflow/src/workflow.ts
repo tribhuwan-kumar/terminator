@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Desktop } from 'terminator.js';
+import { Desktop } from '@mediar-ai/terminator';
 import type {
   Workflow,
   WorkflowConfig,

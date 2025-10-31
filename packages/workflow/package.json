@@ -41,6 +41,6 @@
     "@types/jest": "^29.5.11"
   },
   "peerDependencies": {
-    "terminator.js": "^0.19.0"
+    "@mediar-ai/terminator": "^0.20.0"
   }
 }

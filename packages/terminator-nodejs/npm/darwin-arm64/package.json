@@ -9,7 +9,7 @@
     "terminator.darwin-arm64.node"
   ],
   "main": "terminator.darwin-arm64.node",
-  "name": "terminator.js-darwin-arm64",
+  "name": "@mediar-ai/terminator-darwin-arm64",
   "os": [
     "darwin"
   ],

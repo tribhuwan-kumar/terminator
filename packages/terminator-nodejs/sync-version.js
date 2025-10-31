@@ -27,7 +27,7 @@ packageContent.version = version;
 // Update optionalDependencies to use the same version
 if (packageContent.optionalDependencies) {
     for (const dep in packageContent.optionalDependencies) {
-        if (dep.startsWith('terminator.js-')) {
+        if (dep.startsWith('@mediar-ai/terminator-')) {
             packageContent.optionalDependencies[dep] = version;
         }
     }

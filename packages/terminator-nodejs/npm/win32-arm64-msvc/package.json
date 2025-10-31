@@ -9,7 +9,7 @@
     "terminator.win32-arm64-msvc.node"
   ],
   "main": "terminator.win32-arm64-msvc.node",
-  "name": "terminator.js-win32-arm64-msvc",
+  "name": "@mediar-ai/terminator-win32-arm64-msvc",
   "os": [
     "win32"
   ],

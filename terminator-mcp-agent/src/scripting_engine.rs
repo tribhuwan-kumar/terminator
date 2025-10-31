@@ -46,7 +46,7 @@ pub fn find_executable(name: &str) -> Option<String> {
 async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &str) {
     let main_pkg_path = script_dir
         .join("node_modules")
-        .join("terminator.js")
+        .join("@mediar-ai").join("terminator")
         .join("package.json");
 
     let main_version = match tokio::fs::read_to_string(&main_pkg_path).await {
@@ -63,15 +63,15 @@ async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &st
     // Determine platform-specific package name (same logic as installer)
     let platform_package_name: Option<&'static str> =
         if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
-            Some("terminator.js-win32-x64-msvc")
+            Some("@mediar-ai/terminator-win32-x64-msvc")
         } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "windows") {
-            Some("terminator.js-win32-arm64-msvc")
+            Some("@mediar-ai/terminator-win32-arm64-msvc")
         } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "macos") {
-            Some("terminator.js-darwin-x64")
+            Some("@mediar-ai/terminator-darwin-x64")
         } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "macos") {
-            Some("terminator.js-darwin-arm64")
+            Some("@mediar-ai/terminator-darwin-arm64")
         } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
-            Some("terminator.js-linux-x64-gnu")
+            Some("@mediar-ai/terminator-linux-x64-gnu")
         } else {
             None
         };
@@ -120,7 +120,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     let script_dir = std::env::temp_dir().join("terminator_mcp_persistent");
 
     // Check if we need to install or update terminator.js
-    let node_modules_path = script_dir.join("node_modules").join("terminator.js");
+    let node_modules_path = script_dir.join("node_modules").join("@mediar-ai").join("terminator");
     let package_json_path = script_dir.join("package.json");
 
     // Create the persistent directory if it doesn't exist
@@ -136,17 +136,17 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
   "name": "terminator-mcp-persistent",
   "version": "1.0.0",
   "dependencies": {
-    "terminator.js": "latest",
+    "@mediar-ai/terminator": "latest",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
     "@types/node": "^20.0.0"
   },
   "optionalDependencies": {
-    "terminator.js-darwin-arm64": "latest",
-    "terminator.js-darwin-x64": "latest",
-    "terminator.js-linux-x64-gnu": "latest",
-    "terminator.js-win32-arm64-msvc": "latest",
-    "terminator.js-win32-x64-msvc": "latest"
+    "@mediar-ai/terminator-darwin-arm64": "latest",
+    "@mediar-ai/terminator-darwin-x64": "latest",
+    "@mediar-ai/terminator-linux-x64-gnu": "latest",
+    "@mediar-ai/terminator-win32-arm64-msvc": "latest",
+    "@mediar-ai/terminator-win32-x64-msvc": "latest"
   }
 }"#;
 
@@ -198,15 +198,15 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
 
     // Check if platform-specific package exists for current platform
     let platform_package_name = if cfg!(target_arch = "x86_64") && cfg!(target_os = "windows") {
-        "terminator.js-win32-x64-msvc"
+        "@mediar-ai/terminator-win32-x64-msvc"
     } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "windows") {
-        "terminator.js-win32-arm64-msvc"
+        "@mediar-ai/terminator-win32-arm64-msvc"
     } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "macos") {
-        "terminator.js-darwin-x64"
+        "@mediar-ai/terminator-darwin-x64"
     } else if cfg!(target_arch = "aarch64") && cfg!(target_os = "macos") {
-        "terminator.js-darwin-arm64"
+        "@mediar-ai/terminator-darwin-arm64"
     } else if cfg!(target_arch = "x86_64") && cfg!(target_os = "linux") {
-        "terminator.js-linux-x64-gnu"
+        "@mediar-ai/terminator-linux-x64-gnu"
     } else {
         ""
     };
@@ -281,7 +281,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         vec!["install".to_string()]
     } else if should_check_update {
         // Force upgrade to latest for both packages
-        let mut args = vec!["install".to_string(), "terminator.js@latest".to_string()];
+        let mut args = vec!["install".to_string(), "@mediar-ai/terminator@latest".to_string()];
         if let Some(pp) = platform_pkg_opt {
             args.push(format!("{pp}@latest"));
         }
@@ -676,7 +676,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     if !platform_package_name.is_empty() {
                         let main_pkg_json = script_dir
                             .join("node_modules")
-                            .join("terminator.js")
+                            .join("@mediar-ai").join("terminator")
                             .join("package.json");
                         let platform_pkg_json = script_dir
                             .join("node_modules")
@@ -710,7 +710,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                             // bun: add both at latest
                                             let args = [
                                                 "add".to_string(),
-                                                "terminator.js@latest".to_string(),
+                                                "@mediar-ai/terminator@latest".to_string(),
                                                 format!("{platform_package_name}@latest"),
                                             ];
                                             tokio::process::Command::new(&installer_exe)
@@ -726,7 +726,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                                     "/c",
                                                     "npm",
                                                     "install",
-                                                    "terminator.js@latest",
+                                                    "@mediar-ai/terminator@latest",
                                                     &format!("{platform_package_name}@latest"),
                                                 ])
                                                 .output()
@@ -737,7 +737,7 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                                                 .current_dir(&script_dir)
                                                 .args([
                                                     "install",
-                                                    "terminator.js@latest",
+                                                    "@mediar-ai/terminator@latest",
                                                     &format!("{platform_package_name}@latest"),
                                                 ])
                                                 .output()
@@ -941,7 +941,7 @@ Module.prototype.require = function(id) {
 
     let wrapper_script = format!(
         r#"
-const {{ Desktop }} = require('terminator.js');
+const {{ Desktop }} = require('@mediar-ai/terminator');
 {module_resolution_setup}
 
 // Create global objects
@@ -1426,7 +1426,7 @@ Module.prototype.require = function(id: string) {
     // Wrap the script with terminator.js imports and helpers (TypeScript version)
     let wrapped_script = format!(
         r#"
-import {{ Desktop }} from 'terminator.js';
+import {{ Desktop }} from '@mediar-ai/terminator';
 {module_resolution_setup}
 
 const desktop = new Desktop();

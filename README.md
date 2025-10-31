@@ -121,7 +121,7 @@ pip install terminator
 ### 🟦 TypeScript / Node.js
 
 ```typescript
-const { Desktop } = require("terminator.js");
+const { Desktop } = require("@mediar-ai/terminator");
 
 // Async/await for modern control flow
 const desktop = new Desktop();
@@ -133,8 +133,8 @@ await desktop.pressKey("{Ctrl}s"); // Save
 **Installation:**
 
 ```bash
-npm install terminator.js
-# or: bun add terminator.js
+npm install @mediar-ai/terminator
+# or: bun add @mediar-ai/terminator
 ```
 
 ## Feature Support
@@ -155,7 +155,7 @@ While Terminator aims for full cross-platform support, current capabilities vary
 | Screen & Element Capture     |    ✅    |   ✅   |   🟡   | Take screenshots of displays or elements.            |
 | **Language Bindings**        |         |       |       |                                                      |
 | Python (`terminator.py`)     |    ✅    |   ✅   |   ✅   | `pip install terminator`                          |
-| TypeScript (`terminator.js`) |    ✅    |   ✅   |   ✅   | `npm i terminator.js`                                |
+| TypeScript (`@mediar-ai/terminator`) |    ✅    |   ✅   |   ✅   | `npm i @mediar-ai/terminator`                                |
 | MCP (`terminator-mcp-agent`) |    ✅    |   ✅   |   ✅   | `npx -y terminator-mcp-agent --add-to-app [app]`     |
 | Rust (`terminator-rs`)       |    ✅    |   ✅   |   ✅   | `cargo add terminator-rs`                            |
 
