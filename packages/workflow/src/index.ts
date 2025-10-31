@@ -21,6 +21,7 @@ export type {
   ExpectationContext,
   ExecutionStatus,
   ErrorCategory,
+  ExecuteError,
   ExecutionResponse,
   StepConfig,
   Step,

@@ -136,7 +136,7 @@ export interface ExecutionResponse<TData = any> {
 /**
  * Step configuration
  */
-export interface StepConfig<TInput = any,    = any> {
+export interface StepConfig<TInput = any, TOutput = any> {
   /** Unique step identifier */
   id: string;
   /** Human-readable step name */
@@ -193,6 +193,8 @@ export interface WorkflowConfig<TInput = any> {
   input: z.ZodSchema<TInput>;
   /** Optional tags */
   tags?: string[];
+  /** Steps to execute in sequence */
+  steps?: Step[];
   /** Workflow-level error handler */
   onError?: (context: WorkflowErrorContext<TInput>) => Promise<ExecutionResponse | void>;
 }

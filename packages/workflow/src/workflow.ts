@@ -201,9 +201,15 @@ function createWorkflowInstance<TInput = any>(
           status: 'error',
           message: error.message,
           error: {
-            category: 'technical',
+            category: error.category || 'technical',
             code: error.code || 'UNKNOWN_ERROR',
             message: error.message,
+            recoverable: error.recoverable,
+            metadata: error.metadata || {
+              step: failedStep.config.name,
+              stepId: failedStep.config.id,
+              timestamp: new Date().toISOString(),
+            },
           },
           data: context.data,
         };
@@ -223,10 +229,14 @@ function createWorkflowInstance<TInput = any>(
 }
 
 /**
- * Creates a workflow builder
+ * Creates a workflow builder or workflow instance
+ *
+ * If `steps` are provided in config, returns a Workflow directly.
+ * Otherwise, returns a WorkflowBuilder for chaining.
  *
  * @example
  * ```typescript
+ * // Builder pattern
  * const workflow = createWorkflow({
  *   name: 'SAP Login',
  *   input: z.object({
@@ -235,14 +245,25 @@ function createWorkflowInstance<TInput = any>(
  * })
  *   .step(loginStep)
  *   .step(processStep)
- *   .onSuccess(async ({ logger }) => {
- *     logger.success('Done!');
- *   })
  *   .build();
+ *
+ * // Direct pattern
+ * const workflow = createWorkflow({
+ *   name: 'SAP Login',
+ *   input: z.object({ username: z.string() }),
+ *   steps: [loginStep, processStep],
+ *   onError: async ({ error }) => ({ status: 'error', ... })
+ * });
  * ```
  */
 export function createWorkflow<TInput = any>(
   config: WorkflowConfig<TInput>
-): WorkflowBuilder<TInput> {
+): WorkflowBuilder<TInput> | Workflow<TInput> {
+  // If steps are provided in config, create workflow directly
+  if (config.steps && config.steps.length > 0) {
+    return createWorkflowInstance(config, config.steps);
+  }
+
+  // Otherwise, return builder for chaining
   return new WorkflowBuilder(config);
 }
