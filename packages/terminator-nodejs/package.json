@@ -37,11 +37,11 @@
     }
   },
   "optionalDependencies": {
-    "@mediar-ai/terminator-win32-x64-msvc": "0.20.5",
-    "@mediar-ai/terminator-darwin-x64": "0.20.5",
-    "@mediar-ai/terminator-linux-x64-gnu": "0.20.5",
-    "@mediar-ai/terminator-darwin-arm64": "0.20.5",
-    "@mediar-ai/terminator-win32-arm64-msvc": "0.20.5"
+    "@mediar-ai/terminator-win32-x64-msvc": "0.20.6",
+    "@mediar-ai/terminator-darwin-x64": "0.20.6",
+    "@mediar-ai/terminator-linux-x64-gnu": "0.20.6",
+    "@mediar-ai/terminator-darwin-arm64": "0.20.6",
+    "@mediar-ai/terminator-win32-arm64-msvc": "0.20.6"
   },
   "repository": {
     "type": "git",
@@ -60,5 +60,5 @@
     "test:chaining": "node tests/element-chaining.test.js"
   },
   "types": "wrapper.d.ts",
-  "version": "0.20.5"
+  "version": "0.20.6"
 }
