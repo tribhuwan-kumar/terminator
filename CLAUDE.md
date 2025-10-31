@@ -8,14 +8,15 @@ Open-source desktop automation framework (MIT). Gives AI hands to control any ap
 ## Packages
 
 ```
-terminator/                    # Core Rust (terminator-rs)
+crates/
+  terminator/                  # Core Rust (terminator-rs)
+  terminator-cli/              # CLI (version mgmt, workflows)
+  terminator-mcp-agent/        # MCP server (npm)
+  terminator-workflow-recorder/ # Record actions → YAML
 packages/
-  terminator-nodejs/          # @mediar-ai/terminator (npm)
-  terminator-python/          # terminator (PyPI)
+  terminator-nodejs/           # @mediar-ai/terminator (npm)
+  terminator-python/           # terminator (PyPI)
   workflow/                    # @mediar-ai/workflow (npm)
-terminator-cli/               # CLI (version mgmt, workflows)
-terminator-mcp-agent/         # MCP server (npm)
-terminator-workflow-recorder/ # Record actions → YAML
 ```
 
 **Current version**: `0.20.6` across all packages

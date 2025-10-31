@@ -63,7 +63,7 @@ jobs:
           cache: true
 
       - name: Build CLI
-        run: cargo build --manifest-path terminator-cli/Cargo.toml --release --target ${{ matrix.target }}
+        run: cargo build --manifest-path crates/terminator-cli/Cargo.toml --release --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'

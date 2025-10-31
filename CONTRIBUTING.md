@@ -368,7 +368,7 @@ The tool syncs these package versions:
 
 - ✅ **Workspace version** (`Cargo.toml`) - Main source of truth
 - ✅ **Node.js bindings** (`packages/terminator-nodejs/package.json`)
-- ✅ **MCP agent** (`terminator-mcp-agent/package.json`)
+- ✅ **MCP agent** (`crates/terminator-mcp-agent/package.json`)
 - ✅ **Platform packages** (all `npm/*/package.json` files)
 
 ### CI/CD Triggers

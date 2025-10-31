@@ -129,7 +129,7 @@ export interface ExecutionResponse<TData = any> {
 /**
  * Step configuration
  */
-export interface StepConfig<TInput = any, TOutput = any> {
+export interface StepConfig<TInput = any,    = any> {
   /** Unique step identifier */
   id: string;
   /** Human-readable step name */

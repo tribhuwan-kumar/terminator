@@ -81,7 +81,7 @@ jobs:
 
       - name: Install npm dependencies and build binary
         run: |
-          cd terminator-mcp-agent
+          cd crates/terminator-mcp-agent
           npm install
           npm run build
 
@@ -89,14 +89,14 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          dumpbin /dependents "terminator-mcp-agent\npm\${{ matrix.settings.npm_dir }}\${{ matrix.settings.bin_name }}"
+          dumpbin /dependents "crates\terminator-mcp-agent\npm\${{ matrix.settings.npm_dir }}\${{ matrix.settings.bin_name }}"
         shell: cmd
 
       - name: Smoke test binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cd terminator-mcp-agent
+          cd crates/terminator-mcp-agent
           $process = Start-Process -FilePath "npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}" -ArgumentList "--transport", "http", "--port", "3999" -PassThru
           Start-Sleep -Seconds 10
           try {
@@ -130,7 +130,7 @@ jobs:
       - name: Prepare release archive
         run: |
           mkdir -p release
-          cp terminator-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }} release/
+          cp crates/terminator-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }} release/
         shell: bash
 
       - name: Create release archive (Unix)
@@ -151,7 +151,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.settings.npm_dir }}-binary
-          path: terminator-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}
+          path: crates/terminator-mcp-agent/npm/${{ matrix.settings.npm_dir }}/${{ matrix.settings.bin_name }}
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
@@ -194,10 +194,10 @@ jobs:
               if ls "$dir"/* 1> /dev/null 2>&1; then
                 binary=$(ls "$dir"/*)
                 echo "Found binary: $binary"
-                echo "Creating directory: terminator-mcp-agent/npm/$platform/"
-                mkdir -p "terminator-mcp-agent/npm/$platform/"
-                echo "Moving binary to terminator-mcp-agent/npm/$platform/"
-                mv "$dir"/* "terminator-mcp-agent/npm/$platform/"
+                echo "Creating directory: crates/terminator-mcp-agent/npm/$platform/"
+                mkdir -p "crates/terminator-mcp-agent/npm/$platform/"
+                echo "Moving binary to crates/terminator-mcp-agent/npm/$platform/"
+                mv "$dir"/* "crates/terminator-mcp-agent/npm/$platform/"
                 echo "Successfully moved binary for $platform"
               else
                 echo "No files found in $dir"
@@ -208,11 +208,11 @@ jobs:
           done
 
           echo "Final structure:"
-          ls -la terminator-mcp-agent/npm/ || echo "npm directory not created"
+          ls -la crates/terminator-mcp-agent/npm/ || echo "npm directory not created"
 
       - name: Publish platform packages
         run: |
-          cd terminator-mcp-agent/npm
+          cd crates/terminator-mcp-agent/npm
           for dir in */; do
             if [ -f "$dir/package.json" ]; then
               echo "Publishing $dir"
@@ -226,14 +226,14 @@ jobs:
 
       - name: Publish main package
         run: |
-          cd terminator-mcp-agent
+          cd crates/terminator-mcp-agent
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Update npm dist-tag to latest
         run: |
-          cd terminator-mcp-agent
+          cd crates/terminator-mcp-agent
           VERSION=$(node -p "require('./package.json').version")
           npm dist-tag add terminator-mcp-agent@$VERSION latest
         env:

@@ -570,13 +570,13 @@ fn sync_nodejs_bindings(version: &str) {
 fn sync_mcp_agent(version: &str) {
     println!("📦 Syncing MCP agent...");
 
-    let mcp_dir = Path::new("terminator-mcp-agent");
+    let mcp_dir = Path::new("crates/terminator-mcp-agent");
     if !mcp_dir.exists() {
         return;
     }
 
     // Update main package.json
-    if let Err(e) = update_package_json("terminator-mcp-agent/package.json", version) {
+    if let Err(e) = update_package_json("crates/terminator-mcp-agent/package.json", version) {
         eprintln!("⚠️  Warning: Failed to update MCP agent package.json: {e}");
         return;
     }
@@ -619,7 +619,7 @@ fn sync_mcp_agent(version: &str) {
         if run_command("npm", &["install", "--package-lock-only", "--silent"]).is_ok() {
             println!("✅ MCP package-lock.json updated");
         } else {
-            println!("ℹ️  Note: package-lock.json update skipped (run 'npm install' in terminator-mcp-agent if needed)");
+            println!("ℹ️  Note: package-lock.json update skipped (run 'npm install' in crates/terminator-mcp-agent if needed)");
         }
         // Always change back to the original directory
         if let Err(e) = env::set_current_dir(&original_dir) {
@@ -714,9 +714,9 @@ fn show_status() {
 
     // Show package versions
     let nodejs_version = get_package_version("packages/terminator-nodejs/package.json");
-    let mcp_version = get_package_version("terminator-mcp-agent/package.json");
+    let mcp_version = get_package_version("crates/terminator-mcp-agent/package.json");
     let browser_extension_version =
-        get_package_version("terminator/browser-extension/manifest.json");
+        get_package_version("crates/terminator/browser-extension/manifest.json");
 
     println!();
     println!("Package versions:");

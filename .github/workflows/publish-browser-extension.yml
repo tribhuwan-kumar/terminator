@@ -18,8 +18,8 @@ jobs:
       - name: Prepare artifact
         run: |
           set -euo pipefail
-          cd terminator/browser-extension
-          zip -r ../../terminator-browser-extension.zip .
+          cd crates/terminator/browser-extension
+          zip -r ../../../terminator-browser-extension.zip .
           cd -
 
       - name: Upload to GitHub Release
