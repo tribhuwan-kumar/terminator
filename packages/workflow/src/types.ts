@@ -109,17 +109,24 @@ export type ExecutionStatus = 'success' | 'error' | 'warning' | 'user_input_requ
 export type ErrorCategory = 'business' | 'technical';
 
 /**
+ * Execute error information
+ */
+export interface ExecuteError {
+  category: ErrorCategory;
+  code: string;
+  message: string;
+  recoverable?: boolean;
+  metadata?: Record<string, any>;
+}
+
+/**
  * Workflow execution response
  */
 export interface ExecutionResponse<TData = any> {
   /** Well-rendered status in UI */
   status: ExecutionStatus;
   /** Error information (if status is 'error') */
-  error?: {
-    category: ErrorCategory;
-    code: string;
-    message?: string;
-  };
+  error?: ExecuteError;
   /** Optional custom data (less well-rendered in UI) */
   data?: TData;
   /** Optional user-facing message */
