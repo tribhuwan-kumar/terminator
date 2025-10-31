@@ -6,6 +6,7 @@ import {
   ErrorRecoveryResult,
   ExpectationContext,
   ExpectationResult,
+  ExecuteError,
 } from './types';
 
 /**
@@ -103,6 +104,16 @@ export function createStep<TInput = any, TOutput = any>(
         logger.error(`❌ Step failed: ${config.name} (${duration}ms)`);
         logger.error(`   Error: ${error.message}`);
 
+        // Enrich error with step metadata if not already present
+        if (!error.metadata) {
+          error.metadata = {
+            step: config.name,
+            stepId: config.id,
+            duration,
+            timestamp: new Date().toISOString(),
+          };
+        }
+
         // Try error recovery if handler provided
         if (config.onError) {
           const errorContext: ErrorContext<TInput, TOutput> = {
@@ -123,6 +134,13 @@ export function createStep<TInput = any, TOutput = any>(
 
           if (recoveryResult && !recoveryResult.recoverable) {
             logger.error(`❌ Cannot recover: ${recoveryResult.reason || 'Unknown'}`);
+
+            // Enrich error with recovery information
+            error.recoverable = false;
+            if (recoveryResult.reason && !error.code) {
+              error.code = 'RECOVERY_FAILED';
+            }
+
             throw error;
           }
 
@@ -130,7 +148,11 @@ export function createStep<TInput = any, TOutput = any>(
           return;
         }
 
-        // No error handler - rethrow
+        // No error handler - mark as non-recoverable and rethrow
+        if (error.recoverable === undefined) {
+          error.recoverable = false;
+        }
+
         throw error;
       }
     },

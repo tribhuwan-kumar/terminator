@@ -120,6 +120,29 @@ export interface ExecuteError {
 }
 
 /**
+ * Creates a structured workflow error
+ *
+ * @example
+ * ```typescript
+ * throw createWorkflowError({
+ *   category: 'business',
+ *   code: 'SAP_DUPLICATE_INVOICE',
+ *   message: 'Invoice already exists in SAP',
+ *   recoverable: true,
+ *   metadata: { invoiceNumber: '12345' }
+ * });
+ * ```
+ */
+export function createWorkflowError(error: ExecuteError): Error & ExecuteError {
+  const err = new Error(error.message) as Error & ExecuteError;
+  err.category = error.category;
+  err.code = error.code;
+  err.recoverable = error.recoverable;
+  err.metadata = error.metadata;
+  return err;
+}
+
+/**
  * Workflow execution response
  */
 export interface ExecutionResponse<TData = any> {
