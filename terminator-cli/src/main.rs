@@ -715,7 +715,6 @@ fn show_status() {
     // Show package versions
     let nodejs_version = get_package_version("packages/terminator-nodejs/package.json");
     let mcp_version = get_package_version("terminator-mcp-agent/package.json");
-    let workflow_builder_version = get_package_version("workflow-builder-mcp/package.json");
     let browser_extension_version =
         get_package_version("terminator/browser-extension/manifest.json");
 
@@ -723,7 +722,6 @@ fn show_status() {
     println!("Package versions:");
     println!("  Node.js bindings:  {nodejs_version}");
     println!("  MCP agent:         {mcp_version}");
-    println!("  Workflow Builder:  {workflow_builder_version}");
     println!("  Browser extension: {browser_extension_version}");
 
     // Git status
