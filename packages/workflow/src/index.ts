@@ -1,5 +1,5 @@
 /**
- * @mediar/terminator-workflow
+ * @mediar-ai/workflow
  *
  * TypeScript SDK for building Terminator workflows with type safety,
  * error recovery, and easy parsing for mediar-app UI.

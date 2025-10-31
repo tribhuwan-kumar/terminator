@@ -43,7 +43,7 @@ mod workflow_compatibility_tests {
 
         // workflow.ts
         let workflow_ts = r#"
-import { createStep, createWorkflow } from '@mediar/terminator-workflow';
+import { createStep, createWorkflow } from '@mediar-ai/workflow';
 import { z } from 'zod';
 
 const step1 = createStep({
@@ -637,7 +637,7 @@ steps:
 
         // Create workflow that throws error
         let workflow_ts = r#"
-import { createStep, createWorkflow } from '@mediar/terminator-workflow';
+import { createStep, createWorkflow } from '@mediar-ai/workflow';
 import { z } from 'zod';
 
 const errorStep = createStep({

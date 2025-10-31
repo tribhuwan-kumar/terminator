@@ -1,17 +1,17 @@
-# @mediar/terminator-workflow
+# @mediar-ai/workflow
 
 TypeScript SDK for building Terminator workflows with type safety, error recovery, and easy parsing for mediar-app UI.
 
 ## Installation
 
 ```bash
-npm install @mediar/terminator-workflow zod
+npm install @mediar-ai/workflow zod
 ```
 
 ## Quick Start
 
 ```typescript
-import { createStep, createWorkflow, z } from '@mediar/terminator-workflow';
+import { createStep, createWorkflow, z } from '@mediar-ai/workflow';
 
 // Define input schema
 const InputSchema = z.object({
