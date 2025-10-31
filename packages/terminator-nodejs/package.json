@@ -3,6 +3,9 @@
   "bugs": {
     "url": "https://github.com/mediar-ai/terminator/issues"
   },
+  "dependencies": {
+    "esbuild": "^0.25.11"
+  },
   "description": "Node.js/TypeScript bindings for the Terminator Rust library (via napi-rs)",
   "devDependencies": {
     "@napi-rs/cli": "^2.18.4"
@@ -59,8 +62,5 @@
     "test-hook": "powershell.exe -ExecutionPolicy Bypass -File \"../../.git/hooks/pre-push.ps1\""
   },
   "types": "wrapper.d.ts",
-  "version": "0.20.10",
-  "dependencies": {
-    "esbuild": "^0.25.11"
-  }
+  "version": "0.21.0"
 }
