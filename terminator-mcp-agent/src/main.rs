@@ -146,17 +146,13 @@ fn kill_previous_mcp_instances() {
     let mut system = System::new();
     system.refresh_processes(ProcessesToUpdate::All, true);
 
-    eprintln!("🔍 Checking for orphaned or conflicting MCP agents (my PID: {})", current_pid);
-
     let mut killed_count = 0;
     for (pid, process) in system.processes() {
         let process_name = process.name().to_string_lossy().to_lowercase();
 
         // Skip if not an MCP agent or bridge service
-        let is_agent = process_name.contains("terminator-mcp-agent");
-        let is_bridge = process_name.contains("terminator-bridge-service");
-
-        if !is_agent && !is_bridge {
+        if !process_name.contains("terminator-mcp-agent")
+            && !process_name.contains("terminator-bridge-service") {
             continue;
         }
 
@@ -165,47 +161,29 @@ fn kill_previous_mcp_instances() {
             continue;
         }
 
-        // Get parent PID
-        let parent_pid = match process.parent() {
-            Some(p) => p,
-            None => {
-                // No parent (very rare - only system processes)
-                eprintln!("🔴 Killing {} PID {} (no parent - orphaned system process)",
-                         if is_agent { "MCP agent" } else { "bridge service" }, pid);
-                if process.kill() {
-                    killed_count += 1;
-                    eprintln!("✅ Successfully killed PID {}", pid.as_u32());
-                }
-                continue;
-            }
-        };
+        // Check if parent is alive - if so, skip this process (belongs to another app)
+        if let Some(parent_pid) = process.parent() {
+            #[cfg(target_os = "windows")]
+            let parent_alive = is_process_alive(parent_pid.as_u32());
 
-        // Check if parent process is still alive
-        let parent_alive = system.processes().contains_key(&parent_pid);
+            #[cfg(not(target_os = "windows"))]
+            let parent_alive = system.processes().contains_key(&parent_pid);
 
-        if !parent_alive {
-            // Parent is dead - this is an orphaned process
-            eprintln!("🔴 Killing orphaned {} PID {} (parent {} is dead)",
-                     if is_agent { "MCP agent" } else { "bridge service" },
-                     pid, parent_pid.as_u32());
-            if process.kill() {
-                killed_count += 1;
-                eprintln!("✅ Successfully killed PID {}", pid.as_u32());
-            } else {
-                eprintln!("❌ Failed to kill PID {} (may require elevated permissions)", pid.as_u32());
+            if parent_alive {
+                continue;  // Parent alive, leave it alone
             }
-            continue;
         }
 
-        // Parent is alive - LEAVE IT ALONE!
-        // It belongs to another app (mediar-app, Claude Code, Cursor, etc.)
-        eprintln!("✅ Skipping {} PID {} (belongs to parent PID {}, still alive)",
-                 if is_agent { "MCP agent" } else { "bridge service" },
-                 pid, parent_pid.as_u32());
+        // Parent is dead or doesn't exist - kill the orphaned process
+        if process.kill() {
+            killed_count += 1;
+        }
     }
 
     if killed_count > 0 {
-        eprintln!("🧹 Cleaned up {} orphaned/conflicting process(es), waiting for ports to be released...", killed_count);
+        eprintln!(
+            "Killed {killed_count} previous instance(s), waiting for ports to be released..."
+        );
         // Increase wait time to 2 seconds for Windows to properly release ports
         std::thread::sleep(std::time::Duration::from_millis(2000));
 
@@ -229,8 +207,6 @@ fn kill_previous_mcp_instances() {
                 }
             }
         }
-    } else {
-        eprintln!("✨ No orphaned or conflicting processes found");
     }
 }
 
