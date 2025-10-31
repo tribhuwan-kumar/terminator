@@ -197,13 +197,12 @@ impl TextInputTracker {
         };
 
         // Add minimum threshold: Only emit TextInputCompleted if there was actual typing activity
+        // AND the text is not empty/whitespace-only
         // This prevents false positives from focus events on non-input elements
         if text_value.trim().is_empty() && !text_value.starts_with("[Text extraction failed") {
-            // Skip emission if there's no actual typing activity
-            if self.keystroke_count == 0 && !self.has_typing_activity {
-                info!("ℹ️ Skipping TextInputCompleted event: empty field with no typing activity (keystroke_count: 0)");
-                return None;
-            }
+            // Skip emission for empty/whitespace-only text, even if there was typing activity
+            info!("ℹ️ Skipping TextInputCompleted event: empty/whitespace-only text (keystroke_count: {}, has_typing_activity: {})", self.keystroke_count, self.has_typing_activity);
+            return None;
         }
 
         // Check if text is unchanged from initial value (placeholder text)
