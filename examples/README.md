@@ -2,12 +2,6 @@
 
 This directory contains example scripts demonstrating various capabilities of the Terminator automation framework.
 
-## Prerequisites
-
-Install the terminator-py package:
-```bash
-pip install terminator-py
-```
 
 ## Examples Table
 
@@ -38,25 +32,6 @@ pip install terminator-py
 | Hello World | examples/hello-world | Simple Next.js app demonstrating Terminator usage |
 | PDF to Form | examples/pdf-to-form | Converts PDF data into web forms using Terminator |
 
-## Additional Requirements
-
-### For Screenshot/OCR Examples
-```bash
-pip install Pillow
-```
-
-### For MCP Examples
-```bash
-pip install -r requirements-mcp.txt
-```
-
-## Running Examples
-
-Most Python examples can be run directly:
-```bash
-python examples/win_calculator.py
-```
-
 ## Platform Compatibility
 
 | Example Type | Windows | Linux | macOS |
@@ -73,3 +48,5 @@ python examples/win_calculator.py
 2. **"Element not found"** - UI selectors may vary between OS versions
 3. **"Module not found"** - Install required dependencies (see Additional Requirements)
 4. **Encoding errors** - Fixed for cross-platform compatibility
+
+5. 
