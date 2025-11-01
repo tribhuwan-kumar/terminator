@@ -775,6 +775,91 @@ impl AccessibilityEngine for WindowsEngine {
 
         // make condition according to selector
         match selector {
+            // Boolean operators: And, Or, Not
+            Selector::And(selectors) => {
+                if selectors.is_empty() {
+                    return Ok(Vec::new());
+                }
+
+                // Find elements matching first selector
+                let mut result_set: std::collections::HashSet<UIElement> = self
+                    .find_elements(&selectors[0], root, timeout, depth)?
+                    .into_iter()
+                    .collect();
+
+                // Intersect with each subsequent selector
+                for sel in &selectors[1..] {
+                    let next_set: std::collections::HashSet<UIElement> = self
+                        .find_elements(sel, root, timeout, depth)?
+                        .into_iter()
+                        .collect();
+
+                    result_set = result_set
+                        .into_iter()
+                        .filter(|el| next_set.contains(el))
+                        .collect();
+
+                    if result_set.is_empty() {
+                        break;
+                    }
+                }
+
+                Ok(result_set.into_iter().collect())
+            }
+            Selector::Or(selectors) => {
+                let mut seen = std::collections::HashSet::new();
+                let mut results = Vec::new();
+
+                for sel in selectors {
+                    match self.find_elements(sel, root, timeout, depth) {
+                        Ok(elements) => {
+                            for el in elements {
+                                if seen.insert(el.clone()) {
+                                    results.push(el);
+                                }
+                            }
+                        }
+                        Err(AutomationError::ElementNotFound(_)) => {
+                            // Continue trying other selectors
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+
+                if results.is_empty() {
+                    return Err(AutomationError::ElementNotFound(
+                        "No element matched any OR condition".to_string(),
+                    ));
+                }
+
+                Ok(results)
+            }
+            Selector::Not(inner_selector) => {
+                // Get all elements in scope
+                let all_elements = self.find_elements(&Selector::Role {
+                    role: "*".to_string(),
+                    name: None,
+                }, root, timeout, depth)?;
+
+                // Get elements matching the NOT condition
+                let excluded_set: std::collections::HashSet<UIElement> = match self
+                    .find_elements(inner_selector, root, timeout, depth)
+                {
+                    Ok(elements) => elements.into_iter().collect(),
+                    Err(AutomationError::ElementNotFound(_)) => {
+                        // Nothing to exclude - return all elements
+                        return Ok(all_elements);
+                    }
+                    Err(e) => return Err(e),
+                };
+
+                // Filter out excluded elements
+                Ok(all_elements
+                    .into_iter()
+                    .filter(|el| !excluded_set.contains(el))
+                    .collect())
+            }
             Selector::Role { role, name } => {
                 let win_control_type = map_generic_role_to_win_roles(role);
                 // Use optimized depth for containers when appropriate
@@ -1421,6 +1506,13 @@ impl AccessibilityEngine for WindowsEngine {
         let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u32;
 
         match selector {
+            // Boolean operators - delegate to find_elements and take first result
+            Selector::And(_) | Selector::Or(_) | Selector::Not(_) => {
+                let elements = self.find_elements(selector, root, timeout, None)?;
+                elements.into_iter().next().ok_or_else(|| {
+                    AutomationError::ElementNotFound("No element found".to_string())
+                })
+            }
             Selector::Role { role, name } => {
                 let win_control_type = map_generic_role_to_win_roles(role);
                 // Use optimized depth for containers when appropriate
