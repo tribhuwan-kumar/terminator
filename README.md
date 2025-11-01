@@ -53,10 +53,10 @@ We achieve this by pre-training workflows as deterministic code, and calling AI 
 
 ### For Teams
 
-[Our private beta workflow builder](https://www.mediar.ai/) + managed hosting = plug-and-play automation engine for your business:
+[Our public beta workflow builder](https://www.mediar.ai/) + managed hosting = n8n for data entry automation in legacy systems:
 
-- Record & map your processes in days
-- Deploy AI to execute them at >95% accuracy
+- Record & map your processes in 5 mins
+- Deploy AI to execute them at >95% success rate
 - Kill repetitive work without legacy RPA complexity or cost
 
 ## 🎯 Choose Your Path
@@ -73,111 +73,7 @@ Or install via the [MCP directory](https://github.com/mediar-ai/terminator/tree/
 
 **What this does:** Gives AI assistants the ability to control your desktop and automate tasks across any application.
 
----
-
-### 🐍 Want Python Scripting?
-
-```bash
-pip install terminator
-```
-
-**Note:** This installs Python bindings only. For CLI tools and browser automation, see the CLI installation below.
-
-[Jump to Python examples →](#-python)
-
----
-
-### 🔧 Want the Standalone CLI?
-
-See installation instructions below ↓
-
----
-
-## ⚡ CLI Installation
-
-### Prerequisites
-
-**Windows Users:** Ensure you have Visual C++ 2015-2022 Redistributables installed.
-
-- Download: [VC++ Redistributables (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-- Most Windows systems already have this, but if you see errors about missing `vcruntime140.dll` or `msvcp140.dll`, install this first.
-
-**macOS/Linux:** No additional prerequisites required.
-
-#### macOS/Linux
-```bash
-curl -fsSL https://mediar.ai/install.sh | bash
-```
-
-#### Windows
-
-In PowerShell:
-```powershell
-irm https://mediar.ai/install.ps1 | iex
-```
-
-**If blocked by antivirus software:**
-
-Some antivirus programs may block the installer script. If this happens:
-
-1. Download the latest release manually: [GitHub Releases](https://github.com/mediar-ai/terminator/releases/latest)
-2. Extract `terminator-cli-windows-x86_64.zip`
-3. Add the extracted folder to your system PATH
-4. Run `terminator setup` in a new terminal
-
-#### After Installation
-Run the setup command to configure your environment:
-```bash
-terminator setup
-```
-
-This will:
-- ✅ Install the Chrome extension automatically (please do not use keyboard/mouse for a few seconds)
-- ✅ Check system requirements (VC++ redistributables on Windows)
-- ✅ Configure SDKs and dependencies
-- ✅ Verify the MCP agent is ready
-
-## ⚡ Quick start: programmatic control
-
-### 🐍 Python
-
-```python
-import terminator
-
-# Control applications programmatically
-desktop = terminator.Desktop()
-desktop.open_application('calc')
-desktop.locator('name:Seven').click()
-desktop.locator('name:Plus').click()
-desktop.locator('name:Three').click()
-desktop.locator('name:Equals').click()
-# Result: 10 appears in calculator
-```
-
-**Installation:**
-
-```bash
-pip install terminator
-```
-
-### 🟦 TypeScript / Node.js
-
-```typescript
-const { Desktop } = require("@mediar-ai/terminator");
-
-// Async/await for modern control flow
-const desktop = new Desktop();
-await desktop.openApplication("notepad");
-await desktop.locator("name:Edit").typeText("Hello from TypeScript!");
-await desktop.pressKey("{Ctrl}s"); // Save
-```
-
-**Installation:**
-
-```bash
-npm install @mediar-ai/terminator
-# or: bun add @mediar-ai/terminator
-```
+To create workflows, please [download the desktop app](https://www.mediar.ai/).
 
 ## Feature Support
 
@@ -196,7 +92,7 @@ While Terminator aims for full cross-platform support, current capabilities vary
 | Monitor Management           |    ✅    |   🟡   |   🟡   | Multi-display support.                               |
 | Screen & Element Capture     |    ✅    |   ✅   |   🟡   | Take screenshots of displays or elements.            |
 | **Language Bindings**        |         |       |       |                                                      |
-| Python (`terminator.py`)     |    ✅    |   ✅   |   ✅   | `pip install terminator`                          |
+| Python (`terminator.py`)     |    🟡    |   🟡   |   🟡   | `pip install terminator`                          |
 | TypeScript (`@mediar-ai/terminator`) |    ✅    |   ✅   |   ✅   | `npm i @mediar-ai/terminator`                                |
 | MCP (`terminator-mcp-agent`) |    ✅    |   ✅   |   ✅   | `npx -y terminator-mcp-agent --add-to-app [app]`     |
 | Rust (`terminator-rs`)       |    ✅    |   ✅   |   ✅   | `cargo add terminator-rs`                            |
@@ -241,36 +137,16 @@ To create reliable selectors (e.g. `name:Seven`, `role:Button`, `window:Calculat
 
 ---
 
-### 💡 Tip
-
-Once you identify the structure of your UI:
-
-```python
-# Sample pattern
-desktop.locator('window:Calculator')
-       .locator('role:Button')
-       .locator('name:Seven')
-```
-
-You can build and debug selector paths incrementally using `.locator()` chaining.
-
 ## Explore Further
 
 - **[Examples](https://github.com/mediar-ai/terminator/tree/main/examples)**
 
 ## Troubleshooting
 
-For detailed troubleshooting, debugging, and MCP server logs, see the [MCP Agent documentation](https://github.com/mediar-ai/terminator/tree/main/terminator-mcp-agent#troubleshooting--debugging).
+For detailed troubleshooting, debugging, and MCP server logs, [send us a message](https://www.mediar.ai/).
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues and pull requests. many parts are experimental, and help is appreciated. join our [Discord](https://discord.gg/dU9EBuw7Uq) to discuss.
+Contributions are welcome! Please feel free to submit issues and pull requests. many parts are experimental, and help is appreciated. 
 
-## Businesses
-
-If you want desktop automation at scale for your business, [let's talk](https://mediar.ai).
-
-## Investors
-
-[louis@mediar.ai](mailto:louis@mediar.ai)
 
