@@ -59,17 +59,50 @@ We achieve this by pre-training workflows as deterministic code, and calling AI 
 - Deploy AI to execute them at >95% accuracy
 - Kill repetitive work without legacy RPA complexity or cost
 
-## ⚡ Quick start: MCP
+## 🎯 Choose Your Path
 
-Install the Terminator MCP in Claude Code with one command:
+### 🤖 Want AI Automation with Claude Code? (Recommended for Most Users)
+
+Install the Terminator MCP in Claude Code:
 
 ```bash
 claude mcp add terminator "npx -y terminator-mcp-agent@latest" -s user
 ```
 
-Or install via the [MCP directory](https://github.com/mediar-ai/terminator/tree/main/terminator-mcp-agent) for other clients.
+Or install via the [MCP directory](https://github.com/mediar-ai/terminator/tree/main/terminator-mcp-agent) for other clients (Cursor, VS Code, etc.).
 
-## ⚡ Quick start: CLI
+**What this does:** Gives AI assistants the ability to control your desktop and automate tasks across any application.
+
+---
+
+### 🐍 Want Python Scripting?
+
+```bash
+pip install terminator
+```
+
+**Note:** This installs Python bindings only. For CLI tools and browser automation, see the CLI installation below.
+
+[Jump to Python examples →](#-python)
+
+---
+
+### 🔧 Want the Standalone CLI?
+
+See installation instructions below ↓
+
+---
+
+## ⚡ CLI Installation
+
+### Prerequisites
+
+**Windows Users:** Ensure you have Visual C++ 2015-2022 Redistributables installed.
+
+- Download: [VC++ Redistributables (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+- Most Windows systems already have this, but if you see errors about missing `vcruntime140.dll` or `msvcp140.dll`, install this first.
+
+**macOS/Linux:** No additional prerequisites required.
 
 #### macOS/Linux
 ```bash
@@ -78,10 +111,19 @@ curl -fsSL https://mediar.ai/install.sh | bash
 
 #### Windows
 
-In powershell:
+In PowerShell:
 ```powershell
 irm https://mediar.ai/install.ps1 | iex
 ```
+
+**If blocked by antivirus software:**
+
+Some antivirus programs may block the installer script. If this happens:
+
+1. Download the latest release manually: [GitHub Releases](https://github.com/mediar-ai/terminator/releases/latest)
+2. Extract `terminator-cli-windows-x86_64.zip`
+3. Add the extracted folder to your system PATH
+4. Run `terminator setup` in a new terminal
 
 #### After Installation
 Run the setup command to configure your environment:
