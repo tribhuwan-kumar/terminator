@@ -152,7 +152,8 @@ fn kill_previous_mcp_instances() {
 
         // Skip if not an MCP agent or bridge service
         if !process_name.contains("terminator-mcp-agent")
-            && !process_name.contains("terminator-bridge-service") {
+            && !process_name.contains("terminator-bridge-service")
+        {
             continue;
         }
 
@@ -170,7 +171,7 @@ fn kill_previous_mcp_instances() {
             let parent_alive = system.processes().contains_key(&parent_pid);
 
             if parent_alive {
-                continue;  // Parent alive, leave it alone
+                continue; // Parent alive, leave it alone
             }
         }
 

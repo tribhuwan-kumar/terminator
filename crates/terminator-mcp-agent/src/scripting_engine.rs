@@ -46,7 +46,8 @@ pub fn find_executable(name: &str) -> Option<String> {
 async fn log_terminator_js_version(script_dir: &std::path::Path, log_prefix: &str) {
     let main_pkg_path = script_dir
         .join("node_modules")
-        .join("@mediar-ai").join("terminator")
+        .join("@mediar-ai")
+        .join("terminator")
         .join("package.json");
 
     let main_version = match tokio::fs::read_to_string(&main_pkg_path).await {
@@ -120,7 +121,10 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
     let script_dir = std::env::temp_dir().join("terminator_mcp_persistent");
 
     // Check if we need to install or update terminator.js
-    let node_modules_path = script_dir.join("node_modules").join("@mediar-ai").join("terminator");
+    let node_modules_path = script_dir
+        .join("node_modules")
+        .join("@mediar-ai")
+        .join("terminator");
     let package_json_path = script_dir.join("package.json");
 
     // Create the persistent directory if it doesn't exist
@@ -281,7 +285,10 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
         vec!["install".to_string()]
     } else if should_check_update {
         // Force upgrade to latest for both packages
-        let mut args = vec!["install".to_string(), "@mediar-ai/terminator@latest".to_string()];
+        let mut args = vec![
+            "install".to_string(),
+            "@mediar-ai/terminator@latest".to_string(),
+        ];
         if let Some(pp) = platform_pkg_opt {
             args.push(format!("{pp}@latest"));
         }
@@ -676,7 +683,8 @@ async fn ensure_terminator_js_installed(runtime: &str) -> Result<std::path::Path
                     if !platform_package_name.is_empty() {
                         let main_pkg_json = script_dir
                             .join("node_modules")
-                            .join("@mediar-ai").join("terminator")
+                            .join("@mediar-ai")
+                            .join("terminator")
                             .join("package.json");
                         let platform_pkg_json = script_dir
                             .join("node_modules")

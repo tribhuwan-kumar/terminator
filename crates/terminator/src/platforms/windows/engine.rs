@@ -837,22 +837,26 @@ impl AccessibilityEngine for WindowsEngine {
             }
             Selector::Not(inner_selector) => {
                 // Get all elements in scope
-                let all_elements = self.find_elements(&Selector::Role {
-                    role: "*".to_string(),
-                    name: None,
-                }, root, timeout, depth)?;
+                let all_elements = self.find_elements(
+                    &Selector::Role {
+                        role: "*".to_string(),
+                        name: None,
+                    },
+                    root,
+                    timeout,
+                    depth,
+                )?;
 
                 // Get elements matching the NOT condition
-                let excluded_set: std::collections::HashSet<UIElement> = match self
-                    .find_elements(inner_selector, root, timeout, depth)
-                {
-                    Ok(elements) => elements.into_iter().collect(),
-                    Err(AutomationError::ElementNotFound(_)) => {
-                        // Nothing to exclude - return all elements
-                        return Ok(all_elements);
-                    }
-                    Err(e) => return Err(e),
-                };
+                let excluded_set: std::collections::HashSet<UIElement> =
+                    match self.find_elements(inner_selector, root, timeout, depth) {
+                        Ok(elements) => elements.into_iter().collect(),
+                        Err(AutomationError::ElementNotFound(_)) => {
+                            // Nothing to exclude - return all elements
+                            return Ok(all_elements);
+                        }
+                        Err(e) => return Err(e),
+                    };
 
                 // Filter out excluded elements
                 Ok(all_elements
@@ -1509,9 +1513,10 @@ impl AccessibilityEngine for WindowsEngine {
             // Boolean operators - delegate to find_elements and take first result
             Selector::And(_) | Selector::Or(_) | Selector::Not(_) => {
                 let elements = self.find_elements(selector, root, timeout, None)?;
-                elements.into_iter().next().ok_or_else(|| {
-                    AutomationError::ElementNotFound("No element found".to_string())
-                })
+                elements
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| AutomationError::ElementNotFound("No element found".to_string()))
             }
             Selector::Role { role, name } => {
                 let win_control_type = map_generic_role_to_win_roles(role);

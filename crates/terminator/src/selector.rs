@@ -63,11 +63,11 @@ impl std::fmt::Display for Selector {
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     Selector(String),
-    And,       // &&
-    Or,        // || or ,
-    Not,       // !
-    LParen,    // (
-    RParen,    // )
+    And,    // &&
+    Or,     // || or ,
+    Not,    // !
+    LParen, // (
+    RParen, // )
 }
 
 /// Tokenize a selector string into tokens for boolean expression parsing
@@ -448,4 +448,3 @@ impl From<&str> for Selector {
         parse_atomic_selector(s)
     }
 }
-
