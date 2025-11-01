@@ -266,21 +266,41 @@ impl SetupCommand {
         );
         println!();
 
-        // First try to find a local workflow file
+        // First try to find a local workflow file (for developers)
         let local_workflow =
-            PathBuf::from("terminator/browser-extension/install_chrome_extension_ui.yml");
+            PathBuf::from("crates/terminator/browser-extension/install_chrome_extension_ui.yml");
+
         let workflow_source = if local_workflow.exists() {
+            // Use local file if available (developer mode)
+            println!("  Using local workflow file...");
             local_workflow.to_str().unwrap().to_string()
         } else {
-            // Use the workflow from GitHub directly
-            // This works even if the user doesn't have the repo cloned
-            "https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator/browser-extension/install_chrome_extension_ui.yml".to_string()
+            // Download workflow to temp directory for safety
+            println!("  {} Downloading workflow from GitHub...", "📥".cyan());
+
+            let temp_dir = std::env::temp_dir();
+            let workflow_path = temp_dir.join("terminator-chrome-extension-install.yml");
+
+            let github_url = "https://raw.githubusercontent.com/mediar-ai/terminator/main/crates/terminator/browser-extension/install_chrome_extension_ui.yml";
+
+            // Download workflow file
+            match self.download_workflow(github_url, &workflow_path).await {
+                Ok(_) => {
+                    println!("  {} Workflow downloaded successfully", "✓".green());
+                    workflow_path.to_str().unwrap().to_string()
+                }
+                Err(e) => {
+                    println!("  {} Failed to download workflow: {}", "❌".red(), e);
+                    self.show_manual_fallback();
+                    return (
+                        "Chrome Extension",
+                        Err(anyhow::anyhow!("Failed to download workflow: {}", e)),
+                    );
+                }
+            }
         };
 
-        println!("  Running installation workflow...");
-        if !local_workflow.exists() {
-            println!("  {} Downloading workflow from GitHub...", "📥".cyan());
-        }
+        println!();
         println!("  This will:");
         println!("    1. Download the Chrome extension");
         println!("    2. Open Chrome and navigate to extensions page");
@@ -348,21 +368,50 @@ impl SetupCommand {
         }
     }
 
+    async fn download_workflow(&self, url: &str, dest_path: &PathBuf) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        // Use reqwest to download the file
+        let client = reqwest::Client::builder()
+            .user_agent("terminator-cli")
+            .build()?;
+
+        let response = client.get(url).send().await?;
+
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Failed to download workflow: HTTP {}",
+                response.status()
+            ));
+        }
+
+        let content = response.bytes().await?;
+
+        // Write to temp file
+        let mut file = tokio::fs::File::create(dest_path).await?;
+        file.write_all(&content).await?;
+        file.flush().await?;
+
+        Ok(())
+    }
+
     fn show_manual_fallback(&self) {
         println!();
         println!("  {} Manual installation steps:", "📝".cyan());
         println!(
-            "  1. Download extension from: {}",
-            "https://github.com/mediar-ai/terminator/releases".underline()
+            "  1. Download: {}",
+            "https://github.com/mediar-ai/terminator/releases/latest/download/terminator-browser-extension.zip".underline()
         );
-        println!("  2. Extract the zip file");
+        println!("  2. Extract the zip file to a folder (e.g., C:\\temp\\terminator-bridge)");
         println!(
             "  3. Open Chrome and go to: {}",
             "chrome://extensions".bold()
         );
-        println!("  4. Enable {} mode (top right)", "Developer".bold());
-        println!("  5. Click {} (top left)", "Load unpacked".bold());
-        println!("  6. Select the extracted folder");
+        println!("  4. Enable {} mode (toggle in top right)", "Developer".bold());
+        println!("  5. Click {} (button in top left)", "Load unpacked".bold());
+        println!("  6. Select the extracted folder containing manifest.json");
+        println!();
+        println!("  {} This also works with Chromium-based browsers (Brave, Edge, Vivaldi)", "ℹ️".blue());
     }
 
     async fn verify_installation(&self) -> (&'static str, Result<String>) {
