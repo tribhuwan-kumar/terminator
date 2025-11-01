@@ -674,6 +674,95 @@ fn find_elements_inner<'a>(
     Box::pin(async move {
         use crate::Selector;
         match selector {
+            // Boolean operators
+            Selector::And(selectors) => {
+                if selectors.is_empty() {
+                    return Ok(Vec::new());
+                }
+
+                // Find elements matching first selector
+                let mut result_set: std::collections::HashSet<UIElement> =
+                    find_elements_inner(linux_engine, &selectors[0], root, depth)
+                        .await?
+                        .into_iter()
+                        .collect();
+
+                // Intersect with each subsequent selector
+                for sel in &selectors[1..] {
+                    let next_set: std::collections::HashSet<UIElement> =
+                        find_elements_inner(linux_engine, sel, root, depth)
+                            .await?
+                            .into_iter()
+                            .collect();
+
+                    result_set = result_set
+                        .into_iter()
+                        .filter(|el| next_set.contains(el))
+                        .collect();
+
+                    if result_set.is_empty() {
+                        break;
+                    }
+                }
+
+                return Ok(result_set.into_iter().collect());
+            }
+            Selector::Or(selectors) => {
+                let mut seen = std::collections::HashSet::new();
+                let mut results = Vec::new();
+
+                for sel in selectors {
+                    match find_elements_inner(linux_engine, sel, root, depth).await {
+                        Ok(elements) => {
+                            for el in elements {
+                                if seen.insert(el.clone()) {
+                                    results.push(el);
+                                }
+                            }
+                        }
+                        Err(AutomationError::ElementNotFound(_)) => {
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+
+                if results.is_empty() {
+                    return Err(AutomationError::ElementNotFound(
+                        "No element matched any OR condition".to_string(),
+                    ));
+                }
+
+                return Ok(results);
+            }
+            Selector::Not(inner_selector) => {
+                // Get all elements in scope
+                let all_elements = find_elements_inner(
+                    linux_engine,
+                    &Selector::Role {
+                        role: "*".to_string(),
+                        name: None,
+                    },
+                    root,
+                    depth,
+                )
+                .await?;
+
+                // Get elements matching the NOT condition
+                let excluded_set: std::collections::HashSet<UIElement> =
+                    match find_elements_inner(linux_engine, inner_selector, root, depth).await {
+                        Ok(elements) => elements.into_iter().collect(),
+                        Err(AutomationError::ElementNotFound(_)) => {
+                            return Ok(all_elements);
+                        }
+                        Err(e) => return Err(e),
+                    };
+
+                return Ok(all_elements
+                    .into_iter()
+                    .filter(|el| !excluded_set.contains(el))
+                    .collect());
+            }
             Selector::Attributes(_) => {
                 return Err(AutomationError::UnsupportedPlatform(
                     "Selector::Attributes is not implemented for Linux".to_string(),

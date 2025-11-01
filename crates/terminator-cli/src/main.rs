@@ -298,11 +298,7 @@ fn ensure_project_root() {
 
     // If we're in crates/, go up one level
     if env::current_dir()
-        .map(|p| {
-            p.file_name()
-                .map(|n| n == "crates")
-                .unwrap_or(false)
-        })
+        .map(|p| p.file_name().map(|n| n == "crates").unwrap_or(false))
         .unwrap_or(false)
         && env::set_current_dir("..").is_err()
     {
@@ -705,10 +701,7 @@ fn sync_workflow_package(version: &str) {
     let package_json = workflow_dir.join("package.json");
     if package_json.exists() {
         if let Err(e) = update_package_json(&package_json.to_string_lossy(), version) {
-            eprintln!(
-                "⚠️  Warning: Failed to update workflow package.json: {}",
-                e
-            );
+            eprintln!("⚠️  Warning: Failed to update workflow package.json: {}", e);
         } else {
             println!("✅ Workflow package synced to {version}");
         }
