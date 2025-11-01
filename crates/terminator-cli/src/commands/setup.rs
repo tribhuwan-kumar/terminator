@@ -268,13 +268,13 @@ impl SetupCommand {
 
         // First try to find a local workflow file
         let local_workflow =
-            PathBuf::from("terminator/browser-extension/install_chrome_extension_ui.yml");
+            PathBuf::from("crates/terminator/browser-extension/install_chrome_extension_ui.yml");
         let workflow_source = if local_workflow.exists() {
             local_workflow.to_str().unwrap().to_string()
         } else {
             // Use the workflow from GitHub directly
             // This works even if the user doesn't have the repo cloned
-            "https://raw.githubusercontent.com/mediar-ai/terminator/main/terminator/browser-extension/install_chrome_extension_ui.yml".to_string()
+            "https://raw.githubusercontent.com/mediar-ai/terminator/main/crates/terminator/browser-extension/install_chrome_extension_ui.yml".to_string()
         };
 
         println!("  Running installation workflow...");
@@ -352,17 +352,19 @@ impl SetupCommand {
         println!();
         println!("  {} Manual installation steps:", "📝".cyan());
         println!(
-            "  1. Download extension from: {}",
-            "https://github.com/mediar-ai/terminator/releases".underline()
+            "  1. Download: {}",
+            "https://github.com/mediar-ai/terminator/releases/latest/download/terminator-browser-extension.zip".underline()
         );
-        println!("  2. Extract the zip file");
+        println!("  2. Extract the zip file to a folder (e.g., C:\\temp\\terminator-bridge)");
         println!(
             "  3. Open Chrome and go to: {}",
             "chrome://extensions".bold()
         );
-        println!("  4. Enable {} mode (top right)", "Developer".bold());
-        println!("  5. Click {} (top left)", "Load unpacked".bold());
-        println!("  6. Select the extracted folder");
+        println!("  4. Enable {} mode (toggle in top right)", "Developer".bold());
+        println!("  5. Click {} (button in top left)", "Load unpacked".bold());
+        println!("  6. Select the extracted folder containing manifest.json");
+        println!();
+        println!("  {} This also works with Chromium-based browsers (Brave, Edge, Vivaldi)", "ℹ️".blue());
     }
 
     async fn verify_installation(&self) -> (&'static str, Result<String>) {
