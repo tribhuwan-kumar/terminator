@@ -63,3 +63,13 @@ ctrlc = "3.4"
 
 
 regex = "1.10.5"
+
+[profile.release]
+# Enables full cross-crate optimisations, producing the smallest and fastest binary.
+lto = "fat"
+# Because we bundle some of these executables with npm packages, we
+# remove everything to make the binary as small as possible.
+strip = "symbols"
+
+# See https://github.com/openai/codex/issues/1411 for details.
+codegen-units = 1
