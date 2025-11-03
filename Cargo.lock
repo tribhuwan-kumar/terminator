@@ -5312,7 +5312,6 @@ dependencies = [
 name = "terminator-workflow-recorder"
 version = "0.22.0"
 dependencies = [
- "anyhow",
  "arboard",
  "async-stream",
  "criterion",
