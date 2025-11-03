@@ -62,7 +62,10 @@ fn test_chain_with_window_selector() {
                 Selector::And(v) => {
                     assert_eq!(v.len(), 2);
                 }
-                _ => panic!("Expected And selector in chain first part, got: {:?}", parts[0]),
+                _ => panic!(
+                    "Expected And selector in chain first part, got: {:?}",
+                    parts[0]
+                ),
             }
             // Second part should be Role (Document)
             match &parts[1] {
@@ -70,7 +73,10 @@ fn test_chain_with_window_selector() {
                     assert_eq!(role, "Document");
                     assert_eq!(*name, None);
                 }
-                _ => panic!("Expected Role selector in chain second part, got: {:?}", parts[1]),
+                _ => panic!(
+                    "Expected Role selector in chain second part, got: {:?}",
+                    parts[1]
+                ),
             }
         }
         _ => panic!("Expected Chain selector, got: {:?}", sel),

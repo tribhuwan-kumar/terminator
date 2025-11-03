@@ -616,21 +616,21 @@ impl WindowsEngine {
                 Ok(!self.element_matches_selector(element, inner_selector)?)
             }
             // Complex selectors that would need more context
-            Selector::Chain(_) |
-            Selector::Has(_) |
-            Selector::Parent |
-            Selector::RightOf(_) |
-            Selector::LeftOf(_) |
-            Selector::Above(_) |
-            Selector::Below(_) |
-            Selector::Near(_) |
-            Selector::Path(_) |
-            Selector::NativeId(_) |
-            Selector::Attributes(_) |
-            Selector::Filter(_) |
-            Selector::LocalizedRole(_) |
-            Selector::Nth(_) |
-            Selector::Invalid(_) => {
+            Selector::Chain(_)
+            | Selector::Has(_)
+            | Selector::Parent
+            | Selector::RightOf(_)
+            | Selector::LeftOf(_)
+            | Selector::Above(_)
+            | Selector::Below(_)
+            | Selector::Near(_)
+            | Selector::Path(_)
+            | Selector::NativeId(_)
+            | Selector::Attributes(_)
+            | Selector::Filter(_)
+            | Selector::LocalizedRole(_)
+            | Selector::Nth(_)
+            | Selector::Invalid(_) => {
                 // These selectors require searching relative to other elements or are complex queries
                 // For now, we'll return false as they can't be evaluated on a single element
                 Ok(false)

@@ -1,6 +1,5 @@
 mod boolean_selector_tests;
 mod e2e_tests;
-mod notepad_selector_test;
 mod firefox_window_tests;
 mod functional_verification_tests;
 mod get_applications_tests;
@@ -8,6 +7,7 @@ mod get_applications_tests;
 mod high_level_inputs_tests;
 #[cfg(all(test, target_os = "windows"))]
 mod id_stability_tests;
+mod notepad_selector_test;
 #[cfg(test)]
 mod parent_navigation_tests;
 #[cfg(test)]
