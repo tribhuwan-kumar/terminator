@@ -1,17 +1,17 @@
 use crate::Selector;
 
 #[cfg(target_os = "windows")]
-#[test]
-fn test_open_notepad_and_type() {
+#[tokio::test]
+async fn test_open_notepad_and_type() {
     use crate::{Desktop, Locator};
-    use std::thread;
     use std::time::Duration;
+    use tokio::time::sleep;
 
     // Create desktop instance
     let desktop = Desktop::new().expect("Failed to create Desktop instance");
 
     // Open Notepad
-    let notepad_result = desktop.open_application("notepad");
+    let notepad_result = desktop.open_application("notepad").await;
     assert!(
         notepad_result.is_ok(),
         "Failed to open Notepad: {:?}",
@@ -19,7 +19,7 @@ fn test_open_notepad_and_type() {
     );
 
     // Wait for Notepad to fully load
-    thread::sleep(Duration::from_millis(1500));
+    sleep(Duration::from_millis(1500)).await;
 
     // Find Notepad window using AND selector
     let window_selector = Selector::from("role:Window && name:Notepad");
@@ -49,9 +49,9 @@ fn test_open_notepad_and_type() {
 
     let text_editor = editor.unwrap();
 
-    // Type text into Notepad
+    // Type text into Notepad (use_clipboard = false for direct typing)
     let text = "Hello, World! This is a Rust integration test.";
-    let type_result = text_editor.type_text(text);
+    let type_result = text_editor.type_text(text, false);
 
     assert!(
         type_result.is_ok(),
@@ -60,11 +60,11 @@ fn test_open_notepad_and_type() {
     );
 
     // Wait a moment to see the text
-    thread::sleep(Duration::from_millis(500));
+    sleep(Duration::from_millis(500)).await;
 
     // Verify text was typed by getting the value
-    let value_result = text_editor.value();
-    if let Ok(typed_value) = value_result {
+    let value_result = text_editor.get_value();
+    if let Ok(Some(typed_value)) = value_result {
         assert!(
             typed_value.contains("Hello, World!"),
             "Expected text not found in editor. Got: {}",
@@ -74,19 +74,20 @@ fn test_open_notepad_and_type() {
 
     // Clean up: Close Notepad without saving
     // Send Alt+F4 to close
-    let close_result = desktop.press_key("{Alt}{F4}");
+    let close_result = desktop.press_key("{Alt}{F4}").await;
     assert!(close_result.is_ok(), "Failed to send Alt+F4");
 
-    thread::sleep(Duration::from_millis(500));
+    sleep(Duration::from_millis(500)).await;
 
     // If "Save changes" dialog appears, press "Don't Save" (N key)
     let dialog_selector = Selector::from("role:Window && name:Notepad");
-    if let Ok(dialog) = desktop
+    if desktop
         .locator(dialog_selector)
         .first(Duration::from_millis(500))
+        .is_ok()
     {
-        let _ = desktop.press_key("n");
-        thread::sleep(Duration::from_millis(500));
+        let _ = desktop.press_key("n").await;
+        sleep(Duration::from_millis(500)).await;
     }
 
     println!("✅ Notepad integration test passed!");
