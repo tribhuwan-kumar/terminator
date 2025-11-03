@@ -16,15 +16,16 @@ export interface Logger {
 
 /**
  * Workflow context shared between steps
+ * @template TInput - Type of workflow input
  * @template TState - Type of accumulated state from previous steps
  */
-export interface WorkflowContext<TState = Record<string, any>> {
-  /** Mutable data storage shared between steps */
-  data: any;
+export interface WorkflowContext<TInput = any, TState = Record<string, any>> {
+  /** Mutable data storage shared between steps - keyed by step ID */
+  data: Record<string, any>;
   /** Additional state storage - typed based on accumulated step outputs */
   state: TState;
-  /** Workflow input variables */
-  variables: any;
+  /** Workflow input variables - typed from Zod schema */
+  variables: TInput;
 }
 
 /**
@@ -37,8 +38,8 @@ export interface StepContext<TInput = any, TState = Record<string, any>> {
   desktop: import('@mediar-ai/terminator').Desktop;
   /** Workflow input (validated by Zod schema) */
   input: TInput;
-  /** Shared workflow context with typed state */
-  context: WorkflowContext<TState>;
+  /** Shared workflow context with typed state and variables */
+  context: WorkflowContext<TInput, TState>;
   /** Logger instance */
   logger: Logger;
 }
@@ -60,8 +61,8 @@ export interface ErrorContext<TInput = any, TOutput = any, TState = Record<strin
   attempt: number;
   /** Workflow input */
   input: TInput;
-  /** Shared context with typed state */
-  context: WorkflowContext<TState>;
+  /** Shared context with typed state and variables */
+  context: WorkflowContext<TInput, TState>;
   /** Logger instance */
   logger: Logger;
 }
@@ -101,8 +102,8 @@ export interface ExpectationContext<TInput = any, TOutput = any, TState = Record
   input: TInput;
   /** Result from execute() */
   result: TOutput;
-  /** Shared context with typed state */
-  context: WorkflowContext<TState>;
+  /** Shared context with typed state and variables */
+  context: WorkflowContext<TInput, TState>;
   /** Logger instance */
   logger: Logger;
 }
@@ -223,7 +224,7 @@ export interface StepConfig<
   timeout?: number;
 
   /** Condition to determine if step should run */
-  condition?: (context: { input: TInput; context: WorkflowContext<TStateIn> }) => boolean;
+  condition?: (context: { input: TInput; context: WorkflowContext<TInput, TStateIn> }) => boolean;
 }
 
 /**
@@ -280,8 +281,8 @@ export interface WorkflowExecutionContext<TInput = any, TState = Record<string, 
   step: Step;
   /** Workflow input */
   input: TInput;
-  /** Shared context with typed state */
-  context: WorkflowContext<TState>;
+  /** Shared context with typed state and variables */
+  context: WorkflowContext<TInput, TState>;
   /** Logger */
   logger: Logger;
 }
@@ -292,8 +293,8 @@ export interface WorkflowExecutionContext<TInput = any, TState = Record<string, 
 export interface WorkflowSuccessContext<TInput = any, TState = Record<string, any>> {
   /** Workflow input */
   input: TInput;
-  /** Final context state with typed state */
-  context: WorkflowContext<TState>;
+  /** Final context state with typed state and variables */
+  context: WorkflowContext<TInput, TState>;
   /** Logger */
   logger: Logger;
   /** Execution duration in ms */
@@ -310,8 +311,8 @@ export interface WorkflowErrorContext<TInput = any, TState = Record<string, any>
   step: Step;
   /** Workflow input */
   input: TInput;
-  /** Context at time of error with typed state */
-  context: WorkflowContext<TState>;
+  /** Context at time of error with typed state and variables */
+  context: WorkflowContext<TInput, TState>;
   /** Logger */
   logger: Logger;
 }

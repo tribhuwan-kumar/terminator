@@ -104,7 +104,7 @@ function createWorkflowInstance<TInput = any>(
       const validatedInput = validationResult.data;
 
       // Initialize context
-      const context: WorkflowContext = {
+      const context: WorkflowContext<TInput> = {
         data: {},
         state: {},
         variables: validatedInput,
