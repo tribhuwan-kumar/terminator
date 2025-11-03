@@ -3058,7 +3058,7 @@ impl AccessibilityEngine for MacOSEngine {
             (root.cloned(), selector.clone())
         };
 
-        let start_element = if let Some(el) = actual_root {
+        let start_element = if let Some(ref el) = actual_root {
             if let Some(macos_el) = el.as_any().downcast_ref::<MacOSUIElement>() {
                 macos_el.element.clone()
             } else {
