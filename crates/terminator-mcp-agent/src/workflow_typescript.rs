@@ -287,9 +287,9 @@ impl TypeScriptWorkflow {
     fn create_execution_script(
         &self,
         inputs: Value,
-        start_from_step: Option<&str>,
-        end_at_step: Option<&str>,
-        restored_state: Option<Value>,
+        _start_from_step: Option<&str>,
+        _end_at_step: Option<&str>,
+        _restored_state: Option<Value>,
     ) -> Result<String, McpError> {
         let inputs_json = serde_json::to_string(&inputs).map_err(|e| {
             McpError::internal_error(

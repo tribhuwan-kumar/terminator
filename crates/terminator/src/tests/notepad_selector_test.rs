@@ -3,15 +3,15 @@ use crate::Selector;
 #[cfg(target_os = "windows")]
 #[tokio::test]
 async fn test_open_notepad_and_type() {
-    use crate::{Desktop, Locator};
+    use crate::Desktop;
     use std::time::Duration;
     use tokio::time::sleep;
 
-    // Create desktop instance
-    let desktop = Desktop::new().expect("Failed to create Desktop instance");
+    // Create desktop instance with default settings
+    let desktop = Desktop::new_default().expect("Failed to create Desktop instance");
 
-    // Open Notepad
-    let notepad_result = desktop.open_application("notepad").await;
+    // Open Notepad (this is synchronous)
+    let notepad_result = desktop.open_application("notepad");
     assert!(
         notepad_result.is_ok(),
         "Failed to open Notepad: {:?}",
@@ -25,7 +25,8 @@ async fn test_open_notepad_and_type() {
     let window_selector = Selector::from("role:Window && name:Notepad");
     let notepad_window = desktop
         .locator(window_selector)
-        .first(Duration::from_secs(5));
+        .first(Some(Duration::from_secs(5)))
+        .await;
 
     assert!(
         notepad_window.is_ok(),
@@ -39,7 +40,9 @@ async fn test_open_notepad_and_type() {
     let editor_selector = Selector::from("role:Document || role:Edit");
     let editor = window
         .locator(editor_selector)
-        .first(Duration::from_secs(2));
+        .expect("Failed to create locator")
+        .first(Some(Duration::from_secs(2)))
+        .await;
 
     assert!(
         editor.is_ok(),
@@ -83,7 +86,8 @@ async fn test_open_notepad_and_type() {
     let dialog_selector = Selector::from("role:Window && name:Notepad");
     if desktop
         .locator(dialog_selector)
-        .first(Duration::from_millis(500))
+        .first(Some(Duration::from_millis(500)))
+        .await
         .is_ok()
     {
         let _ = desktop.press_key("n").await;
