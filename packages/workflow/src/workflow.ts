@@ -13,7 +13,7 @@ import type {
 import { ConsoleLogger } from './types';
 
 /**
- * Workflow builder for composing steps
+ * Workflow builder for composing steps (non-typed version for backward compatibility)
  */
 class WorkflowBuilder<TInput = any> {
   private config: WorkflowConfig<TInput>;
@@ -58,6 +58,62 @@ class WorkflowBuilder<TInput = any> {
       this.steps,
       this.successHandler,
       this.errorHandler
+    );
+  }
+}
+
+/**
+ * Type-safe workflow builder that accumulates state types
+ * @template TInput - Type of workflow input
+ * @template TState - Accumulated state type from all previous steps
+ */
+class TypedWorkflowBuilder<TInput = any, TState extends Record<string, any> = {}> {
+  private config: WorkflowConfig<TInput>;
+  private steps: Step[] = [];
+  private successHandler?: (context: WorkflowSuccessContext<TInput, TState>) => Promise<void>;
+  private errorHandler?: (context: WorkflowErrorContext<TInput, TState>) => Promise<void>;
+
+  constructor(config: WorkflowConfig<TInput>) {
+    this.config = config;
+  }
+
+  /**
+   * Add a typed step to the workflow - accumulates state types
+   * @template TStepState - State updates produced by this step
+   */
+  step<TStepState extends Record<string, any> = {}>(
+    step: Step<TInput, any, TState, TStepState>
+  ): TypedWorkflowBuilder<TInput, TState & TStepState> {
+    this.steps.push(step as Step);
+    // Return new builder with accumulated state type
+    return this as any as TypedWorkflowBuilder<TInput, TState & TStepState>;
+  }
+
+  /**
+   * Set success handler with typed state
+   */
+  onSuccess(handler: (context: WorkflowSuccessContext<TInput, TState>) => Promise<void>): this {
+    this.successHandler = handler;
+    return this;
+  }
+
+  /**
+   * Set error handler with typed state
+   */
+  onError(handler: (context: WorkflowErrorContext<TInput, TState>) => Promise<void>): this {
+    this.errorHandler = handler;
+    return this;
+  }
+
+  /**
+   * Build the workflow
+   */
+  build(): Workflow<TInput> {
+    return createWorkflowInstance(
+      this.config,
+      this.steps,
+      this.successHandler as any,
+      this.errorHandler as any
     );
   }
 }
@@ -266,4 +322,52 @@ export function createWorkflow<TInput = any>(
 
   // Otherwise, return builder for chaining
   return new WorkflowBuilder(config);
+}
+
+/**
+ * Creates a type-safe workflow builder with state type accumulation
+ *
+ * Use this when you want TypeScript to infer and track state types
+ * across workflow steps for better type safety and IntelliSense.
+ *
+ * @example
+ * ```typescript
+ * const workflow = createTypedWorkflow({
+ *   name: 'Data Processing',
+ *   input: z.object({ sourceFile: z.string() }),
+ * })
+ *   .step(createStep({
+ *     id: 'fetch',
+ *     name: 'Fetch User Data',
+ *     execute: async () => ({
+ *       state: { userId: '123', userName: 'John' }
+ *     })
+ *   }))
+ *   .step(createStep({
+ *     id: 'process',
+ *     name: 'Process Data',
+ *     execute: async ({ context }) => {
+ *       // TypeScript knows context.state has userId and userName!
+ *       const id = context.state.userId;  // string (with IntelliSense)
+ *       const name = context.state.userName;  // string (with IntelliSense)
+ *       return { state: { processedCount: 42 } };
+ *     }
+ *   }))
+ *   .step(createStep({
+ *     id: 'finalize',
+ *     name: 'Finalize',
+ *     execute: async ({ context }) => {
+ *       // TypeScript knows ALL accumulated state
+ *       context.state.userId;  // string
+ *       context.state.userName;  // string
+ *       context.state.processedCount;  // number
+ *     }
+ *   }))
+ *   .build();
+ * ```
+ */
+export function createTypedWorkflow<TInput = any>(
+  config: WorkflowConfig<TInput>
+): TypedWorkflowBuilder<TInput, {}> {
+  return new TypedWorkflowBuilder(config);
 }
