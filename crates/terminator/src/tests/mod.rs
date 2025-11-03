@@ -1,5 +1,6 @@
 mod boolean_selector_tests;
 mod e2e_tests;
+mod notepad_selector_test;
 mod firefox_window_tests;
 mod functional_verification_tests;
 mod get_applications_tests;
