@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { createTypedWorkflow, createStep } from '@mediar-ai/workflow';
+import { createWorkflow, createStep } from '@mediar-ai/workflow';
 
 // Define workflow input schema
 const inputSchema = z.object({
@@ -103,8 +103,8 @@ const finalizeStep = createStep<
   },
 });
 
-// Create typed workflow with state accumulation
-const workflow = createTypedWorkflow({
+// Create workflow with automatic state type accumulation
+const workflow = createWorkflow({
   name: 'Typed Data Processing Workflow',
   description: 'Demonstrates type-safe state accumulation across steps',
   input: inputSchema,
