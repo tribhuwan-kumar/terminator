@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.6] - 2025-11-04
+
+### Fixed
+- `nativeid:` selector depth limit increased from 50 to 500 for deep browser web applications - fixes element finding in complex web apps like Best Plan Pro running in Chrome where UI trees can be 100+ levels deep
+- Workflow SDK peer dependency updated to `^0.22.0` for better compatibility
+
+### Changed
+- Flaky browser wait test now ignored in CI to improve build reliability
+
 ## [0.22.5] - 2025-11-04
 
 ### Fixed
