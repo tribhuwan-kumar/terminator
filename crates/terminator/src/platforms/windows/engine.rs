@@ -1162,7 +1162,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
-                    .depth(depth.unwrap_or(50) as u32)
+                    .depth(depth.unwrap_or(500) as u32) // Increased default depth for deep web applications in browsers
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_automation_id() {
                             Ok(id) => {
@@ -1860,7 +1860,7 @@ impl AccessibilityEngine for WindowsEngine {
                     .0
                     .create_matcher()
                     .from_ref(root_ele)
-                    .depth(50) // Add depth limit
+                    .depth(500) // Increased depth for deep web applications in browsers
                     .filter_fn(Box::new(move |e: &uiautomation::UIElement| {
                         match e.get_automation_id() {
                             Ok(id) => {
