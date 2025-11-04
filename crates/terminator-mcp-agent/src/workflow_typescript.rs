@@ -404,14 +404,9 @@ try {{
                 true
             } else {
                 // Compare modification times
-                let package_json_mtime = package_json_path
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .ok();
-                let lockfile_mtime = lockfile_path
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .ok();
+                let package_json_mtime =
+                    package_json_path.metadata().and_then(|m| m.modified()).ok();
+                let lockfile_mtime = lockfile_path.metadata().and_then(|m| m.modified()).ok();
 
                 match (package_json_mtime, lockfile_mtime) {
                     (Some(pkg_time), Some(lock_time)) => {
