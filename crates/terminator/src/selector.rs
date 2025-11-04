@@ -491,13 +491,21 @@ mod selector_tests {
 
     #[test]
     fn test_role_with_name() {
-        let selector = Selector::from("role:Button|name:Calculate");
+        // Use && syntax instead of deprecated | syntax
+        let selector = Selector::from("role:Button && name:Calculate");
         match selector {
-            Selector::Role { role, name } => {
-                assert_eq!(role, "Button");
-                assert_eq!(name, Some("name:Calculate".to_string()));
+            Selector::And(selectors) => {
+                assert_eq!(selectors.len(), 2);
+                match &selectors[0] {
+                    Selector::Role { role, .. } => assert_eq!(role, "Button"),
+                    _ => panic!("Expected Role selector"),
+                }
+                match &selectors[1] {
+                    Selector::Name(name) => assert_eq!(name, "Calculate"),
+                    _ => panic!("Expected Name selector"),
+                }
             }
-            _ => panic!("Expected Role selector with name"),
+            _ => panic!("Expected And selector"),
         }
     }
 
@@ -765,12 +773,23 @@ mod selector_tests {
 
     #[test]
     fn test_invalid_selector() {
-        let selector = Selector::from("invalid&&&selector");
+        // Test various invalid patterns
+        // Empty selector after &&
+        let selector = Selector::from("role:Button &&");
         match selector {
             Selector::Invalid(msg) => {
-                assert!(msg.contains("Parse error") || msg.contains("Unknown selector"));
+                assert!(msg.contains("Parse error") || msg.contains("Unknown selector") || msg.contains("Expected selector"));
             }
-            _ => panic!("Expected Invalid selector"),
+            _ => panic!("Expected Invalid selector for trailing &&"),
+        }
+
+        // Unbalanced parentheses
+        let selector2 = Selector::from("(role:Button && name:Test");
+        match selector2 {
+            Selector::Invalid(msg) => {
+                assert!(msg.contains("Unmatched") || msg.contains("parenthes"));
+            }
+            _ => panic!("Expected Invalid selector for unbalanced parens"),
         }
     }
 

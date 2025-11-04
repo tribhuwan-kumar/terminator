@@ -389,16 +389,58 @@ try {{
         }
 
         let workflow_node_modules = self.workflow_path.join("node_modules");
+        let runtime = detect_js_runtime();
 
-        // If node_modules already exists, we're good (already installed and persisted in S3)
-        if workflow_node_modules.exists() {
-            info!("✓ Dependencies already installed (node_modules exists in workflow directory)");
+        // Check if dependencies need updating by comparing package.json mtime with lockfile
+        let needs_install = if workflow_node_modules.exists() {
+            let lockfile_path = match runtime {
+                JsRuntime::Bun => self.workflow_path.join("bun.lockb"),
+                JsRuntime::Node => self.workflow_path.join("package-lock.json"),
+            };
+
+            // If lockfile doesn't exist, need to install
+            if !lockfile_path.exists() {
+                info!("⏳ Lockfile not found - running install to generate it");
+                true
+            } else {
+                // Compare modification times
+                let package_json_mtime = package_json_path
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok();
+                let lockfile_mtime = lockfile_path
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok();
+
+                match (package_json_mtime, lockfile_mtime) {
+                    (Some(pkg_time), Some(lock_time)) => {
+                        if pkg_time > lock_time {
+                            info!("⏳ package.json newer than lockfile - updating dependencies");
+                            true
+                        } else {
+                            info!("✓ Dependencies up to date (lockfile is fresh)");
+                            false
+                        }
+                    }
+                    _ => {
+                        // Can't determine - safer to reinstall
+                        info!("⏳ Could not check file times - reinstalling dependencies");
+                        true
+                    }
+                }
+            }
+        } else {
+            info!("⏳ node_modules not found - installing dependencies");
+            true
+        };
+
+        if !needs_install {
             return Ok(());
         }
 
         // Install dependencies in workflow directory (will be persisted to S3)
         info!("⏳ Installing dependencies...");
-        let runtime = detect_js_runtime();
 
         let install_result = match runtime {
             JsRuntime::Bun => Command::new("bun")
