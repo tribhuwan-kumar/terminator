@@ -829,6 +829,53 @@ mod selector_tests {
     }
 
     #[test]
+    fn test_chained_and_with_role_and_nativeid() {
+        // Test: "(role:Window && name:Best Plan Pro) >> (role:Edit && nativeid:dob)"
+        let selector = Selector::from("(role:Window && name:Best Plan Pro) >> (role:Edit && nativeid:dob)");
+        match selector {
+            Selector::Chain(selectors) => {
+                assert_eq!(selectors.len(), 2);
+
+                // First part: (role:Window && name:Best Plan Pro)
+                match &selectors[0] {
+                    Selector::And(and_parts) => {
+                        assert_eq!(and_parts.len(), 2);
+                        match &and_parts[0] {
+                            Selector::Role { role, .. } => assert_eq!(role, "Window"),
+                            _ => panic!("Expected Role selector in first AND"),
+                        }
+                        match &and_parts[1] {
+                            Selector::Name(name) => assert_eq!(name, "Best Plan Pro"),
+                            _ => panic!("Expected Name selector in first AND"),
+                        }
+                    }
+                    _ => panic!("Expected first chain element to be And selector"),
+                }
+
+                // Second part: (role:Edit && nativeid:dob)
+                match &selectors[1] {
+                    Selector::And(and_parts) => {
+                        assert_eq!(and_parts.len(), 2);
+                        match &and_parts[0] {
+                            Selector::Role { role, .. } => assert_eq!(role, "Edit"),
+                            _ => panic!("Expected Role selector in second AND"),
+                        }
+                        match &and_parts[1] {
+                            Selector::NativeId(id) => assert_eq!(id, "dob"),
+                            _ => panic!("Expected NativeId selector in second AND"),
+                        }
+                    }
+                    _ => panic!("Expected second chain element to be And selector"),
+                }
+            }
+            Selector::Invalid(msg) => {
+                panic!("Selector parsing failed with: {}", msg);
+            }
+            _ => panic!("Expected Chain selector, got: {:?}", selector),
+        }
+    }
+
+    #[test]
     fn test_calculator_window_selector() {
         let selector = Selector::from("(role:Window && name:Calculator)");
         match selector {
