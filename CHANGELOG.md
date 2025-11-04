@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.7] - 2025-11-04
+
+### Changed
+- CI: Upgraded macOS runners from macos-13/14 to macos-15
+- CI: Removed x86_64 macOS builds (Intel) - only ARM64 (Apple Silicon) supported going forward
+
 ## [0.22.6] - 2025-11-04
 
 ### Fixed
