@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.8] - 2025-11-04
+
+### Changed
+- Documentation: Updated CLAUDE.md with CLI workflow execution examples and best practices
+
 ## [0.22.7] - 2025-11-04
 
 ### Changed
