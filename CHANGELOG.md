@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.9] - 2025-11-04
+
+### Added
+- CLI: Automatic peerDependencies update for @mediar-ai/terminator in workflow package during version sync
+- Workflow format detection: Added support for `terminator.ts` as workflow entry file (alongside workflow.ts and index.ts)
+
+### Fixed
+- CI: Workflow package publish now waits for @mediar-ai/terminator to be available on NPM, preventing race condition errors
+- CI: Added dependency sequencing between publish-npm and publish-workflow workflows with 10-minute timeout
+
+### Changed
+- Workflow SDK: MCP integration tests refactored to use stdio transport with npx instead of hardcoded binary paths
+
 ## [0.22.8] - 2025-11-04
 
 ### Changed
