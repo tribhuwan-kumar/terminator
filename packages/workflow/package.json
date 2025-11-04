@@ -42,5 +42,5 @@
   },
   "type": "commonjs",
   "types": "dist/index.d.ts",
-  "version": "0.22.0"
+  "version": "0.22.1"
 }
