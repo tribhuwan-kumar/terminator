@@ -55,4 +55,13 @@ mod debug_selector_test {
         let selector = Selector::from(input);
         println!("Parsed result: {:?}", selector);
     }
+
+    #[test]
+    fn test_debug_invalid_selector() {
+        let input = "invalid&&&selector";
+        println!("Testing invalid selector: {}", input);
+
+        let selector = Selector::from(input);
+        println!("Parsed result: {:?}", selector);
+    }
 }
