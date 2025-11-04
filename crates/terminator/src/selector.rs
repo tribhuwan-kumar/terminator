@@ -70,6 +70,24 @@ enum Token {
     RParen, // )
 }
 
+/// Check if a string has unbalanced parentheses
+fn has_unbalanced_parens(s: &str) -> bool {
+    let mut depth = 0;
+    for ch in s.chars() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth < 0 {
+                    return true; // More closing than opening
+                }
+            }
+            _ => {}
+        }
+    }
+    depth != 0 // Unbalanced if depth is not zero
+}
+
 /// Tokenize a selector string into tokens for boolean expression parsing
 fn tokenize(input: &str) -> Result<Vec<Token>, String> {
     let mut tokens = Vec::new();
@@ -444,7 +462,23 @@ impl From<&str> for Selector {
         if s.contains(">>") {
             let parts: Vec<&str> = s.split(">>").map(|p| p.trim()).collect();
             if parts.len() > 1 {
-                return Selector::Chain(parts.into_iter().map(Selector::from).collect());
+                // Strip outer parentheses from each part if present
+                let cleaned_parts: Vec<Selector> = parts.into_iter()
+                    .map(|part| {
+                        let trimmed = part.trim();
+                        // Check if the part is wrapped in parentheses
+                        if trimmed.starts_with('(') && trimmed.ends_with(')') {
+                            // Check if these are truly outer parentheses (balanced)
+                            let inner = &trimmed[1..trimmed.len()-1];
+                            // Only strip if the parentheses are balanced at this level
+                            if !has_unbalanced_parens(inner) {
+                                return Selector::from(inner);
+                            }
+                        }
+                        Selector::from(trimmed)
+                    })
+                    .collect();
+                return Selector::Chain(cleaned_parts);
             }
         }
 
@@ -910,6 +944,54 @@ mod selector_tests {
     }
 
     #[test]
+    fn test_calculator_chain_with_parentheses_runtime() {
+        // This is the exact selector pattern that failed at runtime with Calculator
+        // Original error: Role: '(role', Name: Some("Window && name:Calculator)")
+        let selector = Selector::from("(role:Window && name:Calculator) >> (role:Custom && nativeid:NavView)");
+        match selector {
+            Selector::Chain(selectors) => {
+                assert_eq!(selectors.len(), 2);
+
+                // First part: (role:Window && name:Calculator)
+                match &selectors[0] {
+                    Selector::And(and_parts) => {
+                        assert_eq!(and_parts.len(), 2);
+                        match &and_parts[0] {
+                            Selector::Role { role, .. } => assert_eq!(role, "Window"),
+                            _ => panic!("Expected Role selector for Window, got: {:?}", and_parts[0]),
+                        }
+                        match &and_parts[1] {
+                            Selector::Name(name) => assert_eq!(name, "Calculator"),
+                            _ => panic!("Expected Name selector for Calculator, got: {:?}", and_parts[1]),
+                        }
+                    }
+                    _ => panic!("Expected And selector for first chain part, got: {:?}", selectors[0]),
+                }
+
+                // Second part: (role:Custom && nativeid:NavView)
+                match &selectors[1] {
+                    Selector::And(and_parts) => {
+                        assert_eq!(and_parts.len(), 2);
+                        match &and_parts[0] {
+                            Selector::Role { role, .. } => assert_eq!(role, "Custom"),
+                            _ => panic!("Expected Role selector for Custom, got: {:?}", and_parts[0]),
+                        }
+                        match &and_parts[1] {
+                            Selector::NativeId(id) => assert_eq!(id, "NavView"),
+                            _ => panic!("Expected NativeId selector for NavView, got: {:?}", and_parts[1]),
+                        }
+                    }
+                    _ => panic!("Expected And selector for second chain part, got: {:?}", selectors[1]),
+                }
+            }
+            Selector::Invalid(msg) => {
+                panic!("Selector parsing failed with error: {}", msg);
+            }
+            _ => panic!("Expected Chain selector, got: {:?}", selector),
+        }
+    }
+
+    #[test]
     fn test_nested_parentheses() {
         let selector = Selector::from("((role:Button && name:OK) || (role:Link && name:Submit))");
         match selector {
@@ -996,7 +1078,7 @@ mod debug_selector_test {
 
 #[cfg(test)]
 mod tokenizer_debug_test {
-    use crate::selector::{Token, tokenize};
+    use crate::selector::tokenize;
 
     #[test]
     fn test_tokenize_simple_and() {
