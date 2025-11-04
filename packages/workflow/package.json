@@ -25,7 +25,7 @@
   "main": "dist/index.js",
   "name": "@mediar-ai/workflow",
   "peerDependencies": {
-    "@mediar-ai/terminator": "^0.20.0"
+    "@mediar-ai/terminator": "^0.22.0"
   },
   "publishConfig": {
     "access": "public"
