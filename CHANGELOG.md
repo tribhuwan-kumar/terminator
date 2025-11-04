@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.10] - 2025-11-04
+
+### Added
+- MCP: Multi-instance mode with smart parent process checking for running multiple MCP servers
+- Workflow SDK: TypeScript workflows now have full feature parity with YAML workflows (partial execution, state restoration)
+- Testing: TERMINATOR_MCP_BINARY env var support for local binary testing without publishing
+
+### Fixed
+- Workflow SDK: TypeScript workflow execution now properly uses WorkflowRunner for advanced features
+- Tests: MCP integration test selectors fixed to use `role:Window` to avoid matching taskbar buttons
+- Workflow SDK: Made WorkflowExecutionResult fields optional to support both SDK and runner formats
+
 ## [0.22.9] - 2025-11-04
 
 ### Added
