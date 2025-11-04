@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.5] - 2025-11-04
+
+### Fixed
+- Chain selector parsing with outer parentheses - selectors like `(role:Window && name:Calculator) >> (role:Custom && nativeid:NavView)` now parse correctly at runtime
+
+### Changed
+- Separated selector tests into dedicated `selector_tests.rs` file for better code organization
+- Reduced `selector.rs` from 1,129 to 621 lines (implementation only)
+
 ## [0.22.2] - 2025-11-03
 
 ### Added
