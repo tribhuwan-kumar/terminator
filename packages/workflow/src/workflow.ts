@@ -162,7 +162,7 @@ function createWorkflowInstance<TInput = any>(
 
         // Find which step failed
         const failedStepIndex = steps.findIndex(s =>
-          error.message?.includes(s.config.name)
+          s?.config?.name && error.message?.includes(s.config.name)
         );
 
         const failedStep = failedStepIndex >= 0 ? steps[failedStepIndex] : steps[steps.length - 1];
