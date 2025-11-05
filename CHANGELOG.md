@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.12] - 2025-11-05
+
+### Changed
+- Documentation: Added TypeScript workflow context.data integration notes
+
 ## [0.22.11] - 2025-11-05
 
 ### Added
