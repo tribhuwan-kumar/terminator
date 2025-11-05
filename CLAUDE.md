@@ -63,6 +63,11 @@ cargo install sccache
 export RUSTC_WRAPPER=sccache
 ```
 
+## TypeScript Workflows
+
+- Use `context.data = {...}` in final step (not output parsers) for MCP integration
+- If CLI shows "(no parser)" → check `workflow_typescript.rs:379-398` and `server_sequence.rs:2290-2309`
+
 ## Commit Style
 
 ```
