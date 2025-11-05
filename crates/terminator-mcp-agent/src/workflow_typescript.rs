@@ -378,8 +378,23 @@ try {{
         }};
     }} else {{
         // Simple execution - use workflow.run() directly
-        result = await workflow.run(inputs);
-        finalState = {{}};
+        const workflowResult = await workflow.run(inputs);
+
+        // Extract context.data if available (for TypeScript workflows that populate it)
+        const contextData = workflowResult.data || workflowResult.context?.data || null;
+
+        result = {{
+            status: workflowResult.status || 'success',
+            message: workflowResult.message || workflowResult.error || 'Workflow completed',
+            data: contextData
+        }};
+
+        // Preserve the full workflow state for state management
+        finalState = {{
+            context: {{
+                data: contextData
+            }}
+        }};
     }}
 
     // Get metadata

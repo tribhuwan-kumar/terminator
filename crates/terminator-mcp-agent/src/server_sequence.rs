@@ -2287,7 +2287,7 @@ impl DesktopWrapper {
         }
 
         // Return result
-        let output = json!({
+        let mut output = json!({
             "status": result.result.status,
             "message": result.result.message,
             "data": result.result.data,
@@ -2296,6 +2296,17 @@ impl DesktopWrapper {
             "last_step_id": result.result.last_step_id,
             "last_step_index": result.result.last_step_index,
         });
+
+        // If there's data from context.data, add it as parsed_output for CLI compatibility
+        if let Some(data) = &result.result.data {
+            if !data.is_null() {
+                if let Some(obj) = output.as_object_mut() {
+                    obj.insert("parsed_output".to_string(), json!({
+                        "data": data
+                    }));
+                }
+            }
+        }
 
         Ok(CallToolResult {
             content: vec![Content::text(
