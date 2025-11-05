@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.11] - 2025-11-05
+
+### Added
+- MCP: TypeScript workflows now support context.data for passing execution results
+
 ## [0.22.10] - 2025-11-04
 
 ### Added
