@@ -36,9 +36,7 @@ https://github.com/user-attachments/assets/b7bec5df-64a9-4f0e-aba4-1578c11275c7
 - 08/25 Big release — NodeJS SDK in YAML workflows, run JS in browser, OS event recording → YAML generation in MCP, and more
 - 08/25 [we raised $2.8m to give AI hands to every desktop](https://x.com/louis030195/status/1948745185178914929) ⚠
 
-> AI-powered desktop automation — open source, MIT-licensed, cross-platform, accessibility-first.
-> Works across all apps and browsers. Inspired by GitHub Actions & Playwright.
-> 100x faster than generic AI agents, >95% success rate, no vendor lock-in.
+> AI-first data entry automation for legacy systems 
 
 ## 🧠 Why Terminator
 
