@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.13] - 2025-11-05
+
+### Changed
+- CI: Removed all macOS runners from GitHub Actions workflows to reduce costs (ci-wheels, publish-npm, publish-mcp, publish-cli)
+- Documentation: Fixed typo in README and revised project description
+
 ## [0.22.12] - 2025-11-05
 
 ### Changed
