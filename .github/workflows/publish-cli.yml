@@ -32,11 +32,6 @@ jobs:
           #   target: aarch64-unknown-linux-gnu
           #   archive: terminator-cli-linux-aarch64.tar.gz
           #   ext: ""
-          # ---------- macOS ----------
-          - os: macos-15
-            target: aarch64-apple-darwin
-            archive: terminator-cli-macos-aarch64.tar.gz
-            ext: ""
           # ---------- Windows ----------
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -116,13 +111,12 @@ jobs:
 
             ### Available Downloads:
             - **Linux x64**: `terminator-cli-linux-x86_64.tar.gz`
-            - **macOS ARM64 (Apple Silicon)**: `terminator-cli-macos-aarch64.tar.gz`
             - **Windows x64**: `terminator-cli-windows-x86_64.zip`
             - **Windows ARM64**: `terminator-cli-windows-aarch64.zip`
 
             ### Quick Installation
 
-            #### macOS/Linux:
+            #### Linux:
             ```bash
             # Download and extract (replace URL with your platform's file)
             curl -L https://github.com/mediar-ai/terminator/releases/download/${{ github.ref_name }}/terminator-cli-{platform}.tar.gz | tar xz

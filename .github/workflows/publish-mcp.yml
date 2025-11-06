@@ -29,11 +29,6 @@ jobs:
             bin_name: terminator-mcp-agent
             npm_dir: linux-x64-gnu
 
-          - host: macos-15
-            target: aarch64-apple-darwin
-            bin_name: terminator-mcp-agent
-            npm_dir: darwin-arm64
-
     name: stable - ${{ matrix.settings.target }}
     runs-on: ${{ matrix.settings.host }}
 
@@ -274,7 +269,6 @@ jobs:
 
             ### Available Downloads:
             - **Linux x64**: `terminator-mcp-agent-linux-x64-gnu.tar.gz`
-            - **macOS ARM64**: `terminator-mcp-agent-darwin-arm64.tar.gz`
             - **Windows x64**: `terminator-mcp-agent-win32-x64-msvc.zip`
             - **Windows ARM64**: `terminator-mcp-agent-win32-arm64-msvc.zip`
 
