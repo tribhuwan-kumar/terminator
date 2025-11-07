@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.15] - 2025-11-07
+
+### Changed
+- Workflow SDK: Clean architecture refactor - eliminated ~100 lines of hardcoded JavaScript wrapper in MCP server
+- Workflow SDK: `workflow.run()` now accepts optional step control parameters (`startFromStep`, `endAtStep`) and automatically skips `onError` handlers during testing
+- MCP: Simplified TypeScript workflow execution by passing step control options directly to `workflow.run()`
+
 ## [0.22.13] - 2025-11-05
 
 ### Changed
