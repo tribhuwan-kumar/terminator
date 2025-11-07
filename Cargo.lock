@@ -4953,6 +4953,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
 name = "slab"
 version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5166,7 +5172,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.22.14"
+version = "0.22.15"
 dependencies = [
  "anthropic-sdk",
  "anyhow",
@@ -5194,7 +5200,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.22.14"
+version = "0.22.15"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5223,6 +5229,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "similar",
  "sysinfo 0.33.1",
  "tempfile",
  "terminator-rs",
@@ -5240,7 +5247,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.22.14"
+version = "0.22.15"
 dependencies = [
  "napi",
  "napi-build",
@@ -5252,7 +5259,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-py-bindings"
-version = "0.22.14"
+version = "0.22.15"
 dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
@@ -5266,7 +5273,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.22.14"
+version = "0.22.15"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -5310,7 +5317,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.22.14"
+version = "0.22.15"
 dependencies = [
  "arboard",
  "async-stream",

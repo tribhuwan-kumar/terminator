@@ -1,0 +1,353 @@
+    Finished `release` profile [optimized] target(s) in 1.47s
+     Running `target\release\terminator.exe mcp run --command 'C:/Users/louis/Documents/terminator/target/release/terminator-mcp-agent.exe' 'C:/Users/louis/Documents/workflows/org-org_33DH72nPyAInVAh5t8TyIKVdYNw/imperial_treasure_1_typescript/src/terminator.ts' --inputs '{"environment":"TEST"}'`
+📝 Logging output to:
+   C:\Users\louis\AppData\Local\terminator\workflow-results\latest.txt
+   C:\Users\louis\AppData\Local\terminator\workflow-results\workflow_20251106_143612.txt
+
+[2m2025-11-06T22:36:12.091965Z[0m [32m INFO[0m [2mterminator[0m[2m:[0m Log files will be written to: C:\Users\louis\AppData\Local\terminator\logs
+[2m2025-11-06T22:36:12.092509Z[0m [32m INFO[0m [2mterminator[0m[2m:[0m Starting workflow execution via terminator CLI
+[2m2025-11-06T22:36:12.092548Z[0m [32m INFO[0m [2mterminator[0m[2m:[0m [3minput[0m[2m=[0mC:/Users/louis/Documents/workflows/org-org_33DH72nPyAInVAh5t8TyIKVdYNw/imperial_treasure_1_typescript/src/terminator.ts [3margs.input_type[0m[2m=[0mAuto
+[2m2025-11-06T22:36:12.092690Z[0m [32m INFO[0m [2mterminator[0m[2m:[0m Detected TypeScript/JavaScript workflow - delegating to MCP server
+[2m2025-11-06T22:36:12.092844Z[0m [32m INFO[0m [2mterminator[0m[2m:[0m TypeScript workflow URL: file://C:\Users\louis\Documents\workflows\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\imperial_treasure_1_typescript\src\terminator.ts
+[2m2025-11-06T22:36:12.092908Z[0m [32m INFO[0m [2mterminator[0m[2m:[0m Sending TypeScript workflow args to MCP: {"url":"file://C:\\Users\\louis\\Documents\\workflows\\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\\imperial_treasure_1_typescript\\src\\terminator.ts","include_detailed_results":true,"inputs":{"environment":"TEST"}}
+🔧 Multi-instance mode: allowing multiple instances, only cleaning orphans
+✅ Skipping MCP agent PID 50820 (belongs to parent PID 53140, still alive)
+✅ Skipping MCP agent PID 17888 (belongs to parent PID 59444, still alive)
+✅ Skipping MCP agent PID 50080 (belongs to parent PID 36520, still alive)
+✨ No orphaned or conflicting processes found
+Set Windows console to UTF-8 mode
+✓ Sentry tracing integration enabled (configure via SENTRY_DSN env var)
+✓ OTLP logs exporter enabled - logs will be sent to OpenTelemetry collector
+2025-11-06T22:36:12.343904Z  INFO terminator_mcp_agent::utils: Log files will be written to: C:\Users\louis\AppData\Local\terminator\logs
+2025-11-06T22:36:12.344223Z  INFO terminator_mcp_agent::sentry::with_sentry: Sentry DSN not configured (SENTRY_DSN env var not set). Error tracking disabled.
+2025-11-06T22:36:12.344278Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry configuration: endpoint=http://localhost:4318, retry_duration=15m, retry_interval=30s
+2025-11-06T22:36:12.344417Z  INFO terminator_mcp_agent: ========================================
+2025-11-06T22:36:12.344437Z  INFO terminator_mcp_agent: Terminator MCP Server v0.22.10
+2025-11-06T22:36:12.344561Z  INFO terminator_mcp_agent: Build profile: release
+2025-11-06T22:36:12.344596Z  INFO terminator_mcp_agent: Binary path: C:\Users\louis\Documents\terminator\target\release\terminator-mcp-agent.exe
+2025-11-06T22:36:12.344834Z  INFO terminator_mcp_agent: Binary built: 2025-11-05 17:18:05 UTC
+2025-11-06T22:36:12.344877Z  INFO terminator_mcp_agent: Binary size: 22127104 bytes
+2025-11-06T22:36:12.344894Z  INFO terminator_mcp_agent: Git commit: 2504607b0893ee0a27b41e54f67484c643ca2157
+2025-11-06T22:36:12.344914Z  INFO terminator_mcp_agent: Git branch: main
+2025-11-06T22:36:12.344927Z  INFO terminator_mcp_agent: Build timestamp: 2025-11-05T17:12:40.811995600+00:00
+2025-11-06T22:36:12.344941Z  INFO terminator_mcp_agent: ========================================
+2025-11-06T22:36:12.345128Z  INFO terminator_mcp_agent::vcredist_check: Visual C++ Redistributables check: OK
+2025-11-06T22:36:12.345160Z  INFO terminator_mcp_agent: Initializing Terminator MCP server...
+2025-11-06T22:36:12.345178Z  INFO terminator_mcp_agent: Transport mode: Stdio
+2025-11-06T22:36:12.345191Z  INFO terminator_mcp_agent: Starting stdio transport...
+2025-11-06T22:36:12.360378Z  INFO rmcp::handler::server: client initialized
+2025-11-06T22:36:12.361049Z  INFO terminator_mcp_agent::server_sequence: Executing TypeScript workflow from URL: file://C:\Users\louis\Documents\workflows\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\imperial_treasure_1_typescript\src\terminator.ts
+MCP server still running (stdio mode)
+2025-11-06T22:36:12.402523Z  INFO terminator_mcp_agent::workflow_typescript: Using bun runtime
+2025-11-06T22:36:12.402722Z  INFO terminator_mcp_agent::workflow_typescript: ⏳ Lockfile not found - running install to generate it
+2025-11-06T22:36:12.402741Z  INFO terminator_mcp_agent::workflow_typescript: ⏳ Installing dependencies...
+2025-11-06T22:36:12.463406Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry collector not available at http://localhost:4318 (attempt 1). Retrying in 30 seconds... (0.0 minutes elapsed)
+2025-11-06T22:36:12.491600Z  INFO terminator_mcp_agent::workflow_typescript: ✓ Dependencies installed successfully
+2025-11-06T22:36:12.491667Z  INFO terminator_mcp_agent::workflow_typescript: ✓ node_modules will be persisted to S3 with workflow
+2025-11-06T22:36:12.518458Z  INFO terminator_mcp_agent::workflow_typescript: Using bun runtime
+2025-11-06T22:36:12.518525Z  INFO terminator_mcp_agent::workflow_typescript: Executing workflow with bun: C:\Users\louis\Documents\workflows\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\imperial_treasure_1_typescript/src/terminator.ts
+2025-11-06T22:36:42.570714Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry collector not available at http://localhost:4318 (attempt 2). Retrying in 30 seconds... (0.5 minutes elapsed)
+MCP server still running (stdio mode)
+2025-11-06T22:37:12.678133Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry collector not available at http://localhost:4318 (attempt 3). Retrying in 30 seconds... (1.0 minutes elapsed)
+⚠️  Tool execution failed: Mcp error: -32603: Workflow execution failed: ============================================================
+🚀 Starting workflow: Imperial Treasure SAP Journal Entry
+   Automated SAP journal entry workflow for Imperial Treasure POS reconciliation
+============================================================
+
+[1/58] Initialize Workflow
+▶️  Executing step: Initialize Workflow
+[INIT] Initializing workflow with troubleshooting flags...
+✅ Completed step: Initialize Workflow (1ms)
+
+[2/58] Read JSON file
+▶️  Executing step: Read JSON file
+📊 Reading JSON file and preparing data...
+📁 Looking for JSON files in: C:\Users\louis\OneDrive - Imperial Treasure\POS n8n Recon
+📄 Found file: SBTRPONE_06112025_Lunch.json in SB 111
+✅ Loaded file: SBTRPONE_06112025_Lunch.json
+📊 Entries: 9 (excluding GST)
+💰 Totals - Debit: 0, Credit: 0
+✅ Completed step: Read JSON file (11ms)
+
+[3/58] Check for duplicate entry
+▶️  Executing step: Check for duplicate entry
+🔍 Checking for duplicate entries...
+📋 Checking for duplicate: SBTRPONE_2025-11-06_Lunch
+✅ No duplicate found - file is unique
+✅ Completed step: Check for duplicate entry (43ms)
+
+[4/58] Prepare journal entry data
+▶️  Executing step: Prepare journal entry data
+📊 Preparing journal entry data...
+✅ Validated: 9 balanced entries ready for SAP
+✅ Completed step: Prepare journal entry data (0ms)
+
+[5/58] Check for Chrome tab
+▶️  Executing step: Check for Chrome tab
+🔍 Checking for existing Chrome tab...
+✅ Completed step: Check for Chrome tab (131ms)
+
+[6/58] Process Chrome check
+▶️  Executing step: Process Chrome check
+Chrome status: exists
+✅ Completed step: Process Chrome check (1ms)
+
+[7/58] Logout from SAP session
+▶️  Executing step: Logout from SAP session
+🚪 Logging out from SAP...
+✅ Completed step: Logout from SAP session (2410ms)
+
+[8/58] Close Chrome if exists
+▶️  Executing step: Close Chrome if exists
+🔴 Closing Chrome...
+✅ Completed step: Close Chrome if exists (3169ms)
+
+[9/58] Open SAP URL via navigate_browser
+▶️  Executing step: Open SAP URL via navigate_browser
+🌐 Opening SAP login page...
+✅ Completed step: Open SAP URL via navigate_browser (7126ms)
+
+[10/58] Check for Chrome restore dialog
+▶️  Executing step: Check for Chrome restore dialog
+✅ Completed step: Check for Chrome restore dialog (291ms)
+
+[11/58] Dismiss Chrome restore dialog if present
+⏭️  Skipping step: Dismiss Chrome restore dialog if present (condition not met)
+
+[12/58] Wait for SAP page to finish loading
+▶️  Executing step: Wait for SAP page to finish loading
+🔍 Waiting for SAP page to finish loading...
+✅ SAP page loaded in 122ms (attempt 1)
+✅ Completed step: Wait for SAP page to finish loading (122ms)
+
+[13/58] Check login status
+▶️  Executing step: Check login status
+🔐 Checking login status...
+   Found SAP window with selector: role:Window|name:SAP BusinessOne - Google Chrome
+[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...
+[SUBPROCESS DEBUG] Starting parent chain traversal from PID 48056
+[SUBPROCESS DEBUG] Iteration 0: checking PID 48056
+❌ Step failed: Check login status (31240ms)
+   Error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.
+
+============================================================
+❌ Workflow failed! (44561ms)
+============================================================
+❌ Workflow error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.
+🔧 Starting troubleshooting sequence...
+▶️  Executing step: Activate Chrome Window (Troubleshooting)
+⚠️ ENTERING TROUBLESHOOTING MODE
+🔧 Attempting to activate Chrome window...
+✅ Chrome window activated
+✅ Completed step: Activate Chrome Window (Troubleshooting) (656ms)
+▶️  Executing step: Get Focused Window Tree (Troubleshooting)
+🌳 Getting UI tree for diagnostics...
+   Window: Taskbar
+   Elements: 25
+✅ Completed step: Get Focused Window Tree (Troubleshooting) (880ms)
+▶️  Executing step: Get Browser DOM (Troubleshooting)
+🌐 Getting browser DOM for diagnostics...
+[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...
+[SUBPROCESS DEBUG] Starting parent chain traversal from PID 48056
+[SUBPROCESS DEBUG] Iteration 0: checking PID 48056
+❌ Failed to get browser DOM: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.
+✅ Completed step: Get Browser DOM (Troubleshooting) (31058ms)
+▶️  Executing step: Diagnose Failure Reason
+🔍 Diagnosing failure reason...
+⚠️ Unknown application state
+   Diagnosis: unknown_state
+   Recommendation: restart_workflow
+✅ Completed step: Diagnose Failure Reason (0ms)
+▶️  Executing step: Check Application Status and Decide Recovery
+🤔 Deciding recovery strategy...
+🔄 Will restart workflow
+✅ Completed step: Check Application Status and Decide Recovery (2ms)
+▶️  Executing step: Classify error type and set failure flag
+📋 Classifying error type...
+   Error Type: unknown_error
+   Severity: high
+   Can Recover: false
+✅ Completed step: Classify error type and set failure flag (0ms)
+⏭️  Skipping step: Check for session expired text (condition not met)
+⏭️  Skipping step: Handle session conflict dialog (condition not met)
+▶️  Executing step: Handle unsaved changes dialog
+💾 Checking for unsaved changes dialog...
+✅ Completed step: Handle unsaved changes dialog (917ms)
+▶️  Executing step: Logout from SAP in troubleshooting
+🚪 Logging out before restart...
+✅ Logged out
+✅ Completed step: Logout from SAP in troubleshooting (3868ms)
+▶️  Executing step: Close Chrome after logout in troubleshooting
+🔴 Closing Chrome for clean restart...
+✅ Chrome closed
+✅ Completed step: Close Chrome after logout in troubleshooting (3285ms)
+▶️  Executing step: Execute Restart Decision
+
+============================================================
+🔄 RESTARTING WORKFLOW (Attempt 1/3)
+============================================================
+
+✅ Completed step: Execute Restart Decision (1ms)
+🔄 Restart requested but not implemented in current version
+({"stderr":"============================================================\n🚀 Starting workflow: Imperial Treasure SAP Journal Entry\n   Automated SAP journal entry workflow for Imperial Treasure POS reconciliation\n============================================================\n\n[1/58] Initialize Workflow\n▶️  Executing step: Initialize Workflow\n[INIT] Initializing workflow with troubleshooting flags...\n✅ Completed step: Initialize Workflow (1ms)\n\n[2/58] Read JSON file\n▶️  Executing step: Read JSON file\n📊 Reading JSON file and preparing data...\n📁 Looking for JSON files in: C:\\Users\\louis\\OneDrive - Imperial Treasure\\POS n8n Recon\n📄 Found file: SBTRPONE_06112025_Lunch.json in SB 111\n✅ Loaded file: SBTRPONE_06112025_Lunch.json\n📊 Entries: 9 (excluding GST)\n💰 Totals - Debit: 0, Credit: 0\n✅ Completed step: Read JSON file (11ms)\n\n[3/58] Check for duplicate entry\n▶️  Executing step: Check for duplicate entry\n🔍 Checking for duplicate entries...\n📋 Checking for duplicate: SBTRPONE_2025-11-06_Lunch\n✅ No duplicate found - file is unique\n✅ Completed step: Check for duplicate entry (43ms)\n\n[4/58] Prepare journal entry data\n▶️  Executing step: Prepare journal entry data\n📊 Preparing journal entry data...\n✅ Validated: 9 balanced entries ready for SAP\n✅ Completed step: Prepare journal entry data (0ms)\n\n[5/58] Check for Chrome tab\n▶️  Executing step: Check for Chrome tab\n🔍 Checking for existing Chrome tab...\n✅ Completed step: Check for Chrome tab (131ms)\n\n[6/58] Process Chrome check\n▶️  Executing step: Process Chrome check\nChrome status: exists\n✅ Completed step: Process Chrome check (1ms)\n\n[7/58] Logout from SAP session\n▶️  Executing step: Logout from SAP session\n🚪 Logging out from SAP...\n✅ Completed step: Logout from SAP session (2410ms)\n\n[8/58] Close Chrome if exists\n▶️  Executing step: Close Chrome if exists\n🔴 Closing Chrome...\n✅ Completed step: Close Chrome if exists (3169ms)\n\n[9/58] Open SAP URL via navigate_browser\n▶️  Executing step: Open SAP URL via navigate_browser\n🌐 Opening SAP login page...\n✅ Completed step: Open SAP URL via navigate_browser (7126ms)\n\n[10/58] Check for Chrome restore dialog\n▶️  Executing step: Check for Chrome restore dialog\n✅ Completed step: Check for Chrome restore dialog (291ms)\n\n[11/58] Dismiss Chrome restore dialog if present\n⏭️  Skipping step: Dismiss Chrome restore dialog if present (condition not met)\n\n[12/58] Wait for SAP page to finish loading\n▶️  Executing step: Wait for SAP page to finish loading\n🔍 Waiting for SAP page to finish loading...\n✅ SAP page loaded in 122ms (attempt 1)\n✅ Completed step: Wait for SAP page to finish loading (122ms)\n\n[13/58] Check login status\n▶️  Executing step: Check login status\n🔐 Checking login status...\n   Found SAP window with selector: role:Window|name:SAP BusinessOne - Google Chrome\n[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...\n[SUBPROCESS DEBUG] Starting parent chain traversal from PID 48056\n[SUBPROCESS DEBUG] Iteration 0: checking PID 48056\n❌ Step failed: Check login status (31240ms)\n   Error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\n\n============================================================\n❌ Workflow failed! (44561ms)\n============================================================\n❌ Workflow error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\n🔧 Starting troubleshooting sequence...\n▶️  Executing step: Activate Chrome Window (Troubleshooting)\n⚠️ ENTERING TROUBLESHOOTING MODE\n🔧 Attempting to activate Chrome window...\n✅ Chrome window activated\n✅ Completed step: Activate Chrome Window (Troubleshooting) (656ms)\n▶️  Executing step: Get Focused Window Tree (Troubleshooting)\n🌳 Getting UI tree for diagnostics...\n   Window: Taskbar\n   Elements: 25\n✅ Completed step: Get Focused Window Tree (Troubleshooting) (880ms)\n▶️  Executing step: Get Browser DOM (Troubleshooting)\n🌐 Getting browser DOM for diagnostics...\n[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...\n[SUBPROCESS DEBUG] Starting parent chain traversal from PID 48056\n[SUBPROCESS DEBUG] Iteration 0: checking PID 48056\n❌ Failed to get browser DOM: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\n✅ Completed step: Get Browser DOM (Troubleshooting) (31058ms)\n▶️  Executing step: Diagnose Failure Reason\n🔍 Diagnosing failure reason...\n⚠️ Unknown application state\n   Diagnosis: unknown_state\n   Recommendation: restart_workflow\n✅ Completed step: Diagnose Failure Reason (0ms)\n▶️  Executing step: Check Application Status and Decide Recovery\n🤔 Deciding recovery strategy...\n🔄 Will restart workflow\n✅ Completed step: Check Application Status and Decide Recovery (2ms)\n▶️  Executing step: Classify error type and set failure flag\n📋 Classifying error type...\n   Error Type: unknown_error\n   Severity: high\n   Can Recover: false\n✅ Completed step: Classify error type and set failure flag (0ms)\n⏭️  Skipping step: Check for session expired text (condition not met)\n⏭️  Skipping step: Handle session conflict dialog (condition not met)\n▶️  Executing step: Handle unsaved changes dialog\n💾 Checking for unsaved changes dialog...\n✅ Completed step: Handle unsaved changes dialog (917ms)\n▶️  Executing step: Logout from SAP in troubleshooting\n🚪 Logging out before restart...\n✅ Logged out\n✅ Completed step: Logout from SAP in troubleshooting (3868ms)\n▶️  Executing step: Close Chrome after logout in troubleshooting\n🔴 Closing Chrome for clean restart...\n✅ Chrome closed\n✅ Completed step: Close Chrome after logout in troubleshooting (3285ms)\n▶️  Executing step: Execute Restart Decision\n\n============================================================\n🔄 RESTARTING WORKFLOW (Attempt 1/3)\n============================================================\n\n✅ Completed step: Execute Restart Decision (1ms)\n🔄 Restart requested but not implemented in current version\n","stdout":"2025-11-06T22:36:26.609033Z  WARN terminator::extension_bridge: Port in use, checking for existing terminator process... addr=127.0.0.1:17373 e=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:36:26.675407Z ERROR terminator::extension_bridge: Failed to bind after cleanup attempt addr=127.0.0.1:17373 e2=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:36:26.675448Z ERROR terminator::extension_bridge: Failed to create extension bridge: Failed to bind to port 17373: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)\n2025-11-06T22:36:57.381217Z ERROR terminator::browser_script: Extension client failed to connect after 30 seconds of waiting\n2025-11-06T22:36:59.274397Z  WARN terminator::extension_bridge: Port in use, checking for existing terminator process... addr=127.0.0.1:17373 e=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:36:59.322369Z ERROR terminator::extension_bridge: Failed to bind after cleanup attempt addr=127.0.0.1:17373 e2=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:36:59.322413Z ERROR terminator::extension_bridge: Failed to create extension bridge: Failed to bind to port 17373: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)\n2025-11-06T22:37:29.991054Z ERROR terminator::browser_script: Extension client failed to connect after 30 seconds of waiting\n{\n  \"metadata\": {\n    \"name\": \"Imperial Treasure SAP Journal Entry\",\n    \"description\": \"Automated SAP journal entry workflow for Imperial Treasure POS reconciliation\",\n    \"version\": \"1.0.0\",\n    \"input\": {\n      \"_def\": {\n        \"unknownKeys\": \"strip\",\n        \"catchall\": {\n          \"_def\": {\n            \"typeName\": \"ZodNever\"\n          },\n          \"~standard\": {\n            \"version\": 1,\n            \"vendor\": \"zod\"\n          }\n        },\n        \"typeName\": \"ZodObject\"\n      },\n      \"~standard\": {\n        \"version\": 1,\n        \"vendor\": \"zod\"\n      },\n      \"_cached\": {\n        \"shape\": {\n          \"targetFile\": {\n            \"_def\": {\n              \"innerType\": {\n                \"_def\": {\n                  \"checks\": [],\n                  \"typeName\": \"ZodString\",\n                  \"coerce\": false\n                },\n                \"~standard\": {\n                  \"version\": 1,\n                  \"vendor\": \"zod\"\n                }\n              },\n              \"typeName\": \"ZodOptional\",\n              \"description\": \"Optional specific JSON file to process. If not provided, will auto-detect first unprocessed file.\"\n            },\n            \"~standard\": {\n              \"version\": 1,\n              \"vendor\": \"zod\"\n            }\n          },\n          \"environment\": {\n            \"_def\": {\n              \"description\": \"Execution environment - TEST or LIVE\",\n              \"innerType\": {\n                \"_def\": {\n                  \"values\": [\n                    \"TEST\",\n                    \"LIVE\"\n                  ],\n                  \"typeName\": \"ZodEnum\"\n                },\n                \"~standard\": {\n                  \"version\": 1,\n                  \"vendor\": \"zod\"\n                },\n                \"_cache\": {}\n              },\n              \"typeName\": \"ZodDefault\"\n            },\n            \"~standard\": {\n              \"version\": 1,\n              \"vendor\": \"zod\"\n            }\n          }\n        },\n        \"keys\": [\n          \"targetFile\",\n          \"environment\"\n        ]\n      }\n    },\n    \"steps\": [\n      {\n        \"id\": \"init\",\n        \"name\": \"Initialize Workflow\"\n      },\n      {\n        \"id\": \"read_json_file\",\n        \"name\": \"Read JSON file\"\n      },\n      {\n        \"id\": \"check_duplicate\",\n        \"name\": \"Check for duplicate entry\"\n      },\n      {\n        \"id\": \"prepare_journal_data\",\n        \"name\": \"Prepare journal entry data\"\n      },\n      {\n        \"id\": \"check_chrome_tab\",\n        \"name\": \"Check for Chrome tab\"\n      },\n      {\n        \"id\": \"process_chrome_check\",\n        \"name\": \"Process Chrome check\"\n      },\n      {\n        \"id\": \"logout_sap\",\n        \"name\": \"Logout from SAP session\"\n      },\n      {\n        \"id\": \"close_chrome\",\n        \"name\": \"Close Chrome if exists\"\n      },\n      {\n        \"id\": \"open_sap_url\",\n        \"name\": \"Open SAP URL via navigate_browser\"\n      },\n      {\n        \"id\": \"check_restore_dialog\",\n        \"name\": \"Check for Chrome restore dialog\"\n      },\n      {\n        \"id\": \"dismiss_chrome_restore\",\n        \"name\": \"Dismiss Chrome restore dialog if present\"\n      },\n      {\n        \"id\": \"wait_for_page_load\",\n        \"name\": \"Wait for SAP page to finish loading\"\n      },\n      {\n        \"id\": \"check_login_status\",\n        \"name\": \"Check login status\"\n      },\n      {\n        \"id\": \"login_to_sap\",\n        \"name\": \"Login to SAP\"\n      },\n      {\n        \"id\": \"check_password_dialog\",\n        \"name\": \"Check for Chrome password save dialog\"\n      },\n      {\n        \"id\": \"dismiss_password_with_never\",\n        \"name\": \"Dismiss Chrome password save dialog if present\"\n      },\n      {\n        \"id\": \"select_company\",\n        \"name\": \"Select company and submit\"\n      },\n      {\n        \"id\": \"handle_domain_binding\",\n        \"name\": \"Handle domain user binding confirmation\"\n      },\n      {\n        \"id\": \"wait_for_sap_load\",\n        \"name\": \"Wait for SAP to fully load\"\n      },\n      {\n        \"id\": \"handle_concurrent_user\",\n        \"name\": \"Handle concurrent user dialog\"\n      },\n      {\n        \"id\": \"close_popups\",\n        \"name\": \"Close popups\"\n      },\n      {\n        \"id\": \"close_system_messages\",\n        \"name\": \"Close system messages\"\n      },\n      {\n        \"id\": \"navigate_to_journal_entry\",\n        \"name\": \"Navigate to Journal Entry via menu\"\n      },\n      {\n        \"id\": \"set_date_fields\",\n        \"name\": \"Set date fields (Posting Date, Due Date, Doc. Date)\"\n      },\n      {\n        \"id\": \"detect_table_columns\",\n        \"name\": \"Detect table column mapping\"\n      },\n      {\n        \"id\": \"add_missing_fields\",\n        \"name\": \"Add missing fields to SAP Journal Entry form\"\n      },\n      {\n        \"id\": \"prepare_gl_data\",\n        \"name\": \"Prepare tab-separated GL data\"\n      },\n      {\n        \"id\": \"click_first_cell\",\n        \"name\": \"Click first cell in journal table\"\n      },\n      {\n        \"id\": \"write_gl_clipboard\",\n        \"name\": \"Write GL data to clipboard\"\n      },\n      {\n        \"id\": \"paste_gl_entries\",\n        \"name\": \"Paste GL Journal Entries\"\n      },\n      {\n        \"id\": \"smart_tab_after_gl\",\n        \"name\": \"Smart Tab to new row after GL paste\"\n      },\n      {\n        \"id\": \"click_goto_menu\",\n        \"name\": \"Click Go To menu for BP search\"\n      },\n      {\n        \"id\": \"click_bp_list\",\n        \"name\": \"Click List of Business Partners\"\n      },\n      {\n        \"id\": \"type_bp_code\",\n        \"name\": \"Type BP code in search\"\n      },\n      {\n        \"id\": \"search_bp\",\n        \"name\": \"Press Enter to search BP\"\n      },\n      {\n        \"id\": \"write_bp_clipboard\",\n        \"name\": \"Write single BP entry to clipboard\"\n      },\n      {\n        \"id\": \"paste_bp_entry\",\n        \"name\": \"Paste BP entry (Ctrl+V)\"\n      },\n      {\n        \"id\": \"smart_tab_after_bp\",\n        \"name\": \"Smart Tab to new row after BP paste\"\n      },\n      {\n        \"id\": \"check_more_bp\",\n        \"name\": \"Increment BP counter and check for more entries\"\n      },\n      {\n        \"id\": \"force_rerender_up\",\n        \"name\": \"Force UI rerender with Up arrow\"\n      },\n      {\n        \"id\": \"force_rerender_down\",\n        \"name\": \"Force UI rerender with Down arrow\"\n      },\n      {\n        \"id\": \"open_context_menu\",\n        \"name\": \"Open context menu on journal table\"\n      },\n      {\n        \"id\": \"click_copy_table\",\n        \"name\": \"Click Copy Table option\"\n      },\n      {\n        \"id\": \"read_copied_table\",\n        \"name\": \"Read and parse copied table data\"\n      },\n      {\n        \"id\": \"validate_entries\",\n        \"name\": \"Validate pasted entries against original\"\n      },\n      {\n        \"id\": \"detect_summary_difference\",\n        \"name\": \"Detect table summary difference\"\n      },\n      {\n        \"id\": \"prepare_adjustment\",\n        \"name\": \"Prepare 441500 adjustment entries\"\n      },\n      {\n        \"id\": \"paste_adjustment\",\n        \"name\": \"Paste 441500 adjustment entries\"\n      },\n      {\n        \"id\": \"smart_tab_after_adjustment\",\n        \"name\": \"Smart Tab to new row after adjustments\"\n      },\n      {\n        \"id\": \"verify_final_balance\",\n        \"name\": \"Verify final journal balance\"\n      },\n      {\n        \"id\": \"submit_journal_entry\",\n        \"name\": \"Click Add button to submit journal entry\"\n      },\n      {\n        \"id\": \"handle_confirmation\",\n        \"name\": \"Handle journal entry confirmation dialog if present\"\n      },\n      {\n        \"id\": \"move_to_processed\",\n        \"name\": \"Move file to processed folder\"\n      },\n      {\n        \"id\": \"move_to_failed\",\n        \"name\": \"Move file to failed folder if not processed\"\n      },\n      {\n        \"id\": \"exit_no_files\",\n        \"name\": \"No files to process - successful exit\"\n      },\n      {\n        \"id\": \"exit_file_not_found\",\n        \"name\": \"File not found - failed exit\"\n      },\n      {\n        \"id\": \"logout_at_end\",\n        \"name\": \"Logout from SAP session at end\"\n      },\n      {\n        \"id\": \"close_chrome_at_end\",\n        \"name\": \"Close Chrome at end\"\n      }\n    ]\n  },\n  \"result\": {\n    \"status\": \"error\",\n    \"message\": \"Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\",\n    \"data\": null\n  },\n  \"state\": {\n    \"context\": {\n      \"data\": null\n    }\n  }\n}\n","exit_code":1}). Retrying in 2 seconds... (attempt 1/3)
+2025-11-06T22:37:40.135208Z  INFO terminator_mcp_agent::server_sequence: Executing TypeScript workflow from URL: file://C:\Users\louis\Documents\workflows\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\imperial_treasure_1_typescript\src\terminator.ts
+2025-11-06T22:37:40.161318Z  INFO terminator_mcp_agent::workflow_typescript: Using bun runtime
+2025-11-06T22:37:40.161691Z  INFO terminator_mcp_agent::workflow_typescript: ⏳ Lockfile not found - running install to generate it
+2025-11-06T22:37:40.161717Z  INFO terminator_mcp_agent::workflow_typescript: ⏳ Installing dependencies...
+2025-11-06T22:37:40.208632Z  INFO terminator_mcp_agent::workflow_typescript: ✓ Dependencies installed successfully
+2025-11-06T22:37:40.208678Z  INFO terminator_mcp_agent::workflow_typescript: ✓ node_modules will be persisted to S3 with workflow
+2025-11-06T22:37:40.232932Z  INFO terminator_mcp_agent::workflow_typescript: Using bun runtime
+2025-11-06T22:37:40.232993Z  INFO terminator_mcp_agent::workflow_typescript: Executing workflow with bun: C:\Users\louis\Documents\workflows\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\imperial_treasure_1_typescript/src/terminator.ts
+2025-11-06T22:37:42.786664Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry collector not available at http://localhost:4318 (attempt 4). Retrying in 30 seconds... (1.5 minutes elapsed)
+MCP server still running (stdio mode)
+2025-11-06T22:38:12.897812Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry collector not available at http://localhost:4318 (attempt 5). Retrying in 30 seconds... (2.0 minutes elapsed)
+2025-11-06T22:38:43.014157Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry collector not available at http://localhost:4318 (attempt 6). Retrying in 30 seconds... (2.5 minutes elapsed)
+⚠️  Tool execution failed: Mcp error: -32603: Workflow execution failed: ============================================================
+🚀 Starting workflow: Imperial Treasure SAP Journal Entry
+   Automated SAP journal entry workflow for Imperial Treasure POS reconciliation
+============================================================
+
+[1/58] Initialize Workflow
+▶️  Executing step: Initialize Workflow
+[INIT] Initializing workflow with troubleshooting flags...
+✅ Completed step: Initialize Workflow (0ms)
+
+[2/58] Read JSON file
+▶️  Executing step: Read JSON file
+📊 Reading JSON file and preparing data...
+📁 Looking for JSON files in: C:\Users\louis\OneDrive - Imperial Treasure\POS n8n Recon
+📄 Found file: SBTRPONE_06112025_Lunch.json in SB 111
+✅ Loaded file: SBTRPONE_06112025_Lunch.json
+📊 Entries: 9 (excluding GST)
+💰 Totals - Debit: 0, Credit: 0
+✅ Completed step: Read JSON file (4ms)
+
+[3/58] Check for duplicate entry
+▶️  Executing step: Check for duplicate entry
+🔍 Checking for duplicate entries...
+📋 Checking for duplicate: SBTRPONE_2025-11-06_Lunch
+✅ No duplicate found - file is unique
+✅ Completed step: Check for duplicate entry (17ms)
+
+[4/58] Prepare journal entry data
+▶️  Executing step: Prepare journal entry data
+📊 Preparing journal entry data...
+✅ Validated: 9 balanced entries ready for SAP
+✅ Completed step: Prepare journal entry data (1ms)
+
+[5/58] Check for Chrome tab
+▶️  Executing step: Check for Chrome tab
+🔍 Checking for existing Chrome tab...
+✅ Completed step: Check for Chrome tab (101ms)
+
+[6/58] Process Chrome check
+▶️  Executing step: Process Chrome check
+Chrome status: not found
+✅ Completed step: Process Chrome check (0ms)
+
+[7/58] Logout from SAP session
+▶️  Executing step: Logout from SAP session
+🚪 Logging out from SAP...
+✅ Completed step: Logout from SAP session (2335ms)
+
+[8/58] Close Chrome if exists
+⏭️  Skipping step: Close Chrome if exists (condition not met)
+
+[9/58] Open SAP URL via navigate_browser
+▶️  Executing step: Open SAP URL via navigate_browser
+🌐 Opening SAP login page...
+✅ Completed step: Open SAP URL via navigate_browser (6862ms)
+
+[10/58] Check for Chrome restore dialog
+▶️  Executing step: Check for Chrome restore dialog
+✅ Completed step: Check for Chrome restore dialog (284ms)
+
+[11/58] Dismiss Chrome restore dialog if present
+⏭️  Skipping step: Dismiss Chrome restore dialog if present (condition not met)
+
+[12/58] Wait for SAP page to finish loading
+▶️  Executing step: Wait for SAP page to finish loading
+🔍 Waiting for SAP page to finish loading...
+✅ SAP page loaded in 141ms (attempt 1)
+✅ Completed step: Wait for SAP page to finish loading (142ms)
+
+[13/58] Check login status
+▶️  Executing step: Check login status
+🔐 Checking login status...
+   Found SAP window with selector: role:Window|name:SAP BusinessOne - Google Chrome
+[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...
+[SUBPROCESS DEBUG] Starting parent chain traversal from PID 56400
+[SUBPROCESS DEBUG] Iteration 0: checking PID 56400
+❌ Step failed: Check login status (31181ms)
+   Error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.
+
+============================================================
+❌ Workflow failed! (40965ms)
+============================================================
+❌ Workflow error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.
+🔧 Starting troubleshooting sequence...
+▶️  Executing step: Activate Chrome Window (Troubleshooting)
+⚠️ ENTERING TROUBLESHOOTING MODE
+🔧 Attempting to activate Chrome window...
+✅ Chrome window activated
+✅ Completed step: Activate Chrome Window (Troubleshooting) (709ms)
+▶️  Executing step: Get Focused Window Tree (Troubleshooting)
+🌳 Getting UI tree for diagnostics...
+   Window: Taskbar
+   Elements: 25
+✅ Completed step: Get Focused Window Tree (Troubleshooting) (1104ms)
+▶️  Executing step: Get Browser DOM (Troubleshooting)
+🌐 Getting browser DOM for diagnostics...
+[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...
+[SUBPROCESS DEBUG] Starting parent chain traversal from PID 56400
+[SUBPROCESS DEBUG] Iteration 0: checking PID 56400
+❌ Failed to get browser DOM: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.
+✅ Completed step: Get Browser DOM (Troubleshooting) (31156ms)
+▶️  Executing step: Diagnose Failure Reason
+🔍 Diagnosing failure reason...
+⚠️ Unknown application state
+   Diagnosis: unknown_state
+   Recommendation: restart_workflow
+✅ Completed step: Diagnose Failure Reason (0ms)
+▶️  Executing step: Check Application Status and Decide Recovery
+🤔 Deciding recovery strategy...
+🔄 Will restart workflow
+✅ Completed step: Check Application Status and Decide Recovery (0ms)
+▶️  Executing step: Classify error type and set failure flag
+📋 Classifying error type...
+   Error Type: unknown_error
+   Severity: high
+   Can Recover: false
+✅ Completed step: Classify error type and set failure flag (1ms)
+⏭️  Skipping step: Check for session expired text (condition not met)
+⏭️  Skipping step: Handle session conflict dialog (condition not met)
+▶️  Executing step: Handle unsaved changes dialog
+💾 Checking for unsaved changes dialog...
+✅ Completed step: Handle unsaved changes dialog (876ms)
+▶️  Executing step: Logout from SAP in troubleshooting
+🚪 Logging out before restart...
+✅ Logged out
+✅ Completed step: Logout from SAP in troubleshooting (4001ms)
+▶️  Executing step: Close Chrome after logout in troubleshooting
+🔴 Closing Chrome for clean restart...
+✅ Chrome closed
+✅ Completed step: Close Chrome after logout in troubleshooting (4040ms)
+▶️  Executing step: Execute Restart Decision
+
+============================================================
+🔄 RESTARTING WORKFLOW (Attempt 1/3)
+============================================================
+
+✅ Completed step: Execute Restart Decision (1ms)
+🔄 Restart requested but not implemented in current version
+({"stderr":"============================================================\n🚀 Starting workflow: Imperial Treasure SAP Journal Entry\n   Automated SAP journal entry workflow for Imperial Treasure POS reconciliation\n============================================================\n\n[1/58] Initialize Workflow\n▶️  Executing step: Initialize Workflow\n[INIT] Initializing workflow with troubleshooting flags...\n✅ Completed step: Initialize Workflow (0ms)\n\n[2/58] Read JSON file\n▶️  Executing step: Read JSON file\n📊 Reading JSON file and preparing data...\n📁 Looking for JSON files in: C:\\Users\\louis\\OneDrive - Imperial Treasure\\POS n8n Recon\n📄 Found file: SBTRPONE_06112025_Lunch.json in SB 111\n✅ Loaded file: SBTRPONE_06112025_Lunch.json\n📊 Entries: 9 (excluding GST)\n💰 Totals - Debit: 0, Credit: 0\n✅ Completed step: Read JSON file (4ms)\n\n[3/58] Check for duplicate entry\n▶️  Executing step: Check for duplicate entry\n🔍 Checking for duplicate entries...\n📋 Checking for duplicate: SBTRPONE_2025-11-06_Lunch\n✅ No duplicate found - file is unique\n✅ Completed step: Check for duplicate entry (17ms)\n\n[4/58] Prepare journal entry data\n▶️  Executing step: Prepare journal entry data\n📊 Preparing journal entry data...\n✅ Validated: 9 balanced entries ready for SAP\n✅ Completed step: Prepare journal entry data (1ms)\n\n[5/58] Check for Chrome tab\n▶️  Executing step: Check for Chrome tab\n🔍 Checking for existing Chrome tab...\n✅ Completed step: Check for Chrome tab (101ms)\n\n[6/58] Process Chrome check\n▶️  Executing step: Process Chrome check\nChrome status: not found\n✅ Completed step: Process Chrome check (0ms)\n\n[7/58] Logout from SAP session\n▶️  Executing step: Logout from SAP session\n🚪 Logging out from SAP...\n✅ Completed step: Logout from SAP session (2335ms)\n\n[8/58] Close Chrome if exists\n⏭️  Skipping step: Close Chrome if exists (condition not met)\n\n[9/58] Open SAP URL via navigate_browser\n▶️  Executing step: Open SAP URL via navigate_browser\n🌐 Opening SAP login page...\n✅ Completed step: Open SAP URL via navigate_browser (6862ms)\n\n[10/58] Check for Chrome restore dialog\n▶️  Executing step: Check for Chrome restore dialog\n✅ Completed step: Check for Chrome restore dialog (284ms)\n\n[11/58] Dismiss Chrome restore dialog if present\n⏭️  Skipping step: Dismiss Chrome restore dialog if present (condition not met)\n\n[12/58] Wait for SAP page to finish loading\n▶️  Executing step: Wait for SAP page to finish loading\n🔍 Waiting for SAP page to finish loading...\n✅ SAP page loaded in 141ms (attempt 1)\n✅ Completed step: Wait for SAP page to finish loading (142ms)\n\n[13/58] Check login status\n▶️  Executing step: Check login status\n🔐 Checking login status...\n   Found SAP window with selector: role:Window|name:SAP BusinessOne - Google Chrome\n[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...\n[SUBPROCESS DEBUG] Starting parent chain traversal from PID 56400\n[SUBPROCESS DEBUG] Iteration 0: checking PID 56400\n❌ Step failed: Check login status (31181ms)\n   Error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\n\n============================================================\n❌ Workflow failed! (40965ms)\n============================================================\n❌ Workflow error: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\n🔧 Starting troubleshooting sequence...\n▶️  Executing step: Activate Chrome Window (Troubleshooting)\n⚠️ ENTERING TROUBLESHOOTING MODE\n🔧 Attempting to activate Chrome window...\n✅ Chrome window activated\n✅ Completed step: Activate Chrome Window (Troubleshooting) (709ms)\n▶️  Executing step: Get Focused Window Tree (Troubleshooting)\n🌳 Getting UI tree for diagnostics...\n   Window: Taskbar\n   Elements: 25\n✅ Completed step: Get Focused Window Tree (Troubleshooting) (1104ms)\n▶️  Executing step: Get Browser DOM (Troubleshooting)\n🌐 Getting browser DOM for diagnostics...\n[SUBPROCESS DEBUG] Checking for terminator-mcp-agent in parent chain...\n[SUBPROCESS DEBUG] Starting parent chain traversal from PID 56400\n[SUBPROCESS DEBUG] Iteration 0: checking PID 56400\n❌ Failed to get browser DOM: Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\n✅ Completed step: Get Browser DOM (Troubleshooting) (31156ms)\n▶️  Executing step: Diagnose Failure Reason\n🔍 Diagnosing failure reason...\n⚠️ Unknown application state\n   Diagnosis: unknown_state\n   Recommendation: restart_workflow\n✅ Completed step: Diagnose Failure Reason (0ms)\n▶️  Executing step: Check Application Status and Decide Recovery\n🤔 Deciding recovery strategy...\n🔄 Will restart workflow\n✅ Completed step: Check Application Status and Decide Recovery (0ms)\n▶️  Executing step: Classify error type and set failure flag\n📋 Classifying error type...\n   Error Type: unknown_error\n   Severity: high\n   Can Recover: false\n✅ Completed step: Classify error type and set failure flag (1ms)\n⏭️  Skipping step: Check for session expired text (condition not met)\n⏭️  Skipping step: Handle session conflict dialog (condition not met)\n▶️  Executing step: Handle unsaved changes dialog\n💾 Checking for unsaved changes dialog...\n✅ Completed step: Handle unsaved changes dialog (876ms)\n▶️  Executing step: Logout from SAP in troubleshooting\n🚪 Logging out before restart...\n✅ Logged out\n✅ Completed step: Logout from SAP in troubleshooting (4001ms)\n▶️  Executing step: Close Chrome after logout in troubleshooting\n🔴 Closing Chrome for clean restart...\n✅ Chrome closed\n✅ Completed step: Close Chrome after logout in troubleshooting (4040ms)\n▶️  Executing step: Execute Restart Decision\n\n============================================================\n🔄 RESTARTING WORKFLOW (Attempt 1/3)\n============================================================\n\n✅ Completed step: Execute Restart Decision (1ms)\n🔄 Restart requested but not implemented in current version\n","stdout":"2025-11-06T22:37:50.740194Z  WARN terminator::extension_bridge: Port in use, checking for existing terminator process... addr=127.0.0.1:17373 e=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:37:50.810132Z ERROR terminator::extension_bridge: Failed to bind after cleanup attempt addr=127.0.0.1:17373 e2=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:37:50.810186Z ERROR terminator::extension_bridge: Failed to create extension bridge: Failed to bind to port 17373: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)\n2025-11-06T22:38:21.413082Z ERROR terminator::browser_script: Extension client failed to connect after 30 seconds of waiting\n2025-11-06T22:38:23.630917Z  WARN terminator::extension_bridge: Port in use, checking for existing terminator process... addr=127.0.0.1:17373 e=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:38:23.862797Z ERROR terminator::extension_bridge: Failed to bind after cleanup attempt addr=127.0.0.1:17373 e2=Os { code: 10048, kind: AddrInUse, message: \"Only one usage of each socket address (protocol/network address/port) is normally permitted.\" }\n2025-11-06T22:38:23.862856Z ERROR terminator::extension_bridge: Failed to create extension bridge: Failed to bind to port 17373: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)\n2025-11-06T22:38:54.441639Z ERROR terminator::browser_script: Extension client failed to connect after 30 seconds of waiting\n{\n  \"metadata\": {\n    \"name\": \"Imperial Treasure SAP Journal Entry\",\n    \"description\": \"Automated SAP journal entry workflow for Imperial Treasure POS reconciliation\",\n    \"version\": \"1.0.0\",\n    \"input\": {\n      \"_def\": {\n        \"unknownKeys\": \"strip\",\n        \"catchall\": {\n          \"_def\": {\n            \"typeName\": \"ZodNever\"\n          },\n          \"~standard\": {\n            \"version\": 1,\n            \"vendor\": \"zod\"\n          }\n        },\n        \"typeName\": \"ZodObject\"\n      },\n      \"~standard\": {\n        \"version\": 1,\n        \"vendor\": \"zod\"\n      },\n      \"_cached\": {\n        \"shape\": {\n          \"targetFile\": {\n            \"_def\": {\n              \"innerType\": {\n                \"_def\": {\n                  \"checks\": [],\n                  \"typeName\": \"ZodString\",\n                  \"coerce\": false\n                },\n                \"~standard\": {\n                  \"version\": 1,\n                  \"vendor\": \"zod\"\n                }\n              },\n              \"typeName\": \"ZodOptional\",\n              \"description\": \"Optional specific JSON file to process. If not provided, will auto-detect first unprocessed file.\"\n            },\n            \"~standard\": {\n              \"version\": 1,\n              \"vendor\": \"zod\"\n            }\n          },\n          \"environment\": {\n            \"_def\": {\n              \"description\": \"Execution environment - TEST or LIVE\",\n              \"innerType\": {\n                \"_def\": {\n                  \"values\": [\n                    \"TEST\",\n                    \"LIVE\"\n                  ],\n                  \"typeName\": \"ZodEnum\"\n                },\n                \"~standard\": {\n                  \"version\": 1,\n                  \"vendor\": \"zod\"\n                },\n                \"_cache\": {}\n              },\n              \"typeName\": \"ZodDefault\"\n            },\n            \"~standard\": {\n              \"version\": 1,\n              \"vendor\": \"zod\"\n            }\n          }\n        },\n        \"keys\": [\n          \"targetFile\",\n          \"environment\"\n        ]\n      }\n    },\n    \"steps\": [\n      {\n        \"id\": \"init\",\n        \"name\": \"Initialize Workflow\"\n      },\n      {\n        \"id\": \"read_json_file\",\n        \"name\": \"Read JSON file\"\n      },\n      {\n        \"id\": \"check_duplicate\",\n        \"name\": \"Check for duplicate entry\"\n      },\n      {\n        \"id\": \"prepare_journal_data\",\n        \"name\": \"Prepare journal entry data\"\n      },\n      {\n        \"id\": \"check_chrome_tab\",\n        \"name\": \"Check for Chrome tab\"\n      },\n      {\n        \"id\": \"process_chrome_check\",\n        \"name\": \"Process Chrome check\"\n      },\n      {\n        \"id\": \"logout_sap\",\n        \"name\": \"Logout from SAP session\"\n      },\n      {\n        \"id\": \"close_chrome\",\n        \"name\": \"Close Chrome if exists\"\n      },\n      {\n        \"id\": \"open_sap_url\",\n        \"name\": \"Open SAP URL via navigate_browser\"\n      },\n      {\n        \"id\": \"check_restore_dialog\",\n        \"name\": \"Check for Chrome restore dialog\"\n      },\n      {\n        \"id\": \"dismiss_chrome_restore\",\n        \"name\": \"Dismiss Chrome restore dialog if present\"\n      },\n      {\n        \"id\": \"wait_for_page_load\",\n        \"name\": \"Wait for SAP page to finish loading\"\n      },\n      {\n        \"id\": \"check_login_status\",\n        \"name\": \"Check login status\"\n      },\n      {\n        \"id\": \"login_to_sap\",\n        \"name\": \"Login to SAP\"\n      },\n      {\n        \"id\": \"check_password_dialog\",\n        \"name\": \"Check for Chrome password save dialog\"\n      },\n      {\n        \"id\": \"dismiss_password_with_never\",\n        \"name\": \"Dismiss Chrome password save dialog if present\"\n      },\n      {\n        \"id\": \"select_company\",\n        \"name\": \"Select company and submit\"\n      },\n      {\n        \"id\": \"handle_domain_binding\",\n        \"name\": \"Handle domain user binding confirmation\"\n      },\n      {\n        \"id\": \"wait_for_sap_load\",\n        \"name\": \"Wait for SAP to fully load\"\n      },\n      {\n        \"id\": \"handle_concurrent_user\",\n        \"name\": \"Handle concurrent user dialog\"\n      },\n      {\n        \"id\": \"close_popups\",\n        \"name\": \"Close popups\"\n      },\n      {\n        \"id\": \"close_system_messages\",\n        \"name\": \"Close system messages\"\n      },\n      {\n        \"id\": \"navigate_to_journal_entry\",\n        \"name\": \"Navigate to Journal Entry via menu\"\n      },\n      {\n        \"id\": \"set_date_fields\",\n        \"name\": \"Set date fields (Posting Date, Due Date, Doc. Date)\"\n      },\n      {\n        \"id\": \"detect_table_columns\",\n        \"name\": \"Detect table column mapping\"\n      },\n      {\n        \"id\": \"add_missing_fields\",\n        \"name\": \"Add missing fields to SAP Journal Entry form\"\n      },\n      {\n        \"id\": \"prepare_gl_data\",\n        \"name\": \"Prepare tab-separated GL data\"\n      },\n      {\n        \"id\": \"click_first_cell\",\n        \"name\": \"Click first cell in journal table\"\n      },\n      {\n        \"id\": \"write_gl_clipboard\",\n        \"name\": \"Write GL data to clipboard\"\n      },\n      {\n        \"id\": \"paste_gl_entries\",\n        \"name\": \"Paste GL Journal Entries\"\n      },\n      {\n        \"id\": \"smart_tab_after_gl\",\n        \"name\": \"Smart Tab to new row after GL paste\"\n      },\n      {\n        \"id\": \"click_goto_menu\",\n        \"name\": \"Click Go To menu for BP search\"\n      },\n      {\n        \"id\": \"click_bp_list\",\n        \"name\": \"Click List of Business Partners\"\n      },\n      {\n        \"id\": \"type_bp_code\",\n        \"name\": \"Type BP code in search\"\n      },\n      {\n        \"id\": \"search_bp\",\n        \"name\": \"Press Enter to search BP\"\n      },\n      {\n        \"id\": \"write_bp_clipboard\",\n        \"name\": \"Write single BP entry to clipboard\"\n      },\n      {\n        \"id\": \"paste_bp_entry\",\n        \"name\": \"Paste BP entry (Ctrl+V)\"\n      },\n      {\n        \"id\": \"smart_tab_after_bp\",\n        \"name\": \"Smart Tab to new row after BP paste\"\n      },\n      {\n        \"id\": \"check_more_bp\",\n        \"name\": \"Increment BP counter and check for more entries\"\n      },\n      {\n        \"id\": \"force_rerender_up\",\n        \"name\": \"Force UI rerender with Up arrow\"\n      },\n      {\n        \"id\": \"force_rerender_down\",\n        \"name\": \"Force UI rerender with Down arrow\"\n      },\n      {\n        \"id\": \"open_context_menu\",\n        \"name\": \"Open context menu on journal table\"\n      },\n      {\n        \"id\": \"click_copy_table\",\n        \"name\": \"Click Copy Table option\"\n      },\n      {\n        \"id\": \"read_copied_table\",\n        \"name\": \"Read and parse copied table data\"\n      },\n      {\n        \"id\": \"validate_entries\",\n        \"name\": \"Validate pasted entries against original\"\n      },\n      {\n        \"id\": \"detect_summary_difference\",\n        \"name\": \"Detect table summary difference\"\n      },\n      {\n        \"id\": \"prepare_adjustment\",\n        \"name\": \"Prepare 441500 adjustment entries\"\n      },\n      {\n        \"id\": \"paste_adjustment\",\n        \"name\": \"Paste 441500 adjustment entries\"\n      },\n      {\n        \"id\": \"smart_tab_after_adjustment\",\n        \"name\": \"Smart Tab to new row after adjustments\"\n      },\n      {\n        \"id\": \"verify_final_balance\",\n        \"name\": \"Verify final journal balance\"\n      },\n      {\n        \"id\": \"submit_journal_entry\",\n        \"name\": \"Click Add button to submit journal entry\"\n      },\n      {\n        \"id\": \"handle_confirmation\",\n        \"name\": \"Handle journal entry confirmation dialog if present\"\n      },\n      {\n        \"id\": \"move_to_processed\",\n        \"name\": \"Move file to processed folder\"\n      },\n      {\n        \"id\": \"move_to_failed\",\n        \"name\": \"Move file to failed folder if not processed\"\n      },\n      {\n        \"id\": \"exit_no_files\",\n        \"name\": \"No files to process - successful exit\"\n      },\n      {\n        \"id\": \"exit_file_not_found\",\n        \"name\": \"File not found - failed exit\"\n      },\n      {\n        \"id\": \"logout_at_end\",\n        \"name\": \"Logout from SAP session at end\"\n      },\n      {\n        \"id\": \"close_chrome_at_end\",\n        \"name\": \"Close Chrome at end\"\n      }\n    ]\n  },\n  \"result\": {\n    \"status\": \"error\",\n    \"message\": \"Chrome extension failed to connect after 30 seconds. Make sure Chrome extension is installed and enabled.\",\n    \"data\": null\n  },\n  \"state\": {\n    \"context\": {\n      \"data\": null\n    }\n  }\n}\n","exit_code":1}). Retrying in 4 seconds... (attempt 2/3)
+2025-11-06T22:39:07.406712Z  INFO terminator_mcp_agent::server_sequence: Executing TypeScript workflow from URL: file://C:\Users\louis\Documents\workflows\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\imperial_treasure_1_typescript\src\terminator.ts
+2025-11-06T22:39:07.430187Z  INFO terminator_mcp_agent::workflow_typescript: Using bun runtime
+2025-11-06T22:39:07.430335Z  INFO terminator_mcp_agent::workflow_typescript: ⏳ Lockfile not found - running install to generate it
+2025-11-06T22:39:07.430349Z  INFO terminator_mcp_agent::workflow_typescript: ⏳ Installing dependencies...
+2025-11-06T22:39:07.467176Z  INFO terminator_mcp_agent::workflow_typescript: ✓ Dependencies installed successfully
+2025-11-06T22:39:07.467261Z  INFO terminator_mcp_agent::workflow_typescript: ✓ node_modules will be persisted to S3 with workflow
+2025-11-06T22:39:07.490665Z  INFO terminator_mcp_agent::workflow_typescript: Using bun runtime
+2025-11-06T22:39:07.490713Z  INFO terminator_mcp_agent::workflow_typescript: Executing workflow with bun: C:\Users\louis\Documents\workflows\org-org_33DH72nPyAInVAh5t8TyIKVdYNw\imperial_treasure_1_typescript/src/terminator.ts
+MCP server still running (stdio mode)
+2025-11-06T22:39:13.118652Z  INFO terminator_mcp_agent::telemetry::with_telemetry: OpenTelemetry collector not available at http://localhost:4318 (attempt 7). Retrying in 30 seconds... (3.0 minutes elapsed)
