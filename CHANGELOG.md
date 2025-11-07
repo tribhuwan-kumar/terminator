@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.16] - 2025-11-07
+
+### Fixed
+- MCP: Fixed compilation error by adding missing UINode import in helpers.rs
+- MCP: Fixed TreeOutputFormat ownership issue in format_tree_string function
+- MCP: Removed duplicate inputs_json serialization in workflow_typescript.rs
+
 ## [0.22.15] - 2025-11-07
 
 ### Changed
