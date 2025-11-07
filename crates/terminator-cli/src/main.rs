@@ -144,6 +144,10 @@ struct McpRunArgs {
     #[clap(long)]
     no_retry: bool,
 
+    /// Skip TypeScript type checking before execution (not recommended)
+    #[clap(long)]
+    skip_type_check: bool,
+
     /// Start execution from a specific step ID
     #[clap(long)]
     start_from_step: Option<String>,
@@ -1277,6 +1281,13 @@ async fn run_workflow(transport: mcp_client::Transport, args: McpRunArgs) -> any
     if is_ts_workflow {
         info!("Detected TypeScript/JavaScript workflow - delegating to MCP server");
 
+        // Run type check unless explicitly skipped
+        if !args.skip_type_check {
+            typescript_workflow::run_type_check(&args.input)?;
+        } else {
+            info!("⚠️  Skipping type check (--skip-type-check flag set)");
+        }
+
         // Convert to absolute path and create file:// URL
         let file_url = typescript_workflow::path_to_file_url(&args.input)?;
         info!("TypeScript workflow URL: {}", file_url);
@@ -1692,6 +1703,13 @@ async fn run_workflow_once(
     // For TypeScript workflows, delegate to MCP server
     if is_ts_workflow {
         info!("Detected TypeScript/JavaScript workflow - delegating to MCP server");
+
+        // Run type check unless explicitly skipped
+        if !args.skip_type_check {
+            typescript_workflow::run_type_check(&args.input)?;
+        } else {
+            info!("⚠️  Skipping type check (--skip-type-check flag set)");
+        }
 
         // Convert to absolute path and create file:// URL
         let file_url = typescript_workflow::path_to_file_url(&args.input)?;

@@ -147,3 +147,103 @@ pub fn build_typescript_workflow_args(
 
     Ok(Value::Object(workflow_args))
 }
+
+/// Run TypeScript type checking with tsc --noEmit
+/// Returns Ok(()) if type check passes, Err with formatted error message if it fails
+pub fn run_type_check(input: &str) -> Result<()> {
+    use std::process::Command;
+    use tracing::{error, info};
+
+    let path = Path::new(input);
+
+    // Get the directory to run tsc in
+    let working_dir = if path.is_dir() {
+        path
+    } else {
+        path.parent().unwrap_or(path)
+    };
+
+    // Check if this is a TypeScript project (has tsconfig.json or typescript dependency)
+    let has_tsconfig = working_dir.join("tsconfig.json").exists();
+    let package_json = working_dir.join("package.json");
+
+    // Read package.json to check for typescript dependency
+    let has_typescript_dep = if package_json.exists() {
+        if let Ok(content) = std::fs::read_to_string(&package_json) {
+            if let Ok(json) = serde_json::from_str::<Value>(&content) {
+                let has_in_deps = json
+                    .get("dependencies")
+                    .and_then(|deps| deps.get("typescript"))
+                    .is_some();
+                let has_in_dev_deps = json
+                    .get("devDependencies")
+                    .and_then(|deps| deps.get("typescript"))
+                    .is_some();
+                has_in_deps || has_in_dev_deps
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // Only run type check if it's a TypeScript project
+    if !has_tsconfig && !has_typescript_dep {
+        info!("Skipping type check - not a TypeScript project (no tsconfig.json or typescript dependency)");
+        return Ok(());
+    }
+
+    info!("🔍 Running type check with tsc --noEmit...");
+
+    // Try bun first (faster), then npx, then global tsc
+    let output = Command::new("bun")
+        .args(&["tsc", "--noEmit"])
+        .current_dir(working_dir)
+        .output()
+        .or_else(|_| {
+            // Fallback to npx if bun fails
+            Command::new("npx")
+                .args(&["tsc", "--noEmit"])
+                .current_dir(working_dir)
+                .output()
+        })
+        .or_else(|_| {
+            // Fallback to global tsc if npx fails
+            Command::new("tsc")
+                .args(&["--noEmit"])
+                .current_dir(working_dir)
+                .output()
+        })
+        .with_context(|| "Failed to run TypeScript compiler (tsc). Make sure TypeScript is installed.")?;
+
+    if output.status.success() {
+        info!("✅ Type check passed");
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Combine stderr and stdout for error output
+        let error_output = if !stderr.is_empty() {
+            stderr.to_string()
+        } else {
+            stdout.to_string()
+        };
+
+        // Format the error message
+        error!("❌ Type errors found:\n{}", error_output);
+
+        eprintln!("\n{}", "=".repeat(80));
+        eprintln!("❌ TypeScript Type Check Failed");
+        eprintln!("{}", "=".repeat(80));
+        eprintln!("\n{}", error_output);
+        eprintln!("{}", "=".repeat(80));
+        eprintln!("\n💡 Fix type errors before running the workflow");
+        eprintln!("   Or use --skip-type-check to bypass (not recommended)\n");
+
+        anyhow::bail!("Type check failed - fix errors above")
+    }
+}
