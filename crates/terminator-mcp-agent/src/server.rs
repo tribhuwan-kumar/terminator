@@ -504,7 +504,7 @@ impl DesktopWrapper {
             "title": args.title,
             "detailed_attributes": args.tree.include_detailed_attributes.unwrap_or(true),
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
+            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 30 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
 
         // Add browser detection metadata
@@ -597,7 +597,7 @@ impl DesktopWrapper {
             },
             "detailed_attributes": args.tree.include_detailed_attributes.unwrap_or(true),
             "timestamp": chrono::Utc::now().to_rfc3339(),
-            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 2 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
+            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 30 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions. Use tree_output_format: \"compact_yaml\" (default) for readable format or \"verbose_json\" for full data."
         });
 
         // Detect if this is a browser window

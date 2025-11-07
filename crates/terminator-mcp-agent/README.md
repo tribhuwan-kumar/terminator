@@ -236,7 +236,7 @@ The Terminator MCP agent offers two primary workflows for automating desktop tas
 This is the most powerful and flexible method. You build a workflow step-by-step, using MCP tools to inspect the UI and refine your actions.
 
 1.  **Inspect the UI**: Start by using `get_focused_window_tree` to understand the structure of your target application. This gives you the roles, names, and IDs of all elements. For performance optimization:
-    - Use `tree_max_depth: 2` to limit tree depth when you only need shallow inspection
+    - Use `tree_max_depth: 30` to limit tree depth when you only need shallow inspection
     - Use `tree_from_selector: "role:Dialog"` to get subtree from a specific element
     - Use `tree_from_selector: "true"` to start from the currently focused element
     - Use `tree_output_format: "compact_yaml"` (default) for readable format or `"verbose_json"` for full data
@@ -721,7 +721,7 @@ The virtual display manager creates a memory-based display context that satisfie
 - Implement delays between rapid operations
 - Consider using `include_tree: false` for intermediate steps
 - For tree extraction tools, optimize with:
-  - `tree_max_depth: 2` - Limit depth for large trees
+  - `tree_max_depth: 30` - Limit depth for large trees
   - `tree_from_selector: "role:List"` - Get subtree from specific element
   - `tree_from_selector: "true"` - Start from focused element
   - `tree_output_format: "compact_yaml"` - Readable format (default) or `"verbose_json"` for full data
