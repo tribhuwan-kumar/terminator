@@ -397,7 +397,7 @@ pub async fn maybe_attach_tree(
     use terminator::Selector;
 
     // Check if tree should be included
-    let should_include = include_tree.unwrap_or(false);
+    let should_include = include_tree.unwrap_or(true);
     if !should_include {
         return;
     }

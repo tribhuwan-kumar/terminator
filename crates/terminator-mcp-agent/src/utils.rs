@@ -27,7 +27,7 @@ pub struct MonitorScreenshotOptions {
 /// Common fields for UI tree inclusion in responses
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
 pub struct TreeOptions {
-    #[schemars(description = "Whether to include the UI tree in the response. Defaults to false.")]
+    #[schemars(description = "Whether to include the UI tree in the response (captured after action execution). Defaults to true to verify action results.")]
     pub include_tree: Option<bool>,
 
     #[schemars(
