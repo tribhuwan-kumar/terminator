@@ -216,8 +216,6 @@ Your most reliable strategy is to inspect the application's UI structure *before
     - Use `tree_max_depth: 30` to limit tree depth when you only need shallow inspection
     - Use `tree_from_selector: \"role:Dialog\"` to get subtree starting from a specific element
     - Use `tree_from_selector: \"true\"` with `get_focused_window_tree` to start from the focused element
-    - Use `tree_output_format: \"compact_yaml\"` (default) for readable format: `[ROLE] name #id (context)` with indentation
-    - Use `tree_output_format: \"verbose_json\"` for full JSON with all fields (backward compatibility)
 
 3.  **Construct Smart Selector Strategies:** 
     *   **Primary Strategy:** Use `role:Type|name:Name` when available, otherwise use the numeric ID (`\"#12345\"`). You can also use |nativeid which corresponds to the AutomationId property on Windows.
