@@ -216,7 +216,18 @@ mod with_telemetry {
     }
 
     pub fn init_telemetry() -> anyhow::Result<()> {
-        // Check if telemetry is enabled via environment variable
+        // Disable telemetry by default to prevent connection issues
+        // Users must explicitly enable it via OTEL_SDK_ENABLED=true
+        let telemetry_enabled = std::env::var("OTEL_SDK_ENABLED")
+            .unwrap_or_default()
+            .eq_ignore_ascii_case("true");
+
+        if !telemetry_enabled {
+            info!("OpenTelemetry is disabled by default (set OTEL_SDK_ENABLED=true to enable)");
+            return Ok(());
+        }
+
+        // Check if telemetry is explicitly disabled
         if std::env::var("OTEL_SDK_DISABLED").unwrap_or_default() == "true" {
             info!("OpenTelemetry is disabled via OTEL_SDK_DISABLED");
             return Ok(());
