@@ -291,14 +291,6 @@ impl TypeScriptWorkflow {
         end_at_step: Option<&str>,
         restored_state: Option<Value>,
     ) -> Result<String, McpError> {
-        // Serialize parameters as JSON objects for clean passing to SDK
-        let inputs_json = serde_json::to_string(&inputs).map_err(|e| {
-            McpError::internal_error(
-                format!("Failed to serialize inputs: {}", e),
-                Some(json!({"error": e.to_string()})),
-            )
-        })?;
-
         // Convert Windows path to forward slashes for file:// URL
         let workflow_path_str = self.workflow_path.display().to_string();
         let workflow_path = workflow_path_str.replace('\\', "/");
