@@ -49,6 +49,11 @@ pub struct TreeOptions {
         description = "Output format for UI tree. Options: 'verbose_json' (full JSON with all fields), 'compact_yaml' (minimal YAML: [ROLE] name #id). Defaults to 'compact_yaml'."
     )]
     pub tree_output_format: Option<TreeOutputFormat>,
+
+    #[schemars(
+        description = "Capture UI tree before and after action execution, then compute and return the diff. Returns tree_before, tree_after, and ui_diff fields in response. When enabled, overrides include_tree behavior. Defaults to false."
+    )]
+    pub ui_diff_before_after: Option<bool>,
 }
 
 /// Common fields for element selection with alternatives and fallbacks

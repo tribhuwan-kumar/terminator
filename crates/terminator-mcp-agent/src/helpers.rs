@@ -515,6 +515,112 @@ pub async fn maybe_attach_tree(
     }
 }
 
+/// Result structure for UI tree diff computation
+#[derive(Debug, Clone)]
+pub struct UiDiffResult {
+    pub diff: String,
+    pub tree_before: String,
+    pub tree_after: String,
+    pub has_changes: bool,
+}
+
+/// Helper to format tree based on output format
+fn format_tree_string(
+    tree: &terminator::element::UINode,
+    format: TreeOutputFormat,
+) -> String {
+    match format {
+        TreeOutputFormat::CompactYaml => format_ui_node_as_compact_yaml(tree, 0),
+        TreeOutputFormat::VerboseJson => {
+            serde_json::to_string_pretty(tree).unwrap_or_else(|_| "{}".to_string())
+        }
+    }
+}
+
+/// Execute an action and optionally capture before/after UI tree diff
+/// 
+/// This function wraps action execution to optionally capture UI state before and after,
+/// computing a diff that shows what changed. Useful for workflow recording and verification.
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_with_ui_diff<F, Fut>(
+    desktop: &Desktop,
+    action: F,
+    ui_diff_before_after: bool,
+    pid: u32,
+    tree_max_depth: Option<usize>,
+    include_detailed_attributes: Option<bool>,
+    tree_output_format: TreeOutputFormat,
+) -> Result<(Value, Option<UiDiffResult>), String>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<Value, String>>,
+{
+    if !ui_diff_before_after {
+        // Normal execution without diff
+        let result = action().await?;
+        return Ok((result, None));
+    }
+
+    // Build tree config with max_depth and other options
+    let detailed = include_detailed_attributes.unwrap_or(true);
+    let tree_config = terminator::platforms::TreeBuildConfig {
+        property_mode: if detailed {
+            terminator::platforms::PropertyLoadingMode::Complete
+        } else {
+            terminator::platforms::PropertyLoadingMode::Fast
+        },
+        timeout_per_operation_ms: Some(100),
+        yield_every_n_elements: Some(25),
+        batch_size: Some(25),
+        max_depth: tree_max_depth,
+    };
+
+    // Capture BEFORE tree
+    tracing::debug!("Capturing UI tree before action (PID: {})", pid);
+    let tree_before = desktop
+        .get_window_tree(pid, None, Some(tree_config.clone()))
+        .map_err(|e| format!("Failed to capture tree before action: {}", e))?;
+    let before_str = format_tree_string(&tree_before, tree_output_format);
+
+    // Execute action
+    let result = action().await?;
+
+    // Small delay for UI to settle (150ms similar to mediar-app)
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    // Capture AFTER tree
+    tracing::debug!("Capturing UI tree after action (PID: {})", pid);
+    let tree_after = desktop
+        .get_window_tree(pid, None, Some(tree_config))
+        .map_err(|e| format!("Failed to capture tree after action: {}", e))?;
+    let after_str = format_tree_string(&tree_after, tree_output_format);
+
+    // Compute diff using the ui_tree_diff module
+    let diff_result = match crate::ui_tree_diff::simple_ui_tree_diff(&before_str, &after_str) {
+        Ok(Some(diff)) => {
+            tracing::info!("UI changes detected: {} characters in diff", diff.len());
+            UiDiffResult {
+                diff,
+                tree_before: before_str,
+                tree_after: after_str,
+                has_changes: true,
+            }
+        }
+        Ok(None) => {
+            tracing::debug!("No UI changes detected");
+            UiDiffResult {
+                diff: "No UI changes detected".to_string(),
+                tree_before: before_str,
+                tree_after: after_str,
+                has_changes: false,
+            }
+        }
+        Err(e) => return Err(format!("Failed to compute UI diff: {}", e)),
+    };
+
+    Ok((result, Some(diff_result)))
+}
+
 pub fn should_add_focus_check(tool_calls: &[ToolCall], current_index: usize) -> bool {
     // Add focus check if:
     // 1. It's the first UI interaction

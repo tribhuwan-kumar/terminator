@@ -12,6 +12,7 @@ pub mod server_sequence;
 pub mod telemetry;
 pub mod tool_logging;
 pub mod tree_formatter;
+pub mod ui_tree_diff;
 pub mod utils;
 pub mod vcredist_check;
 pub mod workflow_format;
