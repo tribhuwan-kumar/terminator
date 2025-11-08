@@ -39,3 +39,7 @@ mcp.json
 
 # Workflow state files (contain sensitive execution data)
 .workflow_state/
+
+# Editor/IDE specific
+.cursor/
+.history/
