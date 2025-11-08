@@ -46,7 +46,7 @@ impl From<TextPosition> for terminator::platforms::windows::TextPosition {
 }
 
 /// Output format for UI tree
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TreeOutputFormat {
     #[schemars(description = "Full JSON format with all fields (current behavior)")]

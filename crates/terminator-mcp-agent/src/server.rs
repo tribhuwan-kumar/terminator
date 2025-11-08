@@ -1102,8 +1102,15 @@ impl DesktopWrapper {
         };
 
         let operation_start = std::time::Instant::now();
-        let ((result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 args.selector.alternative_selectors.as_deref(),
@@ -1111,14 +1118,21 @@ impl DesktopWrapper {
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => {
+                Ok(((result, element), selector, diff)) => {
                     let operation_time_ms = operation_start.elapsed().as_millis() as i64;
                     span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
                     span.set_attribute("element.found", "true".to_string());
                     span.set_attribute("selector.successful", selector.clone());
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
 
                     // Add element metadata
                     if let Some(name) = element.name() {
@@ -1128,7 +1142,7 @@ impl DesktopWrapper {
                         span.set_attribute("element.is_focused", focused.to_string());
                     }
 
-                    Ok(((result, element), selector))
+                    Ok(((result, element), selector, diff))
                 }
                 Err(e) => {
                     // Note: Cannot use span here as it would be moved if we call span.end()
@@ -1221,19 +1235,33 @@ impl DesktopWrapper {
             }
         }
 
-        // Always attach tree for better context, or if an override is provided
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            Some(element.process_id().unwrap_or(0)),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[type_into_element] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                Some(element.process_id().unwrap_or(0)),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -1334,13 +1362,17 @@ impl DesktopWrapper {
             }
         };
 
-        // Check if UI diff is requested
-        let compute_diff = args.tree.ui_diff_before_after.unwrap_or(false);
-
         // Track search and action time
         let operation_start = std::time::Instant::now();
 
-        let result = crate::utils::find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues (Option<TreeOutputFormat> is Copy since TreeOutputFormat is Copy)
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        // Use new wrapper that supports UI diff capture
+        let result = crate::helpers::find_and_execute_with_ui_diff(
             &self.desktop,
             &args.selector.selector,
             args.selector.alternative_selectors.as_deref(),
@@ -1348,17 +1380,24 @@ impl DesktopWrapper {
             args.action.timeout_ms,
             args.action.retries,
             action,
+            args.tree.ui_diff_before_after.unwrap_or(false),
+            args.tree.tree_max_depth,
+            args.tree.include_detailed_attributes,
+            tree_output_format,
         )
         .await;
 
         let operation_time_ms = operation_start.elapsed().as_millis() as i64;
         span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
 
-        let ((click_result, element), successful_selector) = match result {
-            Ok(((result, element), selector)) => {
+        let ((click_result, element), successful_selector, ui_diff) = match result {
+            Ok(((result, element), selector, diff)) => {
                 span.set_attribute("selector.used", selector.clone());
                 span.set_attribute("element.found", "true".to_string());
-                ((result, element), selector)
+                if diff.is_some() {
+                    span.set_attribute("ui_diff.captured", "true".to_string());
+                }
+                ((result, element), selector, diff)
             }
             Err(e) => {
                 span.set_attribute("element.found", "false".to_string());
@@ -1398,36 +1437,30 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        // Handle UI diff or normal tree attachment
-        if compute_diff {
-            tracing::info!("[click_element] UI diff computation is not yet implemented for post-action diff - capturing only after tree");
-            // Note: For now, ui_diff_before_after is documented but the diff computation
-            // would need to be done AROUND the entire click action, not just after.
-            // This is a placeholder - full implementation would wrap the action execution.
-            span.set_attribute("ui_diff_requested", "true".to_string());
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[click_element] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
 
-            // For now, just attach the tree normally
-            maybe_attach_tree(
-                &self.desktop,
-                Some(true), // Force tree capture when diff is requested
-                args.tree.tree_max_depth,
-                args.tree.tree_from_selector.as_deref(),
-                args.tree.include_detailed_attributes,
-                args.tree.tree_output_format,
-                Some(element.process_id().unwrap_or(0)),
-                &mut result_json,
-                Some(&element),
-            )
-            .await;
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+
+            // When diff is enabled, we already have the tree, so don't capture again
+            // But respect include_tree if user also wants it attached separately
         } else {
-            // Normal tree attachment
+            // Normal tree attachment when diff not requested
             maybe_attach_tree(
                 &self.desktop,
                 args.tree.include_tree,
                 args.tree.tree_max_depth,
                 args.tree.tree_from_selector.as_deref(),
                 args.tree.include_detailed_attributes,
-                args.tree.tree_output_format,
+                Some(tree_output_format),
                 Some(element.process_id().unwrap_or(0)),
                 &mut result_json,
                 Some(&element),
@@ -1493,8 +1526,15 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
         };
 
         let operation_start = std::time::Instant::now();
-        let ((result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 None, // PressKey doesn't have alternative selectors yet
@@ -1502,21 +1542,28 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => {
+                Ok(((result, element), selector, diff)) => {
                     let operation_time_ms = operation_start.elapsed().as_millis() as i64;
                     span.set_attribute("operation.duration_ms", operation_time_ms.to_string());
                     span.set_attribute("element.found", "true".to_string());
                     span.set_attribute("selector.successful", selector.clone());
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
 
                     // Add element metadata
                     if let Some(name) = element.name() {
                         span.set_attribute("element.name", name);
                     }
 
-                    Ok(((result, element), selector))
+                    Ok(((result, element), selector, diff))
                 }
                 Err(e) => {
                     // Note: Cannot use span here as it would be moved if we call span.end()
@@ -1545,18 +1592,34 @@ Note: Curly brace format (e.g., '{Tab}') is more reliable than plain format (e.g
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            element.process_id().ok(),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[press_key] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                element.process_id().ok(),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -3616,8 +3679,14 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             }
         };
 
-        let ((result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 args.selector.alternative_selectors.as_deref(),
@@ -3625,10 +3694,19 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector, diff)) => {
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
+                    Ok(((result, element), selector, diff))
+                }
                 Err(e) => Err(build_element_not_found_error(
                     &args.selector.selector,
                     args.selector.alternative_selectors.as_deref(),
@@ -3654,18 +3732,34 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "amount": args.amount,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            element.process_id().ok(),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[scroll_element] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                element.process_id().ok(),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -3705,8 +3799,14 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             }
         };
 
-        let ((result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 args.selector.alternative_selectors.as_deref(),
@@ -3714,10 +3814,19 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector, diff)) => {
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
+                    Ok(((result, element), selector, diff))
+                }
                 Err(e) => Err(build_element_not_found_error(
                     &args.selector.selector,
                     args.selector.alternative_selectors.as_deref(),
@@ -3741,18 +3850,34 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "option_selected": args.option_name,
         });
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            element.process_id().ok(),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[select_option] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                element.process_id().ok(),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -3865,8 +3990,14 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             element.set_toggled_with_state(state)
         };
 
-        let ((result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 None, // SetToggled doesn't have alternative selectors
@@ -3874,10 +4005,19 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector, diff)) => {
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
+                    Ok(((result, element), selector, diff))
+                }
                 Err(e) => Err(build_element_not_found_error(
                     &args.selector.selector,
                     None,
@@ -3901,18 +4041,34 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "state_set_to": args.state,
         });
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            Some(element.process_id().unwrap_or(0)),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[set_toggled] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                Some(element.process_id().unwrap_or(0)),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -3952,8 +4108,14 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             element.set_range_value(value)
         };
 
-        let ((_result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((_result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 None, // SetRangeValue doesn't have alternative selectors
@@ -3961,10 +4123,19 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector, diff)) => {
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
+                    Ok(((result, element), selector, diff))
+                }
                 Err(e) => Err(build_element_not_found_error(
                     &args.selector.selector,
                     None,
@@ -3983,18 +4154,34 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "value_set_to": args.value,
         });
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            Some(element.process_id().unwrap_or(0)),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[set_range_value] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                Some(element.process_id().unwrap_or(0)),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -4029,8 +4216,14 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
         let action =
             move |element: UIElement| async move { element.set_selected_with_state(state) };
 
-        let ((result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 None, // SetSelected doesn't have alternative selectors
@@ -4038,10 +4231,19 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector, diff)) => {
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
+                    Ok(((result, element), selector, diff))
+                }
                 Err(e) => Err(build_element_not_found_error(
                     &args.selector.selector,
                     None,
@@ -4065,18 +4267,34 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "state_set_to": args.state,
         });
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            Some(element.process_id().unwrap_or(0)),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[set_selected] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                Some(element.process_id().unwrap_or(0)),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -4392,8 +4610,14 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
         if let Some(retries) = args.action.retries {
             span.set_attribute("retry.max_attempts", retries.to_string());
         }
-        let ((result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 args.selector.alternative_selectors.as_deref(),
@@ -4407,10 +4631,19 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
                     }
                     element.invoke_with_state()
                 },
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector, diff)) => {
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
+                    Ok(((result, element), selector, diff))
+                }
                 Err(e) => Err(build_element_not_found_error(
                     &args.selector.selector,
                     args.selector.alternative_selectors.as_deref(),
@@ -4435,18 +4668,33 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            element.process_id().ok(),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[invoke_element] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                element.process_id().ok(),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();
@@ -4722,8 +4970,14 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             async move { element.set_value(&value_to_set) }
         };
 
-        let ((_result, element), successful_selector) =
-            match find_and_execute_with_retry_with_fallback(
+        // Store tree config to avoid move issues
+        let tree_output_format = args
+            .tree
+            .tree_output_format
+            .unwrap_or(crate::mcp_types::TreeOutputFormat::CompactYaml);
+
+        let ((_result, element), successful_selector, ui_diff) =
+            match crate::helpers::find_and_execute_with_ui_diff(
                 &self.desktop,
                 &args.selector.selector,
                 args.selector.alternative_selectors.as_deref(),
@@ -4731,10 +4985,19 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
                 args.action.timeout_ms,
                 args.action.retries,
                 action,
+                args.tree.ui_diff_before_after.unwrap_or(false),
+                args.tree.tree_max_depth,
+                args.tree.include_detailed_attributes,
+                tree_output_format,
             )
             .await
             {
-                Ok(((result, element), selector)) => Ok(((result, element), selector)),
+                Ok(((result, element), selector, diff)) => {
+                    if diff.is_some() {
+                        span.set_attribute("ui_diff.captured", "true".to_string());
+                    }
+                    Ok(((result, element), selector, diff))
+                }
                 Err(e) => Err(build_element_not_found_error(
                     &args.selector.selector,
                     args.selector.alternative_selectors.as_deref(),
@@ -4753,18 +5016,34 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "value_set_to": args.value,
         });
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            Some(element.process_id().unwrap_or(0)),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+
+        // Attach UI diff if captured
+        if let Some(diff_result) = ui_diff {
+            tracing::debug!(
+                "[set_value] Attaching UI diff to result (has_changes: {})",
+                diff_result.has_changes
+            );
+            span.set_attribute("ui_diff.has_changes", diff_result.has_changes.to_string());
+
+            result_json["ui_diff"] = json!(diff_result.diff);
+            result_json["tree_before"] = json!(diff_result.tree_before);
+            result_json["tree_after"] = json!(diff_result.tree_after);
+            result_json["has_ui_changes"] = json!(diff_result.has_changes);
+        } else {
+            // Normal tree attachment when diff not requested
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                Some(tree_output_format),
+                Some(element.process_id().unwrap_or(0)),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         span.set_status(true, None);
         span.end();

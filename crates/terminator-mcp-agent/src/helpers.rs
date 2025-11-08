@@ -525,10 +525,7 @@ pub struct UiDiffResult {
 }
 
 /// Helper to format tree based on output format
-fn format_tree_string(
-    tree: &UINode,
-    format: &TreeOutputFormat,
-) -> String {
+fn format_tree_string(tree: &terminator::UINode, format: TreeOutputFormat) -> String {
     match format {
         TreeOutputFormat::CompactYaml => format_ui_node_as_compact_yaml(tree, 0),
         TreeOutputFormat::VerboseJson => {
@@ -538,7 +535,7 @@ fn format_tree_string(
 }
 
 /// Execute an action and optionally capture before/after UI tree diff
-/// 
+///
 /// This function wraps action execution to optionally capture UI state before and after,
 /// computing a diff that shows what changed. Useful for workflow recording and verification.
 #[allow(clippy::too_many_arguments)]
@@ -619,6 +616,216 @@ where
     };
 
     Ok((result, Some(diff_result)))
+}
+
+/// Find element and execute action with optional UI diff capture
+/// 
+/// This is a wrapper around find_and_execute_with_retry_with_fallback that adds UI diff support.
+/// When ui_diff_before_after is true, it captures the UI tree before and after the action,
+/// then computes the diff showing what changed.
+///
+/// Returns: ((action_result, element), successful_selector, optional_ui_diff)
+#[allow(clippy::too_many_arguments)]
+pub async fn find_and_execute_with_ui_diff<F, Fut, T>(
+    desktop: &Desktop,
+    primary_selector: &str,
+    alternatives: Option<&str>,
+    fallback_selectors: Option<&str>,
+    timeout_ms: Option<u64>,
+    retries: Option<u32>,
+    action: F,
+    ui_diff_before_after: bool,
+    tree_max_depth: Option<usize>,
+    include_detailed_attributes: Option<bool>,
+    tree_output_format: TreeOutputFormat,
+) -> Result<((T, UIElement), String, Option<UiDiffResult>), anyhow::Error>
+where
+    F: Fn(UIElement) -> Fut,
+    Fut: std::future::Future<Output = Result<T, AutomationError>>,
+{
+    use crate::utils::find_element_with_fallbacks;
+
+    // If diff not requested, use standard path
+    if !ui_diff_before_after {
+        let ((result, element), selector) = crate::utils::find_and_execute_with_retry_with_fallback(
+            desktop,
+            primary_selector,
+            alternatives,
+            fallback_selectors,
+            timeout_ms,
+            retries,
+            action,
+        )
+        .await?;
+        return Ok(((result, element), selector, None));
+    }
+
+    // UI diff requested - we need to capture trees before/after
+    tracing::debug!("[ui_diff] UI diff capture enabled for selector: {}", primary_selector);
+
+    let retry_count = retries.unwrap_or(0);
+    let mut last_error: Option<anyhow::Error> = None;
+
+    for attempt in 0..=retry_count {
+        // Find the element first to get PID
+        match find_element_with_fallbacks(
+            desktop,
+            primary_selector,
+            alternatives,
+            fallback_selectors,
+            timeout_ms,
+        )
+        .await
+        {
+            Ok((element, successful_selector)) => {
+                // Get PID for tree capture
+                let pid = element.process_id().unwrap_or(0);
+                if pid == 0 {
+                    tracing::warn!("[ui_diff] Could not get PID from element, skipping diff capture");
+                    // Fall back to executing without diff
+                    match action(element.clone()).await {
+                        Ok(result) => return Ok(((result, element), successful_selector, None)),
+                        Err(e) => {
+                            last_error = Some(e.into());
+                            if attempt < retry_count {
+                                tracing::warn!(
+                                    "[ui_diff] Action failed on attempt {}/{}. Retrying... Error: {}",
+                                    attempt + 1,
+                                    retry_count + 1,
+                                    last_error.as_ref().unwrap()
+                                );
+                                tokio::time::sleep(Duration::from_millis(250)).await;
+                                continue;
+                            }
+                        }
+                    }
+                } else {
+                    // Build tree config
+                    let detailed = include_detailed_attributes.unwrap_or(true);
+                    let tree_config = terminator::platforms::TreeBuildConfig {
+                        property_mode: if detailed {
+                            terminator::platforms::PropertyLoadingMode::Complete
+                        } else {
+                            terminator::platforms::PropertyLoadingMode::Fast
+                        },
+                        timeout_per_operation_ms: Some(100),
+                        yield_every_n_elements: Some(25),
+                        batch_size: Some(25),
+                        max_depth: tree_max_depth,
+                    };
+
+                    // Capture BEFORE tree
+                    tracing::debug!("[ui_diff] Capturing UI tree before action (PID: {})", pid);
+                    let tree_before = match desktop.get_window_tree(pid, None, Some(tree_config.clone())) {
+                        Ok(tree) => tree,
+                        Err(e) => {
+                            tracing::warn!("[ui_diff] Failed to capture tree before action: {}. Continuing without diff.", e);
+                            // Execute action without diff
+                            match action(element.clone()).await {
+                                Ok(result) => return Ok(((result, element), successful_selector, None)),
+                                Err(e) => {
+                                    last_error = Some(e.into());
+                                    if attempt < retry_count {
+                                        tracing::warn!(
+                                            "[ui_diff] Action failed on attempt {}/{}. Retrying... Error: {}",
+                                            attempt + 1,
+                                            retry_count + 1,
+                                            last_error.as_ref().unwrap()
+                                        );
+                                        tokio::time::sleep(Duration::from_millis(250)).await;
+                                        continue;
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                    };
+                    // Clone tree_output_format to avoid move issues in retry loop
+                    let before_str = format_tree_string(&tree_before, tree_output_format);
+
+                    // Execute action
+                    match action(element.clone()).await {
+                        Ok(result) => {
+                            // Small delay for UI to settle (150ms similar to mediar-app)
+                            tokio::time::sleep(Duration::from_millis(150)).await;
+
+                            // Capture AFTER tree
+                            tracing::debug!("[ui_diff] Capturing UI tree after action (PID: {})", pid);
+                            let tree_after = match desktop.get_window_tree(pid, None, Some(tree_config)) {
+                                Ok(tree) => tree,
+                                Err(e) => {
+                                    tracing::warn!("[ui_diff] Failed to capture tree after action: {}. Returning result without diff.", e);
+                                    return Ok(((result, element), successful_selector, None));
+                                }
+                            };
+                            // Clone tree_output_format to avoid move issues in retry loop
+                            let after_str = format_tree_string(&tree_after, tree_output_format);
+
+                            // Compute diff using the ui_tree_diff module
+                            let diff_result = match crate::ui_tree_diff::simple_ui_tree_diff(&before_str, &after_str) {
+                                Ok(Some(diff)) => {
+                                    tracing::info!("[ui_diff] UI changes detected: {} characters in diff", diff.len());
+                                    Some(UiDiffResult {
+                                        diff,
+                                        tree_before: before_str,
+                                        tree_after: after_str,
+                                        has_changes: true,
+                                    })
+                                }
+                                Ok(None) => {
+                                    tracing::debug!("[ui_diff] No UI changes detected");
+                                    Some(UiDiffResult {
+                                        diff: "No UI changes detected".to_string(),
+                                        tree_before: before_str,
+                                        tree_after: after_str,
+                                        has_changes: false,
+                                    })
+                                }
+                                Err(e) => {
+                                    tracing::warn!("[ui_diff] Failed to compute UI diff: {}. Returning result without diff.", e);
+                                    None
+                                }
+                            };
+
+                            return Ok(((result, element), successful_selector, diff_result));
+                        }
+                        Err(e) => {
+                            last_error = Some(e.into());
+                            if attempt < retry_count {
+                                tracing::warn!(
+                                    "[ui_diff] Action failed on attempt {}/{}. Retrying... Error: {}",
+                                    attempt + 1,
+                                    retry_count + 1,
+                                    last_error.as_ref().unwrap()
+                                );
+                                tokio::time::sleep(Duration::from_millis(250)).await;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                last_error = Some(e.into());
+                if attempt < retry_count {
+                    tracing::warn!(
+                        "[ui_diff] Find element failed on attempt {}/{}. Retrying... Error: {}",
+                        attempt + 1,
+                        retry_count + 1,
+                        last_error.as_ref().unwrap()
+                    );
+                    // No need to sleep here, as find_element_with_fallbacks already has a timeout.
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow::anyhow!(
+            "Action failed after {} retries for selector '{}'",
+            retry_count + 1,
+            primary_selector
+        )
+    }))
 }
 
 pub fn should_add_focus_check(tool_calls: &[ToolCall], current_index: usize) -> bool {
