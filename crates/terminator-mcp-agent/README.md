@@ -227,316 +227,50 @@ steps:
 
 For complete CLI documentation, see [Terminator CLI README](../terminator-cli/README.md).
 
-### Core Workflows: From Interaction to Structured Data
+## Tool Documentation
 
-The Terminator MCP agent offers two primary workflows for automating desktop tasks. Both paths lead to the same goal: creating a >95% accuracy, 10000x faster than humans, automation.
+All tool documentation is maintained as **source of truth in the codebase** to ensure accuracy and prevent duplication.
 
-#### 1. Iterative Development with `execute_sequence`
+### Where to Find Tool Documentation
 
-This is the most powerful and flexible method. You build a workflow step-by-step, using MCP tools to inspect the UI and refine your actions.
+**System Instructions (Strategic Guidance)**:
+- **File**: [`src/prompt.rs`](src/prompt.rs)
+- **What**: High-level patterns, common pitfalls, environment variable safety, focus management
+- **Lines**: 4-44
 
-1.  **Inspect the UI**: Start by using `get_focused_window_tree` to understand the structure of your target application. This gives you the roles, names, and IDs of all elements. For performance optimization:
-    - Use `tree_max_depth: 30` to limit tree depth when you only need shallow inspection
-    - Use `tree_from_selector: "role:Dialog"` to get subtree from a specific element
-    - Use `tree_from_selector: "true"` to start from the currently focused element
-    - Use `tree_output_format: "compact_yaml"` (default) for readable format or `"verbose_json"` for full data
-2.  **Build a Sequence**: Create an `execute_sequence` tool call with a series of actions (`click_element`, `type_into_element`, etc.). Use robust selectors (like `role|name` or stable `properties:AutomationId:value` selectors) whenever possible.
-3.  **Capture the Final State**: Ensure the last step in your sequence is an action that returns a UI tree. The `wait_for_element` tool with `include_tree: true` is perfect for this, as it captures the application's state after your automation has run.
-4.  **Extract Structured Data with `output_parser`**: Add the `output_parser` argument to your `execute_sequence` call. Write JavaScript code to parse the final UI tree and extract structured data. If successful, the tool result will contain a `parsed_output` field with your clean JSON data.
+**Tool Descriptions (Complete API Reference)**:
+- **File**: [`src/server.rs`](src/server.rs)
+- **What**: Complete descriptions of all 35 tools including parameters, examples, error handling, and usage patterns
+- **Each tool has**: Inline documentation in `#[tool(description = "...")]` macros
 
-Here is an example of an `output_parser` that extracts insurance quote data from a web page:
+**Tool Index**:
+- See [**Tool Reference Guide**](../../docs/TOOL_REFERENCE.md) for a complete index with line numbers
 
-```yaml
-output_parser:
-  ui_tree_source_step_id: capture_quotes_tree
-  javascript_code: |
-    // Find all quote groups with Image and Text children
-    const results = [];
+### Quick Examples
 
-    function findElementsRecursively(element) {
-        if (element.attributes && element.attributes.role === 'Group') {
-            const children = element.children || [];
-            const hasImage = children.some(child => 
-                child.attributes && child.attributes.role === 'Image'
-            );
-            const hasText = children.some(child => 
-                child.attributes && child.attributes.role === 'Text'
-            );
-            
-            if (hasImage && hasText) {
-                const textElements = children.filter(child => 
-                    child.attributes && child.attributes.role === 'Text' && child.attributes.name
-                );
-                
-                let carrierProduct = '';
-                let monthlyPrice = '';
-                
-                for (const textEl of textElements) {
-                    const text = textEl.attributes.name;
-                    if (text.includes(':')) {
-                        carrierProduct = text;
-                    }
-                    if (text.startsWith('$')) {
-                        monthlyPrice = text;
-                    }
-                }
-                
-                if (carrierProduct && monthlyPrice) {
-                    results.push({
-                        carrierProduct: carrierProduct,
-                        monthlyPrice: monthlyPrice
-                    });
-                }
-            }
-        }
-        
-        if (element.children) {
-            for (const child of element.children) {
-                findElementsRecursively(child);
-            }
-        }
-    }
+**Find a tool**: Search `server.rs` for the tool name (e.g., `click_element`, `run_command`)
 
-    findElementsRecursively(tree);
-    return results;
-```
+**Example - Click Element** ([server.rs:1250](src/server.rs#L1250)):
+- Comprehensive actionability validation documentation
+- Error types explained (ElementNotVisible, NotEnabled, NotStable, etc.)
+- When to use `invoke_element` instead
 
-#### 2. Recording Human Actions with `record_workflow`
+**Example - Run Command** ([server.rs:1659](src/server.rs#L1659)):
+- Shell vs engine mode
+- Optional element detection patterns
+- Variable safety and data passing
 
-For simpler tasks, you can record your own actions to generate a baseline workflow.
+**Example - Execute Browser Script** ([server.rs:4789](src/server.rs#L4789)):
+- Browser DOM access
+- Variable injection patterns
+- Script file loading
 
-1.  **Start Recording**: Call `record_workflow` with `action: "start"`.
-2.  **Perform the Task**: Manually perform the clicks, typing, and other interactions in the target application.
-3.  **Stop and Save**: Call `record_workflow` with `action: "stop"`. This returns a complete workflow JSON file containing all your recorded actions.
-4.  **Refine and Parse**: The recorded workflow is a great starting point. You can then refine the selectors for robustness, add a final step to capture the UI tree, and attach an `output_parser` to extract structured data, just as you would in the iterative workflow.
+### Why Source Code Documentation?
 
-### Browser DOM Inspection
-
-The `execute_browser_script` tool enables direct JavaScript execution in browser contexts, providing access to the full HTML DOM. This is particularly useful when you need information not available in the accessibility tree.
-
-#### When to Use DOM vs Accessibility Tree
-
-**Use Accessibility Tree (default) when:**
-
-- Navigating and interacting with UI elements
-- Working with semantic page structure
-- Building reliable automation workflows
-- Performance is critical (faster, cleaner data)
-
-**Use DOM Inspection when:**
-
-- Extracting data attributes, meta tags, or hidden inputs
-- Debugging why elements aren't appearing in accessibility tree
-- Scraping structured data from specific HTML patterns
-- Validating complete page structure or SEO elements
-
-#### Basic DOM Retrieval Patterns
-
-```javascript
-// Get full HTML DOM (be mindful of size limits)
-execute_browser_script({
-  selector: "role:Window|name:Google Chrome",
-  script: "document.documentElement.outerHTML",
-});
-
-// Get structured page information
-execute_browser_script({
-  selector: "role:Window|name:Google Chrome",
-  script: `({
-    url: window.location.href,
-    title: document.title,
-    html: document.documentElement.outerHTML,
-    bodyText: document.body.innerText.substring(0, 1000)
-  })`,
-});
-
-// Extract specific data (forms, hidden inputs, meta tags)
-execute_browser_script({
-  selector: "role:Window|name:Google Chrome",
-  script: `({
-    forms: Array.from(document.forms).map(f => ({
-      id: f.id,
-      action: f.action,
-      method: f.method,
-      inputs: Array.from(f.elements).map(e => ({
-        name: e.name,
-        type: e.type,
-        value: e.type === 'password' ? '[REDACTED]' : e.value
-      }))
-    })),
-    hiddenInputs: Array.from(document.querySelectorAll('input[type="hidden"]')).map(e => ({
-      name: e.name,
-      value: e.value
-    })),
-    metaTags: Array.from(document.querySelectorAll('meta')).map(m => ({
-      name: m.name || m.property,
-      content: m.content
-    }))
-  })`,
-});
-```
-
-#### Handling Large DOMs
-
-The MCP protocol has response size limits (~30KB). For large DOMs, use truncation strategies:
-
-```javascript
-execute_browser_script({
-  selector: "role:Window|name:Google Chrome",
-  script: `
-    const html = document.documentElement.outerHTML;
-    const maxLength = 30000;
-    
-    ({
-      url: window.location.href,
-      title: document.title,
-      html: html.length > maxLength 
-        ? html.substring(0, maxLength) + '... [truncated at ' + maxLength + ' chars]'
-        : html,
-      totalLength: html.length,
-      truncated: html.length > maxLength
-    })
-  `,
-});
-```
-
-#### Advanced DOM Analysis
-
-```javascript
-// Analyze page structure and extract semantic content
-execute_browser_script({
-  selector: "role:Window|name:Google Chrome",
-  script: `
-    // Remove scripts and styles for cleaner analysis
-    const clonedDoc = document.documentElement.cloneNode(true);
-    clonedDoc.querySelectorAll('script, style, noscript').forEach(el => el.remove());
-    
-    ({
-      // Page metrics
-      domElementCount: document.querySelectorAll('*').length,
-      formCount: document.forms.length,
-      linkCount: document.links.length,
-      imageCount: document.images.length,
-      
-      // Semantic structure
-      headings: Array.from(document.querySelectorAll('h1,h2,h3')).map(h => ({
-        level: h.tagName,
-        text: h.innerText.substring(0, 100)
-      })),
-      
-      // Clean HTML without scripts/styles
-      cleanHtml: clonedDoc.outerHTML.substring(0, 20000),
-      
-      // Data extraction
-      jsonLd: Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
-        .map(s => { try { return JSON.parse(s.textContent); } catch { return null; } })
-        .filter(Boolean)
-    })
-  `,
-});
-```
-
-#### Passing Data with Environment Variables
-
-The `execute_browser_script` tool now supports passing data through `env` and `outputs` parameters:
-
-```javascript
-// Step 1: Set environment variables in JavaScript
-run_command({
-  engine: "javascript",
-  run: `
-    return {
-      set_env: {
-        userName: 'John Doe',
-        userId: '12345',
-        apiKey: 'secret-key'
-      }
-    };
-  `,
-});
-
-// Step 2: Use environment variables in browser script
-execute_browser_script({
-  selector: "role:Window",
-  env: {
-    userName: "{{env.userName}}",
-    userId: "{{env.userId}}",
-  },
-  script: `
-    // Parse env if it's a JSON string (for backward compatibility)
-    const parsedEnv = typeof env === 'string' ? JSON.parse(env) : env;
-
-    // Use the data - traditional way
-    console.log('Processing user:', parsedEnv.userName);
-
-    // NEW: Direct variable access also works!
-    console.log('Processing user:', userName);  // Direct access
-    console.log('User ID:', userId);            // No env prefix needed
-
-    // Fill form with data
-    document.querySelector('#username').value = userName;
-    document.querySelector('#userid').value = userId;
-    
-    // Return result and set new variables
-    JSON.stringify({
-      status: 'form_filled',
-      set_env: {
-        form_submitted: 'true',
-        timestamp: new Date().toISOString()
-      }
-    });
-  `,
-});
-```
-
-#### Loading Scripts from Files
-
-You can load JavaScript from external files using the `script_file` parameter:
-
-```javascript
-// browser_scripts/extract_data.js
-const parsedEnv = typeof env === "string" ? JSON.parse(env) : env;
-const parsedOutputs =
-  typeof outputs === "string" ? JSON.parse(outputs) : outputs;
-
-console.log("Script loaded from file");
-console.log("User:", parsedEnv?.userName);
-console.log("Previous result:", parsedOutputs?.previousStep);
-
-// Extract and return data
-JSON.stringify({
-  extractedData: {
-    url: window.location.href,
-    title: document.title,
-    forms: document.forms.length,
-  },
-  set_env: {
-    extraction_complete: "true",
-  },
-});
-
-// In your workflow:
-execute_browser_script({
-  selector: "role:Window",
-  script_file: "browser_scripts/extract_data.js",
-  env: {
-    userName: "{{env.userName}}",
-    previousStep: "{{env.previousStep}}",
-  },
-});
-```
-
-#### Important Notes
-
-1. **Chrome Extension Required**: The `execute_browser_script` tool requires the Terminator browser extension to be installed. See the installation workflow examples for automated setup.
-
-2. **Security Considerations**: Be cautious when extracting sensitive data. The examples above redact password fields and you should follow similar practices.
-
-3. **Performance**: DOM operations are synchronous and can be slow on large pages. Consider using specific selectors rather than traversing the entire DOM.
-
-4. **Error Handling**: Always wrap complex DOM operations in try-catch blocks and return meaningful error messages.
-
-5. **Data Injection**: When using `env` or `outputs` parameters, they are injected as JavaScript variables at the beginning of your script. Always parse them if they might be JSON strings.
+1. **Single Source of Truth**: Documentation stays synchronized with implementation
+2. **No Duplication**: Update once, accurate everywhere
+3. **Always Current**: Code changes include documentation updates
+4. **Type Safe**: Parameter schemas embedded in code
 
 ## Local Development
 
@@ -859,15 +593,16 @@ You can run specific portions of a workflow using `start_from_step` and `end_at_
   "tool_name": "execute_sequence",
   "arguments": {
     "url": "file://path/to/workflow.yml",
-    "start_from_step": "read_json_file",    // Start from this step ID
-    "end_at_step": "fill_journal_entries",  // Stop after this step (inclusive)
-    "follow_fallback": false,               // Don't follow fallback_id beyond end_at_step (default: false)
-    "execute_jumps_at_end": false          // Don't execute jumps at end_at_step boundary (default: false)
+    "start_from_step": "read_json_file", // Start from this step ID
+    "end_at_step": "fill_journal_entries", // Stop after this step (inclusive)
+    "follow_fallback": false, // Don't follow fallback_id beyond end_at_step (default: false)
+    "execute_jumps_at_end": false // Don't execute jumps at end_at_step boundary (default: false)
   }
 }
 ```
 
 **Examples:**
+
 - Run single step: Set both `start_from_step` and `end_at_step` to the same ID
 - Run step range: Set different IDs for start and end
 - Run from step to end: Only set `start_from_step`
@@ -885,6 +620,7 @@ When using `file://` URLs, the workflow state (environment variables) is automat
 4. **Tool results** from all tools (not just scripts) are automatically stored as `{step_id}_result` and `{step_id}_status`
 
 This enables:
+
 - **Debugging**: Run steps individually to inspect state between executions
 - **Recovery**: Resume failed workflows from the last successful step
 - **Testing**: Test specific steps without re-running the entire workflow
@@ -947,12 +683,12 @@ return {
   set_env: {
     file_path: "C:/data/input.json",
     journal_entries: JSON.stringify(entries),
-    total_debit: "100.50"
-  }
+    total_debit: "100.50",
+  },
 };
 
 // Step 13: Use the data (NEW - simplified access!)
-const filePath = file_path;  // Direct access, no {{env.}} needed!
+const filePath = file_path; // Direct access, no {{env.}} needed!
 const entries = JSON.parse(journal_entries);
 const debit = total_debit;
 ```
@@ -1023,6 +759,7 @@ steps:
 ```
 
 Tool results are accessible as:
+
 - `{step_id}_result`: The tool's return value (content, element info, etc.)
 - `{step_id}_status`: Either "success" or "error"
 
@@ -1039,6 +776,7 @@ Tool results are accessible as:
 ### Finding MCP Server Logs
 
 MCP logs are saved to:
+
 - **Windows:** `%LOCALAPPDATA%\claude-cli-nodejs\Cache\<encoded-project-path>\mcp-logs-terminator-mcp-agent\`
 - **macOS/Linux:** `~/.local/share/claude-cli-nodejs/Cache/<encoded-project-path>/mcp-logs-terminator-mcp-agent/`
 
@@ -1046,6 +784,7 @@ Where `<encoded-project-path>` is your project path with special chars replaced 
 Note: Logs are saved as `.txt` files, not `.log` files.
 
 **Read logs:**
+
 ```powershell
 # Windows - Find and read latest logs (run in PowerShell)
 Get-ChildItem (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'claude-cli-nodejs\Cache\*\mcp-logs-terminator-mcp-agent\*.txt') | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content -Tail 50
@@ -1054,14 +793,15 @@ Get-ChildItem (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 
 ### Enable Debug Logging
 
 In your Claude MCP configuration (`claude_desktop_config.json`):
+
 ```json
 {
   "mcpServers": {
     "terminator-mcp-agent": {
       "command": "path/to/terminator-mcp-agent",
       "env": {
-        "LOG_LEVEL": "debug",  // or "info", "warn", "error"
-        "RUST_BACKTRACE": "1"   // for stack traces on errors
+        "LOG_LEVEL": "debug", // or "info", "warn", "error"
+        "RUST_BACKTRACE": "1" // for stack traces on errors
       }
     }
   }
@@ -1070,17 +810,18 @@ In your Claude MCP configuration (`claude_desktop_config.json`):
 
 ### Common Debug Scenarios
 
-| Issue | What to Look For in Logs |
-|-------|--------------------------|
-| Workflow failures | Search for `fallback_id` triggers and `critical_error_occurred` |
-| Element not found | Look for selector resolution attempts, `find_element` timeouts |
+| Issue                 | What to Look For in Logs                                          |
+| --------------------- | ----------------------------------------------------------------- |
+| Workflow failures     | Search for `fallback_id` triggers and `critical_error_occurred`   |
+| Element not found     | Look for selector resolution attempts, `find_element` timeouts    |
 | Browser script errors | Check for `EVAL_ERROR`, Promise rejections, JavaScript exceptions |
-| Binary version issues | Startup logs show binary path and build timestamp |
-| MCP connection lost | Check for panic messages, ensure binary path is correct |
+| Binary version issues | Startup logs show binary path and build timestamp                 |
+| MCP connection lost   | Check for panic messages, ensure binary path is correct           |
 
 ### Fallback Mechanism
 
 Workflows support `fallback_id` to handle errors gracefully:
+
 - If a step fails and has `fallback_id`, it jumps to that step instead of stopping
 - Without `fallback_id`, errors may set `critical_error_occurred` and skip remaining steps
 - Use `troubleshooting:` section for recovery steps only accessed via fallback
