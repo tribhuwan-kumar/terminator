@@ -473,7 +473,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Get the complete UI tree for an application by PID and optional window title. This is your primary tool for understanding the application's current state. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" to get subtrees. This is a read-only operation."
+        description = "Get the complete UI tree for an application by PID and optional window title. Returns detailed element information (role, name, id, enabled state, bounds, children). This is your primary tool for understanding the application's current state. Supports tree optimization: tree_max_depth: 30` to limit tree depth when you only need shallow inspection, tree_from_selector to get subtrees starting from a specific element, include_detailed_attributes to control verbosity (defaults to true). This is a read-only operation."
     )]
     pub async fn get_window_tree(
         &self,
@@ -652,7 +652,7 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Get all applications and windows currently running with their process names. This is a read-only operation that returns a simple list without UI trees."
+        description = "Get all applications and windows currently running with their process names. Returns a list with name, process_name, id, pid, and is_focused status for each application/window. Use this to check which applications are running and which window has focus before performing actions. This is a read-only operation that returns a simple list without UI trees."
     )]
     pub async fn get_applications_and_windows_list(
         &self,
@@ -1334,6 +1334,9 @@ impl DesktopWrapper {
             }
         };
 
+        // Check if UI diff is requested
+        let compute_diff = args.tree.ui_diff_before_after.unwrap_or(false);
+
         // Track search and action time
         let operation_start = std::time::Instant::now();
 
@@ -1395,18 +1398,42 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
 
-        maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree,
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            None,
-            Some(element.process_id().unwrap_or(0)),
-            &mut result_json,
-            Some(&element),
-        )
-        .await;
+        // Handle UI diff or normal tree attachment
+        if compute_diff {
+            tracing::info!("[click_element] UI diff computation is not yet implemented for post-action diff - capturing only after tree");
+            // Note: For now, ui_diff_before_after is documented but the diff computation
+            // would need to be done AROUND the entire click action, not just after.
+            // This is a placeholder - full implementation would wrap the action execution.
+            span.set_attribute("ui_diff_requested", "true".to_string());
+
+            // For now, just attach the tree normally
+            maybe_attach_tree(
+                &self.desktop,
+                Some(true), // Force tree capture when diff is requested
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                args.tree.tree_output_format,
+                Some(element.process_id().unwrap_or(0)),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        } else {
+            // Normal tree attachment
+            maybe_attach_tree(
+                &self.desktop,
+                args.tree.include_tree,
+                args.tree.tree_max_depth,
+                args.tree.tree_from_selector.as_deref(),
+                args.tree.include_detailed_attributes,
+                args.tree.tree_output_format,
+                Some(element.process_id().unwrap_or(0)),
+                &mut result_json,
+                Some(&element),
+            )
+            .await;
+        }
 
         Ok(CallToolResult::success(
             append_monitor_screenshots_if_enabled(
@@ -1688,6 +1715,28 @@ const myVar = (typeof env_var_name !== 'undefined') ? env_var_name : 'default';
 const isActive = (typeof is_active !== 'undefined') ? is_active === 'true' : false;
 const count = (typeof retry_count !== 'undefined') ? parseInt(retry_count) : 0;  // ✅ SAFE
 // NEVER: const count = parseInt(retry_count || '0');  // ❌ DANGEROUS - will error if retry_count already declared
+
+Examples:
+// Primitives
+const path = (typeof file_path !== 'undefined') ? file_path : './default';
+const max = (typeof max_retries !== 'undefined') ? parseInt(max_retries) : 3;
+// Collections (auto-parsed from JSON)
+const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
+const config = (typeof app_config !== 'undefined') ? app_config : {};
+// Tool results (step_id_result, step_id_status)
+const apps = (typeof check_apps_result !== 'undefined') ? check_apps_result : [];
+
+Data Passing:
+Return fields (non-reserved) auto-merge to env for next steps:
+return { file_path: '/data.txt', count: 42 };  // Available as file_path, count in next steps
+
+System-reserved fields (don't auto-merge): status, error, logs, duration_ms, set_env
+
+⚠️ Avoid collision-prone variable names: message, result, data, success, value, count, total, found, text, type, name, index
+Use specific names instead: validationMessage, queryResult, tableData, entriesCount
+
+include_logs Parameter:
+Set include_logs: true to capture stdout/stderr output. Default is false for cleaner responses. On errors, logs are always included.
 "
     )]
     async fn run_command(
