@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use std::time::Duration;
 use terminator::{
     format_tree_as_compact_yaml, format_ui_node_as_compact_yaml, AutomationError, Desktop,
-    Selector, UIElement, UINode,
+    Selector, UIElement,
 }; // NEW: import expression evaluator
 
 /// Helper function to parse comma-separated alternative selectors into a Vec<String>
@@ -577,7 +577,7 @@ where
     let tree_before = desktop
         .get_window_tree(pid, None, Some(tree_config.clone()))
         .map_err(|e| format!("Failed to capture tree before action: {}", e))?;
-    let before_str = format_tree_string(&tree_before, &tree_output_format);
+    let before_str = format_tree_string(&tree_before, tree_output_format);
 
     // Execute action
     let result = action().await?;
@@ -590,7 +590,7 @@ where
     let tree_after = desktop
         .get_window_tree(pid, None, Some(tree_config))
         .map_err(|e| format!("Failed to capture tree after action: {}", e))?;
-    let after_str = format_tree_string(&tree_after, &tree_output_format);
+    let after_str = format_tree_string(&tree_after, tree_output_format);
 
     // Compute diff using the ui_tree_diff module
     let diff_result = match crate::ui_tree_diff::simple_ui_tree_diff(&before_str, &after_str) {
