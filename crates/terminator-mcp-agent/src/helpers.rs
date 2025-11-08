@@ -619,7 +619,7 @@ where
 }
 
 /// Find element and execute action with optional UI diff capture
-/// 
+///
 /// This is a wrapper around find_and_execute_with_retry_with_fallback that adds UI diff support.
 /// When ui_diff_before_after is true, it captures the UI tree before and after the action,
 /// then computes the diff showing what changed.
@@ -647,21 +647,25 @@ where
 
     // If diff not requested, use standard path
     if !ui_diff_before_after {
-        let ((result, element), selector) = crate::utils::find_and_execute_with_retry_with_fallback(
-            desktop,
-            primary_selector,
-            alternatives,
-            fallback_selectors,
-            timeout_ms,
-            retries,
-            action,
-        )
-        .await?;
+        let ((result, element), selector) =
+            crate::utils::find_and_execute_with_retry_with_fallback(
+                desktop,
+                primary_selector,
+                alternatives,
+                fallback_selectors,
+                timeout_ms,
+                retries,
+                action,
+            )
+            .await?;
         return Ok(((result, element), selector, None));
     }
 
     // UI diff requested - we need to capture trees before/after
-    tracing::debug!("[ui_diff] UI diff capture enabled for selector: {}", primary_selector);
+    tracing::debug!(
+        "[ui_diff] UI diff capture enabled for selector: {}",
+        primary_selector
+    );
 
     let retry_count = retries.unwrap_or(0);
     let mut last_error: Option<anyhow::Error> = None;
@@ -681,7 +685,9 @@ where
                 // Get PID for tree capture
                 let pid = element.process_id().unwrap_or(0);
                 if pid == 0 {
-                    tracing::warn!("[ui_diff] Could not get PID from element, skipping diff capture");
+                    tracing::warn!(
+                        "[ui_diff] Could not get PID from element, skipping diff capture"
+                    );
                     // Fall back to executing without diff
                     match action(element.clone()).await {
                         Ok(result) => return Ok(((result, element), successful_selector, None)),
@@ -716,13 +722,19 @@ where
 
                     // Capture BEFORE tree
                     tracing::debug!("[ui_diff] Capturing UI tree before action (PID: {})", pid);
-                    let tree_before = match desktop.get_window_tree(pid, None, Some(tree_config.clone())) {
+                    let tree_before = match desktop.get_window_tree(
+                        pid,
+                        None,
+                        Some(tree_config.clone()),
+                    ) {
                         Ok(tree) => tree,
                         Err(e) => {
                             tracing::warn!("[ui_diff] Failed to capture tree before action: {}. Continuing without diff.", e);
                             // Execute action without diff
                             match action(element.clone()).await {
-                                Ok(result) => return Ok(((result, element), successful_selector, None)),
+                                Ok(result) => {
+                                    return Ok(((result, element), successful_selector, None))
+                                }
                                 Err(e) => {
                                     last_error = Some(e.into());
                                     if attempt < retry_count {
@@ -750,8 +762,15 @@ where
                             tokio::time::sleep(Duration::from_millis(150)).await;
 
                             // Capture AFTER tree
-                            tracing::debug!("[ui_diff] Capturing UI tree after action (PID: {})", pid);
-                            let tree_after = match desktop.get_window_tree(pid, None, Some(tree_config)) {
+                            tracing::debug!(
+                                "[ui_diff] Capturing UI tree after action (PID: {})",
+                                pid
+                            );
+                            let tree_after = match desktop.get_window_tree(
+                                pid,
+                                None,
+                                Some(tree_config),
+                            ) {
                                 Ok(tree) => tree,
                                 Err(e) => {
                                     tracing::warn!("[ui_diff] Failed to capture tree after action: {}. Returning result without diff.", e);
@@ -762,9 +781,15 @@ where
                             let after_str = format_tree_string(&tree_after, tree_output_format);
 
                             // Compute diff using the ui_tree_diff module
-                            let diff_result = match crate::ui_tree_diff::simple_ui_tree_diff(&before_str, &after_str) {
+                            let diff_result = match crate::ui_tree_diff::simple_ui_tree_diff(
+                                &before_str,
+                                &after_str,
+                            ) {
                                 Ok(Some(diff)) => {
-                                    tracing::info!("[ui_diff] UI changes detected: {} characters in diff", diff.len());
+                                    tracing::info!(
+                                        "[ui_diff] UI changes detected: {} characters in diff",
+                                        diff.len()
+                                    );
                                     Some(UiDiffResult {
                                         diff,
                                         tree_before: before_str,
