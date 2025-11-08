@@ -2,7 +2,7 @@
 
 ## [Want No code workflow builder? app.mediar.ai](https://app.mediar.ai)
 
-# terminator - playwright for desktop automation
+# demo of terminator drawing in paint
 
 https://github.com/user-attachments/assets/b7bec5df-64a9-4f0e-aba4-1578c11275c7
 
