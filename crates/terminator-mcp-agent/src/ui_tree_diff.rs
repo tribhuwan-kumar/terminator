@@ -66,7 +66,10 @@ pub fn simple_ui_tree_diff(
         )
     } else {
         // JSON format - parse and remove id fields
-        (preprocess_tree(old_tree_str)?, preprocess_tree(new_tree_str)?)
+        (
+            preprocess_tree(old_tree_str)?,
+            preprocess_tree(new_tree_str)?,
+        )
     };
 
     // Compute line-based diff using similar crate (Rust equivalent of difflib.ndiff)
@@ -194,4 +197,3 @@ mod tests {
         assert!(diff_text.contains("Submit"));
     }
 }
-
