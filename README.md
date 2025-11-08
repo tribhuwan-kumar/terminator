@@ -1,4 +1,8 @@
-# terminator 🤖 Mediar.ai
+# [Want a turnkey automation? mediar.ai](https://mediar.ai)
+
+## [Want No code workflow builder? app.mediar.ai](https://app.mediar.ai)
+
+# terminator - playwright for desktop automation
 
 https://github.com/user-attachments/assets/b7bec5df-64a9-4f0e-aba4-1578c11275c7
 
