@@ -90,6 +90,7 @@ pub fn path_to_file_url(input: &str) -> Result<String> {
 }
 
 /// Build execute_sequence arguments for TypeScript workflow
+#[allow(clippy::too_many_arguments)]
 pub fn build_typescript_workflow_args(
     file_url: String,
     inputs: Option<&String>,
@@ -200,24 +201,26 @@ pub fn run_type_check(input: &str) -> Result<()> {
 
     // Try bun first (faster), then npx, then global tsc
     let output = Command::new("bun")
-        .args(&["tsc", "--noEmit"])
+        .args(["tsc", "--noEmit"])
         .current_dir(working_dir)
         .output()
         .or_else(|_| {
             // Fallback to npx if bun fails
             Command::new("npx")
-                .args(&["tsc", "--noEmit"])
+                .args(["tsc", "--noEmit"])
                 .current_dir(working_dir)
                 .output()
         })
         .or_else(|_| {
             // Fallback to global tsc if npx fails
             Command::new("tsc")
-                .args(&["--noEmit"])
+                .args(["--noEmit"])
                 .current_dir(working_dir)
                 .output()
         })
-        .with_context(|| "Failed to run TypeScript compiler (tsc). Make sure TypeScript is installed.")?;
+        .with_context(|| {
+            "Failed to run TypeScript compiler (tsc). Make sure TypeScript is installed."
+        })?;
 
     if output.status.success() {
         info!("✅ Type check passed");
