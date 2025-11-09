@@ -1414,7 +1414,10 @@ mod tests {
             .map(|url| url.ends_with(".ts") || url.ends_with(".js"))
             .unwrap_or(false);
 
-        assert!(!is_yaml, "Should NOT detect .yml file as TypeScript workflow");
+        assert!(
+            !is_yaml,
+            "Should NOT detect .yml file as TypeScript workflow"
+        );
 
         // Test no URL provided
         let args_no_url = serde_json::json!({
@@ -1435,7 +1438,7 @@ mod tests {
     #[test]
     fn test_retry_logic_for_typescript_workflows() {
         // Test that timeout errors should NOT be retryable for TypeScript workflows
-        let error_str = "timeout waiting for element";  // lowercase to match contains() check
+        let error_str = "timeout waiting for element"; // lowercase to match contains() check
         let is_typescript_workflow = true;
 
         let is_retryable = if is_typescript_workflow {
@@ -1457,7 +1460,10 @@ mod tests {
                 || error_str.contains("timeout")
         };
 
-        assert!(!is_retryable, "TypeScript workflows should NOT retry on timeout errors");
+        assert!(
+            !is_retryable,
+            "TypeScript workflows should NOT retry on timeout errors"
+        );
 
         // Test that HTTP errors ARE retryable for TypeScript workflows
         let error_str_500 = "500 Internal Server Error";
@@ -1479,13 +1485,16 @@ mod tests {
                 || error_str_500.contains("timeout")
         };
 
-        assert!(is_retryable_500, "TypeScript workflows SHOULD retry on HTTP 500 errors");
+        assert!(
+            is_retryable_500,
+            "TypeScript workflows SHOULD retry on HTTP 500 errors"
+        );
     }
 
     #[test]
     fn test_retry_logic_for_yaml_workflows() {
         // Test that timeout errors ARE retryable for YAML workflows
-        let error_str = "timeout waiting for element";  // lowercase to match contains() check
+        let error_str = "timeout waiting for element"; // lowercase to match contains() check
         let is_typescript_workflow = false;
 
         let is_retryable = if is_typescript_workflow {
@@ -1505,7 +1514,10 @@ mod tests {
                 || error_str.contains("timeout")
         };
 
-        assert!(is_retryable, "YAML workflows SHOULD retry on timeout errors");
+        assert!(
+            is_retryable,
+            "YAML workflows SHOULD retry on timeout errors"
+        );
 
         // Test that HTTP errors ARE retryable for YAML workflows
         let error_str_502 = "502 Bad Gateway";
@@ -1527,6 +1539,9 @@ mod tests {
                 || error_str_502.contains("timeout")
         };
 
-        assert!(is_retryable_502, "YAML workflows SHOULD retry on HTTP 502 errors");
+        assert!(
+            is_retryable_502,
+            "YAML workflows SHOULD retry on HTTP 502 errors"
+        );
     }
 }
