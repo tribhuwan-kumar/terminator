@@ -452,7 +452,7 @@ impl WindowsRecorder {
                                     if let Some(file_event) = Self::resolve_file_paths(
                                         &filename,
                                         &app_name,
-                                        to_process_name.as_ref().map(|s| s.as_str()),
+                                        to_process_name.as_deref(),
                                         process_id,
                                         element,
                                     ) {
@@ -3079,7 +3079,7 @@ impl WindowsRecorder {
                     || lower_title
                         .chars()
                         .nth(ext_end)
-                        .map_or(true, |c| c == ' ' || c == '-');
+                        .is_none_or(|c| c == ' ' || c == '-');
 
                 if !is_boundary {
                     continue; // Not a real file extension, keep looking
@@ -3107,7 +3107,7 @@ impl WindowsRecorder {
                     // No separator after extension, so filename likely ends at extension
                     // Look backwards for path separators or beginning of string
                     before_ext
-                        .rfind(|c: char| c == '/' || c == '\\')
+                        .rfind(['/', '\\'])
                         .map(|pos| pos + 1)
                         .unwrap_or(0)
                 };
