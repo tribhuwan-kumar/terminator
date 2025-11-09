@@ -531,6 +531,7 @@ impl WindowsEngine {
 
     /// Helper function to check if an element matches a selector
     /// Used for filtering elements in AND operations
+    #[allow(clippy::only_used_in_recursion)]
     fn element_matches_selector(
         &self,
         element: &UIElement,
