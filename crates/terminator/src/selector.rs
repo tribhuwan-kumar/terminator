@@ -463,13 +463,14 @@ impl From<&str> for Selector {
             let parts: Vec<&str> = s.split(">>").map(|p| p.trim()).collect();
             if parts.len() > 1 {
                 // Strip outer parentheses from each part if present
-                let cleaned_parts: Vec<Selector> = parts.into_iter()
+                let cleaned_parts: Vec<Selector> = parts
+                    .into_iter()
                     .map(|part| {
                         let trimmed = part.trim();
                         // Check if the part is wrapped in parentheses
                         if trimmed.starts_with('(') && trimmed.ends_with(')') {
                             // Check if these are truly outer parentheses (balanced)
-                            let inner = &trimmed[1..trimmed.len()-1];
+                            let inner = &trimmed[1..trimmed.len() - 1];
                             // Only strip if the parentheses are balanced at this level
                             if !has_unbalanced_parens(inner) {
                                 return Selector::from(inner);
@@ -566,7 +567,7 @@ mod debug_selector_test {
         let selector = Selector::from(input);
         println!("Parsed result: {:?}", selector);
     }
-}// Debug test to understand tokenization issue
+} // Debug test to understand tokenization issue
 
 #[cfg(test)]
 mod tokenizer_debug_test {
