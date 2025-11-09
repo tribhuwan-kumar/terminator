@@ -185,7 +185,7 @@ fn test_chain_with_nativeid() {
             assert_eq!(selectors.len(), 2);
             // First part should be AND
             match &selectors[0] {
-                Selector::And(_) => {},
+                Selector::And(_) => {}
                 _ => panic!("Expected And selector as first part"),
             }
             // Second part should be nativeid
@@ -217,12 +217,10 @@ fn test_nth_selector() {
 fn test_not_selector() {
     let selector = Selector::from("!name:Cancel");
     match selector {
-        Selector::Not(inner) => {
-            match inner.as_ref() {
-                Selector::Name(name) => assert_eq!(name, "Cancel"),
-                _ => panic!("Expected Name selector inside Not"),
-            }
-        }
+        Selector::Not(inner) => match inner.as_ref() {
+            Selector::Name(name) => assert_eq!(name, "Cancel"),
+            _ => panic!("Expected Name selector inside Not"),
+        },
         _ => panic!("Expected Not selector"),
     }
 }
@@ -301,7 +299,11 @@ fn test_invalid_selector() {
     let selector = Selector::from("role:Button &&");
     match selector {
         Selector::Invalid(msg) => {
-            assert!(msg.contains("Parse error") || msg.contains("Unknown selector") || msg.contains("Expected selector"));
+            assert!(
+                msg.contains("Parse error")
+                    || msg.contains("Unknown selector")
+                    || msg.contains("Expected selector")
+            );
         }
         _ => panic!("Expected Invalid selector for trailing &&"),
     }
@@ -354,7 +356,8 @@ fn test_best_plan_pro_selector() {
 #[test]
 fn test_chained_and_with_role_and_nativeid() {
     // Test: "(role:Window && name:Best Plan Pro) >> (role:Edit && nativeid:dob)"
-    let selector = Selector::from("(role:Window && name:Best Plan Pro) >> (role:Edit && nativeid:dob)");
+    let selector =
+        Selector::from("(role:Window && name:Best Plan Pro) >> (role:Edit && nativeid:dob)");
     match selector {
         Selector::Chain(selectors) => {
             assert_eq!(selectors.len(), 2);
@@ -436,7 +439,8 @@ fn test_multiple_and_conditions() {
 fn test_calculator_chain_with_parentheses_runtime() {
     // This is the exact selector pattern that failed at runtime with Calculator
     // Original error: Role: '(role', Name: Some("Window && name:Calculator)")
-    let selector = Selector::from("(role:Window && name:Calculator) >> (role:Custom && nativeid:NavView)");
+    let selector =
+        Selector::from("(role:Window && name:Calculator) >> (role:Custom && nativeid:NavView)");
     match selector {
         Selector::Chain(selectors) => {
             assert_eq!(selectors.len(), 2);
@@ -451,10 +455,16 @@ fn test_calculator_chain_with_parentheses_runtime() {
                     }
                     match &and_parts[1] {
                         Selector::Name(name) => assert_eq!(name, "Calculator"),
-                        _ => panic!("Expected Name selector for Calculator, got: {:?}", and_parts[1]),
+                        _ => panic!(
+                            "Expected Name selector for Calculator, got: {:?}",
+                            and_parts[1]
+                        ),
                     }
                 }
-                _ => panic!("Expected And selector for first chain part, got: {:?}", selectors[0]),
+                _ => panic!(
+                    "Expected And selector for first chain part, got: {:?}",
+                    selectors[0]
+                ),
             }
 
             // Second part: (role:Custom && nativeid:NavView)
@@ -467,10 +477,16 @@ fn test_calculator_chain_with_parentheses_runtime() {
                     }
                     match &and_parts[1] {
                         Selector::NativeId(id) => assert_eq!(id, "NavView"),
-                        _ => panic!("Expected NativeId selector for NavView, got: {:?}", and_parts[1]),
+                        _ => panic!(
+                            "Expected NativeId selector for NavView, got: {:?}",
+                            and_parts[1]
+                        ),
                     }
                 }
-                _ => panic!("Expected And selector for second chain part, got: {:?}", selectors[1]),
+                _ => panic!(
+                    "Expected And selector for second chain part, got: {:?}",
+                    selectors[1]
+                ),
             }
         }
         Selector::Invalid(msg) => {
@@ -506,4 +522,3 @@ fn test_chain_with_multiple_operators() {
         _ => panic!("Expected Chain selector"),
     }
 }
-
