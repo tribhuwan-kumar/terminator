@@ -316,12 +316,13 @@ impl TypeScriptWorkflow {
             step_options_obj.insert("restoredState".to_string(), state);
         }
 
-        let step_options_json = serde_json::to_string(&Value::Object(step_options_obj)).map_err(|e| {
-            McpError::internal_error(
-                format!("Failed to serialize step options: {}", e),
-                Some(json!({"error": e.to_string()})),
-            )
-        })?;
+        let step_options_json =
+            serde_json::to_string(&Value::Object(step_options_obj)).map_err(|e| {
+                McpError::internal_error(
+                    format!("Failed to serialize step options: {}", e),
+                    Some(json!({"error": e.to_string()})),
+                )
+            })?;
 
         // Clean approach: Call workflow.run() with step control options
         // This automatically skips onError when step control options are present
