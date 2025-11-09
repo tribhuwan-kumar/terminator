@@ -23,7 +23,9 @@ pub fn detect_workflow_format(url: &str) -> WorkflowFormat {
             let workflow_ts = path.join("workflow.ts");
             let index_ts = path.join("index.ts");
 
-            if package_json.exists() && (terminator_ts.exists() || workflow_ts.exists() || index_ts.exists()) {
+            if package_json.exists()
+                && (terminator_ts.exists() || workflow_ts.exists() || index_ts.exists())
+            {
                 return WorkflowFormat::TypeScript;
             }
         } else if path.is_file() {
