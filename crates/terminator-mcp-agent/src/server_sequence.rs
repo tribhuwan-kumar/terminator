@@ -2276,14 +2276,10 @@ impl DesktopWrapper {
 
         // Save state for resumption (only if last_step_index is provided by runner-based workflows)
         if let (Some(ref last_step_id), Some(last_step_index)) =
-            (&result.result.last_step_id, result.result.last_step_index) {
-            Self::save_workflow_state(
-                url,
-                Some(last_step_id),
-                last_step_index,
-                &result.state,
-            )
-            .await?;
+            (&result.result.last_step_id, result.result.last_step_index)
+        {
+            Self::save_workflow_state(url, Some(last_step_id), last_step_index, &result.state)
+                .await?;
         }
 
         // Return result
@@ -2301,9 +2297,12 @@ impl DesktopWrapper {
         if let Some(data) = &result.result.data {
             if !data.is_null() {
                 if let Some(obj) = output.as_object_mut() {
-                    obj.insert("parsed_output".to_string(), json!({
-                        "data": data
-                    }));
+                    obj.insert(
+                        "parsed_output".to_string(),
+                        json!({
+                            "data": data
+                        }),
+                    );
                 }
             }
         }
