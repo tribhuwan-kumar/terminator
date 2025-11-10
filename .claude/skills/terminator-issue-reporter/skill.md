@@ -149,7 +149,7 @@ steps:
 
 ### Workflow State Issues
 **Solutions:**
-- Clear workflow state: delete `.workflow_state/` directory
+- Clear workflow state: delete `.mediar/` directory
 - Use `start_from_step` to resume from specific step
 - Check jump conditions syntax
 - Verify step IDs are unique

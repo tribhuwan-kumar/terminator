@@ -34,7 +34,10 @@ export class WorkflowRunner {
 
     // Initialize or restore state
     if (options.restoredState) {
-      this.state = options.restoredState;
+      this.state = {
+        ...options.restoredState,
+        stepResults: options.restoredState.stepResults || {},
+      };
       this.logger.info('🔄 Restored state from previous run');
     } else {
       this.state = {

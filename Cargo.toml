@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/terminator",
     "crates/terminator-cli",
-    "packages/terminator-python",
+    # "packages/terminator-python",
     "packages/terminator-nodejs",
     "crates/terminator-mcp-agent",
     "crates/terminator-workflow-recorder",

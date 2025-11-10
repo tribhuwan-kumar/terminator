@@ -22,6 +22,7 @@ impl Desktop {
     /// @param {boolean} [useBackgroundApps=false] - Enable background apps support.
     /// @param {boolean} [activateApp=false] - Enable app activation support.
     /// @param {string} [logLevel] - Logging level (e.g., 'info', 'debug', 'warn', 'error').
+    ///                              Falls back to RUST_LOG or TERMINATOR_LOG_LEVEL env vars, defaults to 'info'.
     /// @returns {Desktop} A new Desktop automation instance.
     #[napi(constructor)]
     pub fn new(
@@ -31,7 +32,13 @@ impl Desktop {
     ) -> Self {
         let use_background_apps = use_background_apps.unwrap_or(false);
         let activate_app = activate_app.unwrap_or(false);
-        let log_level = log_level.unwrap_or_else(|| "warn".to_string());
+
+        // Priority: explicit param > RUST_LOG env > TERMINATOR_LOG_LEVEL env > "info" default
+        let log_level = log_level
+            .or_else(|| std::env::var("RUST_LOG").ok())
+            .or_else(|| std::env::var("TERMINATOR_LOG_LEVEL").ok())
+            .unwrap_or_else(|| "info".to_string());
+
         static INIT: Once = Once::new();
         INIT.call_once(|| {
             let _ = tracing_subscriber::fmt()

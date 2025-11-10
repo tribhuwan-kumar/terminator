@@ -9,8 +9,10 @@ import type {
   WorkflowErrorContext,
   Logger,
   ExecutionResponse,
+  ExecutionStatus,
 } from './types';
 import { ConsoleLogger } from './types';
+import { createWorkflowRunner } from './runner';
 
 /**
  * Workflow builder that accumulates state types
@@ -108,15 +110,71 @@ function createWorkflowInstance<TInput = any>(
 
       const validatedInput = validationResult.data;
 
-      // Initialize context
+      // Get desktop instance (either passed or create new one)
+      const desktopInstance = desktop || new Desktop();
+
+      // Debug logging to see what options are passed
+      log.info(`[DEBUG] workflow.run() options: ${JSON.stringify(options)}`);
+
+      // If step control options are provided, use WorkflowRunner for proper state tracking
+      if (options?.startFromStep || options?.endAtStep || options?.restoredState) {
+        log.info(`[DEBUG] Using WorkflowRunner path with endAtStep: ${options?.endAtStep}`);
+
+        // Create a minimal workflow object for the runner
+        const workflowForRunner: Workflow = {
+          config,
+          steps,
+          async run() { throw new Error('Recursive run not supported'); },
+          getMetadata() {
+            return {
+              name: config.name,
+              description: config.description,
+              version: config.version,
+              input: config.input,
+              steps: steps.map(s => ({
+                id: s.config.id,
+                name: s.config.name,
+                description: s.config.description
+              }))
+            };
+          }
+        };
+        const runner = createWorkflowRunner({
+          workflow: workflowForRunner,
+          inputs: validatedInput,
+          startFromStep: options?.startFromStep,
+          endAtStep: options?.endAtStep,
+          restoredState: options?.restoredState,
+        });
+
+        const runnerResult = await runner.run();
+
+        log.info(`[DEBUG] WorkflowRunner result: ${JSON.stringify(runnerResult)}`);
+
+        // Return runner result with proper lastStepId and lastStepIndex
+        const response = {
+          status: runnerResult.status as ExecutionStatus,
+          message: runnerResult.error || 'Workflow completed',
+          data: runner.getState().context.data,
+          lastStepId: runnerResult.lastStepId,
+          lastStepIndex: runnerResult.lastStepIndex,
+          state: runner.getState(),
+        };
+
+        log.info(`[DEBUG] Returning response with lastStepId: ${response.lastStepId}, lastStepIndex: ${response.lastStepIndex}`);
+        return response;
+      }
+
+      // Initialize context for non-runner execution
       const context: WorkflowContext<TInput> = {
         data: {},
         state: {},
         variables: validatedInput,
       };
 
-      // Get desktop instance (either passed or create new one)
-      const desktopInstance = desktop || new Desktop();
+      // Track last completed step
+      let lastStepId: string | undefined;
+      let lastStepIndex: number | undefined;
 
       try {
         // Execute steps sequentially
@@ -131,6 +189,10 @@ function createWorkflowInstance<TInput = any>(
             context,
             logger: log,
           });
+
+          // Track last completed step for state persistence
+          lastStepId = step.config.id;
+          lastStepIndex = i;
 
           log.info('');
         }
@@ -151,11 +213,14 @@ function createWorkflowInstance<TInput = any>(
           });
         }
 
-        // Return success response
+        // Return success response with state tracking
         return {
           status: 'success',
           message: `Workflow completed successfully in ${duration}ms`,
           data: context.data,
+          lastStepId,
+          lastStepIndex,
+          state: { context, lastStepId, lastStepIndex },
         };
       } catch (error: any) {
         const duration = Date.now() - startTime;
@@ -165,12 +230,19 @@ function createWorkflowInstance<TInput = any>(
         log.error(`❌ Workflow failed! (${duration}ms)`);
         log.info('='.repeat(60));
 
-        // Find which step failed
-        const failedStepIndex = steps.findIndex(s =>
-          s?.config?.name && error.message?.includes(s.config.name)
-        );
+        // Find which step failed (use lastStepIndex if we have it)
+        const failedStepIndex = lastStepIndex !== undefined ? lastStepIndex :
+          steps.findIndex(s =>
+            s?.config?.name && error.message?.includes(s.config.name)
+          );
 
         const failedStep = failedStepIndex >= 0 ? steps[failedStepIndex] : steps[steps.length - 1];
+
+        // If we don't have lastStepId yet, set it from failed step
+        if (!lastStepId && failedStep) {
+          lastStepId = failedStep.config.id;
+          lastStepIndex = failedStepIndex >= 0 ? failedStepIndex : steps.length - 1;
+        }
 
         // Call workflow-level error handler from config
         // Skip onError if we're doing step control (testing specific steps)
@@ -214,7 +286,7 @@ function createWorkflowInstance<TInput = any>(
           }
         }
 
-        // Return error response
+        // Return error response with state tracking
         return {
           status: 'error',
           message: error.message,
@@ -230,6 +302,9 @@ function createWorkflowInstance<TInput = any>(
             },
           },
           data: context.data,
+          lastStepId,
+          lastStepIndex,
+          state: { context, lastStepId, lastStepIndex },
         };
       }
     },

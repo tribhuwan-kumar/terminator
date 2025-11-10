@@ -164,6 +164,12 @@ export interface ExecutionResponse<TData = any> {
   data?: TData;
   /** Optional user-facing message */
   message?: string;
+  /** Last completed step ID (for state persistence) */
+  lastStepId?: string;
+  /** Last completed step index (for state persistence) */
+  lastStepIndex?: number;
+  /** Workflow state (for resumption) */
+  state?: any;
 }
 
 /**

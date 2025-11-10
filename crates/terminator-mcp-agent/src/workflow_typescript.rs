@@ -184,8 +184,12 @@ impl TypeScriptWorkflow {
         );
 
         // Execute via bun (priority) or node (fallback)
+        // CRITICAL: Use spawn() with inherited stderr for real-time log streaming
+        // The .output() method buffers all output until completion, hiding logs during execution
         let runtime = detect_js_runtime();
-        let output = match runtime {
+
+        use std::process::Stdio;
+        let mut child = match runtime {
             JsRuntime::Bun => {
                 info!(
                     "Executing workflow with bun: {}/{}",
@@ -196,7 +200,9 @@ impl TypeScriptWorkflow {
                     .current_dir(&self.workflow_path)
                     .arg("--eval")
                     .arg(&exec_script)
-                    .output()
+                    .stdout(Stdio::piped()) // Capture stdout for JSON result
+                    .stderr(Stdio::inherit()) // Stream stderr (logs) in real-time
+                    .spawn()
                     .map_err(|e| {
                         McpError::internal_error(
                             format!("Failed to execute workflow with bun: {}", e),
@@ -216,7 +222,9 @@ impl TypeScriptWorkflow {
                     .arg("tsx/esm")
                     .arg("--eval")
                     .arg(&exec_script)
-                    .output()
+                    .stdout(Stdio::piped()) // Capture stdout for JSON result
+                    .stderr(Stdio::inherit()) // Stream stderr (logs) in real-time
+                    .spawn()
                     .map_err(|e| {
                         McpError::internal_error(
                             format!("Failed to execute workflow with node: {}", e),
@@ -226,15 +234,27 @@ impl TypeScriptWorkflow {
             }
         };
 
+        // Wait for completion and get output
+        let output = child.wait_with_output().map_err(|e| {
+            McpError::internal_error(
+                format!("Failed to wait for workflow completion: {}", e),
+                Some(json!({"error": e.to_string()})),
+            )
+        })?;
+
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            // Note: stderr was streamed to console in real-time (Stdio::inherit)
+            // so we won't have it captured here - that's intentional for better UX
             let stdout = String::from_utf8_lossy(&output.stdout);
             return Err(McpError::internal_error(
-                format!("Workflow execution failed: {}", stderr),
+                format!(
+                    "Workflow execution failed with exit code: {:?}",
+                    output.status.code()
+                ),
                 Some(json!({
-                    "stderr": stderr.to_string(),
                     "stdout": stdout.to_string(),
                     "exit_code": output.status.code(),
+                    "note": "stderr was streamed to console in real-time"
                 })),
             ));
         }
@@ -366,7 +386,16 @@ try {{
     // This automatically skips onError when step control options are present
     const inputs = {inputs_json};
     const stepOptions = {step_options_json};
+
+    // Debug logging
+    console.error('[DEBUG] Step options being passed to workflow.run():', JSON.stringify(stepOptions));
+    console.error('[DEBUG] Workflow has run method?', typeof workflow.run);
+    console.error('[DEBUG] Inputs:', JSON.stringify(inputs));
+
     const result = await workflow.run(inputs, undefined, undefined, stepOptions);
+
+    // Debug the result
+    console.error('[DEBUG] Result from workflow.run():', JSON.stringify(result));
 
     // Get workflow metadata for response
     const metadata = workflow.getMetadata ? workflow.getMetadata() : {{
@@ -376,12 +405,15 @@ try {{
     }};
 
     // Output clean JSON result
+    // CRITICAL: Include lastStepId and lastStepIndex from SDK for state persistence
     originalLog(JSON.stringify({{
         metadata,
         result: {{
             status: result.status || 'success',
             message: result.message || result.error || 'Workflow completed',
-            data: result.data || result.context?.data || null
+            data: result.data || result.context?.data || null,
+            last_step_id: result.lastStepId,
+            last_step_index: result.lastStepIndex
         }},
         state: result.state || {{ context: {{ data: result.data }} }}
     }}, null, 2));
