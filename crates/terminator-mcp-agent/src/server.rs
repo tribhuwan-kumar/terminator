@@ -5063,15 +5063,7 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
     // Removed: run_javascript tool (merged into run_command with engine)
 
     #[tool(
-        description = "Execute JavaScript in a browser using the Chrome extension bridge. Provides full access to the HTML DOM for data extraction, page analysis, and manipulation. Returns serializable data (strings, numbers, objects, arrays).
-
-Key uses:
-- Extract full HTML DOM: document.documentElement.outerHTML
-- Get structured page data: forms, links, meta tags, hidden inputs
-- Analyze page structure: headings, images, element counts
-- Debug accessibility tree gaps
-- Scrape data not available via accessibility APIs
-- Pass data between workflow steps using env/outputs parameters
+        description = "Execute JavaScript in a browser using the Chrome extension bridge. Full access to HTML DOM for data extraction, page analysis, and manipulation.
 
 Alternative: In run_command with engine: javascript, use desktop.executeBrowserScript(script)
 to execute browser scripts directly without needing a selector. Automatically targets active browser tab.
@@ -5082,123 +5074,232 @@ Parameters:
 - env: Environment variables to inject as 'var env = {...}' (optional)
 - outputs: Outputs from previous steps to inject as 'var outputs = {...}' (optional)
 
-⚠️ CRITICAL: Never Use success: true/false Pattern
-Scripts should return DATA describing what they found, NOT success/failure status.
-Using success: false causes the workflow step to fail.
+═══════════════════════════════════════════════════════════════════
+COMMON BROWSER AUTOMATION PATTERNS
+═══════════════════════════════════════════════════════════════════
 
-❌ WRONG - Causes step failure:
-(function() {
-  const dialog = document.querySelector('.dialog');
-  if (!dialog) {
-    return JSON.stringify({ success: false, message: 'Not found' }); // ❌ Step fails!
+Finding Elements:
+  document.querySelector('.class')              // First match
+  document.querySelectorAll('.class')           // All matches
+  document.getElementById('id')                 // By ID
+  document.querySelector('input[name=\"x\"]')     // By attribute
+  document.querySelector('#form > button')      // CSS selectors
+  document.forms[0]                             // First form
+  document.links                                // All links
+  document.images                               // All images
+
+Extracting Data:
+  element.innerText                             // Visible text only
+  element.textContent                           // All text (including hidden)
+  element.value                                 // Input/textarea/select value
+  element.checked                               // Checkbox/radio state
+  element.getAttribute('href')                  // Any attribute
+  element.className                             // CSS classes
+  element.id                                    // Element ID
+  element.tagName                               // Tag name (e.g., 'DIV')
+  
+  // Extract from multiple elements
+  Array.from(document.querySelectorAll('.item')).map(el => ({
+    text: el.innerText,
+    value: el.getAttribute('data-id')
+  }))
+
+Performing Actions:
+  element.click()                               // Click element
+  input.value = 'text to enter'                 // Fill input
+  textarea.value = 'long text'                  // Fill textarea
+  select.value = 'option2'                      // Select dropdown option
+  checkbox.checked = true                       // Check checkbox
+  element.focus()                               // Focus element
+  element.blur()                                // Remove focus
+  element.scrollIntoView()                      // Scroll to element
+  element.scrollIntoView({ behavior: 'smooth' }) // Smooth scroll
+  window.scrollTo(0, document.body.scrollHeight) // Scroll to bottom
+
+Checking Element State:
+  // Existence
+  const exists = !!document.querySelector('.el')
+  const exists = document.getElementById('id') !== null
+  
+  // Visibility
+  const isVisible = element.offsetParent !== null
+  const style = window.getComputedStyle(element)
+  const isVisible = style.display !== 'none' && style.visibility !== 'hidden'
+  
+  // Form state
+  const isDisabled = input.disabled
+  const isRequired = input.required
+  const isEmpty = input.value.trim() === ''
+  
+  // Position
+  const rect = element.getBoundingClientRect()
+  const isInViewport = rect.top >= 0 && rect.bottom <= window.innerHeight
+
+Extracting Forms:
+  // Get all forms and their inputs
+  Array.from(document.forms).map(form => ({
+    id: form.id,
+    action: form.action,
+    method: form.method,
+    inputs: Array.from(form.elements).map(el => ({
+      name: el.name,
+      type: el.type,
+      value: el.value,
+      required: el.required
+    }))
+  }))
+
+Extracting Tables:
+  // Convert table to array of rows
+  const table = document.querySelector('table')
+  const rows = Array.from(table.querySelectorAll('tbody tr')).map(row => {
+    const cells = Array.from(row.querySelectorAll('td'))
+    return cells.map(cell => cell.innerText.trim())
+  })
+
+Extracting Links & Images:
+  // All links with metadata
+  Array.from(document.links).map(link => ({
+    text: link.innerText,
+    href: link.href,
+    isExternal: link.hostname !== window.location.hostname
+  }))
+  
+  // Images with alt text check
+  Array.from(document.images).map(img => ({
+    src: img.src,
+    alt: img.alt || '[missing]',
+    width: img.naturalWidth,
+    height: img.naturalHeight
+  }))
+
+Detecting Page State:
+  // Login detection
+  const hasLoginForm = !!document.querySelector('form[action*=\"login\"], #loginForm')
+  const hasUserMenu = !!document.querySelector('.user-menu, [class*=\"account\"]')
+  const isLoggedIn = !hasLoginForm && hasUserMenu
+  
+  // Loading state
+  const isLoading = !!document.querySelector('.spinner, .loading, [class*=\"loading\"]')
+  
+  // Framework detection
+  const hasReact = !!document.querySelector('[data-reactroot], #root')
+  const hasJQuery = typeof jQuery !== 'undefined' || typeof $ !== 'undefined'
+  const hasAngular = !!document.querySelector('[ng-app], [data-ng-app]')
+
+Waiting for Dynamic Content:
+  // Wait for element to appear
+  await new Promise((resolve) => {
+    const checkInterval = setInterval(() => {
+      const element = document.querySelector('.dynamic-content')
+      if (element) {
+        clearInterval(checkInterval)
+        resolve(element)
+      }
+    }, 100) // Check every 100ms
+  })
+  
+  // Wait for loading to finish
+  await new Promise((resolve) => {
+    const checkInterval = setInterval(() => {
+      const loading = document.querySelector('.loading')
+      if (!loading || loading.offsetParent === null) {
+        clearInterval(checkInterval)
+        resolve()
+      }
+    }, 100)
+  })
+
+Extracting Metadata:
+  {
+    url: window.location.href,
+    title: document.title,
+    description: document.querySelector('meta[name=\"description\"]')?.content,
+    canonical: document.querySelector('link[rel=\"canonical\"]')?.href,
+    language: document.documentElement.lang,
+    charset: document.characterSet
   }
-  return JSON.stringify({ success: true, dialog_closed: 'true' });
-})()
 
-✅ CORRECT - Always return data:
-(function() {
-  const dialog = document.querySelector('.dialog');
+Working with iframes:
+  // Execute inside iframe context
+  const IFRAMESELCTOR = querySelector(\"#payment-frame\");
+  // Your code now runs in iframe's document context
+  const input = document.querySelector('input[name=\"cardnumber\"]')
+
+═══════════════════════════════════════════════════════════════════
+CRITICAL RULES
+═══════════════════════════════════════════════════════════════════
+
+Return Values:
+  ❌ Don't return null/undefined - causes step failure
+  ❌ Returning { success: false } causes step to FAIL (use intentionally to bail out)
+  ✅ Always return JSON.stringify() for objects/arrays
+  ✅ Return descriptive data for workflow branching
+  
+  Example:
   return JSON.stringify({
-    dialog_found: dialog ? 'true' : 'false',  // ✅ Just data
-    message: dialog ? 'Dialog found' : 'No dialog'
-  });
-})()
+    login_required: 'true',      // For workflow 'if' conditions
+    form_count: 3,
+    page_loaded: 'true'
+  })
 
-Pattern: Detection Scripts vs Action Scripts
-- Detection scripts: Check UI state, always return data (never fail)
-  Example: Return { needs_login: 'true' } or { needs_login: 'false' }
-  Use workflow 'if' conditions to act on the data
-- Action scripts: Perform operations, can legitimately fail
-  Example: Click specific button, set form value
+Injected Variables (from previous steps):
+  Always use typeof checks - variables injected with 'var':
+  const config = (typeof user_config !== 'undefined') ? user_config : {}
+  const items = (typeof item_list !== 'undefined') ? item_list : []
 
-Data injection: Variables are injected with 'var' - ALWAYS use typeof checks:
-const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
-const entries = (typeof journal_entries !== 'undefined') ? journal_entries : [];
-const config = (typeof app_config !== 'undefined') ? app_config : {};
+Console Logging:
+  console.log('Debug:', data)     // Visible in extension logs
+  console.error('Error:', err)    // Streamed to MCP agent
+  console.warn('Warning:', msg)   // For debugging workflows
 
-Returning data: Return data fields directly (auto-merge to env):
-return JSON.stringify({
-  status: 'completed',           // Reserved field (not auto-merged)
-  login_status: 'on_login_page', // Auto-merged as login_status
-  needs_login: 'true',           // Auto-merged as needs_login
-  form_count: 3                  // Auto-merged as form_count
-});
+Async Operations:
+  Both patterns work (auto-detected and awaited):
+  
+  // Async IIFE (auto-detected)
+  (async function() {
+    const text = await navigator.clipboard.readText()
+    return JSON.stringify({ clipboard_text: text })
+  })()
+  
+  // Promise chain
+  navigator.clipboard.readText()
+    .then(text => JSON.stringify({ clipboard_text: text }))
+    .catch(err => JSON.stringify({ error: err.message }))
+  
+  CRITICAL: Both .then() and .catch() MUST return values!
 
-Type Conversion: Convert objects/arrays to strings before string methods:
-const result = JSON.stringify(troubleshoot_result).toLowerCase();
-const hasError = JSON.stringify(data).includes('error');
+Delays:
+  await new Promise(resolve => setTimeout(resolve, 500))  // ✅ Works
+  sleep(500)  // ❌ NOT available in browser context
 
-Avoiding Page Navigation: Scripts triggering navigation (clicking links, submitting forms)
-can be killed before return executes, causing NULL_RESULT. Separate navigation actions
-into dedicated workflow steps with delays.
+Type Conversion:
+  // ❌ Can't use string methods on objects
+  if (data.toLowerCase().includes('error'))  // TypeError!
+  
+  // ✅ Stringify first
+  if (JSON.stringify(data).toLowerCase().includes('error'))
 
-Size limits: Response must be <30KB. For large DOMs, use truncation:
-const html = document.documentElement.outerHTML;
-const max = 30000;
-return html.length > max ? html.substring(0, max) + '...' : html;
+Size Limits:
+  Max 30KB response. Truncate large data:
+  const html = document.documentElement.outerHTML
+  return html.length > 30000 ? html.substring(0, 30000) + '...' : html
 
-⚠️ Port Conflicts: Multiple browser scripts in quick succession cause 'port already in use' errors.
-Add delay_ms: 2000 between consecutive execute_browser_script steps.
+Navigation Timing:
+  Separate navigation actions from return statements.
+  Scripts triggering navigation (clicking links, form submit) can be killed
+  before return executes, causing NULL_RESULT.
+  
+  ❌ Don't do this:
+  button.click() // triggers navigation
+  return JSON.stringify({ clicked: true }) // Never executes
+  
+  ✅ Do this:
+  return JSON.stringify({ ready_to_navigate: true })
+  // Let workflow handle navigation in next step
 
-Timing: Use await new Promise(resolve => setTimeout(resolve, ms)) for delays.
-The sleep() function is NOT available in browser context.
-
-Script Format Requirements:
-🚨 CRITICAL: ALL browser scripts MUST use IIFE wrapper when using return statements.
-The MCP agent injects environment variables at the top of your script, making top-level
-return statements illegal in JavaScript. The Chrome extension bridge automatically detects
-and awaits Promises.
-
-✅ RECOMMENDED: IIFE Pattern for Synchronous Scripts
-(function() {
-  // Safe env variable access with typeof checks
-  const searchTerm = (typeof search_term !== 'undefined') ? search_term : '';
-
-  const data = document.querySelector('.data');
-  return JSON.stringify({
-    data_found: data ? 'true' : 'false',
-    data_text: data ? data.textContent : '',
-    search_term: searchTerm
-  });
-})()
-
-✅ RECOMMENDED: IIFE with Promise Chain for Async Operations
-(function() {
-  // Setup variables first (synchronously) with typeof checks
-  const config = (typeof user_config !== 'undefined') ? user_config : {};
-
-  // Capture Promise in const and explicitly return it
-  const result = navigator.clipboard.readText().then(clipboardText => {
-    console.log('Success:', clipboardText);
-    return JSON.stringify({ clipboard_text: clipboardText });
-  }).catch(error => {
-    console.error('Error:', error);
-    return JSON.stringify({ error_message: error.message });
-  });
-
-  return result;
-})()
-
-Key Rules:
-- IIFE wrapper is MANDATORY to avoid 'Illegal return statement' errors
-- Both .then() and .catch() handlers MUST return values (use JSON.stringify())
-- Always use typeof checks for ALL env variable access
-- Do synchronous variable setup BEFORE the Promise chain
-- Avoid async IIFE - use Promise chain pattern inside regular IIFE instead
-- Never use success: true/false pattern - return descriptive data instead
-
-❌ WRONG: Missing Return Values
-navigator.clipboard.readText().then(result => {
-  console.log(result); // Missing return! Causes NULL_RESULT error
-});
-
-❌ WRONG: Async IIFE Pattern
-(async function() {
-  const result = await navigator.clipboard.readText();
-  return JSON.stringify({ result });
-})(); // Worker.js can't capture async function results via eval()
-
-Requires Chrome extension to be installed. See browser_dom_extraction.yml and demo_bidirectional_vars.yml for examples."
+Examples: See browser_dom_extraction.yml and comprehensive_ui_test.yml
+Requires Chrome extension to be installed."
     )]
     async fn execute_browser_script(
         &self,
