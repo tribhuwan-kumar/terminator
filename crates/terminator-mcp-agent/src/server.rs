@@ -1183,7 +1183,7 @@ impl DesktopWrapper {
             let mut verification_element = None;
             let mut used_fast_path = false;
 
-            if let Ok(current_text) = element.text(0) {
+            if let Ok(_current_text) = element.text(0) {
                 // Element is still valid! Use it directly
                 tracing::debug!("[type_into_element] Verification fast path: element still valid");
                 verification_element = Some(element.clone());
@@ -1208,7 +1208,7 @@ impl DesktopWrapper {
 
                     // Get the window element for this PID to use as search root
                     // This dramatically reduces search space vs searching from desktop root
-                    if let Ok(window_tree) = self.desktop.get_window_tree(element_pid, None, None) {
+                    if let Ok(_window_tree) = self.desktop.get_window_tree(element_pid, None, None) {
                         // Create locator scoped to this window's tree
                         // Note: We still search by selector since the element might have been recreated
                         let verification_locator = self
@@ -1272,7 +1272,7 @@ impl DesktopWrapper {
                     ));
                 }
 
-                let mut verification = json!({
+                let verification = json!({
                     "text_value_after": current_text,
                     "text_check_passed": text_matches,
                     "element_focused": updated_element.is_focused().unwrap_or(false),

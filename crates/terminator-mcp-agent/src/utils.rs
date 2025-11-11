@@ -355,7 +355,9 @@ pub struct TypeIntoElementArgs {
     pub text_to_type: String,
     #[schemars(description = "Whether to verify the action succeeded (default: true)")]
     pub verify_action: Option<bool>,
-    #[schemars(description = "Timeout in milliseconds for verification search (default: 500ms). Only used when verify_action is true.")]
+    #[schemars(
+        description = "Timeout in milliseconds for verification search (default: 500ms). Only used when verify_action is true."
+    )]
     pub verify_timeout_ms: Option<u64>,
     #[schemars(description = "Whether to clear the element before typing (default: true)")]
     pub clear_before_typing: Option<bool>,
