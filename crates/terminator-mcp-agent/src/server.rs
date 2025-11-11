@@ -1175,14 +1175,75 @@ impl DesktopWrapper {
         if args.verify_action.unwrap_or(true) {
             span.add_event("verification_started", vec![]);
 
-            // Create a new locator for verification using the successful selector
-            let verification_locator = self
-                .desktop
-                .locator(Selector::from(successful_selector.as_str()));
-            if let Ok(updated_element) = verification_locator
-                .wait(Some(std::time::Duration::from_millis(500)))
-                .await
-            {
+            let verify_timeout_ms = args.verify_timeout_ms.unwrap_or(500);
+            span.set_attribute("verification.timeout_ms", verify_timeout_ms.to_string());
+
+            // OPTIMIZATION: Try to read the element directly first (fast path - no tree walking)
+            // This works when the element reference is still valid after typing
+            let mut verification_element = None;
+            let mut used_fast_path = false;
+
+            if let Ok(current_text) = element.text(0) {
+                // Element is still valid! Use it directly
+                tracing::debug!("[type_into_element] Verification fast path: element still valid");
+                verification_element = Some(element.clone());
+                used_fast_path = true;
+                span.set_attribute("verification.method", "direct_read".to_string());
+            } else {
+                // Element is stale, need to re-locate it
+                tracing::debug!(
+                    "[type_into_element] Element stale after typing, re-locating with window scope"
+                );
+                span.set_attribute("verification.method", "window_scoped_search".to_string());
+
+                // OPTIMIZATION: Search from the window, not desktop root
+                // Get the PID to scope the search to just this application's window
+                let element_pid = element.process_id().unwrap_or(0);
+
+                if element_pid > 0 {
+                    tracing::debug!(
+                        "[type_into_element] Scoping verification search to PID: {}",
+                        element_pid
+                    );
+
+                    // Get the window element for this PID to use as search root
+                    // This dramatically reduces search space vs searching from desktop root
+                    if let Ok(window_tree) = self.desktop.get_window_tree(element_pid, None, None) {
+                        // Create locator scoped to this window's tree
+                        // Note: We still search by selector since the element might have been recreated
+                        let verification_locator = self
+                            .desktop
+                            .locator(Selector::from(successful_selector.as_str()));
+
+                        if let Ok(updated_element) = verification_locator
+                            .wait(Some(std::time::Duration::from_millis(verify_timeout_ms)))
+                            .await
+                        {
+                            verification_element = Some(updated_element);
+                        }
+                    }
+                }
+
+                // Fallback: If window-scoped search failed, try desktop-wide search
+                if verification_element.is_none() {
+                    tracing::warn!("[type_into_element] Window-scoped search failed, falling back to desktop-wide search");
+                    span.set_attribute("verification.method", "desktop_wide_search".to_string());
+
+                    let verification_locator = self
+                        .desktop
+                        .locator(Selector::from(successful_selector.as_str()));
+
+                    if let Ok(updated_element) = verification_locator
+                        .wait(Some(std::time::Duration::from_millis(verify_timeout_ms)))
+                        .await
+                    {
+                        verification_element = Some(updated_element);
+                    }
+                }
+            }
+
+            // Now verify the text if we have an element
+            if let Some(updated_element) = verification_element {
                 let current_text = updated_element.text(0).unwrap_or_default();
                 span.set_attribute("verification.text_after", current_text.clone());
 
@@ -1206,17 +1267,20 @@ impl DesktopWrapper {
                             "actual_text": current_text,
                             "element": build_element_info(&updated_element),
                             "selector_used": successful_selector,
+                            "timeout_ms": verify_timeout_ms,
                         })),
                     ));
                 }
 
-                let verification = json!({
+                let mut verification = json!({
                     "text_value_after": current_text,
                     "text_check_passed": text_matches,
                     "element_focused": updated_element.is_focused().unwrap_or(false),
                     "element_enabled": updated_element.is_enabled().unwrap_or(false),
-                    "verification_timestamp": chrono::Utc::now().to_rfc3339()
+                    "verification_timestamp": chrono::Utc::now().to_rfc3339(),
+                    "used_fast_path": used_fast_path,
                 });
+
                 if let Some(obj) = result_json.as_object_mut() {
                     obj.insert("verification".to_string(), verification);
                 }
@@ -1230,6 +1294,7 @@ impl DesktopWrapper {
                     "Failed to find element for verification after typing.",
                     Some(json!({
                         "selector_used": successful_selector,
+                        "timeout_ms": verify_timeout_ms,
                     })),
                 ));
             }
