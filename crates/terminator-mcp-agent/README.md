@@ -612,11 +612,11 @@ You can run specific portions of a workflow using `start_from_step` and `end_at_
 
 #### Automatic State Persistence
 
-When using `file://` URLs, the workflow state (environment variables) is automatically saved to a `.workflow_state` folder:
+When using `file://` URLs, the workflow state (environment variables) is automatically saved to a `.mediar` folder:
 
 1. **State is saved** after each step that modifies environment variables via `set_env` or has a tool result with an ID
 2. **State is loaded** when starting from a specific step
-3. **Location**: `.workflow_state/<workflow_hash>.json` in the workflow's directory
+3. **Location**: `.mediar/workflows/<workflow_name>/state.json` in the workflow's directory
 4. **Tool results** from all tools (not just scripts) are automatically stored as `{step_id}_result` and `{step_id}_status`
 
 This enables:

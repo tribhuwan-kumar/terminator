@@ -1036,24 +1036,37 @@ fn parse_command(command: &str) -> Vec<String> {
 }
 
 /// Run workflow with output logging to file
-async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
+async fn run_logged_workflow(args: McpRunArgs) -> anyhow::Result<()> {
     use chrono::Local;
     use colored::Colorize;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
 
-    // Get the log directory path using standard directories
-    let log_dir = dirs::cache_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("terminator")
-        .join("workflow-results");
+    // Determine base log directory
+    // Use data_local_dir (same as state) for consistency: %LOCALAPPDATA%\mediar\workflows\
+    let base_log_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| dirs::cache_dir().unwrap_or_else(std::env::temp_dir))
+        .join("mediar")
+        .join("workflows");
+
+    // Create a workflow-specific subdirectory based on input path (like state persistence)
+    let workflow_hash = {
+        let mut hasher = DefaultHasher::new();
+        args.input.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    };
+
+    // Log directory: %LOCALAPPDATA%\mediar\workflows\<hash>\logs\
+    let log_dir = base_log_dir.join(&workflow_hash).join("logs");
 
     // Create directory if it doesn't exist
     fs::create_dir_all(&log_dir)?;
 
-    // Create latest.txt and timestamped file paths
+    // Create latest.txt and timestamped file paths in the workflow-specific directory
     let latest_path = log_dir.join("latest.txt");
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     // CLIPPY: Use implicit capture for format!
-    let timestamped_path = log_dir.join(format!("workflow_{timestamp}.txt"));
+    let timestamped_path = log_dir.join(format!("run_{timestamp}.txt"));
 
     // Open both files for writing
     let latest_file = Arc::new(Mutex::new(
@@ -1065,9 +1078,15 @@ async fn run_logged_workflow(_args: McpRunArgs) -> anyhow::Result<()> {
             .with_context(|| format!("Failed to create {}", timestamped_path.display()))?,
     ));
 
-    println!("{}", "📝 Logging output to:".cyan()); // CLIPPY FIXED
-    println!("   {}", latest_path.display());
-    println!("   {}", timestamped_path.display());
+    println!("{}", "📝 Workflow logs:".cyan());
+    println!("   Latest: {}", latest_path.display());
+    println!("   Run:    {}", timestamped_path.display());
+
+    // Show state file location if it exists (in same parent directory)
+    let state_file = log_dir.parent().unwrap().join("state.json");
+    if state_file.exists() {
+        println!("   State:  {}", state_file.display());
+    }
     println!();
 
     // Build command to re-execute ourselves with --no-log to prevent recursion

@@ -27,7 +27,8 @@ impl Desktop {
     /// Args:
     ///     use_background_apps (bool, optional): Enable background apps support. Defaults to False.
     ///     activate_app (bool, optional): Enable app activation support. Defaults to False.
-    ///     log_level (str, optional): Logging level (e.g., 'info', 'debug', 'warn', 'error'). Defaults to 'info'.
+    ///     log_level (str, optional): Logging level (e.g., 'info', 'debug', 'warn', 'error').
+    ///                                Falls back to RUST_LOG or TERMINATOR_LOG_LEVEL env vars, defaults to 'info'.
     ///
     /// Returns:
     ///     Desktop: A new Desktop automation instance.
@@ -37,7 +38,13 @@ impl Desktop {
         log_level: Option<String>,
     ) -> PyResult<Self> {
         static INIT: Once = Once::new();
-        let log_level = log_level.unwrap_or_else(|| "info".to_string());
+
+        // Priority: explicit param > RUST_LOG env > TERMINATOR_LOG_LEVEL env > "info" default
+        let log_level = log_level
+            .or_else(|| std::env::var("RUST_LOG").ok())
+            .or_else(|| std::env::var("TERMINATOR_LOG_LEVEL").ok())
+            .unwrap_or_else(|| "info".to_string());
+
         INIT.call_once(|| {
             let _ = tracing_subscriber::fmt()
                 .with_env_filter(log_level)

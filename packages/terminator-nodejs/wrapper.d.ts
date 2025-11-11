@@ -40,3 +40,31 @@ export class InvalidArgumentError extends Error {
 export class InternalError extends Error {
     constructor(message: string);
 } 
+
+export type BrowserScriptEnv = Record<string, unknown>;
+export type BrowserScriptFunction<T = unknown, Env extends BrowserScriptEnv = BrowserScriptEnv> =
+    (env: Env) => T | Promise<T>;
+export interface BrowserScriptOptions<Env extends BrowserScriptEnv = BrowserScriptEnv> {
+    file: string;
+    env?: Env;
+}
+
+export interface Desktop {
+    executeBrowserScript<T = unknown, Env extends BrowserScriptEnv = BrowserScriptEnv>(
+        fn: BrowserScriptFunction<T, Env>,
+        env?: Env
+    ): Promise<T>;
+    executeBrowserScript<Env extends BrowserScriptEnv = BrowserScriptEnv>(
+        options: BrowserScriptOptions<Env>
+    ): Promise<string>;
+}
+
+export interface Element {
+    executeBrowserScript<T = unknown, Env extends BrowserScriptEnv = BrowserScriptEnv>(
+        fn: BrowserScriptFunction<T, Env>,
+        env?: Env
+    ): Promise<T>;
+    executeBrowserScript<Env extends BrowserScriptEnv = BrowserScriptEnv>(
+        options: BrowserScriptOptions<Env>
+    ): Promise<string>;
+}

@@ -38,7 +38,7 @@ mcp.json
 .cursor/mcp.json
 
 # Workflow state files (contain sensitive execution data)
-.workflow_state/
+.mediar/
 
 # Editor/IDE specific
 .cursor/

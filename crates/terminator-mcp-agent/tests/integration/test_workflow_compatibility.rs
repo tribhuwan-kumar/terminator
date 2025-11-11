@@ -225,9 +225,9 @@ steps:
         );
 
         // Create fake state file
-        let state_dir = temp_dir.path().join(".workflow_state");
+        let state_dir = temp_dir.path().join(".mediar").join("workflows").join("start_from");
         fs::create_dir_all(&state_dir).unwrap();
-        let state_file = state_dir.join("start_from.json");
+        let state_file = state_dir.join("state.json");
         fs::write(
             &state_file,
             json!({
@@ -314,7 +314,7 @@ steps:
         assert!(result.is_ok());
 
         // Check state file was created
-        let state_file = temp_dir.path().join(".workflow_state/persistence.json");
+        let state_file = temp_dir.path().join(".mediar/workflows/persistence/state.json");
         assert!(state_file.exists(), "State file should exist");
 
         let state_content = fs::read_to_string(&state_file).unwrap();
@@ -421,7 +421,7 @@ steps:
         assert!(result.is_ok());
 
         // Check state file was created
-        let state_file = project_dir.join(".workflow_state/workflow.json");
+        let state_file = project_dir.join(".mediar/workflows/workflow/state.json");
         assert!(state_file.exists(), "TS state file should exist");
 
         let state_content = fs::read_to_string(&state_file).unwrap();

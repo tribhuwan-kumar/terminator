@@ -3,7 +3,7 @@
  * Tests the full loop: terminator CLI -> MCP server -> TypeScript workflow execution
  *
  * Tests:
- * - Workflow state persistence (.workflow_state)
+ * - Workflow state persistence (.mediar)
  * - retry() functionality
  * - onError handling
  * - Start from specific step
@@ -51,7 +51,7 @@ describe('Workflow E2E Tests - MCP Client+Server Loop', () => {
   });
 
   describe('Workflow State Persistence', () => {
-    test('workflow state is saved to .workflow_state file', async () => {
+    test('workflow state is saved to .mediar file', async () => {
       const step1 = createStep({
         id: 'step1',
         name: 'Step 1',

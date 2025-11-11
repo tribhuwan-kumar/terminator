@@ -127,15 +127,29 @@ fn validate_variable_value(
 
 impl DesktopWrapper {
     // Get the state file path for a workflow
+    // Uses OS-standard data directories:
+    //   Windows: %LOCALAPPDATA%\mediar\workflows\<workflow_hash>\state.json
+    //   macOS: ~/Library/Application Support/mediar/workflows/<workflow_hash>/state.json
+    //   Linux: ~/.local/share/mediar/workflows/<workflow_hash>/state.json
     async fn get_state_file_path(workflow_url: &str) -> Option<PathBuf> {
         if let Some(file_path) = workflow_url.strip_prefix("file://") {
-            let workflow_path = Path::new(file_path);
-            let workflow_dir = workflow_path.parent()?;
-            let workflow_name = workflow_path.file_stem()?;
+            // Get OS-standard data directory
+            let data_dir = dirs::data_local_dir()?;
 
-            let state_file = workflow_dir
-                .join(".workflow_state")
-                .join(format!("{}.json", workflow_name.to_string_lossy()));
+            // Create a stable hash of the workflow file path
+            let workflow_hash = {
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                file_path.hash(&mut hasher);
+                format!("{:x}", hasher.finish())
+            };
+
+            let state_file = data_dir
+                .join("mediar")
+                .join("workflows")
+                .join(workflow_hash)
+                .join("state.json");
 
             Some(state_file)
         } else {
