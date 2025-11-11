@@ -1016,6 +1016,7 @@ impl DesktopWrapper {
         let mut sequence_had_errors = false;
         let mut critical_error_occurred = false;
         let mut used_fallback = false; // Track if any fallback was used
+        let mut actually_executed_count = 0usize; // Track only steps that actually executed (not skipped)
         let start_time = chrono::Utc::now();
 
         let mut current_index: usize = start_from_index;
@@ -1094,28 +1095,6 @@ impl DesktopWrapper {
                     .as_ref()
                     .and_then(|t| t.get(current_index - main_steps_len))
             };
-            if let Some(step) = original_step {
-                if let Some(tool_name) = &step.tool_name {
-                    info!(
-                        "Step {} BEGIN tool='{}' id='{}' retries={} if_expr={:?} fallback_id={:?} jumps={}",
-                        current_index,
-                        tool_name,
-                        step.id.as_deref().unwrap_or(""),
-                        step.retries.unwrap_or(0),
-                        step.r#if,
-                        step.fallback_id,
-                        step.jumps.as_ref().map(|j| j.len()).unwrap_or(0)
-                    );
-                } else if let Some(group_name) = &step.group_name {
-                    info!(
-                        "Step {} BEGIN group='{}' id='{}' steps={}",
-                        current_index,
-                        group_name,
-                        step.id.as_deref().unwrap_or(""),
-                        step.steps.as_ref().map(|v| v.len()).unwrap_or(0)
-                    );
-                }
-            }
 
             // Extract values from the step if it exists
             let (if_expr, retries, fallback_id_opt) = if let Some(step) = original_step {
@@ -1135,6 +1114,7 @@ impl DesktopWrapper {
                 results.push(json!({
                     "index": current_index,
                     "status": "skipped",
+                    "executed": false,
                     "reason": "Skipped due to a previous unrecoverable error in the sequence."
                 }));
                 current_index += 1;
@@ -1155,10 +1135,35 @@ impl DesktopWrapper {
                     results.push(json!({
                         "index": current_index,
                         "status": "skipped",
+                        "executed": false,
                         "reason": format!("if_expr not met: {}", cond_str)
                     }));
                     current_index += 1;
                     continue;
+                }
+            }
+
+            // Log step BEGIN only after skip checks - this ensures we only log steps that will actually execute
+            if let Some(step) = original_step {
+                if let Some(tool_name) = &step.tool_name {
+                    info!(
+                        "Step {} BEGIN tool='{}' id='{}' retries={} if_expr={:?} fallback_id={:?} jumps={}",
+                        current_index,
+                        tool_name,
+                        step.id.as_deref().unwrap_or(""),
+                        step.retries.unwrap_or(0),
+                        step.r#if,
+                        step.fallback_id,
+                        step.jumps.as_ref().map(|j| j.len()).unwrap_or(0)
+                    );
+                } else if let Some(group_name) = &step.group_name {
+                    info!(
+                        "Step {} BEGIN group='{}' id='{}' steps={}",
+                        current_index,
+                        group_name,
+                        step.id.as_deref().unwrap_or(""),
+                        step.steps.as_ref().map(|v| v.len()).unwrap_or(0)
+                    );
                 }
             }
 
@@ -1776,7 +1781,12 @@ impl DesktopWrapper {
                 }
             }
 
+            // Mark this step as executed (not skipped) and add to results
+            if let Some(obj) = final_result.as_object_mut() {
+                obj.insert("executed".to_string(), json!(true));
+            }
             results.push(final_result);
+            actually_executed_count += 1;
 
             // Decide next index based on success or fallback
             let step_succeeded = !step_error_occurred;
@@ -1963,8 +1973,9 @@ impl DesktopWrapper {
             "failed"
         };
         info!(
-            "execute_sequence completed: status={}, executed_tools={}, total_duration_ms={}",
+            "execute_sequence completed: status={}, executed_tools={}, total_results={}, total_duration_ms={}",
             final_status,
+            actually_executed_count,
             results.len(),
             total_duration
         );
@@ -1973,7 +1984,8 @@ impl DesktopWrapper {
             "action": "execute_sequence",
             "status": final_status,
             "total_tools": sequence_items.len(),
-            "executed_tools": results.len(),
+            "executed_tools": actually_executed_count,
+            "total_results": results.len(),
             "total_duration_ms": total_duration,
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "used_fallback": used_fallback,
@@ -2046,7 +2058,8 @@ impl DesktopWrapper {
                 "had_critical_error": critical_error_occurred,
                 "had_errors": sequence_had_errors,
                 "used_fallback": used_fallback,
-                "executed_count": results.len(),
+                "executed_count": actually_executed_count,
+                "total_results": results.len(),
             });
 
             if let Some(obj) = summary.as_object_mut() {
