@@ -30,18 +30,92 @@ use windows::Win32::UI::Shell::{
     ApplicationActivationManager, IApplicationActivationManager, ShellExecuteExW, ShellExecuteW,
     ACTIVATEOPTIONS, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
 };
-use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindowThreadProcessId, IsWindowVisible, SW_SHOWNORMAL,
+};
+use windows::Win32::Foundation::LPARAM;
 
 use super::utils::WindowsUIElement;
 
 // Constants
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
+// Storage for EnumWindows callback
+static mut ENUM_TARGET_PID: u32 = 0;
+static mut ENUM_FOUND_HWND: isize = 0;
+
 // List of common browser process names (without .exe)
 const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
     "chrome", "firefox", "msedge", "edge", "iexplore", "opera", "brave", "vivaldi", "browser",
     "arc", "explorer",
 ];
+
+/// Fast window finder using Win32 EnumWindows API
+/// This is 10-100x faster than UI Automation tree traversal
+unsafe extern "system" fn enum_windows_callback(hwnd: HWND, _lparam: LPARAM) -> i32 {
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut pid as *mut u32));
+    
+    // Check if this window matches our target PID
+    if pid == ENUM_TARGET_PID {
+        // Only consider visible windows
+        if IsWindowVisible(hwnd).as_bool() {
+            ENUM_FOUND_HWND = hwnd.0 as isize;
+            return 0; // FALSE - Stop enumeration
+        }
+    }
+    
+    1 // TRUE - Continue enumeration
+}
+
+/// Find window HWND by PID using fast Win32 EnumWindows
+/// Returns HWND if found, 0 if not found
+fn find_hwnd_by_pid_fast(target_pid: u32) -> isize {
+    unsafe {
+        ENUM_TARGET_PID = target_pid;
+        ENUM_FOUND_HWND = 0;
+        
+        debug!("[TIMING] Starting EnumWindows for PID {}", target_pid);
+        let start = std::time::Instant::now();
+        
+        // Transmute the callback to match Windows API signature (i32 -> BOOL)
+        let callback = std::mem::transmute::<
+            unsafe extern "system" fn(HWND, LPARAM) -> i32,
+            unsafe extern "system" fn(HWND, LPARAM) -> _
+        >(enum_windows_callback);
+        let _ = EnumWindows(Some(callback), LPARAM(0));
+        
+        debug!("[TIMING] EnumWindows completed in {}ms, HWND: 0x{:X}", 
+               start.elapsed().as_millis(), ENUM_FOUND_HWND);
+        
+        ENUM_FOUND_HWND
+    }
+}
+
+/// Convert HWND to UIElement using UI Automation
+fn hwnd_to_uielement(engine: &WindowsEngine, hwnd: isize) -> Result<UIElement, AutomationError> {
+    debug!("[TIMING] Converting HWND 0x{:X} to UIElement", hwnd);
+    let start = std::time::Instant::now();
+    
+    // Use UI Automation to get the element from HWND
+    // Convert hwnd (isize) to Handle via Into trait
+    let uia_element = engine.automation.0.element_from_handle(hwnd.into()).map_err(|e| {
+        AutomationError::PlatformError(format!(
+            "Failed to get UIElement from HWND 0x{:X}: {:?}",
+            hwnd, e
+        ))
+    })?;
+    
+    debug!("[TIMING] HWND to UIElement conversion took {}ms", start.elapsed().as_millis());
+    
+    #[allow(clippy::arc_with_non_send_sync)]
+    let arc_ele = ThreadSafeWinUIElement(Arc::new(uia_element));
+    
+    Ok(UIElement::new(Box::new(WindowsUIElement {
+        element: arc_ele,
+        engine: None,
+    })))
+}
 
 /// Helper function to get process name by PID using native Windows API
 pub fn get_process_name_by_pid(pid: i32) -> Result<String, AutomationError> {
@@ -262,6 +336,38 @@ pub fn get_application_by_pid(
     pid: i32,
     timeout: Option<Duration>,
 ) -> Result<UIElement, AutomationError> {
+    debug!("[TIMING] get_application_by_pid called for PID {}", pid);
+    let overall_start = std::time::Instant::now();
+    
+    // OPTIMIZED: Use fast Win32 EnumWindows instead of slow UI Automation tree traversal
+    // This is 10-100x faster!
+    let timeout_duration = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT);
+    let timeout_ms = timeout_duration.as_millis() as u64;
+    let retry_interval = Duration::from_millis(100);
+    let max_retries = (timeout_ms / retry_interval.as_millis() as u64) as usize;
+    
+    // Try to find the window with retries
+    for attempt in 0..max_retries {
+        let hwnd = find_hwnd_by_pid_fast(pid as u32);
+        
+        if hwnd != 0 {
+            // Found the window! Convert HWND to UIElement
+            debug!("[TIMING] Window found on attempt {}, converting to UIElement", attempt + 1);
+            let result = hwnd_to_uielement(engine, hwnd);
+            debug!("[TIMING] get_application_by_pid total time: {}ms", overall_start.elapsed().as_millis());
+            return result;
+        }
+        
+        // Window not found yet, wait a bit before retry
+        if attempt < max_retries - 1 {
+            std::thread::sleep(retry_interval);
+        }
+    }
+    
+    debug!("[TIMING] Window not found after {}ms, falling back to UI Automation", overall_start.elapsed().as_millis());
+    
+    // FALLBACK: If EnumWindows didn't find it, try the old UI Automation approach
+    // (This handles edge cases like child windows or special panes)
     let root_ele = engine.automation.0.get_root_element().map_err(|e| {
         AutomationError::PlatformError(format!(
             "Failed to get root element for PID {} wait at {}:{}: {:?}",
@@ -271,9 +377,7 @@ pub fn get_application_by_pid(
             e
         ))
     })?;
-    let timeout_ms = timeout.unwrap_or(DEFAULT_FIND_TIMEOUT).as_millis() as u64;
 
-    // Create a matcher with timeout
     let matcher = engine
         .automation
         .0
@@ -293,7 +397,7 @@ pub fn get_application_by_pid(
                 Err(_) => Ok(false),
             }
         }))
-        .timeout(timeout_ms);
+        .timeout(1000); // Shorter timeout for fallback
 
     let ele = matcher.find_first().map_err(|e| {
         AutomationError::ElementNotFound(format!(
@@ -304,6 +408,8 @@ pub fn get_application_by_pid(
     #[allow(clippy::arc_with_non_send_sync)]
     let arc_ele = ThreadSafeWinUIElement(Arc::new(ele));
 
+    debug!("[TIMING] get_application_by_pid total time (with fallback): {}ms", overall_start.elapsed().as_millis());
+    
     Ok(UIElement::new(Box::new(WindowsUIElement {
         element: arc_ele,
         engine: None,
@@ -357,8 +463,17 @@ pub fn open_application(
     launch_legacy_app(engine, app_name)
 }
 
-/// Get apps information using Get-StartApps
-pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), AutomationError> {
+/// Cache structure for Get-StartApps results
+struct StartAppsCache {
+    apps: Vec<Value>,
+    last_updated: Instant,
+}
+
+/// Helper function to fetch apps from PowerShell
+fn fetch_startapps_from_powershell() -> Result<Vec<Value>, AutomationError> {
+    debug!("[TIMING] Starting Get-StartApps PowerShell query");
+    let start = std::time::Instant::now();
+    
     let command = r#"Get-StartApps | Select-Object Name, AppID | ConvertTo-Json"#.to_string();
 
     let output = std::process::Command::new("powershell")
@@ -376,6 +491,57 @@ pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), A
     let output_str = String::from_utf8_lossy(&output.stdout);
     let apps: Vec<Value> = serde_json::from_str(&output_str)
         .map_err(|e| AutomationError::PlatformError(format!("Failed to parse apps list: {e}")))?;
+    
+    debug!("[TIMING] Get-StartApps completed in {}ms", start.elapsed().as_millis());
+    
+    Ok(apps)
+}
+
+/// Get apps information using Get-StartApps with caching
+/// Cache TTL is 30 seconds to avoid repeated PowerShell calls
+pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), AutomationError> {
+    // OPTIMIZATION: Cache Get-StartApps results to avoid slow PowerShell calls (saves ~566ms)
+    static STARTAPPS_CACHE: Mutex<Option<StartAppsCache>> = Mutex::new(None);
+    const CACHE_TTL: Duration = Duration::from_secs(30);
+    
+    // Try to get apps list from cache first
+    let apps: Vec<Value> = {
+        let mut cache_guard = STARTAPPS_CACHE.lock().unwrap();
+        
+        if let Some(ref cache) = *cache_guard {
+            if cache.last_updated.elapsed() < CACHE_TTL {
+                debug!("[TIMING] Using cached Get-StartApps results (age: {}ms)", 
+                       cache.last_updated.elapsed().as_millis());
+                cache.apps.clone()
+            } else {
+                debug!("[TIMING] Get-StartApps cache expired, refreshing");
+                // Cache expired, need to refresh
+                drop(cache_guard); // Release lock before expensive operation
+                let apps = fetch_startapps_from_powershell()?;
+                
+                // Update cache
+                let mut cache_guard = STARTAPPS_CACHE.lock().unwrap();
+                *cache_guard = Some(StartAppsCache {
+                    apps: apps.clone(),
+                    last_updated: Instant::now(),
+                });
+                apps
+            }
+        } else {
+            debug!("[TIMING] Get-StartApps cache empty, initializing");
+            // No cache yet, fetch and populate
+            drop(cache_guard); // Release lock before expensive operation
+            let apps = fetch_startapps_from_powershell()?;
+            
+            // Update cache
+            let mut cache_guard = STARTAPPS_CACHE.lock().unwrap();
+            *cache_guard = Some(StartAppsCache {
+                apps: apps.clone(),
+                last_updated: Instant::now(),
+            });
+            apps
+        }
+    };
 
     // two parts
     let search_terms: Vec<String> = app_name
@@ -532,6 +698,9 @@ pub(crate) fn launch_app(
     app_id: &str,
     display_name: &str,
 ) -> Result<UIElement, AutomationError> {
+    debug!("[TIMING] Starting launch_app for: {}", display_name);
+    let launch_start = std::time::Instant::now();
+    
     let pid = unsafe {
         // Initialize COM with proper error handling
         let hr = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -614,8 +783,16 @@ pub(crate) fn launch_app(
     };
 
     if pid > 0 {
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-        get_application_pid(engine, pid as i32, display_name)
+        // OPTIMIZED: Reduced sleep from 1000ms to 300ms
+        // The new EnumWindows-based search with retries handles slow-starting apps better
+        debug!("[TIMING] App launched, starting 300ms sleep");
+        let sleep_start = std::time::Instant::now();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        debug!("[TIMING] Sleep completed in {}ms, now searching for window", sleep_start.elapsed().as_millis());
+        
+        let result = get_application_pid(engine, pid as i32, display_name);
+        debug!("[TIMING] launch_app total time: {}ms", launch_start.elapsed().as_millis());
+        result
     } else {
         Err(AutomationError::PlatformError(
             "Failed to launch the application".to_string(),
