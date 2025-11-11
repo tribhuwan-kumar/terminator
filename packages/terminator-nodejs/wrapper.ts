@@ -152,10 +152,11 @@ function mapNativeError(error: any): Error {
 }
 
 // Types for executeBrowserScript arguments
-type BrowserScriptFunction = (env?: any) => any;
-type BrowserScriptOptions = {
+export type BrowserScriptEnv = Record<string, unknown>;
+export type BrowserScriptFunction = (env?: BrowserScriptEnv) => any;
+export type BrowserScriptOptions = {
   file: string;
-  env?: any;
+  env?: BrowserScriptEnv;
 };
 type BrowserScriptInput = string | BrowserScriptFunction | BrowserScriptOptions;
 

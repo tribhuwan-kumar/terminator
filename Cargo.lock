@@ -4906,7 +4906,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-cli"
-version = "0.22.16"
+version = "0.22.18"
 dependencies = [
  "anthropic-sdk",
  "anyhow",
@@ -4934,7 +4934,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-mcp-agent"
-version = "0.22.16"
+version = "0.22.18"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4981,7 +4981,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-node-bindings"
-version = "0.22.16"
+version = "0.22.18"
 dependencies = [
  "napi",
  "napi-build",
@@ -4993,7 +4993,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-rs"
-version = "0.22.16"
+version = "0.22.18"
 dependencies = [
  "accessibility",
  "accessibility-sys",
@@ -5037,7 +5037,7 @@ dependencies = [
 
 [[package]]
 name = "terminator-workflow-recorder"
-version = "0.22.16"
+version = "0.22.18"
 dependencies = [
  "arboard",
  "async-stream",

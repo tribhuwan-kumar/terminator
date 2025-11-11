@@ -189,7 +189,7 @@ impl TypeScriptWorkflow {
         let runtime = detect_js_runtime();
 
         use std::process::Stdio;
-        let mut child = match runtime {
+        let child = match runtime {
             JsRuntime::Bun => {
                 info!(
                     "Executing workflow with bun: {}/{}",
