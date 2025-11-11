@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.20] - 2025-11-11
+
+### Added
+- Workflow SDK: Improved TypeScript workflow type safety and error handling
+
+### Fixed
+- Windows: Prevent wrapper from exiting when restarting crashed MCP server (#350)
+- MCP: Remove unnecessary VC++ redistributables check (#351)
+
 ## [0.22.16] - 2025-11-07
 
 ### Fixed
