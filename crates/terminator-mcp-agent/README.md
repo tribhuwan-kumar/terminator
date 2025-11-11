@@ -652,14 +652,11 @@ steps:
     pid: 1234
     tree_max_depth: 2  # Only get 2 levels deep
 
-- tool_name: get_focused_window_tree
+- tool_name: get_window_tree
   arguments:
+    pid: 1234
     tree_from_selector: "role:Dialog"  # Start tree from first dialog
     tree_max_depth: 3  # Limit depth from that point
-
-- tool_name: get_focused_window_tree
-  arguments:
-    tree_from_selector: "true"  # Start from focused element
 
 # Backward compatible - still works
 - tool_name: get_window_tree

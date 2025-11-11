@@ -3,8 +3,8 @@
  * UI Tree Compare Test
  *
  * - Navigates to https://publicrecords.netronline.com/
- * - Captures focused window UI tree in Fast mode (include_detailed_attributes=false)
- * - Captures focused window UI tree in Complete mode (include_detailed_attributes=true)
+ * - Captures window UI tree in Fast mode (include_detailed_attributes=false)
+ * - Captures window UI tree in Complete mode (include_detailed_attributes=true)
  * - Compares duration, node count, and JSON size
  *
  * Usage:
@@ -110,22 +110,31 @@ class UITreeCompareClient {
     await this.callTool('navigate_browser', { url });
     await delay(1500);
 
-    // 2) Focused window tree - Fast mode
-    const fast = await this.callTool('get_focused_window_tree', { include_detailed_attributes: false });
-    const fastJson = UITreeCompareClient.parseFirstJson(fast.content, 'get_focused_window_tree (Fast)');
+    // 2) Get applications list to find focused window PID
+    const appsResult = await this.callTool('get_applications_and_windows_list', {});
+    const appsJson = UITreeCompareClient.parseFirstJson(appsResult.content, 'Applications List');
+    const apps = appsJson?.applications || [];
+    const focusedApp = apps.find(app => app.is_focused);
+    if (!focusedApp) throw new Error('No focused application found');
+    const pid = focusedApp.pid;
+    console.log(`📌 Focused window PID: ${pid} (${focusedApp.name})`);
+
+    // 3) Window tree - Fast mode
+    const fast = await this.callTool('get_window_tree', { pid, include_detailed_attributes: false });
+    const fastJson = UITreeCompareClient.parseFirstJson(fast.content, 'get_window_tree (Fast)');
     const fastTree = fastJson?.ui_tree;
     const fastCount = UITreeCompareClient.countNodes(fastTree);
     const fastSize = fastTree ? JSON.stringify(fastTree).length : 0;
 
-    // 3) Focused window tree - Complete mode
-    const full = await this.callTool('get_focused_window_tree', { include_detailed_attributes: true });
-    const fullJson = UITreeCompareClient.parseFirstJson(full.content, 'get_focused_window_tree (Complete)');
+    // 4) Window tree - Complete mode
+    const full = await this.callTool('get_window_tree', { pid, include_detailed_attributes: true });
+    const fullJson = UITreeCompareClient.parseFirstJson(full.content, 'get_window_tree (Complete)');
     const fullTree = fullJson?.ui_tree;
     const fullCount = UITreeCompareClient.countNodes(fullTree);
     const fullSize = fullTree ? JSON.stringify(fullTree).length : 0;
 
-    // 4) Print comparison
-    console.log('\n📊 UI Tree Comparison (Focused Window)');
+    // 5) Print comparison
+    console.log('\n📊 UI Tree Comparison');
     console.log('------------------------------------');
     console.log(`Fast mode   → time: ${fast.elapsedMs} ms, nodes: ${fastCount}, json bytes: ${fastSize}`);
     console.log(`Complete    → time: ${full.elapsedMs} ms, nodes: ${fullCount}, json bytes: ${fullSize}`);

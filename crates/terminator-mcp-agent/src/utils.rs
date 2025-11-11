@@ -85,6 +85,21 @@ pub struct ActionOptions {
 
     #[schemars(description = "Number of times to retry this step on failure.")]
     pub retries: Option<u32>,
+
+    #[schemars(
+        description = "Selector that should exist after the action completes. Used for post-action verification (e.g., dialog appeared, success message visible). Supports variable substitution like {{text_to_type}}. If verification fails, the tool execution fails."
+    )]
+    pub verify_element_exists: Option<String>,
+
+    #[schemars(
+        description = "Selector that should NOT exist after the action completes. Used for post-action verification (e.g., button disappeared, dialog closed). If verification fails, the tool execution fails."
+    )]
+    pub verify_element_not_exists: Option<String>,
+
+    #[schemars(
+        description = "Timeout in milliseconds for post-action verification (default: 2000ms). The system will poll until verification passes or timeout is reached."
+    )]
+    pub verify_timeout_ms: Option<u64>,
 }
 
 /// Common fields for visual highlighting before actions
@@ -233,14 +248,6 @@ pub struct GetWindowTreeArgs {
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
-pub struct GetFocusedWindowTreeArgs {
-    #[serde(flatten)]
-    pub tree: TreeOptions,
-    #[serde(flatten)]
-    pub monitor: MonitorScreenshotOptions,
-}
-
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct GetApplicationsArgs {
     // No parameters needed - this tool simply lists windows/applications
     // Use get_window_tree if you need UI tree details
@@ -353,12 +360,6 @@ pub struct ClickElementArgs {
 pub struct TypeIntoElementArgs {
     #[schemars(description = "The text to type into the element")]
     pub text_to_type: String,
-    #[schemars(description = "Whether to verify the action succeeded (default: true)")]
-    pub verify_action: Option<bool>,
-    #[schemars(
-        description = "Timeout in milliseconds for verification search (default: 500ms). Only used when verify_action is true."
-    )]
-    pub verify_timeout_ms: Option<u64>,
     #[schemars(description = "Whether to clear the element before typing (default: true)")]
     pub clear_before_typing: Option<bool>,
     #[serde(flatten)]

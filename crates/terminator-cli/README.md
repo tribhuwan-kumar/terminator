@@ -100,7 +100,18 @@ arguments:
     - tool_name: click_element
       arguments:
         selector: "role:Button|name:Submit"
-    - tool_name: get_focused_window_tree
+    - tool_name: get_applications_and_windows_list
+      id: get_apps
+    - tool_name: run_command
+      engine: javascript
+      id: extract_pid
+      run: |
+        const apps = get_apps_result[0]?.applications || [];
+        const focused = apps.find(app => app.is_focused);
+        return { pid: focused?.pid || 0 };
+    - tool_name: get_window_tree
+      arguments:
+        pid: "{{extract_pid.pid}}"
       id: capture_result
   output_parser:
     ui_tree_source_step_id: capture_result

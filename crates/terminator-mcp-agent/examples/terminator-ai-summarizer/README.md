@@ -133,7 +133,7 @@ terminator-ai-summarizer \
 ## 📖 How It Works
 
 1. **Press the hotkey** (default: `Ctrl+Alt+J`)
-2. **UI capture**: Tool captures the focused window's accessibility tree
+2. **UI capture**: Tool detects the focused window and captures its accessibility tree
 3. **Processing**:
    - **Basic mode**: Raw UI tree copied to clipboard
    - **AI mode**: UI tree sent to Ollama for summarization

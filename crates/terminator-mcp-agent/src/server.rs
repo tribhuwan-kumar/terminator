@@ -6,11 +6,11 @@ pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
     DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, GetApplicationsArgs,
-    GetFocusedWindowTreeArgs, GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
-    MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
-    OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs,
-    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
-    StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
+    GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs, MaximizeWindowArgs,
+    MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
+    RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs,
+    SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs,
+    ValidateElementArgs, WaitForElementArgs,
 };
 use image::{ExtendedColorType, ImageEncoder};
 use regex::Regex;
@@ -556,102 +556,6 @@ impl DesktopWrapper {
     }
 
     #[tool(
-        description = "Get the complete UI tree for the currently focused window. This is a convenient tool that automatically detects which window has focus and returns its UI tree. Supports tree optimization with tree_max_depth: N to limit depth, tree_from_selector: \"role:Type\" for subtrees, tree_from_selector: \"true\" to start from the focused element. This is a read-only operation."
-    )]
-    pub async fn get_focused_window_tree(
-        &self,
-        Parameters(args): Parameters<crate::utils::GetFocusedWindowTreeArgs>,
-    ) -> Result<CallToolResult, McpError> {
-        // Start telemetry span
-        let mut span = StepSpan::new("get_focused_window_tree", None);
-
-        // Get the currently focused element first
-        let focused_element = self.desktop.focused_element().map_err(|e| {
-            McpError::internal_error(
-                "Failed to get focused element",
-                Some(json!({"reason": e.to_string()})),
-            )
-        })?;
-
-        // Get the PID and window title from the focused element
-        let pid = focused_element.process_id().unwrap_or(0);
-
-        if pid == 0 {
-            return Err(McpError::internal_error(
-                "Could not get process ID from focused element",
-                Some(json!({"element_role": focused_element.role()})),
-            ));
-        }
-
-        let window_title = focused_element.window_title();
-        let app_name = focused_element.application_name();
-
-        // Build the base result JSON first
-        let mut result_json = json!({
-            "action": "get_focused_window_tree",
-            "status": "success",
-            "focused_window": {
-                "pid": pid,
-                "window_title": window_title,
-                "application_name": app_name,
-            },
-            "detailed_attributes": args.tree.include_detailed_attributes.unwrap_or(true),
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "recommendation": "Prefer role|name selectors (e.g., 'button|Submit'). Use the element ID (e.g., '#12345') as a fallback if the name is missing or generic. For large trees, use tree_max_depth: 30 to limit depth or tree_from_selector: \"role:Dialog\" to focus on specific UI regions."
-        });
-
-        // Detect if this is a browser window
-        let is_browser = Self::detect_browser_by_pid(pid);
-
-        // Add browser detection metadata
-        if is_browser {
-            result_json["is_browser"] = json!(true);
-            info!("Browser window detected for PID {}", pid);
-
-            // Try to capture DOM elements from browser
-            match self.capture_browser_dom_elements().await {
-                Ok(dom_elements) if !dom_elements.is_empty() => {
-                    result_json["browser_dom_elements"] = json!(dom_elements);
-                    result_json["browser_dom_count"] = json!(dom_elements.len());
-                    info!("Captured {} DOM elements from browser", dom_elements.len());
-                }
-                Ok(_) => {
-                    info!("Browser detected but no DOM elements captured (extension may not be available)");
-                }
-                Err(e) => {
-                    warn!("Failed to capture browser DOM: {}", e);
-                }
-            }
-        }
-
-        // Use maybe_attach_tree to handle tree extraction with from_selector support
-        crate::helpers::maybe_attach_tree(
-            &self.desktop,
-            args.tree.include_tree.or(Some(true)), // Default to true for get_focused_window_tree
-            args.tree.tree_max_depth,
-            args.tree.tree_from_selector.as_deref(),
-            args.tree.include_detailed_attributes,
-            args.tree.tree_output_format,
-            Some(pid),
-            &mut result_json,
-            Some(&focused_element), // Pass the focused element for from_selector="true" support
-        )
-        .await;
-
-        span.set_status(true, None);
-        span.end();
-
-        Ok(CallToolResult::success(
-            append_monitor_screenshots_if_enabled(
-                &self.desktop,
-                vec![Content::json(result_json)?],
-                args.monitor.include_monitor_screenshots,
-            )
-            .await,
-        ))
-    }
-
-    #[tool(
         description = "Get all applications and windows currently running with their process names. Returns a list with name, process_name, id, pid, and is_focused status for each application/window. Use this to check which applications are running and which window has focus before performing actions. This is a read-only operation that returns a simple list without UI trees."
     )]
     pub async fn get_applications_and_windows_list(
@@ -1055,10 +959,12 @@ impl DesktopWrapper {
             "clear_before_typing",
             args.clear_before_typing.unwrap_or(true).to_string(),
         );
-        span.set_attribute(
-            "verify_action",
-            args.verify_action.unwrap_or(true).to_string(),
-        );
+        // Log if explicit verification is requested
+        if args.action.verify_element_exists.is_some()
+            || args.action.verify_element_not_exists.is_some()
+        {
+            span.set_attribute("verification.explicit", "true".to_string());
+        }
         if let Some(timeout) = args.action.timeout_ms {
             span.set_attribute("timeout_ms", timeout.to_string());
         }
@@ -1171,133 +1077,117 @@ impl DesktopWrapper {
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
-        // Verification if requested
-        if args.verify_action.unwrap_or(true) {
+        // POST-ACTION VERIFICATION: Magic auto-verification or explicit verification
+        // 1. If verify_element_exists/not_exists is explicitly set, use it
+        // 2. Otherwise, auto-infer verification from tool arguments (magic)
+        // 3. To disable auto-verification, set verify_element_exists to empty string ""
+
+        let should_auto_verify = args.action.verify_element_exists.is_none()
+            && args.action.verify_element_not_exists.is_none();
+
+        let verify_exists = if should_auto_verify {
+            // MAGIC AUTO-VERIFICATION: Infer from text_to_type
+            // Auto-verify that typed text appears in the element
+            tracing::debug!("[type_into_element] Auto-verification enabled for typed text");
+            span.set_attribute("verification.auto_inferred", "true".to_string());
+            Some(format!("text:{}", args.text_to_type))
+        } else {
+            // Use explicit verification selector (supports variable substitution)
+            args.action.verify_element_exists.clone()
+        };
+
+        let verify_not_exists = args.action.verify_element_not_exists.clone();
+
+        // Skip verification if verify_exists is empty string (explicit opt-out)
+        let skip_verification = verify_exists
+            .as_ref()
+            .map(|s| s.is_empty())
+            .unwrap_or(false);
+
+        // Perform verification if any selector is specified (auto or explicit) and not explicitly disabled
+        if !skip_verification && (verify_exists.is_some() || verify_not_exists.is_some()) {
             span.add_event("verification_started", vec![]);
 
-            let verify_timeout_ms = args.verify_timeout_ms.unwrap_or(500);
+            let verify_timeout_ms = args.action.verify_timeout_ms.unwrap_or(2000);
             span.set_attribute("verification.timeout_ms", verify_timeout_ms.to_string());
 
-            // OPTIMIZATION: Try to read the element directly first (fast path - no tree walking)
-            // This works when the element reference is still valid after typing
-            let mut verification_element = None;
-            let mut used_fast_path = false;
+            // Substitute variables in verification selectors
+            let context = json!({
+                "text_to_type": args.text_to_type,
+                "selector": args.selector.selector,
+            });
 
-            if let Ok(_current_text) = element.text(0) {
-                // Element is still valid! Use it directly
-                tracing::debug!("[type_into_element] Verification fast path: element still valid");
-                verification_element = Some(element.clone());
-                used_fast_path = true;
-                span.set_attribute("verification.method", "direct_read".to_string());
-            } else {
-                // Element is stale, need to re-locate it
-                tracing::debug!(
-                    "[type_into_element] Element stale after typing, re-locating with window scope"
-                );
-                span.set_attribute("verification.method", "window_scoped_search".to_string());
+            let mut substituted_exists = verify_exists.clone();
+            let mut substituted_not_exists = verify_not_exists.clone();
 
-                // OPTIMIZATION: Search from the window, not desktop root
-                // Get the PID to scope the search to just this application's window
-                let element_pid = element.process_id().unwrap_or(0);
-
-                if element_pid > 0 {
-                    tracing::debug!(
-                        "[type_into_element] Scoping verification search to PID: {}",
-                        element_pid
-                    );
-
-                    // Get the window element for this PID to use as search root
-                    // This dramatically reduces search space vs searching from desktop root
-                    if let Ok(_window_tree) = self.desktop.get_window_tree(element_pid, None, None)
-                    {
-                        // Create locator scoped to this window's tree
-                        // Note: We still search by selector since the element might have been recreated
-                        let verification_locator = self
-                            .desktop
-                            .locator(Selector::from(successful_selector.as_str()));
-
-                        if let Ok(updated_element) = verification_locator
-                            .wait(Some(std::time::Duration::from_millis(verify_timeout_ms)))
-                            .await
-                        {
-                            verification_element = Some(updated_element);
-                        }
-                    }
-                }
-
-                // Fallback: If window-scoped search failed, try desktop-wide search
-                if verification_element.is_none() {
-                    tracing::warn!("[type_into_element] Window-scoped search failed, falling back to desktop-wide search");
-                    span.set_attribute("verification.method", "desktop_wide_search".to_string());
-
-                    let verification_locator = self
-                        .desktop
-                        .locator(Selector::from(successful_selector.as_str()));
-
-                    if let Ok(updated_element) = verification_locator
-                        .wait(Some(std::time::Duration::from_millis(verify_timeout_ms)))
-                        .await
-                    {
-                        verification_element = Some(updated_element);
-                    }
+            if let Some(ref mut sel) = substituted_exists {
+                let mut val = json!(sel);
+                crate::helpers::substitute_variables(&mut val, &context);
+                if let Some(s) = val.as_str() {
+                    *sel = s.to_string();
                 }
             }
 
-            // Now verify the text if we have an element
-            if let Some(updated_element) = verification_element {
-                let current_text = updated_element.text(0).unwrap_or_default();
-                span.set_attribute("verification.text_after", current_text.clone());
+            if let Some(ref mut sel) = substituted_not_exists {
+                let mut val = json!(sel);
+                crate::helpers::substitute_variables(&mut val, &context);
+                if let Some(s) = val.as_str() {
+                    *sel = s.to_string();
+                }
+            }
 
-                let should_clear = args.clear_before_typing.unwrap_or(true);
-                let text_matches = if should_clear {
-                    current_text == args.text_to_type
-                } else {
-                    current_text.contains(&args.text_to_type)
-                };
+            // Call the new generic verification function (uses window-scoped search with .within())
+            match crate::helpers::verify_post_action(
+                &self.desktop,
+                &element,
+                substituted_exists.as_deref(),
+                substituted_not_exists.as_deref(),
+                verify_timeout_ms,
+                &successful_selector,
+            )
+            .await
+            {
+                Ok(verification_result) => {
+                    tracing::info!(
+                        "[type_into_element] Verification passed: method={}, details={}",
+                        verification_result.method,
+                        verification_result.details
+                    );
+                    span.set_attribute("verification.passed", "true".to_string());
+                    span.set_attribute("verification.method", verification_result.method.clone());
+                    span.set_attribute(
+                        "verification.elapsed_ms",
+                        verification_result.elapsed_ms.to_string(),
+                    );
 
-                span.set_attribute("verification.passed", text_matches.to_string());
+                    // Add verification details to result
+                    let verification_json = json!({
+                        "passed": verification_result.passed,
+                        "method": verification_result.method,
+                        "details": verification_result.details,
+                        "elapsed_ms": verification_result.elapsed_ms,
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                    });
 
-                if !text_matches {
-                    span.set_attribute("verification.expected", args.text_to_type.clone());
-                    span.set_status(false, Some("Text verification failed after typing."));
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert("verification".to_string(), verification_json);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("[type_into_element] Verification failed: {}", e);
+                    span.set_attribute("verification.passed", "false".to_string());
+                    span.set_status(false, Some("Verification failed"));
                     span.end();
                     return Err(McpError::internal_error(
-                        "Text verification failed after typing.",
+                        format!("Post-action verification failed: {}", e),
                         Some(json!({
-                            "expected_text": args.text_to_type,
-                            "actual_text": current_text,
-                            "element": build_element_info(&updated_element),
                             "selector_used": successful_selector,
+                            "verify_exists": substituted_exists,
+                            "verify_not_exists": substituted_not_exists,
                             "timeout_ms": verify_timeout_ms,
                         })),
                     ));
                 }
-
-                let verification = json!({
-                    "text_value_after": current_text,
-                    "text_check_passed": text_matches,
-                    "element_focused": updated_element.is_focused().unwrap_or(false),
-                    "element_enabled": updated_element.is_enabled().unwrap_or(false),
-                    "verification_timestamp": chrono::Utc::now().to_rfc3339(),
-                    "used_fast_path": used_fast_path,
-                });
-
-                if let Some(obj) = result_json.as_object_mut() {
-                    obj.insert("verification".to_string(), verification);
-                }
-            } else {
-                span.set_status(
-                    false,
-                    Some("Failed to find element for verification after typing."),
-                );
-                span.end();
-                return Err(McpError::internal_error(
-                    "Failed to find element for verification after typing.",
-                    Some(json!({
-                        "selector_used": successful_selector,
-                        "timeout_ms": verify_timeout_ms,
-                    })),
-                ));
             }
         }
 
@@ -4110,6 +4000,109 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "state_set_to": args.state,
         });
 
+        // POST-ACTION VERIFICATION: Magic auto-verification or explicit verification
+        let should_auto_verify = args.action.verify_element_exists.is_none()
+            && args.action.verify_element_not_exists.is_none();
+
+        if should_auto_verify {
+            // MAGIC AUTO-VERIFICATION: Verify toggle state was actually set
+            // For toggle state, we do a direct property check (can't use selector)
+            tracing::debug!(
+                "[set_toggled] Auto-verification: checking is_toggled = {}",
+                args.state
+            );
+            span.set_attribute("verification.auto_inferred", "true".to_string());
+
+            // Try direct read first (fast path)
+            let actual_state = element.is_toggled().unwrap_or(!args.state); // Default to opposite if can't read
+
+            if actual_state != args.state {
+                // State mismatch - verification failed
+                tracing::error!(
+                    "[set_toggled] Auto-verification failed: expected {}, got {}",
+                    args.state,
+                    actual_state
+                );
+                span.set_attribute("verification.passed", "false".to_string());
+                span.set_status(false, Some("Toggle state verification failed"));
+                span.end();
+                return Err(McpError::internal_error(
+                    format!(
+                        "Toggle state verification failed: expected {}, got {}",
+                        args.state, actual_state
+                    ),
+                    Some(json!({
+                        "expected_state": args.state,
+                        "actual_state": actual_state,
+                        "selector_used": successful_selector,
+                    })),
+                ));
+            }
+
+            tracing::info!(
+                "[set_toggled] Auto-verification passed: is_toggled = {}",
+                actual_state
+            );
+            span.set_attribute("verification.passed", "true".to_string());
+            span.set_attribute("verification.method", "direct_property_read".to_string());
+
+            if let Some(obj) = result_json.as_object_mut() {
+                obj.insert(
+                    "verification".to_string(),
+                    json!({
+                        "passed": true,
+                        "method": "direct_property_read",
+                        "expected_state": args.state,
+                        "actual_state": actual_state,
+                    }),
+                );
+            }
+        } else if args.action.verify_element_exists.is_some()
+            || args.action.verify_element_not_exists.is_some()
+        {
+            // Explicit verification using selectors
+            let verify_timeout_ms = args.action.verify_timeout_ms.unwrap_or(2000);
+
+            match crate::helpers::verify_post_action(
+                &self.desktop,
+                &element,
+                args.action.verify_element_exists.as_deref(),
+                args.action.verify_element_not_exists.as_deref(),
+                verify_timeout_ms,
+                &successful_selector,
+            )
+            .await
+            {
+                Ok(verification_result) => {
+                    span.set_attribute("verification.passed", "true".to_string());
+                    span.set_attribute("verification.method", verification_result.method.clone());
+
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert(
+                            "verification".to_string(),
+                            json!({
+                                "passed": verification_result.passed,
+                                "method": verification_result.method,
+                                "details": verification_result.details,
+                                "elapsed_ms": verification_result.elapsed_ms,
+                            }),
+                        );
+                    }
+                }
+                Err(e) => {
+                    span.set_status(false, Some("Verification failed"));
+                    span.end();
+                    return Err(McpError::internal_error(
+                        format!("Post-action verification failed: {}", e),
+                        Some(json!({
+                            "selector_used": successful_selector,
+                            "timeout_ms": verify_timeout_ms,
+                        })),
+                    ));
+                }
+            }
+        }
+
         // Attach UI diff if captured
         if let Some(diff_result) = ui_diff {
             tracing::debug!(
@@ -4223,6 +4216,107 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "value_set_to": args.value,
         });
 
+        // POST-ACTION VERIFICATION: Magic auto-verification or explicit verification
+        let should_auto_verify = args.action.verify_element_exists.is_none()
+            && args.action.verify_element_not_exists.is_none();
+
+        if should_auto_verify {
+            // MAGIC AUTO-VERIFICATION: Verify range value was actually set
+            tracing::debug!(
+                "[set_range_value] Auto-verification: checking range_value = {}",
+                args.value
+            );
+            span.set_attribute("verification.auto_inferred", "true".to_string());
+
+            let actual_value = element.get_range_value().unwrap_or(f64::NAN);
+            let tolerance = 0.01; // Allow small floating point differences
+
+            if (actual_value - args.value).abs() > tolerance {
+                tracing::error!(
+                    "[set_range_value] Auto-verification failed: expected {}, got {}",
+                    args.value,
+                    actual_value
+                );
+                span.set_attribute("verification.passed", "false".to_string());
+                span.set_status(false, Some("Range value verification failed"));
+                span.end();
+                return Err(McpError::internal_error(
+                    format!(
+                        "Range value verification failed: expected {}, got {}",
+                        args.value, actual_value
+                    ),
+                    Some(json!({
+                        "expected_value": args.value,
+                        "actual_value": actual_value,
+                        "selector_used": successful_selector,
+                    })),
+                ));
+            }
+
+            tracing::info!(
+                "[set_range_value] Auto-verification passed: range_value = {}",
+                actual_value
+            );
+            span.set_attribute("verification.passed", "true".to_string());
+            span.set_attribute("verification.method", "direct_property_read".to_string());
+
+            if let Some(obj) = result_json.as_object_mut() {
+                obj.insert(
+                    "verification".to_string(),
+                    json!({
+                        "passed": true,
+                        "method": "direct_property_read",
+                        "expected_value": args.value,
+                        "actual_value": actual_value,
+                    }),
+                );
+            }
+        } else if args.action.verify_element_exists.is_some()
+            || args.action.verify_element_not_exists.is_some()
+        {
+            // Explicit verification using selectors
+            let verify_timeout_ms = args.action.verify_timeout_ms.unwrap_or(2000);
+
+            match crate::helpers::verify_post_action(
+                &self.desktop,
+                &element,
+                args.action.verify_element_exists.as_deref(),
+                args.action.verify_element_not_exists.as_deref(),
+                verify_timeout_ms,
+                &successful_selector,
+            )
+            .await
+            {
+                Ok(verification_result) => {
+                    span.set_attribute("verification.passed", "true".to_string());
+                    span.set_attribute("verification.method", verification_result.method.clone());
+
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert(
+                            "verification".to_string(),
+                            json!({
+                                "passed": verification_result.passed,
+                                "method": verification_result.method,
+                                "details": verification_result.details,
+                                "elapsed_ms": verification_result.elapsed_ms,
+                            }),
+                        );
+                    }
+                }
+                Err(e) => {
+                    span.set_status(false, Some("Verification failed"));
+                    span.end();
+                    return Err(McpError::internal_error(
+                        format!("Post-action verification failed: {}", e),
+                        Some(json!({
+                            "selector_used": successful_selector,
+                            "timeout_ms": verify_timeout_ms,
+                        })),
+                    ));
+                }
+            }
+        }
+
         // Attach UI diff if captured
         if let Some(diff_result) = ui_diff {
             tracing::debug!(
@@ -4335,6 +4429,106 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, None, args.selector.fallback_selectors.as_deref()),
             "state_set_to": args.state,
         });
+
+        // POST-ACTION VERIFICATION: Magic auto-verification or explicit verification
+        let should_auto_verify = args.action.verify_element_exists.is_none()
+            && args.action.verify_element_not_exists.is_none();
+
+        if should_auto_verify {
+            // MAGIC AUTO-VERIFICATION: Verify selected state was actually set
+            tracing::debug!(
+                "[set_selected] Auto-verification: checking is_selected = {}",
+                args.state
+            );
+            span.set_attribute("verification.auto_inferred", "true".to_string());
+
+            let actual_state = element.is_selected().unwrap_or(!args.state);
+
+            if actual_state != args.state {
+                tracing::error!(
+                    "[set_selected] Auto-verification failed: expected {}, got {}",
+                    args.state,
+                    actual_state
+                );
+                span.set_attribute("verification.passed", "false".to_string());
+                span.set_status(false, Some("Selected state verification failed"));
+                span.end();
+                return Err(McpError::internal_error(
+                    format!(
+                        "Selected state verification failed: expected {}, got {}",
+                        args.state, actual_state
+                    ),
+                    Some(json!({
+                        "expected_state": args.state,
+                        "actual_state": actual_state,
+                        "selector_used": successful_selector,
+                    })),
+                ));
+            }
+
+            tracing::info!(
+                "[set_selected] Auto-verification passed: is_selected = {}",
+                actual_state
+            );
+            span.set_attribute("verification.passed", "true".to_string());
+            span.set_attribute("verification.method", "direct_property_read".to_string());
+
+            if let Some(obj) = result_json.as_object_mut() {
+                obj.insert(
+                    "verification".to_string(),
+                    json!({
+                        "passed": true,
+                        "method": "direct_property_read",
+                        "expected_state": args.state,
+                        "actual_state": actual_state,
+                    }),
+                );
+            }
+        } else if args.action.verify_element_exists.is_some()
+            || args.action.verify_element_not_exists.is_some()
+        {
+            // Explicit verification using selectors
+            let verify_timeout_ms = args.action.verify_timeout_ms.unwrap_or(2000);
+
+            match crate::helpers::verify_post_action(
+                &self.desktop,
+                &element,
+                args.action.verify_element_exists.as_deref(),
+                args.action.verify_element_not_exists.as_deref(),
+                verify_timeout_ms,
+                &successful_selector,
+            )
+            .await
+            {
+                Ok(verification_result) => {
+                    span.set_attribute("verification.passed", "true".to_string());
+                    span.set_attribute("verification.method", verification_result.method.clone());
+
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert(
+                            "verification".to_string(),
+                            json!({
+                                "passed": verification_result.passed,
+                                "method": verification_result.method,
+                                "details": verification_result.details,
+                                "elapsed_ms": verification_result.elapsed_ms,
+                            }),
+                        );
+                    }
+                }
+                Err(e) => {
+                    span.set_status(false, Some("Verification failed"));
+                    span.end();
+                    return Err(McpError::internal_error(
+                        format!("Post-action verification failed: {}", e),
+                        Some(json!({
+                            "selector_used": successful_selector,
+                            "timeout_ms": verify_timeout_ms,
+                        })),
+                    ));
+                }
+            }
+        }
 
         // Attach UI diff if captured
         if let Some(diff_result) = ui_diff {
@@ -5084,6 +5278,78 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
             "value_set_to": args.value,
         });
+
+        // POST-ACTION VERIFICATION: Magic auto-verification or explicit verification
+        let should_auto_verify = args.action.verify_element_exists.is_none()
+            && args.action.verify_element_not_exists.is_none();
+
+        let verify_exists = if should_auto_verify {
+            // MAGIC AUTO-VERIFICATION: Verify the value was actually set
+            tracing::debug!(
+                "[set_value] Auto-verification enabled for value: {}",
+                args.value
+            );
+            span.set_attribute("verification.auto_inferred", "true".to_string());
+            Some(format!("value:{}", args.value))
+        } else {
+            args.action.verify_element_exists.clone()
+        };
+
+        let skip_verification = verify_exists
+            .as_ref()
+            .map(|s| s.is_empty())
+            .unwrap_or(false);
+
+        if !skip_verification
+            && (verify_exists.is_some() || args.action.verify_element_not_exists.is_some())
+        {
+            let verify_timeout_ms = args.action.verify_timeout_ms.unwrap_or(2000);
+
+            match crate::helpers::verify_post_action(
+                &self.desktop,
+                &element,
+                verify_exists.as_deref(),
+                args.action.verify_element_not_exists.as_deref(),
+                verify_timeout_ms,
+                &successful_selector,
+            )
+            .await
+            {
+                Ok(verification_result) => {
+                    tracing::info!(
+                        "[set_value] Verification passed: {}",
+                        verification_result.details
+                    );
+                    span.set_attribute("verification.passed", "true".to_string());
+                    span.set_attribute("verification.method", verification_result.method.clone());
+
+                    if let Some(obj) = result_json.as_object_mut() {
+                        obj.insert(
+                            "verification".to_string(),
+                            json!({
+                                "passed": verification_result.passed,
+                                "method": verification_result.method,
+                                "details": verification_result.details,
+                                "elapsed_ms": verification_result.elapsed_ms,
+                            }),
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("[set_value] Verification failed: {}", e);
+                    span.set_status(false, Some("Verification failed"));
+                    span.end();
+                    return Err(McpError::internal_error(
+                        format!("Post-action verification failed: {}", e),
+                        Some(json!({
+                            "selector_used": successful_selector,
+                            "verify_exists": verify_exists,
+                            "timeout_ms": verify_timeout_ms,
+                        })),
+                    ));
+                }
+            }
+        }
 
         // Attach UI diff if captured
         if let Some(diff_result) = ui_diff {
@@ -6005,15 +6271,6 @@ impl DesktopWrapper {
                     Ok(args) => self.get_window_tree(Parameters(args)).await,
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for get_window_tree",
-                        Some(json!({"error": e.to_string()})),
-                    )),
-                }
-            }
-            "get_focused_window_tree" => {
-                match serde_json::from_value::<GetFocusedWindowTreeArgs>(arguments.clone()) {
-                    Ok(args) => self.get_focused_window_tree(Parameters(args)).await,
-                    Err(e) => Err(McpError::invalid_params(
-                        "Invalid arguments for get_focused_window_tree",
                         Some(json!({"error": e.to_string()})),
                     )),
                 }
