@@ -10,7 +10,7 @@
 /// - Empty/null/undefined returns
 /// - Large data returns
 use std::time::Duration;
-use terminator::{BrowserType, Desktop};
+use terminator::{Browser, Desktop};
 #[tokio::test]
 async fn test_browser_script_basic_types() {
     let _ = tracing_subscriber::fmt()
@@ -22,7 +22,7 @@ async fn test_browser_script_basic_types() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -82,7 +82,7 @@ async fn test_browser_script_error_handling() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -143,7 +143,7 @@ async fn test_browser_script_async_operations() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -207,7 +207,7 @@ async fn test_browser_script_dom_manipulation() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -285,7 +285,7 @@ async fn test_browser_script_multiple_executions() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -335,7 +335,7 @@ async fn test_browser_script_special_cases() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -423,7 +423,7 @@ async fn test_browser_script_window_apis() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -502,7 +502,7 @@ async fn test_browser_script_with_page_reload() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -540,7 +540,7 @@ async fn test_browser_script_performance() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;

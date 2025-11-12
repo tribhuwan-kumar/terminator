@@ -6,7 +6,7 @@
 /// 3. Try to execute JS again on same tab (extension thinks it's attached but it's not)
 /// 4. Chrome rejects: "Debugger is not attached to the tab with id: XXXXX"
 use std::time::Duration;
-use terminator::{BrowserType, Desktop};
+use terminator::{Browser, Desktop};
 
 #[tokio::test]
 async fn test_debugger_stale_state_after_navigation() {
@@ -23,7 +23,7 @@ async fn test_debugger_stale_state_after_navigation() {
     // Step 1: Open a browser tab
     println!("\n1️⃣ Opening browser to https://example.com");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -94,7 +94,7 @@ async fn test_debugger_stale_state_after_close_and_reopen() {
     // Step 1: Open browser and execute script
     println!("\n1️⃣ Opening first tab and executing script");
     let browser1 = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
     tokio::time::sleep(Duration::from_secs(3)).await;
 
@@ -112,7 +112,7 @@ async fn test_debugger_stale_state_after_close_and_reopen() {
     // Step 3: Open new tab (might reuse same tab ID internally)
     println!("\n3️⃣ Opening new tab");
     let browser2 = desktop
-        .open_url("https://httpbin.org", Some(BrowserType::Chrome))
+        .open_url("https://httpbin.org", Some(Browser::Chrome))
         .expect("Failed to open second browser");
     tokio::time::sleep(Duration::from_secs(3)).await;
 
@@ -148,7 +148,7 @@ async fn test_rapid_script_execution_stale_state() {
 
     let desktop = Desktop::new(false, false).expect("Failed to create Desktop");
     let browser = desktop
-        .open_url("https://example.com", Some(BrowserType::Chrome))
+        .open_url("https://example.com", Some(Browser::Chrome))
         .expect("Failed to open browser");
     tokio::time::sleep(Duration::from_secs(3)).await;
 
@@ -199,7 +199,7 @@ async fn test_sap_login_scenario() {
     // Open a page that simulates SAP login (using httpbin for testing)
     println!("\n1️⃣ Opening login page");
     let browser = desktop
-        .open_url("https://httpbin.org/forms/post", Some(BrowserType::Chrome))
+        .open_url("https://httpbin.org/forms/post", Some(Browser::Chrome))
         .expect("Failed to open browser");
     tokio::time::sleep(Duration::from_secs(3)).await;
 
