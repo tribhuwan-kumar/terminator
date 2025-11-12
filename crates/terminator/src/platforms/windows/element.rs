@@ -1681,11 +1681,13 @@ impl UIElementImpl for WindowsUIElement {
                                 // Check if this is a Chrome-based browser process
                                 // Chrome uses multi-process architecture where /T would kill all windows
                                 let is_chrome_based = {
-                                    use sysinfo::{ProcessesToUpdate, System};
+                                    use sysinfo::{Pid, ProcessesToUpdate, System};
                                     let mut system = System::new();
-                                    system.refresh_processes(ProcessesToUpdate::All, true);
+                                    let target_pid = Pid::from_u32(pid);
+                                    // Only refresh the specific process we care about (much faster than All)
+                                    system.refresh_processes(ProcessesToUpdate::Some(&[target_pid]), true);
                                     system
-                                        .process(sysinfo::Pid::from_u32(pid))
+                                        .process(target_pid)
                                         .map(|p| {
                                             let name = p.name().to_string_lossy().to_lowercase();
                                             // Check for Chromium-based browsers
