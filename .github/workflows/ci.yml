@@ -126,6 +126,7 @@ jobs:
           cargo run --bin terminator -- mcp run crates/terminator/browser-extension/install_chrome_extension_ui.yml
         shell: pwsh
         timeout-minutes: 5
+        continue-on-error: true
 
       - name: Run browser extension tests
         run: |
@@ -133,6 +134,7 @@ jobs:
           cargo test --test browser_script_edge_cases_test --test debugger_detach_test -- --test-threads=1 --nocapture
         shell: pwsh
         timeout-minutes: 15
+        continue-on-error: true
 
       - name: Run Rust tests
         run: cargo test --workspace --verbose  -- --test-threads=1

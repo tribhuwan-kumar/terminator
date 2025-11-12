@@ -5,13 +5,12 @@ use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
     get_timeout, ActionHighlightConfig, ActivateElementArgs, CaptureElementScreenshotArgs,
-    ClickElementArgs, CloseElementArgs, DelayArgs, ExecuteBrowserScriptArgs,
-    ExecuteSequenceArgs, GetApplicationsArgs, GetWindowTreeArgs, GlobalKeyArgs,
-    HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
-    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs,
-    SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
-    SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs,
-    WaitForElementArgs,
+    ClickElementArgs, CloseElementArgs, DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs,
+    GetApplicationsArgs, GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs,
+    MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs,
+    OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs, SelectOptionArgs,
+    SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs, SetZoomArgs,
+    StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs, WaitForElementArgs,
 };
 use image::imageops::FilterType;
 use image::{ExtendedColorType, ImageBuffer, ImageEncoder, Rgba};
