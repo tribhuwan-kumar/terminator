@@ -128,44 +128,95 @@ jobs:
         timeout-minutes: 5
         continue-on-error: true
 
-      - name: Verify extension loaded in Chrome
+      - name: Wake up extension and verify WebSocket connection
         run: |
-          Write-Host "Verifying extension loaded properly..."
-          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          Write-Host "Testing if extension can connect to WebSocket bridge..."
 
-          # Navigate to chrome://extensions to verify
+          # Start a simple WebSocket server to test if extension connects
+          $testScript = @'
+          const WebSocket = require('ws');
+          const wss = new WebSocket.Server({ port: 17373 });
+
+          let connected = false;
+          const timeout = setTimeout(() => {
+            if (!connected) {
+              console.log('FAIL: Extension did not connect within 10 seconds');
+              process.exit(1);
+            }
+          }, 10000);
+
+          wss.on('connection', (ws) => {
+            console.log('SUCCESS: Extension connected to WebSocket bridge!');
+            connected = true;
+            clearTimeout(timeout);
+            ws.on('message', (msg) => {
+              console.log('Received from extension:', msg.toString());
+            });
+            ws.send(JSON.stringify({ type: 'ping' }));
+            setTimeout(() => {
+              ws.close();
+              wss.close();
+              process.exit(0);
+            }, 2000);
+          });
+
+          console.log('WebSocket server listening on ws://127.0.0.1:17373');
+          console.log('Waiting for Chrome extension to connect...');
+'@
+
+          Set-Content -Path "$env:TEMP\test-bridge.js" -Value $testScript
+
+          # Navigate Chrome to example.com to trigger extension
+          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           Start-Process -FilePath $chromePath -ArgumentList @(
             "--new-window",
-            "chrome://extensions"
+            "https://example.com"
           )
 
-          Start-Sleep -Seconds 5
+          Write-Host "Waiting for page load..."
+          Start-Sleep -Seconds 3
 
-          # Check if extension ID exists in Chrome user data
-          $chromeUserData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Extensions"
-          if (Test-Path $chromeUserData) {
-            $extensions = Get-ChildItem -Path $chromeUserData -Directory
-            Write-Host "Found $($extensions.Count) extensions installed"
-            foreach ($ext in $extensions) {
-              Write-Host "  - Extension: $($ext.Name)"
-            }
-          } else {
-            Write-Host "WARNING: Chrome extensions directory not found"
-          }
+          # Run the WebSocket test
+          cd packages/terminator-nodejs
+          node "$env:TEMP\test-bridge.js"
 
-          # Check for Terminator Bridge specifically
-          $tempBridge = Join-Path $env:TEMP 'terminator-bridge'
-          if (Test-Path $tempBridge) {
-            Write-Host "✓ Terminator Bridge extension files exist at: $tempBridge"
-            if (Test-Path (Join-Path $tempBridge 'manifest.json')) {
-              Write-Host "✓ manifest.json found"
-              Get-Content (Join-Path $tempBridge 'manifest.json') | Write-Host
-            }
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Extension successfully connected to bridge!"
           } else {
-            Write-Host "✗ WARNING: Terminator Bridge extension files not found!"
+            Write-Host "✗ Extension failed to connect - browser tests will fail"
+            Write-Host "Checking Chrome processes..."
+            Get-Process chrome -ErrorAction SilentlyContinue | Format-Table
+
+            Write-Host "Checking extension files..."
+            $tempBridge = Join-Path $env:TEMP 'terminator-bridge'
+            if (Test-Path $tempBridge) {
+              Write-Host "Extension files exist at: $tempBridge"
+              Get-ChildItem $tempBridge | Format-Table
+            }
           }
         shell: pwsh
         continue-on-error: true
+
+      - name: Wake extension service worker
+        run: |
+          Write-Host "Navigating to test page to wake extension service worker..."
+          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+          # Close any existing Chrome windows
+          Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+
+          # Start fresh Chrome with extension loaded
+          Start-Process -FilePath $chromePath -ArgumentList @(
+            "--new-window",
+            "https://example.com"
+          )
+
+          Write-Host "Waiting for extension service worker to initialize..."
+          Start-Sleep -Seconds 5
+
+          Write-Host "Extension should now be active and connected"
+        shell: pwsh
 
       - name: Run browser extension tests
         run: |
