@@ -6367,6 +6367,28 @@ console.info = function(...args) {
             .await,
         ))
     }
+
+    #[tool(
+        description = "Stops all currently executing workflows/tools by cancelling active requests. Use this when the user clicks a stop button or wants to abort execution."
+    )]
+    async fn stop_execution(&self) -> Result<CallToolResult, McpError> {
+        info!("🛑 Stop execution requested - cancelling all active requests");
+        
+        // Cancel all active requests using the request manager
+        self.request_manager.cancel_all().await;
+        
+        let active_count = self.request_manager.active_count().await;
+        info!("✅ Cancelled all active requests. Active count: {}", active_count);
+        
+        let result_json = json!({
+            "action": "stop_execution",
+            "status": "success",
+            "message": "All active requests have been cancelled",
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        });
+        
+        Ok(CallToolResult::success(vec![Content::json(result_json)?]))
+    }
 }
 
 impl DesktopWrapper {
@@ -6378,10 +6400,31 @@ impl DesktopWrapper {
         arguments: &serde_json::Value,
     ) -> Result<CallToolResult, McpError> {
         use rmcp::handler::server::wrapper::Parameters;
+
+        // Check if request is already cancelled before dispatching
+        if request_context.ct.is_cancelled() {
+            return Err(McpError::internal_error(
+                format!("Tool {} cancelled before execution", tool_name),
+                Some(json!({"code": -32001, "tool": tool_name}))
+            ));
+        }
+
+        // Wrap each tool call with cancellation support
         match tool_name {
             "get_window_tree" => {
                 match serde_json::from_value::<GetWindowTreeArgs>(arguments.clone()) {
-                    Ok(args) => self.get_window_tree(Parameters(args)).await,
+                    Ok(args) => {
+                        // Use tokio::select with the cancellation token from request_context
+                        tokio::select! {
+                            result = self.get_window_tree(Parameters(args)) => result,
+                            _ = request_context.ct.cancelled() => {
+                                Err(McpError::internal_error(
+                                    format!("{} cancelled", tool_name),
+                                    Some(json!({"code": -32001, "tool": tool_name}))
+                                ))
+                            }
+                        }
+                    },
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for get_window_tree",
                         Some(json!({"error": e.to_string()})),
@@ -6391,8 +6434,15 @@ impl DesktopWrapper {
             "get_applications_and_windows_list" => {
                 match serde_json::from_value::<GetApplicationsArgs>(arguments.clone()) {
                     Ok(args) => {
-                        self.get_applications_and_windows_list(Parameters(args))
-                            .await
+                        tokio::select! {
+                            result = self.get_applications_and_windows_list(Parameters(args)) => result,
+                            _ = request_context.ct.cancelled() => {
+                                Err(McpError::internal_error(
+                                    format!("{} cancelled", tool_name),
+                                    Some(json!({"code": -32001, "tool": tool_name}))
+                                ))
+                            }
+                        }
                     }
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for get_applications_and_windows_list",
@@ -6402,7 +6452,17 @@ impl DesktopWrapper {
             }
             "click_element" => {
                 match serde_json::from_value::<ClickElementArgs>(arguments.clone()) {
-                    Ok(args) => self.click_element(Parameters(args)).await,
+                    Ok(args) => {
+                        tokio::select! {
+                            result = self.click_element(Parameters(args)) => result,
+                            _ = request_context.ct.cancelled() => {
+                                Err(McpError::internal_error(
+                                    format!("{} cancelled", tool_name),
+                                    Some(json!({"code": -32001, "tool": tool_name}))
+                                ))
+                            }
+                        }
+                    },
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for click_element",
                         Some(json!({"error": e.to_string()})),
@@ -6411,7 +6471,17 @@ impl DesktopWrapper {
             }
             "type_into_element" => {
                 match serde_json::from_value::<TypeIntoElementArgs>(arguments.clone()) {
-                    Ok(args) => self.type_into_element(Parameters(args)).await,
+                    Ok(args) => {
+                        tokio::select! {
+                            result = self.type_into_element(Parameters(args)) => result,
+                            _ = request_context.ct.cancelled() => {
+                                Err(McpError::internal_error(
+                                    format!("{} cancelled", tool_name),
+                                    Some(json!({"code": -32001, "tool": tool_name}))
+                                ))
+                            }
+                        }
+                    },
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for type_into_element",
                         Some(json!({"error": e.to_string()})),
@@ -6419,7 +6489,17 @@ impl DesktopWrapper {
                 }
             }
             "press_key" => match serde_json::from_value::<PressKeyArgs>(arguments.clone()) {
-                Ok(args) => self.press_key(Parameters(args)).await,
+                Ok(args) => {
+                    tokio::select! {
+                        result = self.press_key(Parameters(args)) => result,
+                        _ = request_context.ct.cancelled() => {
+                            Err(McpError::internal_error(
+                                format!("{} cancelled", tool_name),
+                                Some(json!({"code": -32001, "tool": tool_name}))
+                            ))
+                        }
+                    }
+                },
                 Err(e) => Err(McpError::invalid_params(
                     "Invalid arguments for press_key",
                     Some(json!({"error": e.to_string()})),
@@ -6445,7 +6525,17 @@ impl DesktopWrapper {
             }
             "wait_for_element" => {
                 match serde_json::from_value::<WaitForElementArgs>(arguments.clone()) {
-                    Ok(args) => self.wait_for_element(Parameters(args)).await,
+                    Ok(args) => {
+                        tokio::select! {
+                            result = self.wait_for_element(Parameters(args)) => result,
+                            _ = request_context.ct.cancelled() => {
+                                Err(McpError::internal_error(
+                                    format!("{} cancelled", tool_name),
+                                    Some(json!({"code": -32001, "tool": tool_name}))
+                                ))
+                            }
+                        }
+                    },
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for wait_for_element",
                         Some(json!({"error": e.to_string()})),
@@ -6464,7 +6554,17 @@ impl DesktopWrapper {
             }
             "navigate_browser" => {
                 match serde_json::from_value::<NavigateBrowserArgs>(arguments.clone()) {
-                    Ok(args) => self.navigate_browser(Parameters(args)).await,
+                    Ok(args) => {
+                        tokio::select! {
+                            result = self.navigate_browser(Parameters(args)) => result,
+                            _ = request_context.ct.cancelled() => {
+                                Err(McpError::internal_error(
+                                    format!("{} cancelled", tool_name),
+                                    Some(json!({"code": -32001, "tool": tool_name}))
+                                ))
+                            }
+                        }
+                    },
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for navigate_browser",
                         Some(json!({"error": e.to_string()})),
@@ -6675,6 +6775,10 @@ impl DesktopWrapper {
                         Some(json!({"error": e.to_string()})),
                     )),
                 }
+            }
+            "stop_execution" => {
+                // No arguments needed for stop_execution
+                self.stop_execution().await
             }
             _ => Err(McpError::internal_error(
                 "Unknown tool called",
