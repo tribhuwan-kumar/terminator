@@ -152,17 +152,79 @@ arguments:
           const toggleSel = "role:Button|name:Developer mode";
           const loadSel = "role:Button|name:Load unpacked";
 
-          // Wait for Developer mode toggle to appear
-          const devToggle = await desktop.locator(toggleSel).wait(30000);
-          // Presence-based check: if Load unpacked is not visible yet, toggle Dev Mode once
-          let loadVisible = false;
-          try { await desktop.locator(loadSel).wait(1500); loadVisible = true; } catch (_) {}
-          if (!loadVisible) {
-            await devToggle.click();
-            await sleep(300);
+          try {
+            log('Waiting for chrome://extensions page to load...');
+            await sleep(2000);
+
+            // First, let's check if "Load unpacked" is already visible (Dev mode already on)
+            log('Checking if Developer mode is already enabled...');
+            let loadVisible = false;
+            try {
+              await desktop.locator(loadSel).wait(2000);
+              loadVisible = true;
+              log('✓ Developer mode already enabled - Load unpacked button found');
+            } catch (_) {
+              log('Developer mode not enabled yet - need to toggle it');
+            }
+
+            if (!loadVisible) {
+              // Try to find and click the Developer mode toggle
+              log('Looking for Developer mode toggle...');
+
+              // Try multiple selector variations
+              const toggleSelectors = [
+                "role:Button|name:Developer mode",
+                "role:ToggleButton|name:Developer mode",
+                "role:Switch|name:Developer mode"
+              ];
+
+              let devToggle = null;
+              for (const sel of toggleSelectors) {
+                try {
+                  log(`Trying selector: ${sel}`);
+                  devToggle = await desktop.locator(sel).wait(3000);
+                  log(`✓ Found Developer mode toggle with selector: ${sel}`);
+                  break;
+                } catch (e) {
+                  log(`Selector failed: ${sel} - ${e.message}`);
+                }
+              }
+
+              if (!devToggle) {
+                // Dump available elements for debugging
+                log('Could not find Developer mode toggle. Dumping available buttons...');
+                try {
+                  const allButtons = await desktop.locator('role:Button').all(5000, 50);
+                  log(`Found ${allButtons.length} buttons on page`);
+                  for (let i = 0; i < Math.min(allButtons.length, 20); i++) {
+                    const name = allButtons[i].name();
+                    log(`  Button ${i}: ${name}`);
+                  }
+                } catch (dumpErr) {
+                  log(`Failed to dump buttons: ${dumpErr.message}`);
+                }
+                throw new Error('Developer mode toggle not found');
+              }
+
+              // Click the toggle
+              log('Clicking Developer mode toggle...');
+              await devToggle.click();
+              await sleep(1000);
+
+              // Verify that Load unpacked appeared
+              try {
+                await desktop.locator(loadSel).wait(3000);
+                log('✓ Developer mode enabled successfully - Load unpacked button appeared');
+              } catch (e) {
+                log('Warning: Load unpacked button did not appear after toggling Developer mode');
+                throw e;
+              }
+            }
+          } catch (error) {
+            log(`ERROR in Developer mode step: ${error.message}`);
+            throw error;
           }
-          // No explicit click on Load unpacked here; later steps handle it
-      continue_on_error: true
+      continue_on_error: false
       delay_ms: 200
 
     # Safely remove only the Terminator Bridge extension if present using JavaScript
