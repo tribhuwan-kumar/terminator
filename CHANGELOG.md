@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.1] - 2025-11-12
+
+### Added
+- Browser scripts: Env variable injection for file-based scripts - variables passed in `env` option are auto-injected as `const` declarations
+- MCP: Cancellation support for execute_sequence workflows
+- MCP: stop_execution tool for cancelling active workflows
+- Extension Bridge: Proxy mode for subprocesses
+- Subprocess: Inherit parent environment variables in commands
+
+### Changed
+- Dependencies: Bump terminator platform dependencies to 0.22.20
+- Logging: Remove verbose logging from Windows engine and element implementation
+
+### Fixed
+- Documentation: Emphasize always using ui_diff_before_after parameter
+- Line endings: Normalize line endings in example files
+
 ## [0.23.0] - 2025-11-12
 
 ### Changed
