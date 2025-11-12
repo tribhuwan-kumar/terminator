@@ -81,7 +81,6 @@ async fn test_debugger_stale_state_after_navigation() {
 }
 
 #[tokio::test]
-#[ignore] // Keep these stress tests ignored for now
 async fn test_debugger_stale_state_after_close_and_reopen() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("debug")
@@ -139,7 +138,6 @@ async fn test_debugger_stale_state_after_close_and_reopen() {
 }
 
 #[tokio::test]
-#[ignore] // Keep stress tests ignored for now
 async fn test_rapid_script_execution_stale_state() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("debug")
@@ -187,7 +185,6 @@ async fn test_rapid_script_execution_stale_state() {
 }
 
 #[tokio::test]
-#[ignore] // Keep SAP scenario test ignored for now
 async fn test_sap_login_scenario() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("debug")
