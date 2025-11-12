@@ -4,15 +4,17 @@ use crate::telemetry::StepSpan;
 use crate::utils::find_and_execute_with_retry_with_fallback;
 pub use crate::utils::DesktopWrapper;
 use crate::utils::{
-    get_timeout, ActionHighlightConfig, ActivateElementArgs, ClickElementArgs, CloseElementArgs,
-    DelayArgs, ExecuteBrowserScriptArgs, ExecuteSequenceArgs, GetApplicationsArgs,
-    GetWindowTreeArgs, GlobalKeyArgs, HighlightElementArgs, LocatorArgs, MaximizeWindowArgs,
-    MinimizeWindowArgs, MouseDragArgs, NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs,
-    RunCommandArgs, ScrollElementArgs, SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs,
-    SetToggledArgs, SetValueArgs, SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs,
-    ValidateElementArgs, WaitForElementArgs,
+    get_timeout, ActionHighlightConfig, ActivateElementArgs, CaptureElementScreenshotArgs,
+    ClickElementArgs, CloseElementArgs, DelayArgs, ExecuteBrowserScriptArgs,
+    ExecuteSequenceArgs, GetApplicationsArgs, GetWindowTreeArgs, GlobalKeyArgs,
+    HighlightElementArgs, LocatorArgs, MaximizeWindowArgs, MinimizeWindowArgs, MouseDragArgs,
+    NavigateBrowserArgs, OpenApplicationArgs, PressKeyArgs, RunCommandArgs, ScrollElementArgs,
+    SelectOptionArgs, SetRangeValueArgs, SetSelectedArgs, SetToggledArgs, SetValueArgs,
+    SetZoomArgs, StopHighlightingArgs, TypeIntoElementArgs, ValidateElementArgs,
+    WaitForElementArgs,
 };
-use image::{ExtendedColorType, ImageEncoder};
+use image::imageops::FilterType;
+use image::{ExtendedColorType, ImageBuffer, ImageEncoder, Rgba};
 use regex::Regex;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
@@ -4787,25 +4789,63 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
         ))
     }
 
-    #[tool(description = "Captures a screenshot of a specific UI element.")]
+    #[tool(
+        description = "Captures a screenshot of a specific UI element. Automatically resizes to max 1920px (customizable via max_dimension parameter) while maintaining aspect ratio. Supports both selector-based and PID-based capture."
+    )]
     async fn capture_element_screenshot(
         &self,
-        Parameters(args): Parameters<ValidateElementArgs>,
+        Parameters(args): Parameters<CaptureElementScreenshotArgs>,
     ) -> Result<CallToolResult, McpError> {
         // Start telemetry span
         let mut span = StepSpan::new("capture_element_screenshot", None);
 
-        // Add comprehensive telemetry attributes
-        span.set_attribute("selector", args.selector.selector.clone());
-        if let Some(retries) = args.action.retries {
-            span.set_attribute("retry.max_attempts", retries.to_string());
+        // Add comprehensive telemetry attributes based on capture method
+        if let Some(pid) = args.pid {
+            span.set_attribute("capture_method", "pid".to_string());
+            span.set_attribute("pid", pid.to_string());
+        } else if let Some(ref selector) = args.selector {
+            span.set_attribute("capture_method", "selector".to_string());
+            span.set_attribute("selector", selector.clone());
+            if let Some(retries) = args.action.retries {
+                span.set_attribute("retry.max_attempts", retries.to_string());
+            }
         }
-        let ((screenshot_result, element), successful_selector) =
+
+        // Capture screenshot using either PID or selector
+        let ((screenshot_result, element), successful_selector) = if let Some(pid) = args.pid {
+            // PID-based capture
+            let apps = self.desktop.applications().map_err(|e| {
+                McpError::resource_not_found(
+                    "Failed to get applications",
+                    Some(json!({"reason": e.to_string()})),
+                )
+            })?;
+
+            let app = apps
+                .iter()
+                .find(|a| a.process_id().unwrap_or(0) == pid)
+                .ok_or_else(|| {
+                    McpError::resource_not_found(
+                        format!("No window found for PID {}", pid),
+                        Some(json!({"pid": pid, "available_pids": apps.iter().map(|a| a.process_id().unwrap_or(0)).collect::<Vec<_>>()})),
+                    )
+                })?;
+
+            let screenshot = app.capture().map_err(|e| {
+                McpError::internal_error(
+                    "Failed to capture screenshot",
+                    Some(json!({"reason": e.to_string(), "pid": pid})),
+                )
+            })?;
+
+            ((screenshot, app.clone()), format!("pid:{}", pid))
+        } else if let Some(ref selector) = args.selector {
+            // Selector-based capture (existing logic)
             match find_and_execute_with_retry_with_fallback(
                 &self.desktop,
-                &args.selector.selector,
-                args.selector.alternative_selectors.as_deref(),
-                args.selector.fallback_selectors.as_deref(),
+                selector,
+                args.alternative_selectors.as_deref(),
+                args.fallback_selectors.as_deref(),
                 args.action.timeout_ms,
                 args.action.retries,
                 |element| async move { element.capture() },
@@ -4814,20 +4854,70 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
             {
                 Ok(((result, element), selector)) => Ok(((result, element), selector)),
                 Err(e) => Err(build_element_not_found_error(
-                    &args.selector.selector,
-                    args.selector.alternative_selectors.as_deref(),
-                    args.selector.fallback_selectors.as_deref(),
+                    selector,
+                    args.alternative_selectors.as_deref(),
+                    args.fallback_selectors.as_deref(),
                     e,
                 )),
-            }?;
+            }?
+        } else {
+            // Neither PID nor selector provided
+            return Err(McpError::invalid_params(
+                "Either 'pid' or 'selector' parameter must be provided",
+                None,
+            ));
+        };
 
+        // Store original dimensions for metadata
+        let original_width = screenshot_result.width;
+        let original_height = screenshot_result.height;
+        let original_size_bytes = screenshot_result.image_data.len();
+
+        // Convert BGRA to RGBA (xcap returns BGRA format, we need RGBA)
+        // Swap red and blue channels: BGRA -> RGBA
+        let rgba_data: Vec<u8> = screenshot_result
+            .image_data
+            .chunks_exact(4)
+            .flat_map(|bgra| [bgra[2], bgra[1], bgra[0], bgra[3]]) // B,G,R,A -> R,G,B,A
+            .collect();
+
+        // Apply resize if needed (default max dimension is 1920px)
+        let max_dim = args.max_dimension.unwrap_or(1920);
+        let (final_width, final_height, final_rgba_data, was_resized) = if original_width > max_dim
+            || original_height > max_dim
+        {
+            // Calculate new dimensions maintaining aspect ratio
+            let scale = (max_dim as f32 / original_width.max(original_height) as f32).min(1.0);
+            let new_width = (original_width as f32 * scale).round() as u32;
+            let new_height = (original_height as f32 * scale).round() as u32;
+
+            // Create ImageBuffer from RGBA data
+            let img =
+                ImageBuffer::<Rgba<u8>, _>::from_raw(original_width, original_height, rgba_data)
+                    .ok_or_else(|| {
+                        McpError::internal_error(
+                            "Failed to create image buffer from screenshot data",
+                            None,
+                        )
+                    })?;
+
+            // Resize using Lanczos3 filter for high quality
+            let resized =
+                image::imageops::resize(&img, new_width, new_height, FilterType::Lanczos3);
+
+            (new_width, new_height, resized.into_raw(), true)
+        } else {
+            (original_width, original_height, rgba_data, false)
+        };
+
+        // Encode to PNG with maximum compression
         let mut png_data = Vec::new();
         let encoder = PngEncoder::new(Cursor::new(&mut png_data));
         encoder
             .write_image(
-                &screenshot_result.image_data,
-                screenshot_result.width,
-                screenshot_result.height,
+                &final_rgba_data,
+                final_width,
+                final_height,
                 ExtendedColorType::Rgba8,
             )
             .map_err(|e| {
@@ -4844,17 +4934,41 @@ Set include_logs: true to capture stdout/stderr output. Default is false for cle
         span.set_status(true, None);
         span.end();
 
-        Ok(CallToolResult::success(append_monitor_screenshots_if_enabled(&self.desktop, vec![
-            Content::json(json!({
-                "action": "capture_element_screenshot",
-                "status": "success",
-                "element": element_info,
-                "selector_used": successful_selector,
-                "selectors_tried": get_selectors_tried_all(&args.selector.selector, args.selector.alternative_selectors.as_deref(), args.selector.fallback_selectors.as_deref()),
-                "image_format": "png",
-            }))?,
-            Content::image(base64_image, "image/png".to_string()),
-        ], None).await))
+        // Build metadata with resize information
+        let metadata = json!({
+            "action": "capture_element_screenshot",
+            "status": "success",
+            "element": element_info,
+            "selector_used": successful_selector,
+            "selectors_tried": args.selector.as_ref().map(|s| get_selectors_tried_all(s, args.alternative_selectors.as_deref(), args.fallback_selectors.as_deref())),
+            "image_format": "png",
+            "original_size": {
+                "width": original_width,
+                "height": original_height,
+                "bytes": original_size_bytes,
+                "mb": (original_size_bytes as f64 / 1024.0 / 1024.0)
+            },
+            "final_size": {
+                "width": final_width,
+                "height": final_height,
+                "bytes": png_data.len(),
+                "mb": (png_data.len() as f64 / 1024.0 / 1024.0)
+            },
+            "resized": was_resized,
+            "max_dimension_applied": max_dim,
+        });
+
+        Ok(CallToolResult::success(
+            append_monitor_screenshots_if_enabled(
+                &self.desktop,
+                vec![
+                    Content::json(metadata)?,
+                    Content::image(base64_image, "image/png".to_string()),
+                ],
+                None,
+            )
+            .await,
+        ))
     }
 
     #[tool(
@@ -6498,7 +6612,7 @@ impl DesktopWrapper {
                 )),
             },
             "capture_element_screenshot" => {
-                match serde_json::from_value::<ValidateElementArgs>(arguments.clone()) {
+                match serde_json::from_value::<CaptureElementScreenshotArgs>(arguments.clone()) {
                     Ok(args) => self.capture_element_screenshot(Parameters(args)).await,
                     Err(e) => Err(McpError::invalid_params(
                         "Invalid arguments for capture_element_screenshot",

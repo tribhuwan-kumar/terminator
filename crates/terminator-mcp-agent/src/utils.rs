@@ -482,6 +482,46 @@ pub struct ValidateElementArgs {
 
     #[serde(flatten)]
     pub monitor: MonitorScreenshotOptions,
+
+    /// Maximum dimension (width or height) for the screenshot. Default: 1920px
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(description = "Maximum dimension (width or height) for the screenshot. Screenshots larger than this will be resized while maintaining aspect ratio. Default: 1920px")]
+    pub max_dimension: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
+pub struct CaptureElementScreenshotArgs {
+    /// Optional selector to locate the element. Required if pid is not provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(description = "A string selector to locate the element. Can be chained with ` >> `. Required if pid is not provided.")]
+    pub selector: Option<String>,
+
+    /// Optional alternative selectors to try in parallel
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alternative_selectors: Option<String>,
+
+    /// Optional fallback selectors
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_selectors: Option<String>,
+
+    /// Optional process ID to capture screenshot from. Required if selector is not provided.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(description = "Process ID of the window to capture. Required if selector is not provided. This is faster and more reliable than selector-based search.")]
+    pub pid: Option<u32>,
+
+    #[serde(flatten)]
+    pub action: ActionOptions,
+
+    #[serde(flatten)]
+    pub tree: TreeOptions,
+
+    #[serde(flatten)]
+    pub monitor: MonitorScreenshotOptions,
+
+    /// Maximum dimension (width or height) for the screenshot. Default: 1920px
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(description = "Maximum dimension (width or height) for the screenshot. Screenshots larger than this will be resized while maintaining aspect ratio. Default: 1920px")]
+    pub max_dimension: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema, Default)]
