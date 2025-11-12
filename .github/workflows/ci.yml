@@ -132,40 +132,6 @@ jobs:
         run: |
           Write-Host "Testing if extension can connect to WebSocket bridge..."
 
-          # Start a simple WebSocket server to test if extension connects
-          $testScript = @'
-          const WebSocket = require('ws');
-          const wss = new WebSocket.Server({ port: 17373 });
-
-          let connected = false;
-          const timeout = setTimeout(() => {
-            if (!connected) {
-              console.log('FAIL: Extension did not connect within 10 seconds');
-              process.exit(1);
-            }
-          }, 10000);
-
-          wss.on('connection', (ws) => {
-            console.log('SUCCESS: Extension connected to WebSocket bridge!');
-            connected = true;
-            clearTimeout(timeout);
-            ws.on('message', (msg) => {
-              console.log('Received from extension:', msg.toString());
-            });
-            ws.send(JSON.stringify({ type: 'ping' }));
-            setTimeout(() => {
-              ws.close();
-              wss.close();
-              process.exit(0);
-            }, 2000);
-          });
-
-          console.log('WebSocket server listening on ws://127.0.0.1:17373');
-          console.log('Waiting for Chrome extension to connect...');
-'@
-
-          Set-Content -Path "$env:TEMP\test-bridge.js" -Value $testScript
-
           # Navigate Chrome to example.com to trigger extension
           $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           Start-Process -FilePath $chromePath -ArgumentList @(
@@ -176,22 +142,26 @@ jobs:
           Write-Host "Waiting for page load..."
           Start-Sleep -Seconds 3
 
-          # Run the WebSocket test
+          # Run the WebSocket test using our test script
+          Write-Host "Starting WebSocket bridge test..."
           cd packages/terminator-nodejs
-          node "$env:TEMP\test-bridge.js"
+          node "../../.github/scripts/test-extension-bridge.js"
 
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Extension successfully connected to bridge!"
+            Write-Host "`n✅ Extension successfully connected to bridge!"
           } else {
-            Write-Host "✗ Extension failed to connect - browser tests will fail"
-            Write-Host "Checking Chrome processes..."
+            Write-Host "`n❌ Extension failed to connect - browser tests will fail"
+            Write-Host "`nDiagnostics:"
+            Write-Host "Chrome processes:"
             Get-Process chrome -ErrorAction SilentlyContinue | Format-Table
 
-            Write-Host "Checking extension files..."
+            Write-Host "`nExtension files:"
             $tempBridge = Join-Path $env:TEMP 'terminator-bridge'
             if (Test-Path $tempBridge) {
-              Write-Host "Extension files exist at: $tempBridge"
+              Write-Host "Extension directory exists at: $tempBridge"
               Get-ChildItem $tempBridge | Format-Table
+            } else {
+              Write-Host "Extension directory NOT FOUND at: $tempBridge"
             }
           }
         shell: pwsh
