@@ -6,6 +6,7 @@ use super::types::{HandleGuard, ThreadSafeWinUIElement};
 use crate::{AutomationError, UIElement};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
@@ -40,9 +41,9 @@ use super::utils::WindowsUIElement;
 // Constants
 const DEFAULT_FIND_TIMEOUT: Duration = Duration::from_millis(5000);
 
-// Storage for EnumWindows callback
-static mut ENUM_TARGET_PID: u32 = 0;
-static mut ENUM_FOUND_HWND: isize = 0;
+// Storage for EnumWindows callback - using atomics for thread safety and to avoid UB
+static ENUM_TARGET_PID: AtomicU32 = AtomicU32::new(0);
+static ENUM_FOUND_HWND: AtomicIsize = AtomicIsize::new(0);
 
 // List of common browser process names (without .exe)
 const KNOWN_BROWSER_PROCESS_NAMES: &[&str] = &[
@@ -57,10 +58,10 @@ unsafe extern "system" fn enum_windows_callback(hwnd: HWND, _lparam: LPARAM) -> 
     GetWindowThreadProcessId(hwnd, Some(&mut pid as *mut u32));
     
     // Check if this window matches our target PID
-    if pid == ENUM_TARGET_PID {
+    if pid == ENUM_TARGET_PID.load(Ordering::Relaxed) {
         // Only consider visible windows
         if IsWindowVisible(hwnd).as_bool() {
-            ENUM_FOUND_HWND = hwnd.0 as isize;
+            ENUM_FOUND_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
             return 0; // FALSE - Stop enumeration
         }
     }
@@ -72,8 +73,8 @@ unsafe extern "system" fn enum_windows_callback(hwnd: HWND, _lparam: LPARAM) -> 
 /// Returns HWND if found, 0 if not found
 fn find_hwnd_by_pid_fast(target_pid: u32) -> isize {
     unsafe {
-        ENUM_TARGET_PID = target_pid;
-        ENUM_FOUND_HWND = 0;
+        ENUM_TARGET_PID.store(target_pid, Ordering::Relaxed);
+        ENUM_FOUND_HWND.store(0, Ordering::Relaxed);
         
         debug!("[TIMING] Starting EnumWindows for PID {}", target_pid);
         let start = std::time::Instant::now();
@@ -85,10 +86,11 @@ fn find_hwnd_by_pid_fast(target_pid: u32) -> isize {
         >(enum_windows_callback);
         let _ = EnumWindows(Some(callback), LPARAM(0));
         
+        let hwnd = ENUM_FOUND_HWND.load(Ordering::Relaxed);
         debug!("[TIMING] EnumWindows completed in {}ms, HWND: 0x{:X}", 
-               start.elapsed().as_millis(), ENUM_FOUND_HWND);
+               start.elapsed().as_millis(), hwnd);
         
-        ENUM_FOUND_HWND
+        hwnd
     }
 }
 
@@ -506,7 +508,7 @@ pub fn get_app_info_from_startapps(app_name: &str) -> Result<(String, String), A
     
     // Try to get apps list from cache first
     let apps: Vec<Value> = {
-        let mut cache_guard = STARTAPPS_CACHE.lock().unwrap();
+        let cache_guard = STARTAPPS_CACHE.lock().unwrap();
         
         if let Some(ref cache) = *cache_guard {
             if cache.last_updated.elapsed() < CACHE_TTL {
