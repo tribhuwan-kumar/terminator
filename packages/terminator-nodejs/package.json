@@ -40,11 +40,11 @@
     }
   },
   "optionalDependencies": {
-    "@mediar-ai/terminator-darwin-arm64": "0.22.20",
-    "@mediar-ai/terminator-darwin-x64": "0.22.20",
-    "@mediar-ai/terminator-linux-x64-gnu": "0.22.20",
-    "@mediar-ai/terminator-win32-arm64-msvc": "0.22.20",
-    "@mediar-ai/terminator-win32-x64-msvc": "0.22.20"
+    "@mediar-ai/terminator-darwin-arm64": "0.23.1",
+    "@mediar-ai/terminator-darwin-x64": "0.23.1",
+    "@mediar-ai/terminator-linux-x64-gnu": "0.23.1",
+    "@mediar-ai/terminator-win32-arm64-msvc": "0.23.1",
+    "@mediar-ai/terminator-win32-x64-msvc": "0.23.1"
   },
   "repository": {
     "type": "git",
