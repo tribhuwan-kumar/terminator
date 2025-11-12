@@ -103,7 +103,7 @@ jobs:
       # Install Chrome extension and run browser tests
       - name: Install Chrome
         run: |
-          choco install googlechrome -y
+          choco install googlechrome -y --ignore-checksums
           Start-Sleep -Seconds 5
         shell: pwsh
 
