@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.25] - 2025-11-12
+
+### Fixed
+- TypeScript: Use module augmentation instead of conflicting interface declarations to properly extend Desktop/Element classes
+
 ## [0.22.24] - 2025-11-12
 
 ### Fixed
