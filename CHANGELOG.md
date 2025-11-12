@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.24] - 2025-11-12
+
+### Fixed
+- TypeScript: Explicitly re-export Desktop and other classes in wrapper.d.ts to fix "only refers to a type" errors in workflow package
+
 ## [0.22.23] - 2025-11-12
 
 ### Changed
