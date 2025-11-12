@@ -142,7 +142,7 @@ jobs:
           Write-Host "Waiting for page load..."
           Start-Sleep -Seconds 3
 
-          # Run the WebSocket test using our test script
+          # Run the WebSocket test using our test script (from terminator-nodejs dir which has ws installed)
           Write-Host "Starting WebSocket bridge test..."
           cd packages/terminator-nodejs
           node "../../.github/scripts/test-extension-bridge.js"
