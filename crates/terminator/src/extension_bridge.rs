@@ -363,7 +363,8 @@ impl ExtensionBridge {
                                         tracing::info!(id = %id, ts = ts_ms, args = %args_str, "Console info event")
                                     }
                                     _ => {
-                                        tracing::info!(id = %id, ts = ts_ms, args = %args_str, "Console log event")
+                                        tracing::info!(id = %id, ts = ts_ms, args = %args_str, "Console log event");
+                                        eprintln!("[CONSOLE LOG] {}", args_str);
                                     }
                                 }
                             }
