@@ -1,19 +1,5 @@
-// Re-export all types and interfaces from the original declaration file
+// Re-export everything from the native bindings
 export * from "./index.d";
-
-// Re-export classes explicitly to ensure they're available as values
-import {
-  Desktop as DesktopClass,
-  Element as ElementClass,
-  Locator as LocatorClass,
-  Selector as SelectorClass,
-} from "./index.d";
-export {
-  DesktopClass as Desktop,
-  ElementClass as Element,
-  LocatorClass as Locator,
-  SelectorClass as Selector,
-};
 
 /** Thrown when an element is not found. */
 export class ElementNotFoundError extends Error {
@@ -55,6 +41,7 @@ export class InternalError extends Error {
   constructor(message: string);
 }
 
+// Browser script execution types
 export type BrowserScriptEnv = Record<string, unknown>;
 export type BrowserScriptFunction<
   T = unknown,
@@ -67,28 +54,31 @@ export interface BrowserScriptOptions<
   env?: Env;
 }
 
-export interface Desktop {
-  executeBrowserScript<
-    T = unknown,
-    Env extends BrowserScriptEnv = BrowserScriptEnv,
-  >(
-    fn: BrowserScriptFunction<T, Env>,
-    env?: Env,
-  ): Promise<T>;
-  executeBrowserScript<Env extends BrowserScriptEnv = BrowserScriptEnv>(
-    options: BrowserScriptOptions<Env>,
-  ): Promise<string>;
-}
+// Augment Desktop class with browser script methods
+declare module "./index.d" {
+  interface Desktop {
+    executeBrowserScript<
+      T = unknown,
+      Env extends BrowserScriptEnv = BrowserScriptEnv,
+    >(
+      fn: BrowserScriptFunction<T, Env>,
+      env?: Env,
+    ): Promise<T>;
+    executeBrowserScript<Env extends BrowserScriptEnv = BrowserScriptEnv>(
+      options: BrowserScriptOptions<Env>,
+    ): Promise<string>;
+  }
 
-export interface Element {
-  executeBrowserScript<
-    T = unknown,
-    Env extends BrowserScriptEnv = BrowserScriptEnv,
-  >(
-    fn: BrowserScriptFunction<T, Env>,
-    env?: Env,
-  ): Promise<T>;
-  executeBrowserScript<Env extends BrowserScriptEnv = BrowserScriptEnv>(
-    options: BrowserScriptOptions<Env>,
-  ): Promise<string>;
+  interface Element {
+    executeBrowserScript<
+      T = unknown,
+      Env extends BrowserScriptEnv = BrowserScriptEnv,
+    >(
+      fn: BrowserScriptFunction<T, Env>,
+      env?: Env,
+    ): Promise<T>;
+    executeBrowserScript<Env extends BrowserScriptEnv = BrowserScriptEnv>(
+      options: BrowserScriptOptions<Env>,
+    ): Promise<string>;
+  }
 }
