@@ -292,10 +292,9 @@ async function enhancedExecuteBrowserScript(
 
   // If env variables are provided and we should inject them (file-based scripts only)
   if (shouldInjectEnv && env && Object.keys(env).length > 0) {
-    const envDeclarations = Object.entries(env)
-      .map(([key, value]) => `const ${key} = ${JSON.stringify(value)};`)
-      .join("\n");
-    script = `${envDeclarations}\n${script}`;
+    // Inject as an env object that scripts can access
+    const envObject = `const env = ${JSON.stringify(env)};`;
+    script = `${envObject}\n${script}`;
   }
 
   // Call the original native method

@@ -94,10 +94,14 @@ async function testFileInputWithEnvInjection() {
     count: 3,
   });
 
-  // Verify the env was injected into the script
+  // Verify the env was injected into the script as an env object
   assert.ok(
-    receivedScript.includes("const column_positions = "),
-    "column_positions should be injected into script",
+    receivedScript.includes("const env = "),
+    "env object should be injected into script",
+  );
+  assert.ok(
+    receivedScript.includes('"column_positions"'),
+    "column_positions key should be in env object",
   );
   assert.ok(
     receivedScript.includes(JSON.stringify(columnPositions)),

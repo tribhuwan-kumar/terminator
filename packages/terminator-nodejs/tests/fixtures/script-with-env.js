@@ -1,12 +1,16 @@
-// Browser script that uses injected env variables
+// Browser script that uses injected env object
 (() => {
-  // column_positions should be auto-injected by wrapper
-  if (typeof column_positions === 'undefined') {
-    throw new Error('column_positions not injected');
+  // env object should be auto-injected by wrapper
+  if (typeof env === "undefined") {
+    throw new Error("env not injected");
+  }
+
+  if (!env.column_positions) {
+    throw new Error("column_positions not in env");
   }
 
   return {
-    positions: column_positions,
-    count: column_positions.length
+    positions: env.column_positions,
+    count: env.column_positions.length,
   };
-})()
+})();
