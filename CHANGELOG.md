@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.21] - 2025-11-12
+
+### Fixed
+- CI: Ensure WebSocket module is available for extension bridge test
+- CI: Move WebSocket test to separate script file to fix YAML syntax
+- CI: Add WebSocket bridge connection test and extension wake-up steps
+- CI: Add extension loading verification step
+- CI: Fix Rust formatting issues and make browser extension tests continue-on-error
+- Browser: Use Browser instead of BrowserType in tests
+- Browser: Use Chrome browser explicitly in browser extension tests
+- Windows: Prevent Chrome-based browsers from killing all windows on close
+- Desktop: Use .first() instead of .wait() for desktop.locator() API
+- Rust: Fix warnings in Windows applications module
+- Browser: Improve Developer mode detection in Chrome extension install workflow
+- CI: Launch Chrome before running extension install workflow
+- CI: Launch Chrome with extension via command line instead of UI automation
+- CI: Ignore checksums for Chrome install (updates frequently)
+- Clippy: Inline format args to fix warnings
+- Browser: Automatically recover from debugger detachment in browser extension (#354)
+
+### Changed
+- Windows: Optimize Chrome detection to query only target process
+- MCP: Remove get_focused_window_tree tool and add verification system to action tools
+- MCP: Add verify_post_action helper for post-action verification
+
+### Added
+- Tests: Add test examples for parent chain, PID window, and verify window scope
+- Screenshots: Add PID support and auto-resize to capture_element_screenshot
+- Documentation: Update server instructions with new best practices
+- Windows: Optimize Windows application lookup with EnumWindows API and caching
+
 ## [0.22.20] - 2025-11-11
 
 ### Added
