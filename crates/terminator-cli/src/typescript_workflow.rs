@@ -62,7 +62,7 @@ pub fn is_typescript_workflow(input: &str, is_file_input: bool) -> bool {
 /// Convert file path to file:// URL
 pub fn path_to_file_url(input: &str) -> Result<String> {
     let abs_path = std::fs::canonicalize(input)
-        .with_context(|| format!("Failed to resolve path: {}", input))?;
+        .with_context(|| format!("Failed to resolve path: {input}"))?;
 
     // If it's a directory with TypeScript workflow files, point to the specific file
     let target_path = if abs_path.is_dir() {
@@ -86,7 +86,7 @@ pub fn path_to_file_url(input: &str) -> Result<String> {
     let path_str = target_path.display().to_string();
     let normalized_path = path_str.strip_prefix(r"\\?\").unwrap_or(&path_str);
 
-    Ok(format!("file://{}", normalized_path))
+    Ok(format!("file://{normalized_path}"))
 }
 
 /// Build execute_sequence arguments for TypeScript workflow
@@ -242,7 +242,7 @@ pub fn run_type_check(input: &str) -> Result<()> {
         eprintln!("\n{}", "=".repeat(80));
         eprintln!("❌ TypeScript Type Check Failed");
         eprintln!("{}", "=".repeat(80));
-        eprintln!("\n{}", error_output);
+        eprintln!("\n{error_output}");
         eprintln!("{}", "=".repeat(80));
         eprintln!("\n💡 Fix type errors before running the workflow");
         eprintln!("   Or use --skip-type-check to bypass (not recommended)\n");

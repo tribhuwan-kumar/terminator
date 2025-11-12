@@ -648,9 +648,9 @@ pub fn build_chained_selector(
     let target_name = target_element.name().unwrap_or_default();
 
     let target_selector = if !target_name.is_empty() {
-        format!("role:{}|name:contains:{}", target_role, target_name)
+        format!("role:{target_role}|name:contains:{target_name}")
     } else {
-        format!("role:{}", target_role)
+        format!("role:{target_role}")
     };
     path_parts.push(target_selector);
 

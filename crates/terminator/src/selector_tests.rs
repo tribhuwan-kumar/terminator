@@ -49,7 +49,7 @@ fn test_and_selector() {
                 _ => panic!("Expected Name selector"),
             }
         }
-        _ => panic!("Expected And selector, got: {:?}", selector),
+        _ => panic!("Expected And selector, got: {selector:?}"),
     }
 }
 
@@ -138,7 +138,7 @@ fn test_chain_with_parentheses_and_boolean() {
                 _ => panic!("Expected Role selector as second part of chain"),
             }
         }
-        _ => panic!("Expected Chain selector, got: {:?}", selector),
+        _ => panic!("Expected Chain selector, got: {selector:?}"),
     }
 }
 
@@ -347,9 +347,9 @@ fn test_best_plan_pro_selector() {
             }
         }
         Selector::Invalid(msg) => {
-            panic!("Selector parsing failed with: {}", msg);
+            panic!("Selector parsing failed with: {msg}");
         }
-        _ => panic!("Expected Chain selector, got: {:?}", selector),
+        _ => panic!("Expected Chain selector, got: {selector:?}"),
     }
 }
 
@@ -395,9 +395,9 @@ fn test_chained_and_with_role_and_nativeid() {
             }
         }
         Selector::Invalid(msg) => {
-            panic!("Selector parsing failed with: {}", msg);
+            panic!("Selector parsing failed with: {msg}");
         }
-        _ => panic!("Expected Chain selector, got: {:?}", selector),
+        _ => panic!("Expected Chain selector, got: {selector:?}"),
     }
 }
 
@@ -490,9 +490,9 @@ fn test_calculator_chain_with_parentheses_runtime() {
             }
         }
         Selector::Invalid(msg) => {
-            panic!("Selector parsing failed with error: {}", msg);
+            panic!("Selector parsing failed with error: {msg}");
         }
-        _ => panic!("Expected Chain selector, got: {:?}", selector),
+        _ => panic!("Expected Chain selector, got: {selector:?}"),
     }
 }
 

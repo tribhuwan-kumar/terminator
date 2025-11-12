@@ -9,7 +9,7 @@ fn test_and_operator() {
             assert!(matches!(v[0], Selector::Role { .. }));
             assert!(matches!(v[1], Selector::Name(_)));
         }
-        _ => panic!("Expected And selector, got: {:?}", sel),
+        _ => panic!("Expected And selector, got: {sel:?}"),
     }
 }
 
@@ -22,7 +22,7 @@ fn test_or_operator_with_double_pipe() {
             assert!(matches!(v[0], Selector::Role { .. }));
             assert!(matches!(v[1], Selector::Role { .. }));
         }
-        _ => panic!("Expected Or selector, got: {:?}", sel),
+        _ => panic!("Expected Or selector, got: {sel:?}"),
     }
 }
 
@@ -36,7 +36,7 @@ fn test_or_operator_with_comma() {
                 assert!(matches!(item, Selector::Role { .. }));
             }
         }
-        _ => panic!("Expected Or selector, got: {:?}", sel),
+        _ => panic!("Expected Or selector, got: {sel:?}"),
     }
 }
 
@@ -47,7 +47,7 @@ fn test_not_operator() {
         Selector::Not(inner) => {
             assert!(matches!(*inner, Selector::Visible(false)));
         }
-        _ => panic!("Expected Not selector, got: {:?}", sel),
+        _ => panic!("Expected Not selector, got: {sel:?}"),
     }
 }
 
@@ -58,7 +58,7 @@ fn test_parentheses_basic() {
         Selector::And(v) => {
             assert_eq!(v.len(), 2);
         }
-        _ => panic!("Expected And selector, got: {:?}", sel),
+        _ => panic!("Expected And selector, got: {sel:?}"),
     }
 }
 
@@ -71,7 +71,7 @@ fn test_complex_parentheses() {
             assert!(matches!(v[0], Selector::And(_)));
             assert!(matches!(v[1], Selector::And(_)));
         }
-        _ => panic!("Expected Or selector with And children, got: {:?}", sel),
+        _ => panic!("Expected Or selector with And children, got: {sel:?}"),
     }
 }
 
@@ -86,7 +86,7 @@ fn test_operator_precedence() {
             assert!(matches!(v[0], Selector::Role { .. }));
             assert!(matches!(v[1], Selector::And(_)));
         }
-        _ => panic!("Expected Or with And on right side, got: {:?}", sel),
+        _ => panic!("Expected Or with And on right side, got: {sel:?}"),
     }
 }
 
@@ -101,7 +101,7 @@ fn test_not_precedence() {
             assert!(matches!(v[0], Selector::Not(_)));
             assert!(matches!(v[1], Selector::Visible(true)));
         }
-        _ => panic!("Expected And with Not on left side, got: {:?}", sel),
+        _ => panic!("Expected And with Not on left side, got: {sel:?}"),
     }
 }
 
@@ -114,7 +114,7 @@ fn test_backward_compat_pipe_syntax() {
             assert_eq!(role, "button");
             assert_eq!(name, Some("Submit".to_string()));
         }
-        _ => panic!("Expected Role selector with name, got: {:?}", sel),
+        _ => panic!("Expected Role selector with name, got: {sel:?}"),
     }
 }
 
@@ -126,7 +126,7 @@ fn test_backward_compat_pipe_with_role_prefix() {
             assert_eq!(role, "button");
             assert_eq!(name, Some("Submit".to_string()));
         }
-        _ => panic!("Expected Role selector with name, got: {:?}", sel),
+        _ => panic!("Expected Role selector with name, got: {sel:?}"),
     }
 }
 
@@ -139,7 +139,7 @@ fn test_chain_with_boolean_expression() {
             assert!(matches!(parts[0], Selector::Role { .. }));
             assert!(matches!(parts[1], Selector::And(_)));
         }
-        _ => panic!("Expected Chain with And in second part, got: {:?}", sel),
+        _ => panic!("Expected Chain with And in second part, got: {sel:?}"),
     }
 }
 
@@ -155,7 +155,7 @@ fn test_complex_nested_expression() {
             // Second should be visible
             assert!(matches!(v[1], Selector::Visible(true)));
         }
-        _ => panic!("Expected complex And expression, got: {:?}", sel),
+        _ => panic!("Expected complex And expression, got: {sel:?}"),
     }
 }
 
@@ -202,7 +202,7 @@ fn test_flatten_nested_and() {
         Selector::And(v) => {
             assert_eq!(v.len(), 3, "Expected flattened AND with 3 operands");
         }
-        _ => panic!("Expected And selector, got: {:?}", sel),
+        _ => panic!("Expected And selector, got: {sel:?}"),
     }
 }
 
@@ -214,7 +214,7 @@ fn test_flatten_nested_or() {
         Selector::Or(v) => {
             assert_eq!(v.len(), 3, "Expected flattened OR with 3 operands");
         }
-        _ => panic!("Expected Or selector, got: {:?}", sel),
+        _ => panic!("Expected Or selector, got: {sel:?}"),
     }
 }
 
@@ -227,7 +227,7 @@ fn test_single_selector_without_operators() {
             assert_eq!(role, "button");
             assert_eq!(name, None);
         }
-        _ => panic!("Expected simple Role selector, got: {:?}", sel),
+        _ => panic!("Expected simple Role selector, got: {sel:?}"),
     }
 }
 
@@ -239,7 +239,7 @@ fn test_id_selector_not_confused_with_boolean() {
         Selector::Id(id) => {
             assert_eq!(id, "submit-button");
         }
-        _ => panic!("Expected Id selector, got: {:?}", sel),
+        _ => panic!("Expected Id selector, got: {sel:?}"),
     }
 }
 
@@ -255,6 +255,6 @@ fn test_mixed_selectors() {
             // Second part should be Text
             assert!(matches!(v[1], Selector::Text(_)));
         }
-        _ => panic!("Expected Or with mixed selectors, got: {:?}", sel),
+        _ => panic!("Expected Or with mixed selectors, got: {sel:?}"),
     }
 }

@@ -705,7 +705,7 @@ fn sync_workflow_package(version: &str) {
     let package_json = workflow_dir.join("package.json");
     if package_json.exists() {
         if let Err(e) = update_package_json(&package_json.to_string_lossy(), version) {
-            eprintln!("⚠️  Warning: Failed to update workflow package.json: {}", e);
+            eprintln!("⚠️  Warning: Failed to update workflow package.json: {e}");
         } else {
             println!("✅ Workflow package synced to {version}");
         }
@@ -739,7 +739,7 @@ fn update_package_json(path: &str, version: &str) -> Result<(), Box<dyn std::err
         for (key, value) in peer_deps.iter_mut() {
             if key == "@mediar-ai/terminator" {
                 // Use caret range for peer dependencies (allows compatible versions)
-                *value = serde_json::Value::String(format!("^{}", version));
+                *value = serde_json::Value::String(format!("^{version}"));
             }
         }
     }

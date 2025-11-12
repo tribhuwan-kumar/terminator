@@ -32,9 +32,9 @@ async fn test_debugger_stale_state_after_navigation() {
     println!("\n2️⃣ Executing first JavaScript (attaches debugger)");
     let script1 = "document.title";
     match browser.execute_browser_script(script1).await {
-        Ok(result) => println!("✅ First script succeeded: {}", result),
+        Ok(result) => println!("✅ First script succeeded: {result}"),
         Err(e) => {
-            println!("❌ First script failed: {}", e);
+            println!("❌ First script failed: {e}");
             panic!("First script should succeed");
         }
     }
@@ -60,11 +60,11 @@ async fn test_debugger_stale_state_after_navigation() {
     let script2 = "document.title";
     match browser.execute_browser_script(script2).await {
         Ok(result) => {
-            println!("✅ Second script succeeded: {}", result);
+            println!("✅ Second script succeeded: {result}");
             println!("   Extension successfully recovered from potential stale state");
         }
         Err(e) => {
-            println!("❌ Second script failed: {}", e);
+            println!("❌ Second script failed: {e}");
             if e.to_string().contains("Failed to enable debugger domains")
                 || e.to_string().contains("Debugger is not attached")
             {
@@ -81,7 +81,7 @@ async fn test_debugger_stale_state_after_navigation() {
 }
 
 #[tokio::test]
-#[cfg(ignore)] // Keep these stress tests ignored for now
+#[ignore] // Keep these stress tests ignored for now
 async fn test_debugger_stale_state_after_close_and_reopen() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("debug")
@@ -139,7 +139,7 @@ async fn test_debugger_stale_state_after_close_and_reopen() {
 }
 
 #[tokio::test]
-#[cfg(ignore)] // Keep stress tests ignored for now
+#[ignore] // Keep stress tests ignored for now
 async fn test_rapid_script_execution_stale_state() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("debug")
@@ -187,7 +187,7 @@ async fn test_rapid_script_execution_stale_state() {
 }
 
 #[tokio::test]
-#[cfg(ignore)] // Keep SAP scenario test ignored for now
+#[ignore] // Keep SAP scenario test ignored for now
 async fn test_sap_login_scenario() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("debug")

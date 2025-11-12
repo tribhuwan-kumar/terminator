@@ -576,7 +576,7 @@ where
     tracing::debug!("Capturing UI tree before action (PID: {})", pid);
     let tree_before = desktop
         .get_window_tree(pid, None, Some(tree_config.clone()))
-        .map_err(|e| format!("Failed to capture tree before action: {}", e))?;
+        .map_err(|e| format!("Failed to capture tree before action: {e}"))?;
     let before_str = format_tree_string(&tree_before, tree_output_format);
 
     // Execute action
@@ -589,7 +589,7 @@ where
     tracing::debug!("Capturing UI tree after action (PID: {})", pid);
     let tree_after = desktop
         .get_window_tree(pid, None, Some(tree_config))
-        .map_err(|e| format!("Failed to capture tree after action: {}", e))?;
+        .map_err(|e| format!("Failed to capture tree after action: {e}"))?;
     let after_str = format_tree_string(&tree_after, tree_output_format);
 
     // Compute diff using the ui_tree_diff module
@@ -612,7 +612,7 @@ where
                 has_changes: false,
             }
         }
-        Err(e) => return Err(format!("Failed to compute UI diff: {}", e)),
+        Err(e) => return Err(format!("Failed to compute UI diff: {e}")),
     };
 
     Ok((result, Some(diff_result)))

@@ -1208,7 +1208,8 @@ impl DesktopWrapper {
 
                     // Get the window element for this PID to use as search root
                     // This dramatically reduces search space vs searching from desktop root
-                    if let Ok(_window_tree) = self.desktop.get_window_tree(element_pid, None, None) {
+                    if let Ok(_window_tree) = self.desktop.get_window_tree(element_pid, None, None)
+                    {
                         // Create locator scoped to this window's tree
                         // Note: We still search by selector since the element might have been recreated
                         let verification_locator = self

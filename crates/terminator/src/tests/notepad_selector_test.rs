@@ -70,8 +70,7 @@ async fn test_open_notepad_and_type() {
     if let Ok(Some(typed_value)) = value_result {
         assert!(
             typed_value.contains("Hello, World!"),
-            "Expected text not found in editor. Got: {}",
-            typed_value
+            "Expected text not found in editor. Got: {typed_value}"
         );
     }
 
@@ -118,7 +117,7 @@ fn test_window_and_name_notepad() {
                 _ => panic!("Expected Name selector, got: {:?}", v[1]),
             }
         }
-        _ => panic!("Expected And selector, got: {:?}", sel),
+        _ => panic!("Expected And selector, got: {sel:?}"),
     }
 }
 
@@ -143,7 +142,7 @@ fn test_document_or_edit() {
                 _ => panic!("Expected Role selector for Edit, got: {:?}", v[1]),
             }
         }
-        _ => panic!("Expected Or selector, got: {:?}", sel),
+        _ => panic!("Expected Or selector, got: {sel:?}"),
     }
 }
 
@@ -176,6 +175,6 @@ fn test_chain_with_window_selector() {
                 ),
             }
         }
-        _ => panic!("Expected Chain selector, got: {:?}", sel),
+        _ => panic!("Expected Chain selector, got: {sel:?}"),
     }
 }

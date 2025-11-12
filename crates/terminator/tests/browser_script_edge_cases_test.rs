@@ -529,7 +529,7 @@ async fn test_browser_script_with_page_reload() {
     println!("\n✅ Page reload test passed!");
 }
 #[tokio::test]
-#[cfg(ignore)] // Keep long-running perf test ignored
+#[ignore] // Keep long-running perf test ignored
 async fn test_browser_script_performance() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter("info")

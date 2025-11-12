@@ -137,7 +137,7 @@ impl TypeScriptWorkflow {
                             Some(json!({"path": path.display().to_string()})),
                         )
                     })?;
-                    (grandparent.to_path_buf(), format!("src/{}", file_name))
+                    (grandparent.to_path_buf(), format!("src/{file_name}"))
                 } else {
                     // Use parent directory and file name
                     let file_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
@@ -205,7 +205,7 @@ impl TypeScriptWorkflow {
                     .spawn()
                     .map_err(|e| {
                         McpError::internal_error(
-                            format!("Failed to execute workflow with bun: {}", e),
+                            format!("Failed to execute workflow with bun: {e}"),
                             Some(json!({"error": e.to_string()})),
                         )
                     })?
@@ -227,7 +227,7 @@ impl TypeScriptWorkflow {
                     .spawn()
                     .map_err(|e| {
                         McpError::internal_error(
-                            format!("Failed to execute workflow with node: {}", e),
+                            format!("Failed to execute workflow with node: {e}"),
                             Some(json!({"error": e.to_string()})),
                         )
                     })?
@@ -237,7 +237,7 @@ impl TypeScriptWorkflow {
         // Wait for completion and get output
         let output = child.wait_with_output().map_err(|e| {
             McpError::internal_error(
-                format!("Failed to wait for workflow completion: {}", e),
+                format!("Failed to wait for workflow completion: {e}"),
                 Some(json!({"error": e.to_string()})),
             )
         })?;
@@ -292,7 +292,7 @@ impl TypeScriptWorkflow {
 
         let result: TypeScriptWorkflowResult = serde_json::from_str(json_result).map_err(|e| {
             McpError::internal_error(
-                format!("Invalid workflow result: {}", e),
+                format!("Invalid workflow result: {e}"),
                 Some(json!({
                     "error": e.to_string(),
                     "output": result_json.to_string(),
@@ -319,7 +319,7 @@ impl TypeScriptWorkflow {
         // Serialize inputs
         let inputs_json = serde_json::to_string(&inputs).map_err(|e| {
             McpError::internal_error(
-                format!("Failed to serialize inputs: {}", e),
+                format!("Failed to serialize inputs: {e}"),
                 Some(json!({"error": e.to_string()})),
             )
         })?;
@@ -339,7 +339,7 @@ impl TypeScriptWorkflow {
         let step_options_json =
             serde_json::to_string(&Value::Object(step_options_obj)).map_err(|e| {
                 McpError::internal_error(
-                    format!("Failed to serialize step options: {}", e),
+                    format!("Failed to serialize step options: {e}"),
                     Some(json!({"error": e.to_string()})),
                 )
             })?;
@@ -509,7 +509,7 @@ try {{
         }
         .map_err(|e| {
             McpError::internal_error(
-                format!("Failed to run dependency installation: {}", e),
+                format!("Failed to run dependency installation: {e}"),
                 Some(json!({"error": e.to_string()})),
             )
         })?;
@@ -517,7 +517,7 @@ try {{
         if !install_result.status.success() {
             let stderr = String::from_utf8_lossy(&install_result.stderr);
             return Err(McpError::internal_error(
-                format!("Dependency installation failed: {}", stderr),
+                format!("Dependency installation failed: {stderr}"),
                 Some(json!({
                     "stderr": stderr.to_string(),
                     "stdout": String::from_utf8_lossy(&install_result.stdout).to_string(),

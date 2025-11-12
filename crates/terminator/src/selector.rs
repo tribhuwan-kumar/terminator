@@ -519,24 +519,24 @@ mod debug_selector_test {
     #[test]
     fn test_debug_best_plan_pro() {
         let input = "(role:Window && name:Best Plan Pro) >> nativeid:dob";
-        println!("Testing selector: {}", input);
+        println!("Testing selector: {input}");
 
         let selector = Selector::from(input);
-        println!("Parsed result: {:?}", selector);
+        println!("Parsed result: {selector:?}");
 
         // Let's see what we actually get
         match &selector {
             Selector::Chain(parts) => {
                 println!("Got Chain with {} parts:", parts.len());
                 for (i, part) in parts.iter().enumerate() {
-                    println!("  Part {}: {:?}", i, part);
+                    println!("  Part {i}: {part:?}");
                 }
             }
             Selector::Invalid(msg) => {
-                println!("Got Invalid selector: {}", msg);
+                println!("Got Invalid selector: {msg}");
             }
             other => {
-                println!("Got unexpected selector type: {:?}", other);
+                println!("Got unexpected selector type: {other:?}");
             }
         }
     }
@@ -544,28 +544,28 @@ mod debug_selector_test {
     #[test]
     fn test_debug_parentheses_only() {
         let input = "(role:Window && name:Best Plan Pro)";
-        println!("Testing selector: {}", input);
+        println!("Testing selector: {input}");
 
         let selector = Selector::from(input);
-        println!("Parsed result: {:?}", selector);
+        println!("Parsed result: {selector:?}");
     }
 
     #[test]
     fn test_debug_chain_simple() {
         let input = "role:Window >> nativeid:dob";
-        println!("Testing selector: {}", input);
+        println!("Testing selector: {input}");
 
         let selector = Selector::from(input);
-        println!("Parsed result: {:?}", selector);
+        println!("Parsed result: {selector:?}");
     }
 
     #[test]
     fn test_debug_and_no_parens() {
         let input = "role:Window && name:Best Plan Pro";
-        println!("Testing selector: {}", input);
+        println!("Testing selector: {input}");
 
         let selector = Selector::from(input);
-        println!("Parsed result: {:?}", selector);
+        println!("Parsed result: {selector:?}");
     }
 } // Debug test to understand tokenization issue
 
@@ -576,48 +576,48 @@ mod tokenizer_debug_test {
     #[test]
     fn test_tokenize_simple_and() {
         let input = "role:Window && name:Best Plan Pro";
-        println!("Tokenizing: {}", input);
+        println!("Tokenizing: {input}");
 
         match tokenize(input) {
             Ok(tokens) => {
                 println!("Tokens ({} total):", tokens.len());
                 for (i, token) in tokens.iter().enumerate() {
-                    println!("  [{}] {:?}", i, token);
+                    println!("  [{i}] {token:?}");
                 }
             }
-            Err(e) => println!("Tokenization error: {}", e),
+            Err(e) => println!("Tokenization error: {e}"),
         }
     }
 
     #[test]
     fn test_tokenize_with_parentheses() {
         let input = "(role:Window && name:Best Plan Pro)";
-        println!("Tokenizing: {}", input);
+        println!("Tokenizing: {input}");
 
         match tokenize(input) {
             Ok(tokens) => {
                 println!("Tokens ({} total):", tokens.len());
                 for (i, token) in tokens.iter().enumerate() {
-                    println!("  [{}] {:?}", i, token);
+                    println!("  [{i}] {token:?}");
                 }
             }
-            Err(e) => println!("Tokenization error: {}", e),
+            Err(e) => println!("Tokenization error: {e}"),
         }
     }
 
     #[test]
     fn test_tokenize_spaces_in_name() {
         let input = "name:Best Plan Pro";
-        println!("Tokenizing: {}", input);
+        println!("Tokenizing: {input}");
 
         match tokenize(input) {
             Ok(tokens) => {
                 println!("Tokens ({} total):", tokens.len());
                 for (i, token) in tokens.iter().enumerate() {
-                    println!("  [{}] {:?}", i, token);
+                    println!("  [{i}] {token:?}");
                 }
             }
-            Err(e) => println!("Tokenization error: {}", e),
+            Err(e) => println!("Tokenization error: {e}"),
         }
     }
 }
