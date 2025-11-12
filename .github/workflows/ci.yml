@@ -128,6 +128,45 @@ jobs:
         timeout-minutes: 5
         continue-on-error: true
 
+      - name: Verify extension loaded in Chrome
+        run: |
+          Write-Host "Verifying extension loaded properly..."
+          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+          # Navigate to chrome://extensions to verify
+          Start-Process -FilePath $chromePath -ArgumentList @(
+            "--new-window",
+            "chrome://extensions"
+          )
+
+          Start-Sleep -Seconds 5
+
+          # Check if extension ID exists in Chrome user data
+          $chromeUserData = "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Extensions"
+          if (Test-Path $chromeUserData) {
+            $extensions = Get-ChildItem -Path $chromeUserData -Directory
+            Write-Host "Found $($extensions.Count) extensions installed"
+            foreach ($ext in $extensions) {
+              Write-Host "  - Extension: $($ext.Name)"
+            }
+          } else {
+            Write-Host "WARNING: Chrome extensions directory not found"
+          }
+
+          # Check for Terminator Bridge specifically
+          $tempBridge = Join-Path $env:TEMP 'terminator-bridge'
+          if (Test-Path $tempBridge) {
+            Write-Host "✓ Terminator Bridge extension files exist at: $tempBridge"
+            if (Test-Path (Join-Path $tempBridge 'manifest.json')) {
+              Write-Host "✓ manifest.json found"
+              Get-Content (Join-Path $tempBridge 'manifest.json') | Write-Host
+            }
+          } else {
+            Write-Host "✗ WARNING: Terminator Bridge extension files not found!"
+          }
+        shell: pwsh
+        continue-on-error: true
+
       - name: Run browser extension tests
         run: |
           Write-Host "Running browser extension tests..."
