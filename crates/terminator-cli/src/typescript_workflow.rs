@@ -61,8 +61,8 @@ pub fn is_typescript_workflow(input: &str, is_file_input: bool) -> bool {
 
 /// Convert file path to file:// URL
 pub fn path_to_file_url(input: &str) -> Result<String> {
-    let abs_path = std::fs::canonicalize(input)
-        .with_context(|| format!("Failed to resolve path: {input}"))?;
+    let abs_path =
+        std::fs::canonicalize(input).with_context(|| format!("Failed to resolve path: {input}"))?;
 
     // If it's a directory with TypeScript workflow files, point to the specific file
     let target_path = if abs_path.is_dir() {
