@@ -107,28 +107,25 @@ jobs:
           Start-Sleep -Seconds 5
         shell: pwsh
 
-      - name: Launch Chrome with extension loaded
+      - name: Launch Chrome before workflow
         run: |
-          $extensionPath = (Resolve-Path "crates/terminator/browser-extension").Path
-          Write-Host "Extension path: $extensionPath"
-
-          # Kill any existing Chrome processes
-          Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 2
-
-          # Launch Chrome with extension in background
+          # Start Chrome first so it's running when workflow executes
           $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
           Start-Process -FilePath $chromePath -ArgumentList @(
-            "--load-extension=$extensionPath",
             "--no-first-run",
             "--no-default-browser-check",
-            "--disable-popup-blocking",
             "about:blank"
-          ) -PassThru
-
-          Write-Host "Chrome launched with extension, waiting for it to initialize..."
-          Start-Sleep -Seconds 8
+          )
+          Write-Host "Chrome started, waiting for initialization..."
+          Start-Sleep -Seconds 10
         shell: pwsh
+
+      - name: Install extension via terminator workflow
+        run: |
+          Write-Host "Running extension installation workflow..."
+          cargo run --bin terminator -- mcp run crates/terminator/browser-extension/install_chrome_extension_ui.yml
+        shell: pwsh
+        timeout-minutes: 5
 
       - name: Run browser extension tests
         run: |
