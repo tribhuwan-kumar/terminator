@@ -1678,9 +1678,41 @@ impl UIElementImpl for WindowsUIElement {
                         // Try to get the process ID so we can force-terminate it
                         match self.element.0.get_process_id() {
                             Ok(pid) => {
+                                // Check if this is a Chrome-based browser process
+                                // Chrome uses multi-process architecture where /T would kill all windows
+                                let is_chrome_based = {
+                                    use sysinfo::{ProcessesToUpdate, System};
+                                    let mut system = System::new();
+                                    system.refresh_processes(ProcessesToUpdate::All, true);
+                                    system
+                                        .process(sysinfo::Pid::from_u32(pid))
+                                        .map(|p| {
+                                            let name = p.name().to_string_lossy().to_lowercase();
+                                            // Check for Chromium-based browsers
+                                            name.contains("chrome") || name.contains("msedge")
+                                                || name.contains("brave") || name.contains("opera")
+                                                || name.contains("vivaldi") || name.contains("arc")
+                                        })
+                                        .unwrap_or(false)
+                                };
+
+                                // Build taskkill args - exclude /T flag for Chrome-based browsers
+                                // to avoid killing all browser windows in the process tree
+                                let pid_str = pid.to_string();
+                                let mut taskkill_args = vec!["/PID", pid_str.as_str()];
+                                if !is_chrome_based {
+                                    taskkill_args.push("/T"); // Kill child processes (but not for Chrome)
+                                }
+                                taskkill_args.push("/F"); // Force termination
+
+                                debug!(
+                                    "Attempting taskkill for PID {} (Chrome-based: {}, args: {:?})",
+                                    pid, is_chrome_based, taskkill_args
+                                );
+
                                 // First, try taskkill (built-in)
                                 let taskkill_status = std::process::Command::new("taskkill")
-                                    .args(["/PID", &pid.to_string(), "/T", "/F"])
+                                    .args(&taskkill_args)
                                     .status();
 
                                 if let Ok(status) = taskkill_status {
