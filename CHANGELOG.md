@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.22] - 2025-11-12
+
+### Fixed
+- Build: Uncommented terminator-python in workspace members to fix Python wheels CI build
+
 ## [0.22.21] - 2025-11-12
 
 ### Fixed
