@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.2] - 2025-11-12
+
+### Fixed
+- Browser scripts: Env variables now injected as single `env` object instead of separate const declarations - scripts access via `env.variableName`
+- CLI: Fixed version sync to update @mediar-ai/terminator-* optionalDependencies
+- Package: Updated platform package optionalDependencies from 0.22.20 to 0.23.2
+
 ## [0.23.1] - 2025-11-12
 
 ### Added
