@@ -160,7 +160,7 @@ arguments:
             log('Checking if Developer mode is already enabled...');
             let loadVisible = false;
             try {
-              await desktop.locator(loadSel).wait(2000);
+              await desktop.locator(loadSel).first(2000);
               loadVisible = true;
               log('✓ Developer mode already enabled - Load unpacked button found');
             } catch (_) {
@@ -182,7 +182,7 @@ arguments:
               for (const sel of toggleSelectors) {
                 try {
                   log(`Trying selector: ${sel}`);
-                  devToggle = await desktop.locator(sel).wait(3000);
+                  devToggle = await desktop.locator(sel).first(3000);
                   log(`✓ Found Developer mode toggle with selector: ${sel}`);
                   break;
                 } catch (e) {
@@ -213,7 +213,7 @@ arguments:
 
               // Verify that Load unpacked appeared
               try {
-                await desktop.locator(loadSel).wait(3000);
+                await desktop.locator(loadSel).first(3000);
                 log('✓ Developer mode enabled successfully - Load unpacked button appeared');
               } catch (e) {
                 log('Warning: Load unpacked button did not appear after toggling Developer mode');
