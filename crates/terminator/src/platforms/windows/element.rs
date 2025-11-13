@@ -397,8 +397,8 @@ impl WindowsUIElement {
         // 4. Ensure element is in viewport (scroll if needed)
         self.ensure_in_viewport()?;
 
-        // 5. Wait for stable bounds (no animations)
-        self.wait_for_stable_bounds()?;
+        // 5. Removed wait_for_stable_bounds - relying on tree capture delay instead
+        // This speeds up click actions by ~800ms
 
         tracing::info!("Element passed all actionability checks");
         Ok(())
@@ -735,7 +735,7 @@ impl UIElementImpl for WindowsUIElement {
         self.execute_mouse_click(click_x, click_y)?;
 
         // PHASE 5: POST-ACTION VERIFICATION
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Removed 200ms delay - relying on tree capture delay instead
         let post_window_title = self
             .window()
             .ok()
