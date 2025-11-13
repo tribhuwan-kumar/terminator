@@ -77,27 +77,26 @@ jobs:
           cargo build -p terminator-mcp-agent --features sentry
           cargo test -p terminator-mcp-agent --features sentry -- --test-threads=1
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: "18"
+          bun-version: latest
 
-      - name: Install Node.js dependencies
+      - name: Install dependencies
         run: |
           cd packages/terminator-nodejs
-          npm install
+          bun install
         shell: pwsh
 
       - name: Build Node.js bindings
         run: |
           cd packages/terminator-nodejs
-          npm run build
+          bun run build
         shell: pwsh
 
       - name: Run Node.js tests
         run: |
           cd packages/terminator-nodejs
-          npm test
+          bun test
         shell: pwsh
 
       # Install Chrome extension and run browser tests
