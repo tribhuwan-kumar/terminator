@@ -1,0 +1,200 @@
+name: bridge test
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  # Disable incremental compilation to avoid PDB locking issues on Windows
+  CARGO_INCREMENTAL: 0
+  # Reduce debuginfo to speed up builds and reduce PDB size
+  CARGO_PROFILE_DEV_DEBUG: 1
+  # Windows specific: disable long path issues
+  CARGO_NET_GIT_FETCH_WITH_CLI: true
+  # Skip npm install in tests to avoid timeout
+  TERMINATOR_SKIP_NPM_INSTALL: 1
+  # Skip telemetry collector check to avoid CI timeouts
+  OTEL_SKIP_COLLECTOR_CHECK: true
+  # Reduce retry time for telemetry in CI
+  OTEL_RETRY_DURATION_MINS: 0
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Clean target directory to avoid PDB conflicts
+      - name: Clean target directory
+        run: |
+          if (Test-Path target) { Remove-Item -Recurse -Force target }
+        shell: pwsh
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-${{ hashFiles('**/Cargo.lock') }}
+
+      # Build with retries
+      - name: Build workspace
+        run: |
+          $attempts = 3
+          for ($i = 1; $i -le $attempts; $i++) {
+            Write-Host "Build attempt $i of $attempts"
+            cargo build --workspace --verbose
+            if ($LASTEXITCODE -eq 0) {
+              break
+            }
+            if ($i -lt $attempts) {
+              Write-Host "Build failed, retrying in 5 seconds..."
+              Start-Sleep -Seconds 5
+              # Clean PDB files that might be locked
+              Get-ChildItem -Path target -Include *.pdb -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+            }
+          }
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+        shell: pwsh
+
+      - name: Test with telemetry feature
+        run: |
+          cargo build -p terminator-mcp-agent --features telemetry
+          cargo test -p terminator-mcp-agent --features telemetry -- --test-threads=1
+
+      - name: Test with sentry feature
+        run: |
+          cargo build -p terminator-mcp-agent --features sentry
+          cargo test -p terminator-mcp-agent --features sentry -- --test-threads=1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install Node.js dependencies
+        run: |
+          cd packages/terminator-nodejs
+          npm install
+        shell: pwsh
+
+      - name: Build Node.js bindings
+        run: |
+          cd packages/terminator-nodejs
+          npm run build
+        shell: pwsh
+
+      - name: Run Node.js tests
+        run: |
+          cd packages/terminator-nodejs
+          npm test
+        shell: pwsh
+
+      # Install Chrome extension and run browser tests
+      - name: Install Chrome
+        run: |
+          # swtich to bun instead of node
+          npm install -g bun
+          choco install googlechrome -y --ignore-checksums
+          Start-Sleep -Seconds 5
+        shell: pwsh
+
+      - name: Launch Chrome before workflow
+        run: |
+          # Start Chrome first so it's running when workflow executes
+          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          Start-Process -FilePath $chromePath -ArgumentList @(
+            "--no-first-run",
+            "--no-default-browser-check",
+            "about:blank"
+          )
+          Write-Host "Chrome started, waiting for initialization..."
+          Start-Sleep -Seconds 10
+        shell: pwsh
+
+      - name: Install extension via terminator workflow
+        run: |
+          Write-Host "Running extension installation workflow..."
+          cargo run --bin terminator -- mcp run crates/terminator/browser-extension/install_chrome_extension_ui.yml
+        shell: pwsh
+        timeout-minutes: 5
+        continue-on-error: true
+
+      - name: Wake up extension and verify WebSocket connection
+        run: |
+          Write-Host "Testing if extension can connect to WebSocket bridge..."
+
+          # Navigate Chrome to example.com to trigger extension
+          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+          Start-Process -FilePath $chromePath -ArgumentList @(
+            "--new-window",
+            "https://example.com"
+          )
+
+          Write-Host "Waiting for page load..."
+          Start-Sleep -Seconds 3
+          # Run the WebSocket test using our test script (from terminator-nodejs dir which has ws installed)
+          Write-Host "Starting WebSocket bridge test..."
+          cd packages/terminator-nodejs
+          bun "../../.github/scripts/test-extension-bridge.js"
+
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "`n✅ Extension successfully connected to bridge!"
+          } else {
+            Write-Host "`n❌ Extension failed to connect - browser tests will fail"
+            Write-Host "`nDiagnostics:"
+            Write-Host "Chrome processes:"
+            Get-Process chrome -ErrorAction SilentlyContinue | Format-Table
+
+            Write-Host "`nExtension files:"
+            $tempBridge = Join-Path $env:TEMP 'terminator-bridge'
+            if (Test-Path $tempBridge) {
+              Write-Host "Extension directory exists at: $tempBridge"
+              Get-ChildItem $tempBridge | Format-Table
+            } else {
+              Write-Host "Extension directory NOT FOUND at: $tempBridge"
+            }
+          }
+        shell: pwsh
+        continue-on-error: true
+
+      - name: Wake extension service worker
+        run: |
+          Write-Host "Navigating to test page to wake extension service worker..."
+          $chromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+
+          # Close any existing Chrome windows
+          Get-Process chrome -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 2
+
+          # Start fresh Chrome with extension loaded
+          Start-Process -FilePath $chromePath -ArgumentList @(
+            "--new-window",
+            "https://example.com"
+          )
+
+          Write-Host "Waiting for extension service worker to initialize..."
+          Start-Sleep -Seconds 5
+
+          Write-Host "Extension should now be active and connected"
+        shell: pwsh
+
+      - name: Run browser extension tests
+        run: |
+          Write-Host "Running browser extension tests..."
+          cargo test --test browser_script_edge_cases_test --test debugger_detach_test -- --test-threads=1 --nocapture
+        shell: pwsh
+        timeout-minutes: 15
+        continue-on-error: true
+
+      - name: Run Rust tests
+        run: cargo test --workspace --verbose  -- --test-threads=1
