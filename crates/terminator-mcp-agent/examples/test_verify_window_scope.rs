@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  - Text: {:?}", found.text(0));
                 }
                 Err(e) => {
-                    println!("✗ Window-scoped search FAILED: {}", e);
+                    println!("✗ Window-scoped search FAILED: {e}");
                 }
             }
             println!();
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  - Text: {:?}", found.text(0));
                 }
                 Err(e) => {
-                    println!("✗ Desktop-wide search FAILED: {}", e);
+                    println!("✗ Desktop-wide search FAILED: {e}");
                 }
             }
         }
@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✗ element.window() returned None (no window found in parent chain)");
         }
         Err(e) => {
-            println!("✗ element.window() returned Error: {}", e);
+            println!("✗ element.window() returned Error: {e}");
         }
     }
 

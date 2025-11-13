@@ -290,10 +290,13 @@ impl DesktopWrapper {
         // Register this execution with the request manager
         // This allows stop_execution to cancel it
         let request_id = format!("execute_sequence_{}", Uuid::new_v4());
-        let cancel_context = self.request_manager.register(
-            request_id.clone(),
-            Some(600000) // 10 minute timeout for workflows
-        ).await;
+        let cancel_context = self
+            .request_manager
+            .register(
+                request_id.clone(),
+                Some(600000), // 10 minute timeout for workflows
+            )
+            .await;
 
         // Use tokio::select to handle cancellation from request manager
         tokio::select! {

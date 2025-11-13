@@ -37,8 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Check if this is Window or Pane
                 if role == "Window" || role == "Pane" {
                     println!(
-                        "    ^^^ Found {} - this should be returned by element.window()",
-                        role
+                        "    ^^^ Found {role} - this should be returned by element.window()"
                     );
                 }
 
@@ -67,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✗ FAILED - element.window() returned None");
         }
         Err(e) => {
-            println!("✗ ERROR - element.window() error: {}", e);
+            println!("✗ ERROR - element.window() error: {e}");
         }
     }
 

@@ -1018,7 +1018,7 @@ pub async fn verify_post_action(
         return Ok(VerificationResult {
             passed: true,
             method: method.to_string(),
-            details: format!("Element '{}' found", exists_selector),
+            details: format!("Element '{exists_selector}' found"),
             elapsed_ms: start.elapsed().as_millis() as u64,
         });
     }
@@ -1072,7 +1072,7 @@ pub async fn verify_post_action(
                 return Ok(VerificationResult {
                     passed: true,
                     method: method.to_string(),
-                    details: format!("Element '{}' correctly not present", not_exists_selector),
+                    details: format!("Element '{not_exists_selector}' correctly not present"),
                     elapsed_ms: start.elapsed().as_millis() as u64,
                 });
             }

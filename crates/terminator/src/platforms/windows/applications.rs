@@ -110,8 +110,7 @@ fn hwnd_to_uielement(engine: &WindowsEngine, hwnd: isize) -> Result<UIElement, A
         .element_from_handle(hwnd.into())
         .map_err(|e| {
             AutomationError::PlatformError(format!(
-                "Failed to get UIElement from HWND 0x{:X}: {:?}",
-                hwnd, e
+                "Failed to get UIElement from HWND 0x{hwnd:X}: {e:?}"
             ))
         })?;
 

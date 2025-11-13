@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  - Name: {:?}", element.name());
     println!("  - Role: {}", element.role());
     let pid = element.process_id()?;
-    println!("  - PID: {}", pid);
+    println!("  - PID: {pid}");
     println!();
 
     // Test 1: element.window() (we know this returns None)
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match element.window() {
         Ok(Some(w)) => println!("  ✓ Got window: {:?} (role: {})", w.name(), w.role()),
         Ok(None) => println!("  ✗ Returned None"),
-        Err(e) => println!("  ✗ Error: {}", e),
+        Err(e) => println!("  ✗ Error: {e}"),
     }
     println!();
 
@@ -57,19 +57,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("    - Text: {:?}", found.text(0));
                 }
                 Err(e) => {
-                    println!("  ✗ FAILED: {}", e);
+                    println!("  ✗ FAILED: {e}");
                 }
             }
         }
         Ok(None) => println!("  ✗ Returned None"),
-        Err(e) => println!("  ✗ Error: {}", e),
+        Err(e) => println!("  ✗ Error: {e}"),
     }
 
     Ok(())
 }
-<<<<<<< HEAD
-=======
-
-
-
->>>>>>> a757147a (chore: normalize line endings in example files)
