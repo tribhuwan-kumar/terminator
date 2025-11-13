@@ -1,8 +1,7 @@
 name: bridge test
 
 on:
-  push:
-    branches: ["main"]
+  workflow_dispatch: # only manual triggering
 
 env:
   # Disable incremental compilation to avoid PDB locking issues on Windows
