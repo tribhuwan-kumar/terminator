@@ -35,6 +35,7 @@ const varName = (typeof env_var !== 'undefined') ? env_var : defaultValue;
 *   **Selector matches wrong element:** Use numeric ID when name is empty.
 *   **ID is not unique across machines:** Use different selectors than ID when exporting workflows.
 *   **Hyperlink container clicks don't navigate:** On search results, a `role:Hyperlink` container often wraps a composite group; target the child anchor instead: tighten `name:` (title or destination domain), add `|nth:0` if needed, or use numeric `#id`. Prefer `invoke_element` or focus target then `press_key` \"{{Enter}}\"; always verify with postconditions (address bar/title/tab or destination element).
+*   **Unable to understand UI state or debug issues:** Use `capture_element_screenshot` to visually inspect problematic elements when tree data is insufficient.
 
 Contextual information:
 - The current date and time is {current_date_time}.
