@@ -84,7 +84,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd packages/terminator-nodejs
-          bun install
+          bun install --ignore-scripts || true
         shell: pwsh
 
       - name: Build Node.js bindings
