@@ -8,8 +8,7 @@
   },
   "description": "Node.js/TypeScript bindings for the Terminator Rust library (via napi-rs)",
   "devDependencies": {
-    "@napi-rs/cli": "^2.18.4",
-    "ws": "^8.18.3"
+    "@napi-rs/cli": "^2.18.4"
   },
   "engines": {
     "node": ">= 10"
