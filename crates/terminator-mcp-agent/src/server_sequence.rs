@@ -133,7 +133,10 @@ impl DesktopWrapper {
     //   macOS: ~/Library/Application Support/mediar/workflows/<workflow_id>/state.json
     //   Linux: ~/.local/share/mediar/workflows/<workflow_id>/state.json
     // Priority: workflow_id > URL hash (for backward compatibility)
-    async fn get_state_file_path(workflow_id: Option<&str>, workflow_url: Option<&str>) -> Option<PathBuf> {
+    async fn get_state_file_path(
+        workflow_id: Option<&str>,
+        workflow_url: Option<&str>,
+    ) -> Option<PathBuf> {
         let data_dir = dirs::data_local_dir()?;
 
         // Priority 1: Use workflow_id if provided (cleaner, no hashing needed)
@@ -801,10 +804,9 @@ impl DesktopWrapper {
 
         // NEW: Load saved state if starting from a specific step
         if start_from_index > 0 {
-            if let Some(saved_env) = Self::load_workflow_state(
-                args.workflow_id.as_deref(),
-                args.url.as_deref(),
-            ).await? {
+            if let Some(saved_env) =
+                Self::load_workflow_state(args.workflow_id.as_deref(), args.url.as_deref()).await?
+            {
                 execution_context_map.insert("env".to_string(), saved_env);
                 debug!(
                     "Loaded saved env state for resuming from step {}",
@@ -2368,7 +2370,7 @@ impl DesktopWrapper {
                 Some(url),
                 Some(last_step_id),
                 last_step_index,
-                &result.state
+                &result.state,
             )
             .await?;
         }
