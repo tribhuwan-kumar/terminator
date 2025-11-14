@@ -133,7 +133,10 @@ impl DesktopWrapper {
     //   macOS: ~/Library/Application Support/mediar/workflows/<workflow_id>/state.json
     //   Linux: ~/.local/share/mediar/workflows/<workflow_id>/state.json
     // Priority: workflow_id > URL hash (for backward compatibility)
-    async fn get_state_file_path(workflow_id: Option<&str>, workflow_url: Option<&str>) -> Option<PathBuf> {
+    async fn get_state_file_path(
+        workflow_id: Option<&str>,
+        workflow_url: Option<&str>,
+    ) -> Option<PathBuf> {
         let data_dir = dirs::data_local_dir()?;
 
         // Priority 1: Use workflow_id if provided (cleaner, no hashing needed)
@@ -801,10 +804,9 @@ impl DesktopWrapper {
 
         // NEW: Load saved state if starting from a specific step
         if start_from_index > 0 {
-            if let Some(saved_env) = Self::load_workflow_state(
-                args.workflow_id.as_deref(),
-                args.url.as_deref(),
-            ).await? {
+            if let Some(saved_env) =
+                Self::load_workflow_state(args.workflow_id.as_deref(), args.url.as_deref()).await?
+            {
                 execution_context_map.insert("env".to_string(), saved_env);
                 debug!(
                     "Loaded saved env state for resuming from step {}",
@@ -1089,6 +1091,7 @@ impl DesktopWrapper {
         let mut critical_error_occurred = false;
         let mut used_fallback = false; // Track if any fallback was used
         let mut actually_executed_count = 0usize; // Track only steps that actually executed (not skipped)
+        let mut cancelled_by_user = false; // Track if execution was cancelled by user
         let start_time = chrono::Utc::now();
 
         let mut current_index: usize = start_from_index;
@@ -1153,10 +1156,8 @@ impl DesktopWrapper {
             // Check if the request has been cancelled
             if request_context.ct.is_cancelled() {
                 warn!("Request cancelled by user, stopping sequence execution");
-                return Err(McpError::internal_error(
-                    "Request cancelled by user",
-                    Some(json!({"code": -32001, "reason": "user_cancelled"})),
-                ));
+                cancelled_by_user = true;
+                break; // Exit loop gracefully and return partial results
             }
 
             // Get the original step from either main steps or troubleshooting steps
@@ -2036,18 +2037,21 @@ impl DesktopWrapper {
 
         let total_duration = (chrono::Utc::now() - start_time).num_milliseconds();
 
-        // Determine final status - simple success or failure
-        let final_status = if !sequence_had_errors {
+        // Determine final status - simple success or failure, or cancelled
+        let final_status = if cancelled_by_user {
+            "cancelled"
+        } else if !sequence_had_errors {
             "success"
         } else {
             "failed"
         };
         info!(
-            "execute_sequence completed: status={}, executed_tools={}, total_results={}, total_duration_ms={}",
+            "execute_sequence completed: status={}, executed_tools={}, total_results={}, total_duration_ms={}, cancelled={}",
             final_status,
             actually_executed_count,
             results.len(),
-            total_duration
+            total_duration,
+            cancelled_by_user
         );
 
         let mut summary = json!({
@@ -2366,7 +2370,7 @@ impl DesktopWrapper {
                 Some(url),
                 Some(last_step_id),
                 last_step_index,
-                &result.state
+                &result.state,
             )
             .await?;
         }

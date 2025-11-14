@@ -1761,10 +1761,9 @@ impl AccessibilityEngine for WindowsEngine {
             // Process selector - delegate to find_elements and take first result
             Selector::Process(_) => {
                 let elements = self.find_elements(selector, root, timeout, None)?;
-                elements
-                    .into_iter()
-                    .next()
-                    .ok_or_else(|| AutomationError::ElementNotFound("No element found for process".to_string()))
+                elements.into_iter().next().ok_or_else(|| {
+                    AutomationError::ElementNotFound("No element found for process".to_string())
+                })
             }
             Selector::Role { role, name } => {
                 let win_control_type = map_generic_role_to_win_roles(role);
